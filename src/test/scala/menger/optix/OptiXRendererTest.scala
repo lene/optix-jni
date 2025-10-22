@@ -13,6 +13,9 @@ import scala.util.Try
  */
 class OptiXRendererTest extends AnyFlatSpec with Matchers {
 
+  // Ensure library is loaded before running tests
+  OptiXRenderer.isLibraryLoaded shouldBe true
+
   "OptiXRenderer" should "be instantiable" in new OptiXRenderer {
     this should not be null
   }

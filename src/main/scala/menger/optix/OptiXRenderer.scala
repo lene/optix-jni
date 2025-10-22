@@ -51,13 +51,14 @@ object OptiXRenderer extends LazyLogging {
 
   private def loadNativeLibrary(): Boolean = {
     try {
-      // Try different loading strategies
-
       // Strategy 1: Try loading from java.library.path
-      Try {
+      try {
         System.loadLibrary(libraryName)
         logger.info(s"Loaded $libraryName from java.library.path")
         return true
+      } catch {
+        case _: UnsatisfiedLinkError =>
+          logger.debug(s"Failed to load $libraryName from java.library.path, trying classpath")
       }
 
       // Strategy 2: Try loading from classpath resources
