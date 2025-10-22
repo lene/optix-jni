@@ -27,7 +27,9 @@ message(STATUS "Found CUDA: ${CUDAToolkit_VERSION}")
 message(STATUS "Found JNI: ${JNI_INCLUDE_DIRS}")
 
 # CUDA architectures for NVIDIA GPUs
-set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90)
+# For PTX compilation, we need to use a single virtual architecture
+# Using sm_75 as the base architecture for compatibility with RTX 20 series and newer
+set(CMAKE_CUDA_ARCHITECTURES 75)
 
 # Compile CUDA kernels to PTX
 add_library(optix_shaders OBJECT
