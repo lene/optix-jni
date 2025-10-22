@@ -1,9 +1,13 @@
 #include "include/OptiXWrapper.h"
 #include <iostream>
+#include <cstring>
 
 // Placeholder implementation structure
 struct OptiXWrapper::Impl {
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    // When CUDA/OptiX available, store OptiX context
     OptixDeviceContext context = nullptr;
+#endif
     bool initialized = false;
 };
 
@@ -15,43 +19,69 @@ OptiXWrapper::~OptiXWrapper() {
 }
 
 bool OptiXWrapper::initialize() {
-    // Placeholder: actual OptiX initialization will be implemented in Phase 2
-    std::cout << "OptiXWrapper::initialize() - placeholder" << std::endl;
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    // TODO: Actual OptiX initialization will be implemented in future phases
+    std::cout << "[OptiX] initialize() - placeholder (OptiX available but not yet implemented)" << std::endl;
     impl->initialized = true;
     return true;
+#else
+    // Stub implementation when CUDA/OptiX not available
+    std::cout << "[OptiX] initialize() - stub (CUDA/OptiX not available)" << std::endl;
+    impl->initialized = true;
+    return true;
+#endif
 }
 
 void OptiXWrapper::setSphere(float x, float y, float z, float radius) {
-    // Placeholder: will be implemented in Phase 2
-    std::cout << "OptiXWrapper::setSphere(" << x << ", " << y << ", " << z << ", " << radius << ")" << std::endl;
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    // TODO: Actual OptiX sphere configuration
+    std::cout << "[OptiX] setSphere(" << x << ", " << y << ", " << z << ", " << radius << ")" << std::endl;
+#else
+    // Stub implementation - no-op
+    (void)x; (void)y; (void)z; (void)radius; // Suppress unused parameter warnings
+#endif
 }
 
 void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float* up, float fov) {
-    // Placeholder: will be implemented in Phase 2
-    std::cout << "OptiXWrapper::setCamera() - placeholder" << std::endl;
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    // TODO: Actual OptiX camera configuration
+    std::cout << "[OptiX] setCamera() - placeholder" << std::endl;
+#else
+    // Stub implementation - no-op
+    (void)eye; (void)lookAt; (void)up; (void)fov; // Suppress unused parameter warnings
+#endif
 }
 
 void OptiXWrapper::setLight(const float* direction, float intensity) {
-    // Placeholder: will be implemented in Phase 2
-    std::cout << "OptiXWrapper::setLight() - placeholder" << std::endl;
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    // TODO: Actual OptiX light configuration
+    std::cout << "[OptiX] setLight() - placeholder" << std::endl;
+#else
+    // Stub implementation - no-op
+    (void)direction; (void)intensity; // Suppress unused parameter warnings
+#endif
 }
 
 void OptiXWrapper::render(int width, int height, unsigned char* output) {
-    // Placeholder: actual rendering will be implemented in Phase 3
-    std::cout << "OptiXWrapper::render(" << width << "x" << height << ") - placeholder" << std::endl;
-    // Fill with gray for now
-    for (int i = 0; i < width * height * 4; i += 4) {
-        output[i + 0] = 128; // R
-        output[i + 1] = 128; // G
-        output[i + 2] = 128; // B
-        output[i + 3] = 255; // A
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    // TODO: Actual OptiX rendering will be implemented in future phases
+    std::cout << "[OptiX] render(" << width << "x" << height << ") - placeholder" << std::endl;
+#else
+    // Stub implementation - return gray placeholder
+#endif
+    // Fill with gray for now (both OptiX and stub paths)
+    std::memset(output, 128, width * height * 4 - 1); // Fill RGB with 128
+    for (int i = 3; i < width * height * 4; i += 4) {
+        output[i] = 255; // Alpha channel
     }
 }
 
 void OptiXWrapper::dispose() {
-    // Placeholder: cleanup will be implemented in Phase 2
     if (impl->initialized) {
-        std::cout << "OptiXWrapper::dispose() - placeholder" << std::endl;
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+        // TODO: Actual OptiX cleanup
+        std::cout << "[OptiX] dispose() - placeholder" << std::endl;
+#endif
         impl->initialized = false;
     }
 }
