@@ -98,9 +98,7 @@ message(STATUS "")
 #=============================================================================
 if(HAVE_CUDA AND HAVE_OPTIX)
   add_library(optix_shaders OBJECT
-      shaders/sphere_raygen.cu
-      shaders/sphere_closesthit.cu
-      shaders/sphere_miss.cu
+      shaders/sphere_combined.cu
   )
 
   target_include_directories(optix_shaders PRIVATE

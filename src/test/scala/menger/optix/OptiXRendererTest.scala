@@ -69,15 +69,19 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers {
     result.length shouldBe expectedSize
   }
 
-  it should "return error color (red) when pipeline is incomplete" in new OptiXRenderer {
+  it should "render actual OptiX output (not placeholder)" in new OptiXRenderer {
     initialize()
     val result = render(10, 10)
-    // Check first pixel (note: Scala bytes are signed, so 255 = -1, 0 = 0)
-    // When buildPipeline is incomplete, render returns red error color
-    result(0) shouldBe -1  // R = 255 (error red)
-    result(1) shouldBe 0   // G = 0
-    result(2) shouldBe 0   // B = 0
-    result(3) shouldBe -1  // A = 255
+    // Check first pixel - should contain actual rendered output
+    // The exact values depend on sphere rendering, but shouldn't be all zeros or all 255
+    result should not be null
+    result.length shouldBe 10 * 10 * 4
+    result(3) shouldBe -1  // A = 255 (alpha should always be 255)
+
+    // First pixel should have some rendered content (background or sphere)
+    // Not checking exact values as they depend on camera/lighting setup
+    val hasNonZeroPixel = result.take(400).exists(b => b != 0 && b != -1)
+    hasNonZeroPixel shouldBe true
   }
 
   it should "allow dispose() to be called without crashing" in new OptiXRenderer {
@@ -109,6 +113,54 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers {
 
     val image = render(100, 100)
     image.length shouldBe 100 * 100 * 4
+
+    dispose()
+  }
+
+  it should "save rendered output as PPM for visual inspection" in new OptiXRenderer {
+    val width = 800
+    val height = 600
+
+    // Remove any pre-existing output file to ensure test actually creates it
+    val outputFile = new java.io.File("optix_test_output.ppm")
+    if (outputFile.exists()) {
+      outputFile.delete()
+    }
+
+    val initialized = initialize()
+    initialized shouldBe true
+
+    setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    setCamera(Array(0.0f, 0.0f, 3.0f), Array(0.0f, 0.0f, 0.0f),
+              Array(0.0f, 1.0f, 0.0f), 60.0f)
+    setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
+
+    val imageData = render(width, height)
+    imageData.length shouldBe width * height * 4
+
+    val header = s"P6\n$width $height\n255\n"
+    val out = new java.io.FileOutputStream(outputFile)
+    try {
+      out.write(header.getBytes("ASCII"))
+
+      for (i <- 0 until width * height) {
+        val offset = i * 4
+        out.write(imageData(offset) & 0xFF)     // R
+        out.write(imageData(offset + 1) & 0xFF) // G
+        out.write(imageData(offset + 2) & 0xFF) // B
+      }
+
+      println(s"\n=== Rendered image saved to: ${outputFile.getAbsolutePath}")
+      println(s"=== Size: ${width}x${height} (${outputFile.length()} bytes)")
+      println("=== View with: gimp optix_test_output.ppm")
+      println("=== Or convert: convert optix_test_output.ppm optix_test_output.png\n")
+    } finally {
+      out.close()
+    }
+
+    outputFile.exists() shouldBe true
+    val expectedSize = header.length + width * height * 3
+    outputFile.length() shouldBe expectedSize
 
     dispose()
   }
