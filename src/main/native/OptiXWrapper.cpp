@@ -13,6 +13,35 @@
 #endif
 
 #if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+
+// Constants for OptiX configuration
+namespace OptiXConstants {
+    constexpr size_t LOG_BUFFER_SIZE = 2048;
+    constexpr unsigned int OPTIX_LOG_LEVEL_INFO = 3;  // Print Info, Warning, and Error messages
+
+    // Default background color (dark purple/maroon)
+    constexpr float DEFAULT_BG_R = 0.3f;
+    constexpr float DEFAULT_BG_G = 0.1f;
+    constexpr float DEFAULT_BG_B = 0.2f;
+}
+
+// Vector math helper functions
+namespace VectorMath {
+    // Normalize a 3D vector in place
+    inline void normalize3f(float v[3]) {
+        const float len = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+        v[0] /= len;
+        v[1] /= len;
+        v[2] /= len;
+    }
+
+    // Cross product: result = a × b
+    inline void cross3f(float result[3], const float a[3], const float b[3]) {
+        result[0] = a[1]*b[2] - a[2]*b[1];
+        result[1] = a[2]*b[0] - a[0]*b[2];
+        result[2] = a[0]*b[1] - a[1]*b[0];
+    }
+}
 #include <cuda_runtime.h>
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
@@ -112,7 +141,7 @@ bool OptiXWrapper::initialize() {
         CUcontext cuCtx = 0;  // 0 = use current CUDA context
         OptixDeviceContextOptions options = {};
         options.logCallbackFunction = &optixLogCallback;
-        options.logCallbackLevel = 3;  // Print Info, Warning and Error messages
+        options.logCallbackLevel = OptiXConstants::OPTIX_LOG_LEVEL_INFO;
 
         OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &impl->context));
 
@@ -154,30 +183,19 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     impl->fov = fov;
 
     // Calculate W (view direction)
-    float w[3];
-    w[0] = lookAt[0] - eye[0];
-    w[1] = lookAt[1] - eye[1];
-    w[2] = lookAt[2] - eye[2];
-    float len_w = std::sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2]);
-    impl->camera_w[0] = w[0] / len_w;
-    impl->camera_w[1] = w[1] / len_w;
-    impl->camera_w[2] = w[2] / len_w;
+    impl->camera_w[0] = lookAt[0] - eye[0];
+    impl->camera_w[1] = lookAt[1] - eye[1];
+    impl->camera_w[2] = lookAt[2] - eye[2];
+    VectorMath::normalize3f(impl->camera_w);
 
     // Calculate U (right = up × W)
     float u[3];
-    u[0] = up[1]*impl->camera_w[2] - up[2]*impl->camera_w[1];
-    u[1] = up[2]*impl->camera_w[0] - up[0]*impl->camera_w[2];
-    u[2] = up[0]*impl->camera_w[1] - up[1]*impl->camera_w[0];
-    float len_u = std::sqrt(u[0]*u[0] + u[1]*u[1] + u[2]*u[2]);
-    u[0] /= len_u;
-    u[1] /= len_u;
-    u[2] /= len_u;
+    VectorMath::cross3f(u, up, impl->camera_w);
+    VectorMath::normalize3f(u);
 
     // Calculate V (W × U)
     float v[3];
-    v[0] = impl->camera_w[1]*u[2] - impl->camera_w[2]*u[1];
-    v[1] = impl->camera_w[2]*u[0] - impl->camera_w[0]*u[2];
-    v[2] = impl->camera_w[0]*u[1] - impl->camera_w[1]*u[0];
+    VectorMath::cross3f(v, impl->camera_w, u);
 
     // Scale by FOV and aspect ratio
     float aspect_ratio = static_cast<float>(impl->image_width) / static_cast<float>(impl->image_height);
@@ -341,7 +359,7 @@ OptixModule OptiXWrapper::loadPTXModules() {
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
     pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_SPHERE;
 
-    char log[2048];
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
     size_t log_size = sizeof(log);
 
     OPTIX_CHECK(optixModuleCreate(
@@ -382,7 +400,7 @@ void OptiXWrapper::createProgramGroups(OptixModule sphere_module) {
     std::cout << "[OptiX] Creating program groups..." << std::endl;
 
     OptixProgramGroupOptions program_group_options = {};
-    char log[2048];
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
     size_t log_size;
 
     // Ray generation program group
@@ -471,7 +489,7 @@ void OptiXWrapper::createPipeline() {
     OptixPipelineLinkOptions pipeline_link_options = {};
     pipeline_link_options.maxTraceDepth = 1;
 
-    char log[2048];
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
     size_t log_size = sizeof(log);
     OPTIX_CHECK(optixPipelineCreate(
         impl->context,
@@ -544,9 +562,9 @@ void OptiXWrapper::setupShaderBindingTable() {
     // Miss record
     {
         MissSbtRecord ms_sbt;
-        ms_sbt.data.r = 0.3f;
-        ms_sbt.data.g = 0.1f;
-        ms_sbt.data.b = 0.2f;
+        ms_sbt.data.r = OptiXConstants::DEFAULT_BG_R;
+        ms_sbt.data.g = OptiXConstants::DEFAULT_BG_G;
+        ms_sbt.data.b = OptiXConstants::DEFAULT_BG_B;
 
         OPTIX_CHECK(optixSbtRecordPackHeader(impl->miss_prog_group, &ms_sbt));
 
@@ -609,13 +627,8 @@ void OptiXWrapper::buildPipeline() {
 void OptiXWrapper::setLight(const float* direction, float intensity) {
 #if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     // Store and normalize light direction
-    float len = std::sqrt(direction[0]*direction[0] +
-                          direction[1]*direction[1] +
-                          direction[2]*direction[2]);
-
-    impl->light_direction[0] = direction[0] / len;
-    impl->light_direction[1] = direction[1] / len;
-    impl->light_direction[2] = direction[2] / len;
+    std::memcpy(impl->light_direction, direction, 3 * sizeof(float));
+    VectorMath::normalize3f(impl->light_direction);
     impl->light_intensity = intensity;
 
     std::cout << "[OptiX] Light configured: direction=("
