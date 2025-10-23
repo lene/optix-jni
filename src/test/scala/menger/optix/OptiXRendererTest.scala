@@ -69,14 +69,15 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers {
     result.length shouldBe expectedSize
   }
 
-  it should "fill placeholder render with gray (128, 128, 128, 255)" in new OptiXRenderer {
+  it should "return error color (red) when pipeline is incomplete" in new OptiXRenderer {
     initialize()
     val result = render(10, 10)
-    // Check first pixel (note: Scala bytes are signed, so 128 = -128, 255 = -1)
-    result(0) shouldBe -128 // R = 128
-    result(1) shouldBe -128 // G = 128
-    result(2) shouldBe -128 // B = 128
-    result(3) shouldBe -1   // A = 255
+    // Check first pixel (note: Scala bytes are signed, so 255 = -1, 0 = 0)
+    // When buildPipeline is incomplete, render returns red error color
+    result(0) shouldBe -1  // R = 255 (error red)
+    result(1) shouldBe 0   // G = 0
+    result(2) shouldBe 0   // B = 0
+    result(3) shouldBe -1  // A = 255
   }
 
   it should "allow dispose() to be called without crashing" in new OptiXRenderer {

@@ -109,6 +109,9 @@ if(HAVE_CUDA AND HAVE_OPTIX)
       ${CMAKE_CURRENT_SOURCE_DIR}/include
   )
 
+  # Define preprocessor macros for CUDA shaders
+  target_compile_definitions(optix_shaders PRIVATE HAVE_CUDA HAVE_OPTIX)
+
   # Set PTX compilation
   set_target_properties(optix_shaders PROPERTIES
       CUDA_PTX_COMPILATION ON

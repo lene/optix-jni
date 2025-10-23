@@ -12,6 +12,9 @@
 #include <cuda_runtime.h>
 #endif
 
+// Shared data structures for OptiX shaders (used by both C++ and CUDA code)
+#include "OptiXData.h"
+
 /**
  * C++ wrapper for OptiX ray tracing context and rendering.
  * This class encapsulates all OptiX state and provides a simplified
@@ -46,6 +49,10 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;
+
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    void buildPipeline();
+#endif
 };
 
 #endif // OPTIX_WRAPPER_H
