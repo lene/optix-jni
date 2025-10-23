@@ -119,8 +119,17 @@ extern "C" __global__ void __closesthit__ch() {
 
     const float3 hit_point = ray_origin + ray_direction * t;
 
-    // For sphere at origin - normal is just hit_point normalized
-    // TODO: Handle arbitrary sphere centers when needed
+    // LIMITATION: Currently assumes sphere is centered at origin (0,0,0)
+    // For a sphere at the origin, the surface normal at any point is simply
+    // the normalized position vector from the origin to that point.
+    //
+    // Future Enhancement: To support arbitrary sphere centers, we would need to:
+    // 1. Add sphere center position to HitGroupData
+    // 2. Calculate normal as: normalize(hit_point - sphere_center)
+    //
+    // This limitation is acceptable for Phase 2 which focuses on basic OptiX
+    // integration. Phase 3+ can extend this to handle multiple spheres at
+    // arbitrary positions.
     const float3 normal = normalize(hit_point);
 
     // Light direction (negated for dot product)
