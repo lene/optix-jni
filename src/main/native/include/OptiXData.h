@@ -17,7 +17,7 @@ struct RayGenData {
     float cam_eye[3];       // Camera position
     float camera_u[3];      // Camera right vector
     float camera_v[3];      // Camera up vector
-    float camera_w[3];      // Camera forward vector (negated)
+    float camera_w[3];      // Camera forward vector (points toward lookAt)
 };
 
 // Miss shader data (background)

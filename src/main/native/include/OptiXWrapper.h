@@ -51,7 +51,13 @@ private:
     std::unique_ptr<Impl> impl;
 
 #if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    // Pipeline build steps (called in sequence by buildPipeline)
     void buildPipeline();
+    void buildGeometryAccelerationStructure();
+    OptixModule loadPTXModules();
+    void createProgramGroups(OptixModule sphere_module);
+    void createPipeline();
+    void setupShaderBindingTable();
 #endif
 };
 
