@@ -2,9 +2,17 @@
 
 This module provides JNI bindings for NVIDIA OptiX ray tracing API.
 
-## Docker Image for CI
+## CI Configuration
+
+### Docker Image
 
 The CI uses a pre-built Docker image with CUDA toolkit pre-installed to avoid the 15-20 minute installation time on every job run.
+
+### GitLab Runner Setup
+
+**IMPORTANT**: The OptiX JNI CI tests require a GitLab Runner with GPU support. The Docker image alone is not sufficient - the runner itself must be configured to expose GPU access to containers.
+
+See [RUNNER_SETUP.md](RUNNER_SETUP.md) for complete instructions on configuring a GitLab Runner with NVIDIA GPU support.
 
 ### Building and Pushing the Docker Image
 
