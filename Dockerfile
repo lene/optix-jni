@@ -54,7 +54,25 @@ RUN chmod +x /tmp/optix-installer.sh && \
     rm /tmp/optix-installer.sh
 
 # Set OptiX environment variable for CMake auto-detection
-ENV OPTIX_ROOT=/usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64
+# When installing with --prefix=/usr/local, OptiX extracts directly to /usr/local/
+ENV OPTIX_ROOT=/usr/local
+
+# Install Java 25 from Eclipse Temurin
+RUN apt-get update && apt-get install -y gnupg apt-transport-https && \
+    wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor > /usr/share/keyrings/adoptium-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/adoptium-archive-keyring.gpg] https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" > /etc/apt/sources.list.d/adoptium.list && \
+    apt-get update && apt-get install -y temurin-25-jdk && \
+    rm -rf /var/lib/apt/lists/*
+
+# Set JAVA_HOME for JNI detection
+ENV JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64
+
+# Install sbt
+RUN echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" > /etc/apt/sources.list.d/sbt.list && \
+    wget -qO - "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | gpg --dearmor > /usr/share/keyrings/sbt-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/sbt-archive-keyring.gpg] https://repo.scala-sbt.org/scalasbt/debian all main" > /etc/apt/sources.list.d/sbt.list && \
+    apt-get update && apt-get install -y sbt git && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for running builds (optional, for security)
 RUN useradd -m -s /bin/bash builder
