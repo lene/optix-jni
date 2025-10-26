@@ -32,6 +32,30 @@ ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 # Verify CUDA installation
 RUN nvcc --version
 
+# Install OptiX SDK (TEMPORARY SOLUTION - see issue for proper implementation)
+#
+# CURRENT APPROACH: OptiX installer must be copied to this directory before building
+# LIMITATIONS:
+#   - Not portable (requires manual file copy)
+#   - Not suitable for CI/CD (installer not in version control)
+#   - Requires NVIDIA developer account to download
+#
+# TODO: Store OptiX SDK in GitLab Package Registry with proper authentication
+#       See related GitLab issue for implementation plan
+#
+# To build this image:
+#   1. Download OptiX SDK from https://developer.nvidia.com/optix
+#   2. Copy installer to this directory: cp ~/Downloads/NVIDIA-OptiX-SDK-*.sh optix-jni/
+#   3. Build: docker build -t optix-cuda optix-jni/
+#
+COPY NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64.sh /tmp/optix-installer.sh
+RUN chmod +x /tmp/optix-installer.sh && \
+    /tmp/optix-installer.sh --skip-license --prefix=/usr/local && \
+    rm /tmp/optix-installer.sh
+
+# Set OptiX environment variable for CMake auto-detection
+ENV OPTIX_ROOT=/usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64
+
 # Create a non-root user for running builds (optional, for security)
 RUN useradd -m -s /bin/bash builder
 

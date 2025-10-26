@@ -52,9 +52,27 @@ endif()
 set(HAVE_OPTIX FALSE)
 
 if(ENABLE_OPTIX AND HAVE_CUDA)
-  # OptiX SDK paths (can be overridden via -DOptiX_INSTALL_DIR=/custom/path)
-  set(OptiX_INSTALL_DIR "/usr/local/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64"
-      CACHE PATH "Path to OptiX SDK")
+  # OptiX SDK paths - check in order of preference:
+  # 1. CMake variable: -DOptiX_INSTALL_DIR=/custom/path
+  # 2. Environment variable: OPTIX_ROOT
+  # 3. Common installation locations
+
+  if(NOT DEFINED OptiX_INSTALL_DIR)
+    if(DEFINED ENV{OPTIX_ROOT})
+      set(OptiX_INSTALL_DIR "$ENV{OPTIX_ROOT}")
+      message(STATUS "Using OptiX from OPTIX_ROOT: ${OptiX_INSTALL_DIR}")
+    else()
+      # Try common locations
+      file(GLOB OPTIX_CANDIDATES "/usr/local/NVIDIA-OptiX-SDK-*" "$ENV{HOME}/NVIDIA-OptiX-SDK-*" "$ENV{HOME}/workspace/NVIDIA-OptiX-SDK-*")
+      if(OPTIX_CANDIDATES)
+        list(GET OPTIX_CANDIDATES 0 OptiX_INSTALL_DIR)
+        message(STATUS "Auto-detected OptiX at: ${OptiX_INSTALL_DIR}")
+      else()
+        set(OptiX_INSTALL_DIR "/usr/local/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64")
+      endif()
+    endif()
+  endif()
+
   set(OptiX_INCLUDE_DIR "${OptiX_INSTALL_DIR}/include")
 
   # Verify OptiX installation
@@ -63,7 +81,7 @@ if(ENABLE_OPTIX AND HAVE_CUDA)
     set(HAVE_OPTIX TRUE)
   else()
     message(STATUS "✗ OptiX SDK not found at ${OptiX_INSTALL_DIR}")
-    message(STATUS "  Set -DOptiX_INSTALL_DIR=/path/to/sdk to specify custom location")
+    message(STATUS "  Set OPTIX_ROOT environment variable or -DOptiX_INSTALL_DIR=/path/to/sdk")
   endif()
 elseif(ENABLE_OPTIX AND NOT HAVE_CUDA)
   message(STATUS "✗ OptiX requires CUDA - skipping OptiX")

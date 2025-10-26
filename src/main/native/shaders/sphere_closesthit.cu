@@ -20,9 +20,19 @@ extern "C" __global__ void __closesthit__ch() {
         ray_origin.z + t * ray_direction.z
     );
 
-    // For analytic sphere intersection, we need sphere center from SBT or compute normal
-    // For now, assume sphere at origin - normal is just hit_point normalized
-    float3 normal = hit_point;
+    // Compute surface normal: normal = (hit_point - sphere_center) / radius
+    // For a unit sphere (or any sphere), the normalized vector from center to hit point is the normal
+    const float3 sphere_center = make_float3(
+        hit_data->sphere_center[0],
+        hit_data->sphere_center[1],
+        hit_data->sphere_center[2]
+    );
+
+    float3 normal = make_float3(
+        hit_point.x - sphere_center.x,
+        hit_point.y - sphere_center.y,
+        hit_point.z - sphere_center.z
+    );
     const float len = sqrtf(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
     normal.x /= len;
     normal.y /= len;

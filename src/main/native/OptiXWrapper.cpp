@@ -585,6 +585,7 @@ void OptiXWrapper::setupShaderBindingTable() {
     // Hit group record
     {
         HitGroupSbtRecord hg_sbt;
+        std::memcpy(hg_sbt.data.sphere_center, impl->sphere_center, sizeof(float) * 3);
         std::memcpy(hg_sbt.data.light_dir, impl->light_direction, sizeof(float) * 3);
         hg_sbt.data.light_intensity = impl->light_intensity;
 

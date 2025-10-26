@@ -31,6 +31,37 @@ object OptiXRendererTest:
     val DefaultLightDirection = Array(0.5f, 0.5f, -0.5f)
     val DefaultLightIntensity = 1.0f
 
+  // Helper for analyzing rendered images
+  object ImageAnalysis:
+    /** Compute brightness (grayscale value) for a pixel */
+    def brightness(imageData: Array[Byte], pixelIndex: Int): Double =
+      val offset = pixelIndex * 4
+      val r = imageData(offset) & 0xFF
+      val g = imageData(offset + 1) & 0xFF
+      val b = imageData(offset + 2) & 0xFF
+      (r + g + b) / 3.0
+
+    /** Compute standard deviation of brightness across all pixels */
+    def brightnessStdDev(imageData: Array[Byte], width: Int, height: Int): Double =
+      val numPixels = width * height
+      val brightnesses = (0 until numPixels).map(i => brightness(imageData, i))
+
+      val mean = brightnesses.sum / numPixels
+      val variance = brightnesses.map(b => math.pow(b - mean, 2)).sum / numPixels
+      math.sqrt(variance)
+
+    /** Check if center region is brighter than edge region (sphere characteristic) */
+    def hasCenterBrightness(imageData: Array[Byte], width: Int, height: Int): Boolean =
+      val centerX = width / 2
+      val centerY = height / 2
+      val edgeX = width / 8
+      val edgeY = height / 2
+
+      val centerBrightness = brightness(imageData, centerY * width + centerX)
+      val edgeBrightness = brightness(imageData, edgeY * width + edgeX)
+
+      centerBrightness > edgeBrightness
+
   // Helper for saving PPM images
   object ImageIO:
     def savePPM(imageData: Array[Byte], width: Int, height: Int, filename: String): File =
@@ -106,16 +137,15 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers:
     initialize()
     val (width, height) = TestConfig.SmallImageSize
     val result = render(width, height)
-    // Check first pixel - should contain actual rendered output
-    // The exact values depend on sphere rendering, but shouldn't be all zeros or all 255
     result should not be null
     result.length shouldBe width * height * 4
-    result(3) shouldBe -1  // A = 255 (alpha should always be 255)
 
-    // First pixel should have some rendered content (background or sphere)
-    // Not checking exact values as they depend on camera/lighting setup
-    val hasNonZeroPixel = result.take(width * height * 4).exists(b => b != 0 && b != -1)
-    hasNonZeroPixel shouldBe true
+    // Rendered sphere should have brightness variation (not uniform like stub)
+    val stdDev = ImageAnalysis.brightnessStdDev(result, width, height)
+    stdDev should be > 30.0  // Sphere has gradients; stub/uniform would be ~0
+
+    // Sphere center should be brighter than edges (basic lighting check)
+    ImageAnalysis.hasCenterBrightness(result, width, height) shouldBe true
 
   it should "allow dispose() to be called without crashing" in new OptiXRenderer:
     initialize()
@@ -151,10 +181,11 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers:
     val (width, height) = TestConfig.StandardImageSize
     val filename = "optix_test_output.ppm"
 
-    // Remove any pre-existing output file to ensure test actually creates it
-    val outputFile = new File(filename)
-    if outputFile.exists() then
-      outputFile.delete()
+    // Clean up any pre-existing output files (PPM and converted PNG)
+    val ppmFile = new File(filename)
+    val pngFile = new File(filename.replace(".ppm", ".png"))
+    if ppmFile.exists() then ppmFile.delete()
+    if pngFile.exists() then pngFile.delete()
 
     val initialized = initialize()
     initialized shouldBe true
@@ -175,7 +206,7 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers:
     println("=== View with: gimp optix_test_output.ppm")
     println("=== Or convert: convert optix_test_output.ppm optix_test_output.png\n")
 
-    savedFile.exists() shouldBe true
+    ppmFile.exists() shouldBe true
     val expectedSize = s"P6\n$width $height\n255\n".length + width * height * 3
     savedFile.length() shouldBe expectedSize
 
