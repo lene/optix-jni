@@ -81,7 +81,7 @@ sudo systemctl restart docker
 
 ```bash
 # Test that Docker can access the GPU
-sudo docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
+sudo docker run --rm --gpus all nvidia/cuda:12.8.0-devel-ubuntu24.04 nvidia-smi
 
 # You should see GPU information similar to running nvidia-smi directly
 ```
@@ -139,10 +139,11 @@ Add the `gpus` configuration to the `[runners.docker]` section:
     shm_size = 0
     # Enable GPU support - THIS IS CRITICAL
     gpus = "all"
-    service_gpus = "all"
 ```
 
-**Important**: The `gpus = "all"` line is critical for GPU access.
+**Important**:
+- The `gpus = "all"` line is critical for GPU access
+- OptiX libraries are automatically mounted when using `NVIDIA_DRIVER_CAPABILITIES` in the CI job (no manual volume mounts needed)
 
 ### 8. Restart GitLab Runner
 
@@ -163,12 +164,38 @@ Create a test job in your `.gitlab-ci.yml`:
 test_gpu:
   tags:
     - nvidia
-  image: nvidia/cuda:12.1.0-base-ubuntu22.04
+  image: nvidia/cuda:12.8.0-devel-ubuntu24.04
   script:
     - nvidia-smi
 ```
 
 The job should succeed and display GPU information.
+
+### Test OptiX JNI Locally
+
+Before pushing to CI, test the complete setup locally with Docker:
+
+```bash
+# Clean any cached build artifacts
+rm -rf optix-jni/target/native
+
+# Run OptiX JNI tests in Docker (mimics CI environment)
+docker run --rm --gpus all \
+  -v "$PWD:/workspace" -w /workspace \
+  -e NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility \
+  registry.gitlab.com/lilacashes/menger/optix-cuda:latest bash -c "
+    # Create RTX library symlink if needed
+    if [ -f /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.* ] && [ ! -f /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.1 ]; then
+      ln -sf /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.* /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.1
+    fi
+    ldconfig || true
+
+    # Run tests
+    ENABLE_OPTIX_JNI=true sbt 'project optixJni' test
+"
+```
+
+All 15 OptiX JNI tests should pass if the setup is correct.
 
 ## Troubleshooting
 
@@ -203,6 +230,53 @@ The job should succeed and display GPU information.
 2. Add 'nvidia' tag if missing
 3. Or re-register runner with correct tags
 
+### Error: "OptiX call 'optixInit()' failed: OPTIX_ERROR_LIBRARY_NOT_FOUND" or "Error initializing RTX library"
+
+**Cause**: OptiX 7.0+ runtime libraries (`libnvoptix.so`, `libnvidia-rtcore.so`) from the NVIDIA driver are not accessible inside the container.
+
+**Background**: Since OptiX 6.0+, the runtime libraries are part of the NVIDIA driver, not the OptiX SDK. Containers need access to these driver libraries to use OptiX.
+
+**Solution**: Use the `NVIDIA_DRIVER_CAPABILITIES` environment variable to automatically mount driver libraries:
+
+1. **In your CI job** (`.gitlab-ci.yml`), add:
+   ```yaml
+   Test:OptiXJni:
+     variables:
+       NVIDIA_DRIVER_CAPABILITIES: "graphics,compute,utility"
+     before_script:
+       # Create symlink for RTX library if needed (some drivers use versioned names)
+       - |
+         if [ -f /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.* ] && [ ! -f /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.1 ]; then
+           ln -sf /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.* /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.1
+         fi
+       - ldconfig || true
+   ```
+
+2. **In GitLab Runner config** (`/etc/gitlab-runner/config.toml`), ensure GPU access is enabled:
+   ```toml
+   [[runners]]
+     [runners.docker]
+       gpus = "all"
+       # No manual volume mounts needed for OptiX libraries!
+   ```
+
+3. **Verify libraries on host** (for debugging):
+   ```bash
+   ls -la /usr/lib/x86_64-linux-gnu/libnvoptix.so*
+   ls -la /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so*
+   ```
+
+**Why this works**: The `NVIDIA_DRIVER_CAPABILITIES` environment variable tells the NVIDIA Container Toolkit which driver subsystems to expose. Setting it to `"graphics,compute,utility"` automatically mounts all required OptiX and RTX libraries into the container at their standard locations.
+
+**Alternative (if environment variable doesn't work)**: Manually mount the libraries in runner config:
+```toml
+volumes = [
+  "/cache",
+  "/usr/lib/x86_64-linux-gnu/libnvoptix.so.1:/usr/lib/x86_64-linux-gnu/libnvoptix.so.1:ro",
+  "/usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.1:/usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.1:ro"
+]
+```
+
 ## Alternative: Using GitLab SaaS GPU Runners
 
 GitLab.com offers hosted runners with GPU support (requires GitLab Premium/Ultimate):
@@ -211,7 +285,7 @@ GitLab.com offers hosted runners with GPU support (requires GitLab Premium/Ultim
 test_gpu:
   tags:
     - saas-linux-medium-amd64-gpu-standard  # GitLab SaaS GPU runner
-  image: nvidia/cuda:12.1.0-base-ubuntu22.04
+  image: nvidia/cuda:12.8.0-devel-ubuntu24.04
   script:
     - nvidia-smi
 ```
