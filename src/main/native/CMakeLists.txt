@@ -23,9 +23,20 @@ if(ENABLE_CUDA)
   if(CMAKE_CUDA_COMPILER)
     # CUDA architectures for NVIDIA GPUs
     # IMPORTANT: Must be set BEFORE enable_language(CUDA)
-    # For PTX compilation, we need to use a single virtual architecture
-    # Using sm_75 as the base architecture for compatibility with RTX 20 series and newer
-    set(CMAKE_CUDA_ARCHITECTURES 75)
+    #
+    # Build a "fat binary" containing native code for multiple architectures
+    # plus PTX for forward compatibility. CUDA runtime automatically selects
+    # the best version for the actual GPU at runtime.
+    #
+    # Architectures included:
+    # - 52-real: Maxwell  (GTX 900 series, Tesla M40, 2014)
+    # - 75-real: Turing   (RTX 20xx, Tesla T4, 2018)
+    # - 86-real: Ampere   (RTX 30xx, A100, 2020)
+    # - 89-real: Ada      (RTX 40xx, L40, 2022)
+    # - 75-virtual: PTX intermediate code for forward compatibility with future GPUs
+    #
+    # This single artifact works on any GPU from 2014 onwards.
+    set(CMAKE_CUDA_ARCHITECTURES "52-real;75-real;86-real;89-real;75-virtual")
 
     enable_language(CUDA)
     set(CMAKE_CUDA_STANDARD 17)
@@ -129,10 +140,16 @@ if(HAVE_CUDA AND HAVE_OPTIX)
   # Define preprocessor macros for CUDA shaders
   target_compile_definitions(optix_shaders PRIVATE HAVE_CUDA HAVE_OPTIX)
 
-  # Set PTX compilation
+  # OptiX PTX shaders can only target ONE architecture at a time
+  # Use virtual architecture (PTX) for forward compatibility
+  #
+  # Using compute_52 (Maxwell) as minimum for maximum compatibility
+  # PTX will be JIT-compiled at runtime to actual GPU (sm_52, 75, 86, 89, etc.)
+  # This single PTX works on any NVIDIA GPU from 2014 onwards
   set_target_properties(optix_shaders PROPERTIES
       CUDA_PTX_COMPILATION ON
       CUDA_SEPARABLE_COMPILATION ON
+      CUDA_ARCHITECTURES "52-virtual"
   )
 endif()
 
