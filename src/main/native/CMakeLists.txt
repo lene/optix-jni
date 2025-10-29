@@ -21,6 +21,12 @@ if(ENABLE_CUDA)
   check_language(CUDA)
 
   if(CMAKE_CUDA_COMPILER)
+    # CUDA architectures for NVIDIA GPUs
+    # IMPORTANT: Must be set BEFORE enable_language(CUDA)
+    # For PTX compilation, we need to use a single virtual architecture
+    # Using sm_75 as the base architecture for compatibility with RTX 20 series and newer
+    set(CMAKE_CUDA_ARCHITECTURES 75)
+
     enable_language(CUDA)
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
@@ -31,11 +37,6 @@ if(ENABLE_CUDA)
     if(CUDAToolkit_FOUND)
       message(STATUS "✓ CUDA enabled: ${CUDAToolkit_VERSION} (${CMAKE_CUDA_COMPILER})")
       set(HAVE_CUDA TRUE)
-
-      # CUDA architectures for NVIDIA GPUs
-      # For PTX compilation, we need to use a single virtual architecture
-      # Using sm_75 as the base architecture for compatibility with RTX 20 series and newer
-      set(CMAKE_CUDA_ARCHITECTURES 75)
     else()
       message(STATUS "✗ CUDA compiler found but CUDAToolkit not found")
     endif()
