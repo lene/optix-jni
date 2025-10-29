@@ -146,7 +146,6 @@ bool OptiXWrapper::initialize() {
         OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &impl->context));
 
         impl->initialized = true;
-        std::cout << "[OptiX] Context initialized successfully" << std::endl;
         return true;
 
     } catch (const std::exception& e) {
@@ -167,9 +166,6 @@ void OptiXWrapper::setSphere(float x, float y, float z, float radius) {
     impl->sphere_center[1] = y;
     impl->sphere_center[2] = z;
     impl->sphere_radius = radius;
-
-    std::cout << "[OptiX] Sphere configured: center=(" << x << "," << y << "," << z
-              << ") radius=" << radius << std::endl;
 #else
     // Stub implementation - no-op
     (void)x; (void)y; (void)z; (void)radius; // Suppress unused parameter warnings
@@ -209,9 +205,6 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     impl->camera_v[0] = v[0] * vlen;
     impl->camera_v[1] = v[1] * vlen;
     impl->camera_v[2] = v[2] * vlen;
-
-    std::cout << "[OptiX] Camera configured: eye=(" << eye[0] << "," << eye[1] << "," << eye[2]
-              << ") fov=" << fov << " aspect=" << aspect_ratio << std::endl;
 #else
     // Stub implementation - no-op
     (void)eye; (void)lookAt; (void)up; (void)fov; // Suppress unused parameter warnings
@@ -238,14 +231,11 @@ static std::string readPTXFile(const std::string& filename) {
         throw std::runtime_error("Failed to read PTX file: " + filename);
     }
 
-    std::cout << "[OptiX] Loaded PTX file: " << filename << " (" << size << " bytes)" << std::endl;
     return content;
 }
 
 // Build geometry acceleration structure for the sphere
 void OptiXWrapper::buildGeometryAccelerationStructure() {
-    std::cout << "[OptiX] Building geometry acceleration structure..." << std::endl;
-
     // Allocate and copy sphere center to GPU
     // IMPORTANT: Must use float3 which has proper CUDA alignment (16 bytes)
     float3 sphere_vertex = make_float3(impl->sphere_center[0], impl->sphere_center[1], impl->sphere_center[2]);
@@ -326,20 +316,10 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
 
     // Clean up temporary buffer (keep vertex/radius buffers for rendering)
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
-
-    std::cout << "[OptiX] Acceleration structure built (handle=" << impl->gas_handle << ")" << std::endl;
 }
 
 // Load and compile PTX modules, return the sphere intersection module
 OptixModule OptiXWrapper::loadPTXModules() {
-    std::cout << "[OptiX] Loading PTX modules..." << std::endl;
-
-    // Print current working directory for debugging
-    char cwd[1024];
-    if (getcwd(cwd, sizeof(cwd)) != nullptr) {
-        std::cout << "[OptiX] Current working directory: " << cwd << std::endl;
-    }
-
     // Load combined PTX module (all three shaders in one file)
     // PTX file is in target/native/x86_64-linux/bin/ directory
     std::string ptx_path = "target/native/x86_64-linux/bin/sphere_combined.ptx";
@@ -373,10 +353,6 @@ OptixModule OptiXWrapper::loadPTXModules() {
         &impl->module
     ));
 
-    if (log_size > 1) {
-        std::cout << "[OptiX] Module compile log: " << log << std::endl;
-    }
-
     // Get built-in sphere intersection module
     OptixBuiltinISOptions builtin_is_options = {};
     builtin_is_options.usesMotionBlur = false;
@@ -391,14 +367,11 @@ OptixModule OptiXWrapper::loadPTXModules() {
         &sphere_module
     ));
 
-    std::cout << "[OptiX] PTX modules loaded" << std::endl;
     return sphere_module;
 }
 
 // Create program groups (raygen, miss, hit group)
 void OptiXWrapper::createProgramGroups(OptixModule sphere_module) {
-    std::cout << "[OptiX] Creating program groups..." << std::endl;
-
     OptixProgramGroupOptions program_group_options = {};
     char log[OptiXConstants::LOG_BUFFER_SIZE];
     size_t log_size;
@@ -464,13 +437,10 @@ void OptiXWrapper::createProgramGroups(OptixModule sphere_module) {
         ));
     }
 
-    std::cout << "[OptiX] Program groups created" << std::endl;
 }
 
 // Create OptiX pipeline and configure stack sizes
 void OptiXWrapper::createPipeline() {
-    std::cout << "[OptiX] Creating pipeline..." << std::endl;
-
     OptixProgramGroup program_groups[] = {
         impl->raygen_prog_group,
         impl->miss_prog_group,
@@ -528,14 +498,10 @@ void OptiXWrapper::createPipeline() {
         continuation_stack_size,
         1 // maxTraversableDepth
     ));
-
-    std::cout << "[OptiX] Pipeline created" << std::endl;
 }
 
 // Set up Shader Binding Table (SBT)
 void OptiXWrapper::setupShaderBindingTable() {
-    std::cout << "[OptiX] Setting up shader binding table..." << std::endl;
-
     // Ray generation record
     {
         RayGenSbtRecord rg_sbt;
@@ -604,14 +570,10 @@ void OptiXWrapper::setupShaderBindingTable() {
         impl->sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
         impl->sbt.hitgroupRecordCount = 1;
     }
-
-    std::cout << "[OptiX] Shader binding table configured" << std::endl;
 }
 
 // Build OptiX pipeline (orchestrates all pipeline build steps)
 void OptiXWrapper::buildPipeline() {
-    std::cout << "[OptiX] Building pipeline..." << std::endl;
-
     buildGeometryAccelerationStructure();
     OptixModule sphere_module = loadPTXModules();
     createProgramGroups(sphere_module);
@@ -620,8 +582,6 @@ void OptiXWrapper::buildPipeline() {
 
     // Allocate params buffer
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_params), sizeof(Params)));
-
-    std::cout << "[OptiX] Pipeline build complete" << std::endl;
 }
 #endif
 
@@ -631,11 +591,6 @@ void OptiXWrapper::setLight(const float* direction, float intensity) {
     std::memcpy(impl->light_direction, direction, 3 * sizeof(float));
     VectorMath::normalize3f(impl->light_direction);
     impl->light_intensity = intensity;
-
-    std::cout << "[OptiX] Light configured: direction=("
-              << impl->light_direction[0] << ","
-              << impl->light_direction[1] << ","
-              << impl->light_direction[2] << ") intensity=" << intensity << std::endl;
 #else
     // Stub implementation - no-op
     (void)direction; (void)intensity; // Suppress unused parameter warnings
@@ -704,8 +659,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
 
         // Clean up GPU image buffer
         CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_image)));
-
-        std::cout << "[OptiX] Rendered " << width << "x" << height << " image" << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "[OptiX] Render failed: " << e.what() << std::endl;
@@ -800,7 +753,6 @@ void OptiXWrapper::dispose() {
             }
 
             impl->pipeline_built = false;
-            std::cout << "[OptiX] Resources cleaned up" << std::endl;
 
         } catch (const std::exception& e) {
             std::cerr << "[OptiX] Cleanup error: " << e.what() << std::endl;
