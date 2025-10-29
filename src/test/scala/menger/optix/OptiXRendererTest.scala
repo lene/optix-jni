@@ -212,3 +212,333 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers:
 
     dispose()
 
+  // Phase 4 Integration Tests
+  // NOTE: These tests use separate renderer instances because SBT updates after pipeline build
+  // are not yet implemented. This will be addressed in the SBT update enhancement.
+  it should "render different images with different camera positions" in:
+    val (width, height) = (100, 100)
+
+    // Render from default position (front)
+    val renderer1 = new OptiXRenderer()
+    renderer1.initialize()
+    renderer1.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer1.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer1.setCamera(Array(0.0f, 0.0f, 3.0f), Array(0.0f, 0.0f, 0.0f), Array(0.0f, 1.0f, 0.0f), 60.0f)
+    val image1 = renderer1.render(width, height)
+    renderer1.dispose()
+
+    // Render from side
+    val renderer2 = new OptiXRenderer()
+    renderer2.initialize()
+    renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer2.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer2.setCamera(Array(3.0f, 0.0f, 0.0f), Array(0.0f, 0.0f, 0.0f), Array(0.0f, 1.0f, 0.0f), 60.0f)
+    val image2 = renderer2.render(width, height)
+    renderer2.dispose()
+
+    // Render from top
+    val renderer3 = new OptiXRenderer()
+    renderer3.initialize()
+    renderer3.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer3.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer3.setCamera(Array(0.0f, 3.0f, 0.0f), Array(0.0f, 0.0f, 0.0f), Array(0.0f, 0.0f, -1.0f), 60.0f)
+    val image3 = renderer3.render(width, height)
+    renderer3.dispose()
+
+    // All should render validly with brightness variation (not uniform like stub)
+    // Lower threshold accounts for viewing angles that produce less variation
+    ImageAnalysis.brightnessStdDev(image1, width, height) should be > 15.0
+    ImageAnalysis.brightnessStdDev(image2, width, height) should be > 15.0
+    ImageAnalysis.brightnessStdDev(image3, width, height) should be > 15.0
+
+    // All images should have valid size
+    image1.length shouldBe width * height * 4
+    image2.length shouldBe width * height * 4
+    image3.length shouldBe width * height * 4
+
+  it should "render different images with different light directions" in:
+    val (width, height) = (100, 100)
+
+    // Light from top-right
+    val renderer1 = new OptiXRenderer()
+    renderer1.initialize()
+    renderer1.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer1.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer1.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
+    val image1 = renderer1.render(width, height)
+    renderer1.dispose()
+
+    // Light from left
+    val renderer2 = new OptiXRenderer()
+    renderer2.initialize()
+    renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer2.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer2.setLight(Array(-1.0f, 0.0f, 0.0f), 1.0f)
+    val image2 = renderer2.render(width, height)
+    renderer2.dispose()
+
+    // Light from behind camera
+    val renderer3 = new OptiXRenderer()
+    renderer3.initialize()
+    renderer3.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer3.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer3.setLight(Array(0.0f, 0.0f, 1.0f), 1.0f)
+    val image3 = renderer3.render(width, height)
+    renderer3.dispose()
+
+    // Images should be different due to different lighting
+    image1 should not equal image2
+    image2 should not equal image3
+    image1 should not equal image3
+
+  it should "render different images with different sphere sizes" in:
+    val (width, height) = (100, 100)
+
+    // Small sphere
+    val renderer1 = new OptiXRenderer()
+    renderer1.initialize()
+    renderer1.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer1.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer1.setSphere(0.0f, 0.0f, 0.0f, 0.5f)
+    val image1 = renderer1.render(width, height)
+    renderer1.dispose()
+
+    // Medium sphere
+    val renderer2 = new OptiXRenderer()
+    renderer2.initialize()
+    renderer2.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer2.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    val image2 = renderer2.render(width, height)
+    renderer2.dispose()
+
+    // Large sphere
+    val renderer3 = new OptiXRenderer()
+    renderer3.initialize()
+    renderer3.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer3.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer3.setSphere(0.0f, 0.0f, 0.0f, 2.5f)
+    val image3 = renderer3.render(width, height)
+    renderer3.dispose()
+
+    // Images should be different due to different sphere sizes
+    image1 should not equal image2
+    image2 should not equal image3
+    image1 should not equal image3
+
+  it should "render different images with sphere at different positions" in:
+    val (width, height) = (100, 100)
+
+    // Sphere at center
+    val renderer1 = new OptiXRenderer()
+    renderer1.initialize()
+    renderer1.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer1.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer1.setSphere(0.0f, 0.0f, 0.0f, 1.0f)
+    val image1 = renderer1.render(width, height)
+    renderer1.dispose()
+
+    // Sphere offset to right
+    val renderer2 = new OptiXRenderer()
+    renderer2.initialize()
+    renderer2.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer2.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer2.setSphere(1.0f, 0.0f, 0.0f, 1.0f)
+    val image2 = renderer2.render(width, height)
+    renderer2.dispose()
+
+    // Sphere offset up
+    val renderer3 = new OptiXRenderer()
+    renderer3.initialize()
+    renderer3.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer3.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer3.setSphere(0.0f, 1.0f, 0.0f, 1.0f)
+    val image3 = renderer3.render(width, height)
+    renderer3.dispose()
+
+    // Images should be different
+    image1 should not equal image2
+    image2 should not equal image3
+
+  it should "support multiple sequential renders with separate instances" in:
+    val (width, height) = (100, 100)
+
+    // Render 10 times with different sphere sizes using separate instances
+    val images = for i <- 0 until 10 yield
+      val renderer = new OptiXRenderer()
+      renderer.initialize()
+      val radius = 0.5f + i * 0.2f
+      renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+                TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+      renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+      renderer.setSphere(0.0f, 0.0f, 0.0f, radius)
+      val image = renderer.render(width, height)
+      renderer.dispose()
+      image
+
+    // All images should be valid
+    images.foreach: image =>
+      image.length shouldBe width * height * 4
+      ImageAnalysis.brightnessStdDev(image, width, height) should be > 15.0  // Lower threshold for large spheres
+
+    // Sequential images should be different
+    for i <- 0 until 9 do
+      images(i) should not equal images(i + 1)
+
+  // Edge Case Tests
+  it should "handle extreme FOV values" in:
+    val (width, height) = (100, 100)
+
+    // Very narrow FOV
+    val renderer1 = new OptiXRenderer()
+    renderer1.initialize()
+    renderer1.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer1.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, 1.0f)  // 1 degree FOV
+    renderer1.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val image1 = renderer1.render(width, height)
+    image1.length shouldBe width * height * 4
+    renderer1.dispose()
+
+    // Very wide FOV
+    val renderer2 = new OptiXRenderer()
+    renderer2.initialize()
+    renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer2.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, 179.0f)  // 179 degree FOV
+    renderer2.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val image2 = renderer2.render(width, height)
+    image2.length shouldBe width * height * 4
+    renderer2.dispose()
+
+  it should "handle very small sphere radius" in:
+    val (width, height) = (100, 100)
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 0.001f)  // Very small sphere
+    renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val image = renderer.render(width, height)
+    image.length shouldBe width * height * 4
+    renderer.dispose()
+
+  it should "handle very large sphere radius" in:
+    val (width, height) = (100, 100)
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1000.0f)  // Very large sphere
+    renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val image = renderer.render(width, height)
+    image.length shouldBe width * height * 4
+    renderer.dispose()
+
+  it should "handle sphere far from origin" in:
+    val (width, height) = (100, 100)
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(100.0f, 100.0f, 100.0f, 1.5f)  // Sphere far away
+    renderer.setCamera(Array(100.0f, 100.0f, 103.0f), Array(100.0f, 100.0f, 100.0f),
+              Array(0.0f, 1.0f, 0.0f), 60.0f)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val image = renderer.render(width, height)
+    image.length shouldBe width * height * 4
+    renderer.dispose()
+
+  it should "handle camera very close to sphere" in:
+    val (width, height) = (100, 100)
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer.setCamera(Array(0.0f, 0.0f, 0.01f), Array(0.0f, 0.0f, 0.0f),
+              Array(0.0f, 1.0f, 0.0f), 60.0f)  // Very close to sphere surface
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val image = renderer.render(width, height)
+    image.length shouldBe width * height * 4
+    renderer.dispose()
+
+  it should "handle multiple initialize() calls" in:
+    val renderer = new OptiXRenderer()
+    renderer.initialize() shouldBe true
+    renderer.initialize() shouldBe true  // Should handle re-initialization
+    renderer.initialize() shouldBe true
+    renderer.dispose()
+
+  it should "handle dispose() before render()" in:
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.dispose()
+    // Rendering after dispose should either fail gracefully or return placeholder
+    noException should be thrownBy { renderer.render(100, 100) }
+
+  it should "handle different render sizes" in:
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+
+    // Very small
+    val image1 = renderer.render(10, 10)
+    image1.length shouldBe 10 * 10 * 4
+
+    // Square
+    val image2 = renderer.render(512, 512)
+    image2.length shouldBe 512 * 512 * 4
+
+    // Widescreen
+    val image3 = renderer.render(1920, 1080)
+    image3.length shouldBe 1920 * 1080 * 4
+
+    // Portrait
+    val image4 = renderer.render(600, 800)
+    image4.length shouldBe 600 * 800 * 4
+
+    renderer.dispose()
+
+  // Performance Benchmarking
+  it should "achieve reasonable rendering performance" in:
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+
+    val width = 800
+    val height = 600
+    val iterations = 100
+
+    // Warm-up renders
+    for _ <- 0 until 10 do
+      renderer.render(width, height)
+
+    // Benchmark
+    val start = System.nanoTime()
+    for _ <- 0 until iterations do
+      renderer.render(width, height)
+    val elapsed = (System.nanoTime() - start) / 1e9
+    val fps = iterations / elapsed
+
+    println(s"[Performance] Rendered ${iterations} frames of ${width}x${height} in ${elapsed}s")
+    println(s"[Performance] Average FPS: ${fps}")
+    println(s"[Performance] Average frame time: ${(elapsed / iterations) * 1000}ms")
+
+    // Should achieve at least 10 FPS for 800x600
+    // (This is very conservative; OptiX should be much faster)
+    fps should be > 10.0
+
+    renderer.dispose()
+
