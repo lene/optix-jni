@@ -44,7 +44,70 @@ class OptiXRenderer extends LazyLogging:
 
 object OptiXRenderer extends LazyLogging:
   private val libraryName = "optixjni"
-  private val libraryLoaded = loadNativeLibrary().isSuccess
+
+  private val libraryLoaded: Boolean = {
+    try {
+      System.loadLibrary(libraryName)
+      logger.info(s"Loaded $libraryName from java.library.path")
+      true
+    } catch {
+      case e: UnsatisfiedLinkError =>
+        logger.debug(s"Failed to load $libraryName from java.library.path: ${e.getMessage}")
+        logger.debug(s"Attempting to load from classpath...")
+        try {
+          val platform = "x86_64-linux"
+          val resourcePath = s"/native/$platform/lib$libraryName.so"
+          val stream = Option(getClass.getResourceAsStream(resourcePath))
+            .getOrElse(throw new IllegalStateException(s"Library resource not found: $resourcePath"))
+
+          val tempFile = Files.createTempFile(s"lib$libraryName", ".so")
+          tempFile.toFile.deleteOnExit()
+
+          val out = new FileOutputStream(tempFile.toFile)
+          try {
+            val buffer = new Array[Byte](8192)
+            var bytesRead = stream.read(buffer)
+            while (bytesRead != -1) {
+              out.write(buffer, 0, bytesRead)
+              bytesRead = stream.read(buffer)
+            }
+          } finally {
+            out.close()
+            stream.close()
+          }
+
+          System.load(tempFile.toAbsolutePath.toString)
+          logger.info(s"Loaded $libraryName from classpath via temp file: ${tempFile.toAbsolutePath}")
+
+          // Also extract PTX file to expected location
+          val ptxResourcePath = s"/native/$platform/sphere_combined.ptx"
+          Option(getClass.getResourceAsStream(ptxResourcePath)).foreach { ptxStream =>
+            val ptxDir = new java.io.File("target/native/x86_64-linux/bin")
+            ptxDir.mkdirs()
+            val ptxFile = new java.io.File(ptxDir, "sphere_combined.ptx")
+            val ptxOut = new FileOutputStream(ptxFile)
+            try {
+              val buffer = new Array[Byte](8192)
+              var bytesRead = ptxStream.read(buffer)
+              while (bytesRead != -1) {
+                ptxOut.write(buffer, 0, bytesRead)
+                bytesRead = ptxStream.read(buffer)
+              }
+              logger.debug(s"Extracted PTX file to: ${ptxFile.getAbsolutePath}")
+            } finally {
+              ptxOut.close()
+              ptxStream.close()
+            }
+          }
+
+          true
+        } catch {
+          case e: Exception =>
+            logger.error(s"Failed to load native library '$libraryName'", e)
+            false
+        }
+    }
+  }
 
   private def loadFromSystemPath(): Try[Unit] = Try:
     System.loadLibrary(libraryName)

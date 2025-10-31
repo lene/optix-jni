@@ -74,13 +74,36 @@ if(ENABLE_OPTIX AND HAVE_CUDA)
       set(OptiX_INSTALL_DIR "$ENV{OPTIX_ROOT}")
       message(STATUS "Using OptiX from OPTIX_ROOT: ${OptiX_INSTALL_DIR}")
     else()
-      # Try common locations
-      file(GLOB OPTIX_CANDIDATES "/usr/local/NVIDIA-OptiX-SDK-*" "$ENV{HOME}/NVIDIA-OptiX-SDK-*" "$ENV{HOME}/workspace/NVIDIA-OptiX-SDK-*")
-      if(OPTIX_CANDIDATES)
-        list(GET OPTIX_CANDIDATES 0 OptiX_INSTALL_DIR)
-        message(STATUS "Auto-detected OptiX at: ${OptiX_INSTALL_DIR}")
-      else()
-        set(OptiX_INSTALL_DIR "/usr/local/NVIDIA-OptiX-SDK-8.0.0-linux64-x86_64")
+      # Try common locations (check specific common paths first, then glob patterns)
+      set(OPTIX_COMMON_PATHS
+        "/usr/local/optix"
+        "/opt/optix"
+        "/usr/local/OptiX"
+      )
+
+      # Check specific common paths
+      foreach(PATH ${OPTIX_COMMON_PATHS})
+        if(EXISTS "${PATH}/include/optix.h")
+          set(OptiX_INSTALL_DIR "${PATH}")
+          message(STATUS "Found OptiX at: ${OptiX_INSTALL_DIR}")
+          break()
+        endif()
+      endforeach()
+
+      # If not found in common paths, try glob patterns for versioned SDK directories
+      if(NOT DEFINED OptiX_INSTALL_DIR)
+        file(GLOB OPTIX_CANDIDATES
+          "/usr/local/NVIDIA-OptiX-SDK-*"
+          "/opt/NVIDIA-OptiX-SDK-*"
+          "$ENV{HOME}/NVIDIA-OptiX-SDK-*"
+          "$ENV{HOME}/Downloads/NVIDIA-OptiX-SDK-*"
+        )
+        if(OPTIX_CANDIDATES)
+          list(GET OPTIX_CANDIDATES 0 OptiX_INSTALL_DIR)
+          message(STATUS "Auto-detected OptiX at: ${OptiX_INSTALL_DIR}")
+        else()
+          message(WARNING "OptiX SDK not found in common locations. Set OPTIX_ROOT environment variable or use -DOptiX_INSTALL_DIR=/path/to/sdk")
+        endif()
       endif()
     endif()
   endif()
@@ -199,7 +222,10 @@ install(TARGETS optixjni LIBRARY DESTINATION .)
 
 # Install PTX files only if they were compiled
 if(HAVE_CUDA AND HAVE_OPTIX)
-  install(FILES $<TARGET_OBJECTS:optix_shaders> DESTINATION . OPTIONAL)
+  install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/optix_shaders.dir/shaders/sphere_combined.ptx"
+          DESTINATION .
+          RENAME "sphere_combined.ptx"
+          OPTIONAL)
 endif()
 
 # Set output directory for development
