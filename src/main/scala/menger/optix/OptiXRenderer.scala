@@ -41,10 +41,16 @@ class OptiXRenderer extends LazyLogging:
         logger.error("Error checking OptiX availability", e)
         false
     .getOrElse(false)
-    
+
   def ensureAvailable(): OptiXRenderer =
+    if !OptiXRenderer.isLibraryLoaded then
+      ErrorHandling.errorExit(
+        "OptiX native library failed to load - ensure CUDA and OptiX are available"
+      )
     if !isAvailable then
-      ErrorHandling.errorExit("OptiX not available on this system - ensure CUDA and OptiX are available")
+      ErrorHandling.errorExit(
+        "OptiX not available on this system - ensure CUDA and OptiX are available"
+      )
     if !initialize() then
       ErrorHandling.errorExit("Failed to initialize OptiX renderer")
     this

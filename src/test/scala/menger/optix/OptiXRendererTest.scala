@@ -1,5 +1,6 @@
 package menger.optix
 
+import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -83,7 +84,7 @@ object OptiXRendererTest:
       outputFile
 
 
-class OptiXRendererTest extends AnyFlatSpec with Matchers:
+class OptiXRendererTest extends AnyFlatSpec with Matchers with LazyLogging:
   import OptiXRendererTest._
 
   // Ensure library is loaded before running tests
@@ -201,10 +202,7 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers:
 
     val savedFile = ImageIO.savePPM(imageData, width, height, filename)
 
-    println(s"\n=== Rendered image saved to: ${savedFile.getAbsolutePath}")
-    println(s"=== Size: ${width}x${height} (${savedFile.length()} bytes)")
-    println("=== View with: gimp optix_test_output.ppm")
-    println("=== Or convert: convert optix_test_output.ppm optix_test_output.png\n")
+    logger.info(s"\n=== Rendered image saved to: ${savedFile.getAbsolutePath}")
 
     ppmFile.exists() shouldBe true
     val expectedSize = s"P6\n$width $height\n255\n".length + width * height * 3
@@ -532,9 +530,9 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers:
     val elapsed = (System.nanoTime() - start) / 1e9
     val fps = iterations / elapsed
 
-    println(s"[Performance] Rendered ${iterations} frames of ${width}x${height} in ${elapsed}s")
-    println(s"[Performance] Average FPS: ${fps}")
-    println(s"[Performance] Average frame time: ${(elapsed / iterations) * 1000}ms")
+    logger.info(
+      s"[Performance] Rendered $iterations frames of ${width}x$height in ${elapsed}s @${fps}fps"
+    )
 
     // Should achieve at least 10 FPS for 800x600
     // (This is very conservative; OptiX should be much faster)

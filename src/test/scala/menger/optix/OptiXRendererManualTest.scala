@@ -1,5 +1,7 @@
 package menger.optix
 
+import com.typesafe.scalalogging.LazyLogging
+
 import java.io.{File, FileOutputStream}
 
 /**
@@ -9,23 +11,22 @@ import java.io.{File, FileOutputStream}
  * This will create output.ppm which can be viewed with image viewers like GIMP,
  * ImageMagick, or converted with: convert output.ppm output.png
  */
-object OptiXRendererManualTest {
+object OptiXRendererManualTest extends LazyLogging {
 
-  def main(args: Array[String]): Unit = {
-    println("=== OptiX Manual Rendering Test ===")
+  def main(args: Array[String]): Unit =
+    logger.info("=== OptiX Manual Rendering Test ===")
 
     val width = 800
     val height = 600
 
     val renderer = new OptiXRenderer()
 
-    println("Initializing OptiX...")
     if (!renderer.initialize()) {
-      println("ERROR: Failed to initialize OptiX")
+      logger.error("Failed to initialize OptiX")
       System.exit(1)
     }
 
-    println("Configuring scene...")
+    logger.info("Configuring scene...")
     // Sphere at origin
     renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
 
@@ -39,20 +40,15 @@ object OptiXRendererManualTest {
     val lightDir = Array(0.5f, 0.5f, -0.5f)
     renderer.setLight(lightDir, 1.0f)
 
-    println(s"Rendering ${width}x${height} image...")
+    logger.info(s"Rendering ${width}x${height} image...")
     val imageData = renderer.render(width, height)
 
-    println("Saving to output.ppm...")
+    logger.info("Saving to output.ppm...")
     savePPM("output.ppm", imageData, width, height)
 
-    println("Cleaning up...")
+    logger.info("Cleaning up...")
     renderer.dispose()
 
-    println("Done! View the image with:")
-    println("  - GIMP: gimp output.ppm")
-    println("  - ImageMagick: display output.ppm")
-    println("  - Convert to PNG: convert output.ppm output.png")
-  }
 
   /**
    * Save image data as PPM (Portable Pixel Map) format.
@@ -77,7 +73,7 @@ object OptiXRendererManualTest {
         // Skip alpha (data(offset + 3))
       }
 
-      println(s"Saved ${width}x${height} image to $filename (${file.length()} bytes)")
+      logger.info(s"Saved ${width}x${height} image to $filename (${file.length()} bytes)")
     } finally {
       out.close()
     }
