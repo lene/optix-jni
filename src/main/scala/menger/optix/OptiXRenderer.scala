@@ -1,9 +1,10 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
+
 import java.io.{FileOutputStream, InputStream}
 import java.nio.file.Files
-import scala.util.{Try, Failure}
+import scala.util.{Failure, Try}
 
 /**
  * JNI interface to OptiX ray tracing renderer.
@@ -40,7 +41,13 @@ class OptiXRenderer extends LazyLogging:
         logger.error("Error checking OptiX availability", e)
         false
     .getOrElse(false)
-
+    
+  def ensureAvailable(): OptiXRenderer =
+    if !isAvailable then
+      ErrorHandling.errorExit("OptiX not available on this system - ensure CUDA and OptiX are available")
+    if !initialize() then
+      ErrorHandling.errorExit("Failed to initialize OptiX renderer")
+    this
 
 object OptiXRenderer extends LazyLogging:
   private val libraryName = "optixjni"
