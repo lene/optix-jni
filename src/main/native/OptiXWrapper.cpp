@@ -87,6 +87,7 @@ struct OptiXWrapper::Impl {
     float sphere_center[3] = {0.0f, 0.0f, 0.0f};
     float sphere_radius = 1.5f;
     float sphere_color[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // Default: white, fully opaque
+    float sphere_ior = 1.0f;  // Default: IOR of air/vacuum (no refraction)
 
     // Light parameters
     float light_direction[3] = {0.5f, 0.5f, -0.5f};
@@ -172,6 +173,15 @@ void OptiXWrapper::setSphereColor(float r, float g, float b, float a) {
 #else
     // Stub implementation - no-op
     (void)r; (void)g; (void)b; (void)a; // Suppress unused parameter warnings
+#endif
+}
+
+void OptiXWrapper::setIOR(float ior) {
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    impl->sphere_ior = ior;
+#else
+    // Stub implementation - no-op
+    (void)ior; // Suppress unused parameter warning
 #endif
 }
 
