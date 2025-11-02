@@ -1,4 +1,5 @@
 #include "include/OptiXWrapper.h"
+#include "include/OptiXConstants.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
@@ -13,17 +14,6 @@
 #endif
 
 #if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
-
-// Constants for OptiX configuration
-namespace OptiXConstants {
-    constexpr size_t LOG_BUFFER_SIZE = 2048;
-    constexpr unsigned int OPTIX_LOG_LEVEL_INFO = 3;  // Print Info, Warning, and Error messages
-
-    // Default background color (dark purple/maroon)
-    constexpr float DEFAULT_BG_R = 0.3f;
-    constexpr float DEFAULT_BG_G = 0.1f;
-    constexpr float DEFAULT_BG_B = 0.2f;
-}
 
 // Vector math helper functions
 namespace VectorMath {
@@ -96,7 +86,7 @@ struct OptiXWrapper::Impl {
     // Sphere parameters
     float sphere_center[3] = {0.0f, 0.0f, 0.0f};
     float sphere_radius = 1.5f;
-    float sphere_color[3] = {1.0f, 1.0f, 1.0f};  // Default: white
+    float sphere_color[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // Default: white, fully opaque
 
     // Light parameters
     float light_direction[3] = {0.5f, 0.5f, -0.5f};
@@ -470,7 +460,7 @@ void OptiXWrapper::createPipeline() {
     pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_SPHERE;
 
     OptixPipelineLinkOptions pipeline_link_options = {};
-    pipeline_link_options.maxTraceDepth = 1;
+    pipeline_link_options.maxTraceDepth = OptiXConstants::MAX_TRACE_DEPTH;
 
     char log[OptiXConstants::LOG_BUFFER_SIZE];
     size_t log_size = sizeof(log);
@@ -496,7 +486,7 @@ void OptiXWrapper::createPipeline() {
     uint32_t continuation_stack_size;
     OPTIX_CHECK(optixUtilComputeStackSizes(
         &stack_sizes,
-        1, // maxTraceDepth
+        OptiXConstants::MAX_TRACE_DEPTH,
         0, // maxCCDepth
         0, // maxDCDepth
         &direct_callable_stack_size_from_traversal,
@@ -565,7 +555,7 @@ void OptiXWrapper::setupShaderBindingTable() {
     {
         HitGroupSbtRecord hg_sbt;
         std::memcpy(hg_sbt.data.sphere_center, impl->sphere_center, sizeof(float) * 3);
-        std::memcpy(hg_sbt.data.sphere_color, impl->sphere_color, sizeof(float) * 3);
+        std::memcpy(hg_sbt.data.sphere_color, impl->sphere_color, sizeof(float) * 4);
         std::memcpy(hg_sbt.data.light_dir, impl->light_direction, sizeof(float) * 3);
         hg_sbt.data.light_intensity = impl->light_intensity;
 

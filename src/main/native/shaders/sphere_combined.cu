@@ -9,6 +9,7 @@ extern "C" {
 namespace Constants {
     constexpr float MAX_RAY_DISTANCE = 1e16f;
     constexpr float COLOR_SCALE_FACTOR = 255.99f;  // Slightly less than 256 to avoid overflow
+    constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Small offset to avoid self-intersection
 }
 
 // Device-side vector math helper functions
@@ -147,11 +148,39 @@ extern "C" __global__ void __closesthit__ch() {
     const float color_r = hit_data->sphere_color[0];
     const float color_g = hit_data->sphere_color[1];
     const float color_b = hit_data->sphere_color[2];
+    const float alpha = hit_data->sphere_color[3];
 
     // Apply material color and convert to RGB [0, 255]
-    const unsigned int r = static_cast<unsigned int>(color_r * intensity * Constants::COLOR_SCALE_FACTOR);
-    const unsigned int g = static_cast<unsigned int>(color_g * intensity * Constants::COLOR_SCALE_FACTOR);
-    const unsigned int b = static_cast<unsigned int>(color_b * intensity * Constants::COLOR_SCALE_FACTOR);
+    unsigned int r = static_cast<unsigned int>(color_r * intensity * Constants::COLOR_SCALE_FACTOR);
+    unsigned int g = static_cast<unsigned int>(color_g * intensity * Constants::COLOR_SCALE_FACTOR);
+    unsigned int b = static_cast<unsigned int>(color_b * intensity * Constants::COLOR_SCALE_FACTOR);
+
+    // Handle transparency: if alpha < 1.0, cast continuation ray and blend
+    if (alpha < 1.0f) {
+        // Cast continuation ray from slightly beyond the hit point
+        const float3 continuation_origin = hit_point + ray_direction * Constants::CONTINUATION_RAY_OFFSET;
+
+        unsigned int bg_r, bg_g, bg_b;
+        optixTrace(
+            params.handle,
+            continuation_origin,
+            ray_direction,
+            Constants::CONTINUATION_RAY_OFFSET,
+            Constants::MAX_RAY_DISTANCE,
+            0.0f,
+            OptixVisibilityMask(255),
+            OPTIX_RAY_FLAG_NONE,
+            0,  // SBT offset
+            1,  // SBT stride
+            0,  // missSBTIndex
+            bg_r, bg_g, bg_b  // Background color payload
+        );
+
+        // Alpha blend: result = alpha * foreground + (1-alpha) * background
+        r = static_cast<unsigned int>(alpha * r + (1.0f - alpha) * bg_r);
+        g = static_cast<unsigned int>(alpha * g + (1.0f - alpha) * bg_g);
+        b = static_cast<unsigned int>(alpha * b + (1.0f - alpha) * bg_b);
+    }
 
     // Set payload (RGB color)
     optixSetPayload_0(r);

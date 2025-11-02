@@ -700,3 +700,103 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers with LazyLogging:
 
     renderer.dispose()
 
+  // Phase 2: Transparency Tests
+  it should "render semi-transparent sphere blending with background" in:
+    val (width, height) = (400, 400)
+
+    // Render opaque white sphere (alpha = 1.0)
+    val rendererOpaque = new OptiXRenderer()
+    rendererOpaque.initialize()
+    rendererOpaque.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    rendererOpaque.setSphereColor(1.0f, 1.0f, 1.0f, 1.0f)
+    rendererOpaque.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    rendererOpaque.setCamera(
+      Array(0.0f, 0.0f, 3.0f),
+      Array(0.0f, 0.0f, 0.0f),
+      Array(0.0f, 1.0f, 0.0f),
+      60.0f
+    )
+    val imageOpaque = rendererOpaque.render(width, height)
+    rendererOpaque.dispose()
+
+    // Render semi-transparent white sphere (alpha = 0.5)
+    val rendererTransparent = new OptiXRenderer()
+    rendererTransparent.initialize()
+    rendererTransparent.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    rendererTransparent.setSphereColor(1.0f, 1.0f, 1.0f, 0.5f)
+    rendererTransparent.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    rendererTransparent.setCamera(
+      Array(0.0f, 0.0f, 3.0f),
+      Array(0.0f, 0.0f, 0.0f),
+      Array(0.0f, 1.0f, 0.0f),
+      60.0f
+    )
+    val imageTransparent = rendererTransparent.render(width, height)
+    rendererTransparent.dispose()
+
+    // The semi-transparent sphere should blend with background
+    // Check center pixel (should be brightest on both, but transparent should be dimmer)
+    val centerIdx = (height / 2 * width + width / 2) * 4
+
+    val opaqueR = imageOpaque(centerIdx) & 0xFF
+    val opaqueG = imageOpaque(centerIdx + 1) & 0xFF
+    val opaqueB = imageOpaque(centerIdx + 2) & 0xFF
+    val opaqueBrightness = (opaqueR + opaqueG + opaqueB) / 3.0
+
+    val transR = imageTransparent(centerIdx) & 0xFF
+    val transG = imageTransparent(centerIdx + 1) & 0xFF
+    val transB = imageTransparent(centerIdx + 2) & 0xFF
+    val transBrightness = (transR + transG + transB) / 3.0
+
+    // Transparent sphere should be significantly dimmer due to blending with dark background
+    // Background is RGB(76, 25, 51) with brightness ~51
+    // Opaque white sphere center should be ~145+
+    // Transparent (50%) should be between them
+    opaqueBrightness should be > 140.0
+    transBrightness should be < opaqueBrightness
+    transBrightness should be > 80.0
+
+  it should "render fully transparent sphere showing only background" in:
+    val (width, height) = (200, 200)
+
+    // Render with fully transparent sphere (alpha = 0.0)
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer.setSphereColor(1.0f, 1.0f, 1.0f, 0.0f)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    renderer.setCamera(
+      Array(0.0f, 0.0f, 3.0f),
+      Array(0.0f, 0.0f, 0.0f),
+      Array(0.0f, 1.0f, 0.0f),
+      60.0f
+    )
+    val image = renderer.render(width, height)
+    renderer.dispose()
+
+    // With alpha=0, the sphere should be completely invisible
+    // All pixels should be close to background color RGB(76, 25, 51)
+    val bgR = 76
+    val bgG = 25
+    val bgB = 51
+
+    // Check several pixels across the image
+    val pixelsToCheck = Seq(
+      (width / 2, height / 2),  // Center (would be sphere)
+      (width / 4, height / 2),  // Left of center
+      (3 * width / 4, height / 2), // Right of center
+      (0, 0),  // Corner (definitely background)
+      (width - 1, height - 1)  // Opposite corner
+    )
+
+    for (x, y) <- pixelsToCheck do
+      val idx = (y * width + x) * 4
+      val r = image(idx) & 0xFF
+      val g = image(idx + 1) & 0xFF
+      val b = image(idx + 2) & 0xFF
+
+      // Should be within a few units of background color
+      Math.abs(r - bgR) should be < 5
+      Math.abs(g - bgG) should be < 5
+      Math.abs(b - bgB) should be < 5
+
