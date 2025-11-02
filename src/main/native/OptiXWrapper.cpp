@@ -173,14 +173,15 @@ void OptiXWrapper::setSphere(float x, float y, float z, float radius) {
 #endif
 }
 
-void OptiXWrapper::setSphereColor(float r, float g, float b) {
+void OptiXWrapper::setSphereColor(float r, float g, float b, float a) {
 #if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     impl->sphere_color[0] = r;
     impl->sphere_color[1] = g;
     impl->sphere_color[2] = b;
+    impl->sphere_color[3] = a;
 #else
     // Stub implementation - no-op
-    (void)r; (void)g; (void)b; // Suppress unused parameter warnings
+    (void)r; (void)g; (void)b; (void)a; // Suppress unused parameter warnings
 #endif
 }
 

@@ -31,10 +31,10 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphere(
 }
 
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphereColor(
-    JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
+    JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b, jfloat a) {
     try {
         if (g_wrapper != nullptr) {
-            g_wrapper->setSphereColor(r, g, b);
+            g_wrapper->setSphereColor(r, g, b, a);
         }
     } catch (const std::exception& e) {
         std::cerr << "Error in setSphereColor: " << e.what() << std::endl;
