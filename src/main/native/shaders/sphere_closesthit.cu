@@ -49,14 +49,28 @@ extern "C" __global__ void __closesthit__ch() {
     float ndotl = normal.x * light_dir.x + normal.y * light_dir.y + normal.z * light_dir.z;
     ndotl = fmaxf(0.0f, ndotl);
 
-    // Apply light intensity and material color (white)
+    // Get sphere color from hit data
+    const float3 sphere_color = make_float3(
+        hit_data->sphere_color[0],
+        hit_data->sphere_color[1],
+        hit_data->sphere_color[2]
+    );
+
+    // Apply light intensity and material color
     const float intensity = ndotl * hit_data->light_intensity;
+    const float3 result = make_float3(
+        sphere_color.x * intensity,
+        sphere_color.y * intensity,
+        sphere_color.z * intensity
+    );
 
     // Convert to RGB [0, 255]
-    const unsigned int color = static_cast<unsigned int>(intensity * 255.99f);
+    const unsigned int r = static_cast<unsigned int>(result.x * 255.99f);
+    const unsigned int g = static_cast<unsigned int>(result.y * 255.99f);
+    const unsigned int b = static_cast<unsigned int>(result.z * 255.99f);
 
-    // Set payload (grayscale for now)
-    optixSetPayload_0(color);
-    optixSetPayload_1(color);
-    optixSetPayload_2(color);
+    // Set payload (RGB color)
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
 }

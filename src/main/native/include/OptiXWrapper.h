@@ -33,6 +33,7 @@ public:
 
     // Geometry configuration
     void setSphere(float x, float y, float z, float radius);
+    void setSphereColor(float r, float g, float b);
 
     // Camera configuration
     void setCamera(const float* eye, const float* lookAt, const float* up, float fov);

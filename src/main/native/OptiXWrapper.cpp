@@ -96,6 +96,7 @@ struct OptiXWrapper::Impl {
     // Sphere parameters
     float sphere_center[3] = {0.0f, 0.0f, 0.0f};
     float sphere_radius = 1.5f;
+    float sphere_color[3] = {1.0f, 1.0f, 1.0f};  // Default: white
 
     // Light parameters
     float light_direction[3] = {0.5f, 0.5f, -0.5f};
@@ -169,6 +170,17 @@ void OptiXWrapper::setSphere(float x, float y, float z, float radius) {
 #else
     // Stub implementation - no-op
     (void)x; (void)y; (void)z; (void)radius; // Suppress unused parameter warnings
+#endif
+}
+
+void OptiXWrapper::setSphereColor(float r, float g, float b) {
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    impl->sphere_color[0] = r;
+    impl->sphere_color[1] = g;
+    impl->sphere_color[2] = b;
+#else
+    // Stub implementation - no-op
+    (void)r; (void)g; (void)b; // Suppress unused parameter warnings
 #endif
 }
 
@@ -552,6 +564,7 @@ void OptiXWrapper::setupShaderBindingTable() {
     {
         HitGroupSbtRecord hg_sbt;
         std::memcpy(hg_sbt.data.sphere_center, impl->sphere_center, sizeof(float) * 3);
+        std::memcpy(hg_sbt.data.sphere_color, impl->sphere_color, sizeof(float) * 3);
         std::memcpy(hg_sbt.data.light_dir, impl->light_direction, sizeof(float) * 3);
         hg_sbt.data.light_intensity = impl->light_intensity;
 

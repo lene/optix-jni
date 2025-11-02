@@ -30,6 +30,17 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphere(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphereColor(
+    JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
+    try {
+        if (g_wrapper != nullptr) {
+            g_wrapper->setSphereColor(r, g, b);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error in setSphereColor: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCamera(
     JNIEnv* env, jobject obj, jfloatArray eye, jfloatArray lookAt, jfloatArray up, jfloat fov) {
     try {
