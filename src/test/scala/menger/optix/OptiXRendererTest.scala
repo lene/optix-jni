@@ -700,6 +700,40 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers with LazyLogging:
 
     renderer.dispose()
 
+  it should "achieve reasonable performance with transparent spheres" in:
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer.setSphereColor(1.0f, 1.0f, 1.0f, 0.5f)  // 50% transparent
+    renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+
+    val width = 800
+    val height = 600
+    val iterations = 100
+
+    // Warm-up renders
+    for _ <- 0 until 10 do
+      renderer.render(width, height)
+
+    // Benchmark
+    val start = System.nanoTime()
+    for _ <- 0 until iterations do
+      renderer.render(width, height)
+    val elapsed = (System.nanoTime() - start) / 1e9
+    val fps = iterations / elapsed
+
+    logger.info(
+      s"[Performance Transparency] Rendered $iterations transparent frames of ${width}x$height in ${elapsed}s @${fps}fps"
+    )
+
+    // Transparent rendering uses continuation rays so may be slightly slower
+    // Still should achieve at least 10 FPS
+    fps should be > 10.0
+
+    renderer.dispose()
+
   // Phase 2: Transparency Tests
   it should "render semi-transparent sphere blending with background" in:
     val (width, height) = (400, 400)
