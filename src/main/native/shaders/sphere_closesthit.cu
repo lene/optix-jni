@@ -49,25 +49,21 @@ extern "C" __global__ void __closesthit__ch() {
     float ndotl = normal.x * light_dir.x + normal.y * light_dir.y + normal.z * light_dir.z;
     ndotl = fmaxf(0.0f, ndotl);
 
-    // Get sphere color from hit data
-    const float3 sphere_color = make_float3(
-        hit_data->sphere_color[0],
-        hit_data->sphere_color[1],
-        hit_data->sphere_color[2]
-    );
+    // WORKAROUND for CUDA optimizer bug: Load sphere_color into separate variables FIRST
+    // before any computation. The optimizer incorrectly eliminates loads when all channels
+    // use identical operations. Loading into named variables forces the loads to occur.
+    const float color_r = hit_data->sphere_color[0];
+    const float color_g = hit_data->sphere_color[1];
+    const float color_b = hit_data->sphere_color[2];
 
-    // Apply light intensity and material color
+    // Apply light intensity
     const float intensity = ndotl * hit_data->light_intensity;
-    const float3 result = make_float3(
-        sphere_color.x * intensity,
-        sphere_color.y * intensity,
-        sphere_color.z * intensity
-    );
+    const float scale = 255.99f;
 
-    // Convert to RGB [0, 255]
-    const unsigned int r = static_cast<unsigned int>(result.x * 255.99f);
-    const unsigned int g = static_cast<unsigned int>(result.y * 255.99f);
-    const unsigned int b = static_cast<unsigned int>(result.z * 255.99f);
+    // Apply material color and convert to RGB [0, 255]
+    const unsigned int r = static_cast<unsigned int>(color_r * intensity * scale);
+    const unsigned int g = static_cast<unsigned int>(color_g * intensity * scale);
+    const unsigned int b = static_cast<unsigned int>(color_b * intensity * scale);
 
     // Set payload (RGB color)
     optixSetPayload_0(r);

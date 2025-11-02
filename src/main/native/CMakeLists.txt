@@ -174,6 +174,10 @@ if(HAVE_CUDA AND HAVE_OPTIX)
       CUDA_SEPARABLE_COMPILATION ON
       CUDA_ARCHITECTURES "52-virtual"
   )
+
+  # WORKAROUND: Disable optimizations for PTX compilation to prevent aggressive
+  # dead code elimination that incorrectly optimizes away sphere_color loads
+  target_compile_options(optix_shaders PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-G>)
 endif()
 
 #=============================================================================

@@ -139,14 +139,22 @@ extern "C" __global__ void __closesthit__ch() {
     // Lambertian shading: max(0, N · L)
     const float ndotl = fmaxf(0.0f, dot(normal, light_dir));
 
-    // Apply light intensity and material color (white)
+    // Apply light intensity
     const float intensity = ndotl * hit_data->light_intensity;
 
-    // Convert to RGB [0, 255]
-    const unsigned int color = static_cast<unsigned int>(intensity * Constants::COLOR_SCALE_FACTOR);
+    // Load sphere_color from SBT into separate variables
+    // (workaround for CUDA optimizer bug that eliminates loads when all channels use identical operations)
+    const float color_r = hit_data->sphere_color[0];
+    const float color_g = hit_data->sphere_color[1];
+    const float color_b = hit_data->sphere_color[2];
 
-    // Set payload (grayscale for now)
-    optixSetPayload_0(color);
-    optixSetPayload_1(color);
-    optixSetPayload_2(color);
+    // Apply material color and convert to RGB [0, 255]
+    const unsigned int r = static_cast<unsigned int>(color_r * intensity * Constants::COLOR_SCALE_FACTOR);
+    const unsigned int g = static_cast<unsigned int>(color_g * intensity * Constants::COLOR_SCALE_FACTOR);
+    const unsigned int b = static_cast<unsigned int>(color_b * intensity * Constants::COLOR_SCALE_FACTOR);
+
+    // Set payload (RGB color)
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
 }
