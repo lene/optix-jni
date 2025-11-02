@@ -34,6 +34,14 @@ object OptiXRendererTest:
 
   // Helper for analyzing rendered images
   object ImageAnalysis:
+    /** Extract RGB values from a pixel (returns tuple of Int values 0-255) */
+    def getRGB(imageData: Array[Byte], pixelIndex: Int): (Int, Int, Int) =
+      val offset = pixelIndex * 4
+      val r = imageData(offset) & 0xFF
+      val g = imageData(offset + 1) & 0xFF
+      val b = imageData(offset + 2) & 0xFF
+      (r, g, b)
+
     /** Compute brightness (grayscale value) for a pixel */
     def brightness(imageData: Array[Byte], pixelIndex: Int): Double =
       val offset = pixelIndex * 4
@@ -62,6 +70,47 @@ object OptiXRendererTest:
       val edgeBrightness = brightness(imageData, edgeY * width + edgeX)
 
       centerBrightness > edgeBrightness
+
+    /**
+     * Determine dominant color channel in center region of image.
+     * Returns "r", "g", "b", or "gray" if all channels are similar.
+     */
+    def dominantColorChannel(imageData: Array[Byte], width: Int, height: Int): String =
+      // Sample center region (center 50% of image)
+      val startX = width / 4
+      val endX = 3 * width / 4
+      val startY = height / 4
+      val endY = 3 * height / 4
+
+      var totalR = 0.0
+      var totalG = 0.0
+      var totalB = 0.0
+      var count = 0
+
+      for
+        y <- startY until endY
+        x <- startX until endX
+      do
+        val pixelIndex = y * width + x
+        val (r, g, b) = getRGB(imageData, pixelIndex)
+        totalR += r
+        totalG += g
+        totalB += b
+        count += 1
+
+      val avgR = totalR / count
+      val avgG = totalG / count
+      val avgB = totalB / count
+
+      // Determine if it's grayscale or has a dominant color
+      val maxChannel = math.max(avgR, math.max(avgG, avgB))
+      val minChannel = math.min(avgR, math.min(avgG, avgB))
+
+      // If difference between max and min is small (< 20), it's grayscale
+      if (maxChannel - minChannel < 20) then "gray"
+      else if (avgR == maxChannel) then "r"
+      else if (avgG == maxChannel) then "g"
+      else "b"
 
   // Helper for saving PPM images
   object ImageIO:
@@ -505,6 +554,117 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers with LazyLogging:
     image4.length shouldBe 600 * 800 * 4
 
     renderer.dispose()
+
+  // Sphere Color Tests
+  it should "render sphere with correct color (not grayscale)" in:
+    val (width, height) = (200, 200)
+
+    // Test 1: Pure red sphere
+    val renderer1 = new OptiXRenderer()
+    renderer1.initialize()
+    renderer1.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer1.setSphereColor(1.0f, 0.0f, 0.0f)  // Pure red
+    renderer1.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer1.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val imageRed = renderer1.render(width, height)
+    renderer1.dispose()
+
+    // Red should be dominant channel, not grayscale
+    ImageAnalysis.dominantColorChannel(imageRed, width, height) shouldBe "r"
+
+    // Test 2: Pure green sphere
+    val renderer2 = new OptiXRenderer()
+    renderer2.initialize()
+    renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer2.setSphereColor(0.0f, 1.0f, 0.0f)  // Pure green
+    renderer2.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer2.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val imageGreen = renderer2.render(width, height)
+    renderer2.dispose()
+
+    // Green should be dominant channel, not grayscale
+    ImageAnalysis.dominantColorChannel(imageGreen, width, height) shouldBe "g"
+
+    // Test 3: Pure blue sphere
+    val renderer3 = new OptiXRenderer()
+    renderer3.initialize()
+    renderer3.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer3.setSphereColor(0.0f, 0.0f, 1.0f)  // Pure blue
+    renderer3.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer3.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val imageBlue = renderer3.render(width, height)
+    renderer3.dispose()
+
+    // Blue should be dominant channel, not grayscale
+    ImageAnalysis.dominantColorChannel(imageBlue, width, height) shouldBe "b"
+
+    // All three images should be different
+    imageRed should not equal imageGreen
+    imageGreen should not equal imageBlue
+    imageRed should not equal imageBlue
+
+  it should "render sphere with custom color (green-cyan #00ff80)" in:
+    val (width, height) = (200, 200)
+
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer.setSphereColor(0.0f, 1.0f, 0.5f)  // Green-cyan: RGB(0, 255, 128)
+    renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val image = renderer.render(width, height)
+    renderer.dispose()
+
+    // Green should be dominant channel
+    ImageAnalysis.dominantColorChannel(image, width, height) shouldBe "g"
+
+    // Verify center pixel has expected color proportions
+    val centerPixel = (height / 2) * width + (width / 2)
+    val (r, g, b) = ImageAnalysis.getRGB(image, centerPixel)
+
+    // Green should be significantly higher than red
+    g should be > (r + 50)
+
+    // Blue should be between red and green
+    b should be > r
+    b should be < g
+
+    // Should not be grayscale (all channels should be different)
+    r should not equal g
+    g should not equal b
+    r should not equal b
+
+  it should "render grayscale sphere and detect it as gray" in:
+    val (width, height) = (200, 200)
+
+    // Test with mid-gray sphere
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+    renderer.setSphereColor(0.5f, 0.5f, 0.5f)  // Mid-gray: RGB(128, 128, 128)
+    renderer.setCamera(TestConfig.DefaultCameraEye, TestConfig.DefaultCameraLookAt,
+              TestConfig.DefaultCameraUp, TestConfig.DefaultCameraFov)
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+    val imageGray = renderer.render(width, height)
+    renderer.dispose()
+
+    // Should be detected as grayscale
+    ImageAnalysis.dominantColorChannel(imageGray, width, height) shouldBe "gray"
+
+    // Verify center region pixels have similar RGB values (grayscale characteristic)
+    val centerX = width / 2
+    val centerY = height / 2
+    val centerPixel = centerY * width + centerX
+    val (r, g, b) = ImageAnalysis.getRGB(imageGray, centerPixel)
+
+    // All channels should be within a small range of each other
+    math.abs(r - g) should be < 20
+    math.abs(g - b) should be < 20
+    math.abs(r - b) should be < 20
 
   // Performance Benchmarking
   it should "achieve reasonable rendering performance" in:
