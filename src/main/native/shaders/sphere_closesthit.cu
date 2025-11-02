@@ -18,7 +18,40 @@ __device__ float schlick_fresnel(float cos_theta, float ior) {
     return r0_sq + (1.0f - r0_sq) * one_minus_cos_5;
 }
 
-// Closest hit shader - computes Lambertian shading with Fresnel reflection
+// Refract a vector using Snell's law
+// Returns refracted direction, or zero vector if total internal reflection occurs
+// n1: IOR of incident medium, n2: IOR of transmitted medium
+__device__ float3 refract(const float3& incident, const float3& normal, float n1, float n2) {
+    const float eta = n1 / n2;
+    const float cos_i = -(incident.x * normal.x + incident.y * normal.y + incident.z * normal.z);
+    const float sin_t2 = eta * eta * (1.0f - cos_i * cos_i);
+
+    // Check for total internal reflection
+    if (sin_t2 > 1.0f) {
+        return make_float3(0.0f, 0.0f, 0.0f);
+    }
+
+    const float cos_t = sqrtf(1.0f - sin_t2);
+
+    // Refracted direction = eta * incident + (eta * cos_i - cos_t) * normal
+    return make_float3(
+        eta * incident.x + (eta * cos_i - cos_t) * normal.x,
+        eta * incident.y + (eta * cos_i - cos_t) * normal.y,
+        eta * incident.z + (eta * cos_i - cos_t) * normal.z
+    );
+}
+
+// Reflect a vector around a normal
+__device__ float3 reflect(const float3& incident, const float3& normal) {
+    const float dot = incident.x * normal.x + incident.y * normal.y + incident.z * normal.z;
+    return make_float3(
+        incident.x - 2.0f * dot * normal.x,
+        incident.y - 2.0f * dot * normal.y,
+        incident.z - 2.0f * dot * normal.z
+    );
+}
+
+// Closest hit shader - computes shading with Fresnel reflection and refraction
 extern "C" __global__ void __closesthit__ch() {
     // Get hit group data (light and material parameters)
     const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
@@ -79,15 +112,29 @@ extern "C" __global__ void __closesthit__ch() {
     // Apply light intensity
     const float intensity = ndotl * hit_data->light_intensity;
 
-    // Modulate by Fresnel term (for now, simple visualization)
-    // Higher Fresnel = more reflection-like (brighter at grazing angles)
-    const float final_intensity = intensity * (0.3f + 0.7f * fresnel);
+    // Compute refracted ray direction (air -> sphere: n1=1.0, n2=ior)
+    const float3 refracted_dir = refract(ray_direction, normal, 1.0f, hit_data->ior);
+
+    // Check if total internal reflection occurred (refracted_dir is zero vector)
+    const bool has_refraction = (refracted_dir.x != 0.0f || refracted_dir.y != 0.0f || refracted_dir.z != 0.0f);
+
+    float final_intensity;
+    if (has_refraction) {
+        // Mix reflection and refraction based on Fresnel coefficient
+        // For visualization: use Fresnel to blend between diffuse shading and enhanced brightness
+        // Full ray tracing would trace reflected and refracted rays here
+        final_intensity = intensity * (0.2f + 0.8f * (1.0f - fresnel));  // Less reflection = more transmission
+    } else {
+        // Total internal reflection - fully reflective
+        final_intensity = intensity * 1.5f;  // Boost for visibility
+    }
+
     const float scale = 255.99f;
 
     // Apply material color and convert to RGB [0, 255]
-    const unsigned int r = static_cast<unsigned int>(color_r * final_intensity * scale);
-    const unsigned int g = static_cast<unsigned int>(color_g * final_intensity * scale);
-    const unsigned int b = static_cast<unsigned int>(color_b * final_intensity * scale);
+    const unsigned int r = static_cast<unsigned int>(fminf(color_r * final_intensity * scale, 255.0f));
+    const unsigned int g = static_cast<unsigned int>(fminf(color_g * final_intensity * scale, 255.0f));
+    const unsigned int b = static_cast<unsigned int>(fminf(color_b * final_intensity * scale, 255.0f));
 
     // Set payload (RGB color)
     optixSetPayload_0(r);
