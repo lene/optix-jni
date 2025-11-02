@@ -1,13 +1,27 @@
 #include <optix.h>
 #include "../include/OptiXData.h"
 
-// Closest hit shader - computes Lambertian shading for sphere
-extern "C" __global__ void __closesthit__ch() {
-    // Get hit group data (light parameters)
-    const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
+// Schlick's approximation for Fresnel reflection
+// R(θ) = R₀ + (1 - R₀)(1 - cos θ)⁵
+// where R₀ = ((n₁ - n₂) / (n₁ + n₂))²
+__device__ float schlick_fresnel(float cos_theta, float ior) {
+    // n₁ = 1.0 (air), n₂ = ior (sphere material)
+    const float r0 = (1.0f - ior) / (1.0f + ior);
+    const float r0_sq = r0 * r0;
 
-    // Get geometric normal (for built-in sphere primitive, it's provided by OptiX)
-    const float3 world_normal = optixGetWorldRayDirection();  // Placeholder - will be computed from hit point
+    // Ensure cos_theta is in [0, 1]
+    cos_theta = fmaxf(0.0f, fminf(1.0f, cos_theta));
+
+    const float one_minus_cos = 1.0f - cos_theta;
+    const float one_minus_cos_5 = one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+
+    return r0_sq + (1.0f - r0_sq) * one_minus_cos_5;
+}
+
+// Closest hit shader - computes Lambertian shading with Fresnel reflection
+extern "C" __global__ void __closesthit__ch() {
+    // Get hit group data (light and material parameters)
+    const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
 
     // Get hit point (ray origin + t * ray direction)
     const float t = optixGetRayTmax();
@@ -21,7 +35,6 @@ extern "C" __global__ void __closesthit__ch() {
     );
 
     // Compute surface normal: normal = (hit_point - sphere_center) / radius
-    // For a unit sphere (or any sphere), the normalized vector from center to hit point is the normal
     const float3 sphere_center = make_float3(
         hit_data->sphere_center[0],
         hit_data->sphere_center[1],
@@ -37,6 +50,13 @@ extern "C" __global__ void __closesthit__ch() {
     normal.x /= len;
     normal.y /= len;
     normal.z /= len;
+
+    // Compute view direction (from hit point to camera)
+    float3 view_dir = make_float3(-ray_direction.x, -ray_direction.y, -ray_direction.z);
+
+    // Compute Fresnel reflection coefficient using Schlick's approximation
+    const float cos_theta = view_dir.x * normal.x + view_dir.y * normal.y + view_dir.z * normal.z;
+    const float fresnel = schlick_fresnel(cos_theta, hit_data->ior);
 
     // Light direction (negated for dot product)
     const float3 light_dir = make_float3(
@@ -58,12 +78,16 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Apply light intensity
     const float intensity = ndotl * hit_data->light_intensity;
+
+    // Modulate by Fresnel term (for now, simple visualization)
+    // Higher Fresnel = more reflection-like (brighter at grazing angles)
+    const float final_intensity = intensity * (0.3f + 0.7f * fresnel);
     const float scale = 255.99f;
 
     // Apply material color and convert to RGB [0, 255]
-    const unsigned int r = static_cast<unsigned int>(color_r * intensity * scale);
-    const unsigned int g = static_cast<unsigned int>(color_g * intensity * scale);
-    const unsigned int b = static_cast<unsigned int>(color_b * intensity * scale);
+    const unsigned int r = static_cast<unsigned int>(color_r * final_intensity * scale);
+    const unsigned int g = static_cast<unsigned int>(color_g * final_intensity * scale);
+    const unsigned int b = static_cast<unsigned int>(color_b * final_intensity * scale);
 
     // Set payload (RGB color)
     optixSetPayload_0(r);

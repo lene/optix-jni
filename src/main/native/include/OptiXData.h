@@ -31,6 +31,7 @@ struct HitGroupData {
     float sphere_color[4];  // Sphere color (RGBA, 0.0-1.0)
     float light_dir[3];     // Light direction
     float light_intensity;  // Light intensity
+    float ior;              // Index of refraction (1.0 = no refraction, 1.5 = glass)
 };
 
 // Shader Binding Table (SBT) record structures

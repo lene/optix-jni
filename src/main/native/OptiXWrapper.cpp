@@ -568,6 +568,7 @@ void OptiXWrapper::setupShaderBindingTable() {
         std::memcpy(hg_sbt.data.sphere_color, impl->sphere_color, sizeof(float) * 4);
         std::memcpy(hg_sbt.data.light_dir, impl->light_direction, sizeof(float) * 3);
         hg_sbt.data.light_intensity = impl->light_intensity;
+        hg_sbt.data.ior = impl->sphere_ior;
 
         OPTIX_CHECK(optixSbtRecordPackHeader(impl->hitgroup_prog_group, &hg_sbt));
 
