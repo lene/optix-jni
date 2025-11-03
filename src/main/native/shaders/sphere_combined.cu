@@ -89,16 +89,61 @@ extern "C" __global__ void __raygen__rg() {
 }
 
 //==============================================================================
-// Miss shader - returns background color when ray hits nothing
+// Miss shader - returns checkered plane or background color when ray hits nothing
 //==============================================================================
 extern "C" __global__ void __miss__ms() {
     // Get miss data (background color)
     const MissData* miss_data = reinterpret_cast<MissData*>(optixGetSbtDataPointer());
 
-    // Convert float [0,1] to unsigned int [0,255]
-    const unsigned int r = static_cast<unsigned int>(miss_data->r * Constants::COLOR_SCALE_FACTOR);
-    const unsigned int g = static_cast<unsigned int>(miss_data->g * Constants::COLOR_SCALE_FACTOR);
-    const unsigned int b = static_cast<unsigned int>(miss_data->b * Constants::COLOR_SCALE_FACTOR);
+    // Get ray data
+    const float3 ray_origin = optixGetWorldRayOrigin();
+    const float3 ray_direction = optixGetWorldRayDirection();
+
+    // Checkered plane at z=-10
+    const float plane_z = -10.0f;
+
+    // Ray-plane intersection: origin.z + t * direction.z = plane_z
+    // Solve for t: t = (plane_z - origin.z) / direction.z
+    unsigned int r, g, b;
+
+    if (ray_direction.z < 0.0f) {  // Ray pointing towards plane (negative z)
+        const float t = (plane_z - ray_origin.z) / ray_direction.z;
+
+        if (t > 0.0f) {  // Intersection is in front of ray origin
+            // Compute intersection point
+            const float hit_x = ray_origin.x + t * ray_direction.x;
+            const float hit_y = ray_origin.y + t * ray_direction.y;
+
+            // Checkered pattern with 0.5 unit squares
+            const float checker_size = 0.5f;
+            const int check_x = static_cast<int>(floorf(hit_x / checker_size));
+            const int check_y = static_cast<int>(floorf(hit_y / checker_size));
+
+            // XOR to create checkerboard pattern
+            const bool is_light = ((check_x + check_y) & 1) == 0;
+
+            // Light gray (240, 240, 240) and dark gray (40, 40, 40)
+            if (is_light) {
+                r = 240;
+                g = 240;
+                b = 240;
+            } else {
+                r = 40;
+                g = 40;
+                b = 40;
+            }
+        } else {
+            // No intersection (t < 0), use background color
+            r = static_cast<unsigned int>(miss_data->r * Constants::COLOR_SCALE_FACTOR);
+            g = static_cast<unsigned int>(miss_data->g * Constants::COLOR_SCALE_FACTOR);
+            b = static_cast<unsigned int>(miss_data->b * Constants::COLOR_SCALE_FACTOR);
+        }
+    } else {
+        // Ray not pointing towards plane, use background color
+        r = static_cast<unsigned int>(miss_data->r * Constants::COLOR_SCALE_FACTOR);
+        g = static_cast<unsigned int>(miss_data->g * Constants::COLOR_SCALE_FACTOR);
+        b = static_cast<unsigned int>(miss_data->b * Constants::COLOR_SCALE_FACTOR);
+    }
 
     // Set payload
     optixSetPayload_0(r);
@@ -107,64 +152,101 @@ extern "C" __global__ void __miss__ms() {
 }
 
 //==============================================================================
-// Closest hit shader - computes Lambertian shading for sphere
+// Closest hit shader - computes Fresnel reflection and Snell's law refraction
 //==============================================================================
 extern "C" __global__ void __closesthit__ch() {
-    // Get hit group data (light parameters)
+    // Get hit group data
     const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
 
     // Get hit point (ray origin + t * ray direction)
     const float t = optixGetRayTmax();
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
-
     const float3 hit_point = ray_origin + ray_direction * t;
 
     // Compute surface normal: normal = normalize(hit_point - sphere_center)
-    // The sphere center is passed through the HitGroupData SBT record
     const float3 sphere_center = make_float3(
         hit_data->sphere_center[0],
         hit_data->sphere_center[1],
         hit_data->sphere_center[2]
     );
 
-    const float3 normal = normalize(hit_point + sphere_center * -1.0f);
+    // Manual vector subtraction for hit_point - sphere_center
+    const float3 to_hit = make_float3(
+        hit_point.x - sphere_center.x,
+        hit_point.y - sphere_center.y,
+        hit_point.z - sphere_center.z
+    );
+    const float3 outward_normal = normalize(to_hit);
 
-    // Light direction (negated for dot product)
-    const float3 light_dir = make_float3(
-        -hit_data->light_dir[0],
-        -hit_data->light_dir[1],
-        -hit_data->light_dir[2]
+    // Determine if ray is entering or exiting sphere (negated ray direction)
+    const float3 neg_ray_dir = make_float3(-ray_direction.x, -ray_direction.y, -ray_direction.z);
+    const float cos_theta_i = dot(neg_ray_dir, outward_normal);
+    const bool entering = cos_theta_i > 0.0f;
+
+    // Surface normal (points toward incoming ray)
+    const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
+
+    // Compute Fresnel reflectance using Schlick approximation
+    const float n1 = entering ? 1.0f : hit_data->ior;  // Air or glass
+    const float n2 = entering ? hit_data->ior : 1.0f;  // Glass or air
+    const float r0 = (n1 - n2) / (n1 + n2);
+    const float R0 = r0 * r0;
+    const float cos_theta = fabsf(dot(neg_ray_dir, normal));
+    const float one_minus_cos = 1.0f - cos_theta;
+    const float fresnel = R0 + (1.0f - R0) * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+
+    // Compute reflected ray direction: r = d - 2(d·n)n
+    const float dot_dn = dot(ray_direction, normal);
+    const float3 reflect_dir = make_float3(
+        ray_direction.x - 2.0f * dot_dn * normal.x,
+        ray_direction.y - 2.0f * dot_dn * normal.y,
+        ray_direction.z - 2.0f * dot_dn * normal.z
     );
 
-    // Lambertian shading: max(0, N · L)
-    const float ndotl = fmaxf(0.0f, dot(normal, light_dir));
+    // Cast reflected ray
+    unsigned int reflect_r, reflect_g, reflect_b;
+    const float3 reflect_origin = hit_point + reflect_dir * Constants::CONTINUATION_RAY_OFFSET;
+    optixTrace(
+        params.handle,
+        reflect_origin,
+        reflect_dir,
+        Constants::CONTINUATION_RAY_OFFSET,
+        Constants::MAX_RAY_DISTANCE,
+        0.0f,
+        OptixVisibilityMask(255),
+        OPTIX_RAY_FLAG_NONE,
+        0,  // SBT offset
+        1,  // SBT stride
+        0,  // missSBTIndex
+        reflect_r, reflect_g, reflect_b
+    );
 
-    // Apply light intensity
-    const float intensity = ndotl * hit_data->light_intensity;
+    // Compute refracted ray using Snell's law
+    const float eta = n1 / n2;
+    const float k = 1.0f - eta * eta * (1.0f - cos_theta * cos_theta);
 
-    // Load sphere_color from SBT into separate variables
-    // (workaround for CUDA optimizer bug that eliminates loads when all channels use identical operations)
-    const float color_r = hit_data->sphere_color[0];
-    const float color_g = hit_data->sphere_color[1];
-    const float color_b = hit_data->sphere_color[2];
-    const float alpha = hit_data->sphere_color[3];
+    unsigned int refract_r, refract_g, refract_b;
+    if (k < 0.0f) {
+        // Total internal reflection - use reflected color
+        refract_r = reflect_r;
+        refract_g = reflect_g;
+        refract_b = reflect_b;
+    } else {
+        // Compute refracted direction: t = η·d + (η·cos(θ) - √k)·n
+        const float coeff = eta * cos_theta - sqrtf(k);
+        const float3 refract_dir = make_float3(
+            eta * ray_direction.x + coeff * normal.x,
+            eta * ray_direction.y + coeff * normal.y,
+            eta * ray_direction.z + coeff * normal.z
+        );
 
-    // Apply material color and convert to RGB [0, 255]
-    unsigned int r = static_cast<unsigned int>(color_r * intensity * Constants::COLOR_SCALE_FACTOR);
-    unsigned int g = static_cast<unsigned int>(color_g * intensity * Constants::COLOR_SCALE_FACTOR);
-    unsigned int b = static_cast<unsigned int>(color_b * intensity * Constants::COLOR_SCALE_FACTOR);
-
-    // Handle transparency: if alpha < 1.0, cast continuation ray and blend
-    if (alpha < 1.0f) {
-        // Cast continuation ray from slightly beyond the hit point
-        const float3 continuation_origin = hit_point + ray_direction * Constants::CONTINUATION_RAY_OFFSET;
-
-        unsigned int bg_r, bg_g, bg_b;
+        // Cast refracted ray
+        const float3 refract_origin = hit_point + refract_dir * Constants::CONTINUATION_RAY_OFFSET;
         optixTrace(
             params.handle,
-            continuation_origin,
-            ray_direction,
+            refract_origin,
+            refract_dir,
             Constants::CONTINUATION_RAY_OFFSET,
             Constants::MAX_RAY_DISTANCE,
             0.0f,
@@ -173,14 +255,14 @@ extern "C" __global__ void __closesthit__ch() {
             0,  // SBT offset
             1,  // SBT stride
             0,  // missSBTIndex
-            bg_r, bg_g, bg_b  // Background color payload
+            refract_r, refract_g, refract_b
         );
-
-        // Alpha blend: result = alpha * foreground + (1-alpha) * background
-        r = static_cast<unsigned int>(alpha * r + (1.0f - alpha) * bg_r);
-        g = static_cast<unsigned int>(alpha * g + (1.0f - alpha) * bg_g);
-        b = static_cast<unsigned int>(alpha * b + (1.0f - alpha) * bg_b);
     }
+
+    // Blend reflected and refracted rays based on Fresnel
+    const unsigned int r = static_cast<unsigned int>(fresnel * reflect_r + (1.0f - fresnel) * refract_r);
+    const unsigned int g = static_cast<unsigned int>(fresnel * reflect_g + (1.0f - fresnel) * refract_g);
+    const unsigned int b = static_cast<unsigned int>(fresnel * reflect_b + (1.0f - fresnel) * refract_b);
 
     // Set payload (RGB color)
     optixSetPayload_0(r);
