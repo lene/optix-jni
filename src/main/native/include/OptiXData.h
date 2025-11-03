@@ -32,6 +32,7 @@ struct HitGroupData {
     float light_dir[3];     // Light direction
     float light_intensity;  // Light intensity
     float ior;              // Index of refraction (1.0 = no refraction, 1.5 = glass)
+    float scale;            // Physical scale (1.0 = meters, 0.01 = centimeters)
 };
 
 // Shader Binding Table (SBT) record structures

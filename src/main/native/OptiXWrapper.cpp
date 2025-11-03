@@ -88,6 +88,7 @@ struct OptiXWrapper::Impl {
     float sphere_radius = 1.5f;
     float sphere_color[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // Default: white, fully opaque
     float sphere_ior = 1.0f;  // Default: IOR of air/vacuum (no refraction)
+    float sphere_scale = 1.0f;  // Default: 1.0 = meters
 
     // Light parameters
     float light_direction[3] = {0.5f, 0.5f, -0.5f};
@@ -182,6 +183,15 @@ void OptiXWrapper::setIOR(float ior) {
 #else
     // Stub implementation - no-op
     (void)ior; // Suppress unused parameter warning
+#endif
+}
+
+void OptiXWrapper::setScale(float scale) {
+#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
+    impl->sphere_scale = scale;
+#else
+    // Stub implementation - no-op
+    (void)scale; // Suppress unused parameter warning
 #endif
 }
 
@@ -569,6 +579,7 @@ void OptiXWrapper::setupShaderBindingTable() {
         std::memcpy(hg_sbt.data.light_dir, impl->light_direction, sizeof(float) * 3);
         hg_sbt.data.light_intensity = impl->light_intensity;
         hg_sbt.data.ior = impl->sphere_ior;
+        hg_sbt.data.scale = impl->sphere_scale;
 
         OPTIX_CHECK(optixSbtRecordPackHeader(impl->hitgroup_prog_group, &hg_sbt));
 

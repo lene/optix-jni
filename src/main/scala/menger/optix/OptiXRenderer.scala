@@ -25,6 +25,7 @@ class OptiXRenderer extends LazyLogging:
   @native def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
   @native def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit
   @native def setIOR(ior: Float): Unit
+  @native def setScale(scale: Float): Unit
   @native def setCamera(eye: Array[Float], lookAt: Array[Float], up: Array[Float], fov: Float): Unit
   @native def setLight(direction: Array[Float], intensity: Float): Unit
   @native def render(width: Int, height: Int): Array[Byte]

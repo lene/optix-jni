@@ -257,6 +257,57 @@ extern "C" __global__ void __closesthit__ch() {
             0,  // missSBTIndex
             refract_r, refract_g, refract_b
         );
+
+        // Apply Beer-Lambert absorption if ray is entering the sphere
+        if (entering) {
+            // Calculate distance traveled through sphere using ray-sphere intersection
+            // The refracted ray starts inside the sphere and will exit when it hits again
+
+            // Calculate sphere radius from hit point
+            const float3 to_hit_from_center = make_float3(
+                hit_point.x - sphere_center.x,
+                hit_point.y - sphere_center.y,
+                hit_point.z - sphere_center.z
+            );
+            const float radius = sqrtf(dot(to_hit_from_center, to_hit_from_center));
+
+            // Vector from refraction origin to sphere center
+            const float3 oc = make_float3(
+                sphere_center.x - refract_origin.x,
+                sphere_center.y - refract_origin.y,
+                sphere_center.z - refract_origin.z
+            );
+
+            // Ray-sphere intersection from inside: solve ||o + t*d - c||² = r²
+            // Expanding: (oc - t*d)·(oc - t*d) = r²
+            // t² - 2t*(oc·d) + (oc·oc - r²) = 0
+            const float a_coeff = 1.0f;  // d is normalized
+            const float b_coeff = -2.0f * dot(oc, refract_dir);
+            const float c_coeff = dot(oc, oc) - radius * radius;
+
+            // Discriminant
+            const float discriminant = b_coeff * b_coeff - 4.0f * a_coeff * c_coeff;
+
+            // Travel distance is the positive root (ray exits sphere)
+            const float travel_distance = (-b_coeff + sqrtf(discriminant)) / (2.0f * a_coeff);
+
+            // Compute absorption coefficient from sphere color: α = -log(color)
+            // Avoid log(0) by clamping color to minimum value
+            const float min_color = 0.001f;
+            const float alpha_r = -logf(fmaxf(hit_data->sphere_color[0], min_color));
+            const float alpha_g = -logf(fmaxf(hit_data->sphere_color[1], min_color));
+            const float alpha_b = -logf(fmaxf(hit_data->sphere_color[2], min_color));
+
+            // Apply Beer-Lambert law: I = I₀ · e^(-α·scale·distance)
+            const float absorption_r = expf(-alpha_r * hit_data->scale * travel_distance);
+            const float absorption_g = expf(-alpha_g * hit_data->scale * travel_distance);
+            const float absorption_b = expf(-alpha_b * hit_data->scale * travel_distance);
+
+            // Apply absorption to refracted color
+            refract_r = static_cast<unsigned int>(refract_r * absorption_r);
+            refract_g = static_cast<unsigned int>(refract_g * absorption_g);
+            refract_b = static_cast<unsigned int>(refract_b * absorption_b);
+        }
     }
 
     // Blend reflected and refracted rays based on Fresnel

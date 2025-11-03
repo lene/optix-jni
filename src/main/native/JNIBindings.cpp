@@ -52,6 +52,17 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIOR(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setScale(
+    JNIEnv* env, jobject obj, jfloat scale) {
+    try {
+        if (g_wrapper != nullptr) {
+            g_wrapper->setScale(scale);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error in setScale: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCamera(
     JNIEnv* env, jobject obj, jfloatArray eye, jfloatArray lookAt, jfloatArray up, jfloat fov) {
     try {
