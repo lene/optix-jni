@@ -834,3 +834,65 @@ class OptiXRendererTest extends AnyFlatSpec with Matchers with LazyLogging:
       Math.abs(g - bgG) should be < 5
       Math.abs(b - bgB) should be < 5
 
+  it should "render sphere with refraction, reflection, and volume absorption" in:
+    val (width, height) = (800, 600)
+    val filename = "optix_test_refraction_absorption.ppm"
+
+    // Clean up any pre-existing output files
+    val ppmFile = new File(filename)
+    if ppmFile.exists() then ppmFile.delete()
+
+    val renderer = new OptiXRenderer()
+    renderer.initialize()
+
+    // Configure sphere with refraction and absorption
+    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
+
+    // Near-black sphere for maximum absorption: RGB (0.01, 0.01, 0.01), Alpha 0.0
+    // Alpha 0.0 means MAXIMUM absorption (absorption_factor = 1.0)
+    // With near-black color, -log(0.01) = 4.6, so very strong absorption
+    renderer.setSphereColor(0.01f, 0.01f, 0.01f, 0.0f)
+
+    // Set IOR for glass-like refraction
+    renderer.setIOR(1.5f)
+
+    // Set scale (affects absorption distance)
+    renderer.setScale(1.0f)
+
+    // Camera and lighting
+    renderer.setCamera(
+      Array(0.0f, 0.0f, 3.0f),
+      Array(0.0f, 0.0f, 0.0f),
+      Array(0.0f, 1.0f, 0.0f),
+      60.0f
+    )
+    renderer.setLight(TestConfig.DefaultLightDirection, TestConfig.DefaultLightIntensity)
+
+    // Render
+    val imageData = renderer.render(width, height)
+    imageData.length shouldBe width * height * 4
+
+    // Save for visual inspection
+    val savedFile = ImageIO.savePPM(imageData, width, height, filename)
+    logger.info(s"\n=== Refraction+Absorption test image saved to: ${savedFile.getAbsolutePath}")
+
+    renderer.dispose()
+
+    // Verification: The image should show:
+    // 1. Refraction: checkerboard distortion through sphere
+    // 2. Absorption: darker center, lighter edges (Beer-Lambert law)
+    // 3. Reflection: some Fresnel reflection at grazing angles
+    // We can't easily verify all effects programmatically, but we can check basic properties
+
+    // Check that we have variation in the image (not solid color)
+    val centerIdx = (height / 2 * width + width / 2) * 4
+    val topIdx = (height / 4 * width + width / 2) * 4
+    val bottomIdx = (3 * height / 4 * width + width / 2) * 4
+
+    val centerR = imageData(centerIdx) & 0xFF
+    val topR = imageData(topIdx) & 0xFF
+    val bottomR = imageData(bottomIdx) & 0xFF
+
+    // Should have variation (not all the same)
+    (centerR != topR || topR != bottomR) shouldBe true
+

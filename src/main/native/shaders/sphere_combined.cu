@@ -30,6 +30,16 @@ __device__ inline float3 operator*(float3 v, float s) {
     return make_float3(v.x * s, v.y * s, v.z * s);
 }
 
+// Payload packing/unpacking utilities
+// Payload layout: p0=R, p1=G, p2=B, p3=entry_distance, p4=absorption_r, p5=absorption_g, p6=absorption_b
+__device__ inline float uint_as_float(unsigned int ui) {
+    return __uint_as_float(ui);
+}
+
+__device__ inline unsigned int float_as_uint(float f) {
+    return __float_as_uint(f);
+}
+
 //==============================================================================
 // Ray generation shader - generates primary rays from camera
 //==============================================================================
@@ -58,8 +68,16 @@ extern "C" __global__ void __raygen__rg() {
 
     const float3 ray_direction = normalize(camera_u * u + camera_v * v + camera_w);
 
-    // Trace ray
-    unsigned int p0, p1, p2;  // Payload for RGB color
+    // Trace ray with payload:
+    // - RGB color channels (as uint)
+    // - entry_distance: t-value where ray entered current volume (as float packed in uint)
+    // - absorption coefficients for each color channel (as float packed in uint)
+    unsigned int color_r, color_g, color_b;
+    unsigned int entry_distance = float_as_uint(-1.0f);  // -1 = not inside any volume
+    unsigned int absorption_r = float_as_uint(0.0f);
+    unsigned int absorption_g = float_as_uint(0.0f);
+    unsigned int absorption_b = float_as_uint(0.0f);
+
     optixTrace(
         params.handle,                     // Acceleration structure
         ray_origin,                        // Ray origin
@@ -72,13 +90,15 @@ extern "C" __global__ void __raygen__rg() {
         0,                       // SBT offset
         1,                       // SBT stride
         0,                       // missSBTIndex
-        p0, p1, p2               // Payload
+        color_r, color_g, color_b,
+        entry_distance,
+        absorption_r, absorption_g, absorption_b
     );
 
     // Convert payload to RGBA
-    const unsigned int r = p0;
-    const unsigned int g = p1;
-    const unsigned int b = p2;
+    const unsigned int r = color_r;
+    const unsigned int g = color_g;
+    const unsigned int b = color_b;
 
     // Write to output buffer
     const unsigned int pixel_index = idx.y * params.image_width + idx.x;
@@ -145,16 +165,22 @@ extern "C" __global__ void __miss__ms() {
         b = static_cast<unsigned int>(miss_data->b * Constants::COLOR_SCALE_FACTOR);
     }
 
-    // Set payload
+    // Set payload (only RGB)
     optixSetPayload_0(r);
     optixSetPayload_1(g);
     optixSetPayload_2(b);
+    // Payload 3-6 (entry_distance, absorption coefficients) are automatically preserved by OptiX
 }
 
 //==============================================================================
 // Closest hit shader - computes Fresnel reflection and Snell's law refraction
 //==============================================================================
 extern "C" __global__ void __closesthit__ch() {
+    // DIAGNOSTIC: Track hit count and entry/exit
+    const uint3 launch_idx = optixGetLaunchIndex();
+    const uint3 launch_dim = optixGetLaunchDimensions();
+    const bool is_center_pixel = (launch_idx.x == launch_dim.x/2 && launch_idx.y == launch_dim.y/2);
+
     // Get hit group data
     const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
 
@@ -163,6 +189,13 @@ extern "C" __global__ void __closesthit__ch() {
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
     const float3 hit_point = ray_origin + ray_direction * t;
+
+    // DIAGNOSTIC: Print for center pixel only to avoid spam
+    if (is_center_pixel) {
+        printf("[HIT] t=%.3f, origin=(%.2f,%.2f,%.2f), dir=(%.2f,%.2f,%.2f)\n",
+               t, ray_origin.x, ray_origin.y, ray_origin.z,
+               ray_direction.x, ray_direction.y, ray_direction.z);
+    }
 
     // Compute surface normal: normal = normalize(hit_point - sphere_center)
     const float3 sphere_center = make_float3(
@@ -184,6 +217,24 @@ extern "C" __global__ void __closesthit__ch() {
     const float cos_theta_i = dot(neg_ray_dir, outward_normal);
     const bool entering = cos_theta_i > 0.0f;
 
+    // DIAGNOSTIC: Check alternative detection methods
+    if (is_center_pixel) {
+        // Method 1: Check if ray origin is inside sphere (assuming radius 1.5)
+        const float sphere_radius = 1.5f;
+        const float3 origin_to_center = make_float3(
+            ray_origin.x - sphere_center.x,
+            ray_origin.y - sphere_center.y,
+            ray_origin.z - sphere_center.z
+        );
+        const float origin_dist = sqrtf(origin_to_center.x * origin_to_center.x +
+                                       origin_to_center.y * origin_to_center.y +
+                                       origin_to_center.z * origin_to_center.z);
+        const bool origin_inside = (origin_dist < sphere_radius - 0.01f);
+
+        printf("[DETECT] cos_theta_i=%.3f, entering=%d, origin_dist=%.3f, origin_inside=%d\n",
+               cos_theta_i, entering ? 1 : 0, origin_dist, origin_inside ? 1 : 0);
+    }
+
     // Surface normal (points toward incoming ray)
     const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
 
@@ -204,8 +255,13 @@ extern "C" __global__ void __closesthit__ch() {
         ray_direction.z - 2.0f * dot_dn * normal.z
     );
 
-    // Cast reflected ray
+    // Cast reflected ray (reflection doesn't enter the volume, so reset absorption tracking)
     unsigned int reflect_r, reflect_g, reflect_b;
+    unsigned int reflect_entry_dist = float_as_uint(-1.0f);
+    unsigned int reflect_absorption_r = float_as_uint(0.0f);
+    unsigned int reflect_absorption_g = float_as_uint(0.0f);
+    unsigned int reflect_absorption_b = float_as_uint(0.0f);
+
     const float3 reflect_origin = hit_point + reflect_dir * Constants::CONTINUATION_RAY_OFFSET;
     optixTrace(
         params.handle,
@@ -219,7 +275,9 @@ extern "C" __global__ void __closesthit__ch() {
         0,  // SBT offset
         1,  // SBT stride
         0,  // missSBTIndex
-        reflect_r, reflect_g, reflect_b
+        reflect_r, reflect_g, reflect_b,
+        reflect_entry_dist,
+        reflect_absorption_r, reflect_absorption_g, reflect_absorption_b
     );
 
     // Compute refracted ray using Snell's law
@@ -241,8 +299,67 @@ extern "C" __global__ void __closesthit__ch() {
             eta * ray_direction.z + coeff * normal.z
         );
 
+        // Set up payload for refracted ray based on whether we're entering or exiting
+        unsigned int refract_entry_dist;
+        unsigned int refract_absorption_r, refract_absorption_g, refract_absorption_b;
+
+        // IMPORTANT: Save absorption data BEFORE tracing (it will be overwritten by optixTrace)
+        float saved_entry_t = -1.0f;
+        float saved_alpha_r = 0.0f;
+        float saved_alpha_g = 0.0f;
+        float saved_alpha_b = 0.0f;
+
+        if (entering) {
+            // Entering the volume: record entry point and absorption coefficients
+            refract_entry_dist = float_as_uint(t);  // Store entry t-value
+
+            // Compute absorption coefficients from sphere color: α = -log(color) * (1-alpha)
+            // The alpha channel controls absorption intensity
+            const float min_color = 0.001f;
+            const float color_alpha = hit_data->sphere_color[3];
+            const float absorption_factor = 1.0f - color_alpha;  // 0=no absorption, 1=full absorption
+
+            const float alpha_r = -logf(fmaxf(hit_data->sphere_color[0], min_color)) * absorption_factor;
+            const float alpha_g = -logf(fmaxf(hit_data->sphere_color[1], min_color)) * absorption_factor;
+            const float alpha_b = -logf(fmaxf(hit_data->sphere_color[2], min_color)) * absorption_factor;
+
+            refract_absorption_r = float_as_uint(alpha_r * hit_data->scale);
+            refract_absorption_g = float_as_uint(alpha_g * hit_data->scale);
+            refract_absorption_b = float_as_uint(alpha_b * hit_data->scale);
+        } else {
+            // Exiting the volume: save entry data from incoming payload BEFORE tracing
+            saved_entry_t = uint_as_float(optixGetPayload_3());
+            saved_alpha_r = uint_as_float(optixGetPayload_4());
+            saved_alpha_g = uint_as_float(optixGetPayload_5());
+            saved_alpha_b = uint_as_float(optixGetPayload_6());
+
+            // Pass zeros forward (no longer in volume)
+            refract_entry_dist = float_as_uint(-1.0f);
+            refract_absorption_r = float_as_uint(0.0f);
+            refract_absorption_g = float_as_uint(0.0f);
+            refract_absorption_b = float_as_uint(0.0f);
+        }
+
         // Cast refracted ray
         const float3 refract_origin = hit_point + refract_dir * Constants::CONTINUATION_RAY_OFFSET;
+
+        if (is_center_pixel && entering) {
+            printf("[REFRACT] origin=(%.3f,%.3f,%.3f), dir=(%.3f,%.3f,%.3f)\n",
+                   refract_origin.x, refract_origin.y, refract_origin.z,
+                   refract_dir.x, refract_dir.y, refract_dir.z);
+
+            // Check if refract_origin is inside sphere
+            const float3 to_center = make_float3(
+                refract_origin.x - sphere_center.x,
+                refract_origin.y - sphere_center.y,
+                refract_origin.z - sphere_center.z
+            );
+            const float dist_from_center = sqrtf(to_center.x * to_center.x +
+                                                 to_center.y * to_center.y +
+                                                 to_center.z * to_center.z);
+            printf("[REFRACT] origin distance from center: %.3f (radius=1.5)\n", dist_from_center);
+        }
+
         optixTrace(
             params.handle,
             refract_origin,
@@ -255,55 +372,28 @@ extern "C" __global__ void __closesthit__ch() {
             0,  // SBT offset
             1,  // SBT stride
             0,  // missSBTIndex
-            refract_r, refract_g, refract_b
+            refract_r, refract_g, refract_b,
+            refract_entry_dist,
+            refract_absorption_r, refract_absorption_g, refract_absorption_b
         );
 
-        // Apply Beer-Lambert absorption if ray is entering the sphere
-        if (entering) {
-            // Calculate distance traveled through sphere using ray-sphere intersection
-            // The refracted ray starts inside the sphere and will exit when it hits again
+        // Apply absorption if we just exited the volume (using saved values from before the trace)
+        if (is_center_pixel) {
+            printf("[ABSORPTION CHECK] entering=%d, saved_entry_t=%.3f\n",
+                   entering ? 1 : 0, saved_entry_t);
+        }
 
-            // Calculate sphere radius from hit point
-            const float3 to_hit_from_center = make_float3(
-                hit_point.x - sphere_center.x,
-                hit_point.y - sphere_center.y,
-                hit_point.z - sphere_center.z
-            );
-            const float radius = sqrtf(dot(to_hit_from_center, to_hit_from_center));
+        if (!entering && saved_entry_t >= 0.0f) {
+            if (is_center_pixel) {
+                printf("[APPLYING ABSORPTION!] travel_distance=%.3f\n", t - saved_entry_t);
+            }
 
-            // Vector from refraction origin to sphere center
-            const float3 oc = make_float3(
-                sphere_center.x - refract_origin.x,
-                sphere_center.y - refract_origin.y,
-                sphere_center.z - refract_origin.z
-            );
+            const float travel_distance = t - saved_entry_t;
 
-            // Ray-sphere intersection from inside: solve ||o + t*d - c||² = r²
-            // Expanding: (oc - t*d)·(oc - t*d) = r²
-            // t² - 2t*(oc·d) + (oc·oc - r²) = 0
-            const float a_coeff = 1.0f;  // d is normalized
-            const float b_coeff = -2.0f * dot(oc, refract_dir);
-            const float c_coeff = dot(oc, oc) - radius * radius;
+            const float absorption_r = expf(-saved_alpha_r * travel_distance);
+            const float absorption_g = expf(-saved_alpha_g * travel_distance);
+            const float absorption_b = expf(-saved_alpha_b * travel_distance);
 
-            // Discriminant
-            const float discriminant = b_coeff * b_coeff - 4.0f * a_coeff * c_coeff;
-
-            // Travel distance is the positive root (ray exits sphere)
-            const float travel_distance = (-b_coeff + sqrtf(discriminant)) / (2.0f * a_coeff);
-
-            // Compute absorption coefficient from sphere color: α = -log(color)
-            // Avoid log(0) by clamping color to minimum value
-            const float min_color = 0.001f;
-            const float alpha_r = -logf(fmaxf(hit_data->sphere_color[0], min_color));
-            const float alpha_g = -logf(fmaxf(hit_data->sphere_color[1], min_color));
-            const float alpha_b = -logf(fmaxf(hit_data->sphere_color[2], min_color));
-
-            // Apply Beer-Lambert law: I = I₀ · e^(-α·scale·distance)
-            const float absorption_r = expf(-alpha_r * hit_data->scale * travel_distance);
-            const float absorption_g = expf(-alpha_g * hit_data->scale * travel_distance);
-            const float absorption_b = expf(-alpha_b * hit_data->scale * travel_distance);
-
-            // Apply absorption to refracted color
             refract_r = static_cast<unsigned int>(refract_r * absorption_r);
             refract_g = static_cast<unsigned int>(refract_g * absorption_g);
             refract_b = static_cast<unsigned int>(refract_b * absorption_b);

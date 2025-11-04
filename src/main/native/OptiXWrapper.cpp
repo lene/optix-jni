@@ -356,7 +356,7 @@ OptixModule OptiXWrapper::loadPTXModules() {
     OptixPipelineCompileOptions pipeline_compile_options = {};
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_compile_options.numPayloadValues = 3; // RGB
+    pipeline_compile_options.numPayloadValues = 7; // RGB + entry_distance + absorption_r/g/b
     pipeline_compile_options.numAttributeValues = 0;
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
@@ -473,7 +473,7 @@ void OptiXWrapper::createPipeline() {
     OptixPipelineCompileOptions pipeline_compile_options = {};
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_compile_options.numPayloadValues = 3; // RGB
+    pipeline_compile_options.numPayloadValues = 7; // RGB + entry_distance + absorption_r/g/b
     pipeline_compile_options.numAttributeValues = 0;
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";

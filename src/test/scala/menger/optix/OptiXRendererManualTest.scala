@@ -30,6 +30,17 @@ object OptiXRendererManualTest extends LazyLogging {
     // Sphere at origin
     renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
 
+    // Set sphere color: semi-transparent green-cyan (alpha=0.5 for absorption)
+    // RGB values (0, 1, 0.5) create green-cyan tint
+    // Alpha 0.5 creates moderate absorption
+    renderer.setSphereColor(0.0f, 1.0f, 0.5f, 0.5f)
+
+    // Set index of refraction for glass (1.5)
+    renderer.setIOR(1.5f)
+
+    // Set scale (affects absorption distance calculation)
+    renderer.setScale(1.0f)
+
     // Camera looking at sphere from z=3
     val eye = Array(0.0f, 0.0f, 3.0f)
     val lookAt = Array(0.0f, 0.0f, 0.0f)
