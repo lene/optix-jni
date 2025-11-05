@@ -27,6 +27,7 @@ struct MissData {
 // Hit group shader data (sphere material)
 struct HitGroupData {
     float sphere_center[3]; // Sphere center position
+    float sphere_radius;    // Sphere radius
     float sphere_color[4];  // Sphere color (RGBA, 0.0-1.0)
     float light_dir[3];     // Light direction
     float light_intensity;  // Light intensity

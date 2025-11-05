@@ -233,39 +233,38 @@ static std::string readPTXFile(const std::string& filename) {
 
 // Build geometry acceleration structure for the sphere
 void OptiXWrapper::buildGeometryAccelerationStructure() {
-    // Allocate and copy sphere center to GPU
-    // IMPORTANT: Must use float3 which has proper CUDA alignment (16 bytes)
-    float3 sphere_vertex = make_float3(impl->sphere_center[0], impl->sphere_center[1], impl->sphere_center[2]);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_vertex_buffer), sizeof(float3)));
+    // Create AABB (Axis-Aligned Bounding Box) for custom sphere primitive
+    OptixAabb aabb;
+    aabb.minX = impl->sphere_center[0] - impl->sphere_radius;
+    aabb.minY = impl->sphere_center[1] - impl->sphere_radius;
+    aabb.minZ = impl->sphere_center[2] - impl->sphere_radius;
+    aabb.maxX = impl->sphere_center[0] + impl->sphere_radius;
+    aabb.maxY = impl->sphere_center[1] + impl->sphere_radius;
+    aabb.maxZ = impl->sphere_center[2] + impl->sphere_radius;
+
+    // Allocate and copy AABB to GPU
+    CUdeviceptr d_aabb;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_aabb), sizeof(OptixAabb)));
     CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(impl->d_vertex_buffer),
-        &sphere_vertex,
-        sizeof(float3),
+        reinterpret_cast<void*>(d_aabb),
+        &aabb,
+        sizeof(OptixAabb),
         cudaMemcpyHostToDevice
     ));
 
-    // Allocate and copy sphere radius to GPU
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_radius_buffer), sizeof(float)));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(impl->d_radius_buffer),
-        &impl->sphere_radius,
-        sizeof(float),
-        cudaMemcpyHostToDevice
-    ));
-
-    // Set up sphere build input
+    // Set up custom primitive build input
     OptixBuildInput sphere_input = {};
-    sphere_input.type = OPTIX_BUILD_INPUT_TYPE_SPHERES;
-    sphere_input.sphereArray.vertexBuffers = &impl->d_vertex_buffer;
-    sphere_input.sphereArray.numVertices = 1;
-    sphere_input.sphereArray.radiusBuffers = &impl->d_radius_buffer;
+    sphere_input.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
 
     uint32_t sphere_input_flags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
-    sphere_input.sphereArray.flags = sphere_input_flags;
-    sphere_input.sphereArray.numSbtRecords = 1;
-    sphere_input.sphereArray.sbtIndexOffsetBuffer = 0;
-    sphere_input.sphereArray.sbtIndexOffsetSizeInBytes = 0;
-    sphere_input.sphereArray.sbtIndexOffsetStrideInBytes = 0;
+
+    sphere_input.customPrimitiveArray.aabbBuffers = &d_aabb;
+    sphere_input.customPrimitiveArray.numPrimitives = 1;
+    sphere_input.customPrimitiveArray.flags = sphere_input_flags;
+    sphere_input.customPrimitiveArray.numSbtRecords = 1;
+    sphere_input.customPrimitiveArray.sbtIndexOffsetBuffer = 0;
+    sphere_input.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
+    sphere_input.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
 
     // Configure acceleration structure build
     OptixAccelBuildOptions accel_options = {};
@@ -311,15 +310,16 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
         0        // num emitted properties
     ));
 
-    // Clean up temporary buffer (keep vertex/radius buffers for rendering)
+    // Clean up temporary buffers
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
+    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_aabb)));
 }
 
 // Load and compile PTX modules, return the sphere intersection module
 OptixModule OptiXWrapper::loadPTXModules() {
     // Load combined PTX module (all three shaders in one file)
-    // PTX file is in target/native/x86_64-linux/bin/ directory
-    std::string ptx_path = "target/native/x86_64-linux/bin/sphere_combined.ptx";
+    // PTX file is in optix-jni/target/native/x86_64-linux/bin/ directory (CMake output location)
+    std::string ptx_path = "optix-jni/target/native/x86_64-linux/bin/sphere_combined.ptx";
     std::string ptx_content = readPTXFile(ptx_path);
 
     OptixModuleCompileOptions module_compile_options = {};
@@ -331,10 +331,10 @@ OptixModule OptiXWrapper::loadPTXModules() {
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
     pipeline_compile_options.numPayloadValues = 7; // RGB + entry_distance + absorption_r/g/b
-    pipeline_compile_options.numAttributeValues = 0;
+    pipeline_compile_options.numAttributeValues = 3; // Normal x, y, z from custom intersection
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
-    pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_SPHERE;
+    pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
 
     char log[OptiXConstants::LOG_BUFFER_SIZE];
     size_t log_size = sizeof(log);
@@ -350,21 +350,8 @@ OptixModule OptiXWrapper::loadPTXModules() {
         &impl->module
     ));
 
-    // Get built-in sphere intersection module
-    OptixBuiltinISOptions builtin_is_options = {};
-    builtin_is_options.usesMotionBlur = false;
-    builtin_is_options.builtinISModuleType = OPTIX_PRIMITIVE_TYPE_SPHERE;
-
-    OptixModule sphere_module = nullptr;
-    OPTIX_CHECK(optixBuiltinISModuleGet(
-        impl->context,
-        &module_compile_options,
-        &pipeline_compile_options,
-        &builtin_is_options,
-        &sphere_module
-    ));
-
-    return sphere_module;
+    // Custom intersection is in impl->module, no need for built-in sphere module
+    return impl->module;
 }
 
 // Create program groups (raygen, miss, hit group)
@@ -419,8 +406,8 @@ void OptiXWrapper::createProgramGroups(OptixModule sphere_module) {
         hitgroup_desc.hitgroup.entryFunctionNameCH = "__closesthit__ch";
         hitgroup_desc.hitgroup.moduleAH = nullptr;
         hitgroup_desc.hitgroup.entryFunctionNameAH = nullptr;
-        hitgroup_desc.hitgroup.moduleIS = sphere_module;
-        hitgroup_desc.hitgroup.entryFunctionNameIS = nullptr; // Use built-in
+        hitgroup_desc.hitgroup.moduleIS = impl->module;
+        hitgroup_desc.hitgroup.entryFunctionNameIS = "__intersection__sphere";
 
         log_size = sizeof(log);
         OPTIX_CHECK(optixProgramGroupCreate(
@@ -444,14 +431,15 @@ void OptiXWrapper::createPipeline() {
         impl->hitgroup_prog_group
     };
 
+    // TODO: Refactor to avoid duplicating pipeline_compile_options (also in loadPTXModules())
     OptixPipelineCompileOptions pipeline_compile_options = {};
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
     pipeline_compile_options.numPayloadValues = 7; // RGB + entry_distance + absorption_r/g/b
-    pipeline_compile_options.numAttributeValues = 0;
+    pipeline_compile_options.numAttributeValues = 3; // Normal x, y, z from custom intersection
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
-    pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_SPHERE;
+    pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
 
     OptixPipelineLinkOptions pipeline_link_options = {};
     pipeline_link_options.maxTraceDepth = OptiXConstants::MAX_TRACE_DEPTH;
@@ -549,6 +537,7 @@ void OptiXWrapper::setupShaderBindingTable() {
     {
         HitGroupSbtRecord hg_sbt;
         std::memcpy(hg_sbt.data.sphere_center, impl->sphere_center, sizeof(float) * 3);
+        hg_sbt.data.sphere_radius = impl->sphere_radius;
         std::memcpy(hg_sbt.data.sphere_color, impl->sphere_color, sizeof(float) * 4);
         std::memcpy(hg_sbt.data.light_dir, impl->light_direction, sizeof(float) * 3);
         hg_sbt.data.light_intensity = impl->light_intensity;

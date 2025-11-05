@@ -31,6 +31,115 @@ __device__ inline float3 operator*(float3 v, float s) {
 }
 
 //==============================================================================
+// Custom Sphere Intersection Program
+//==============================================================================
+extern "C" __global__ void __intersection__sphere()
+{
+    // Get hit group data containing sphere parameters
+    const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
+
+    // Extract sphere geometry
+    const float3 center = make_float3(
+        hit_data->sphere_center[0],
+        hit_data->sphere_center[1],
+        hit_data->sphere_center[2]
+    );
+    const float radius = hit_data->sphere_radius;
+
+    // Get ray parameters
+    const float3 ray_orig = optixGetWorldRayOrigin();
+    const float3 ray_dir = optixGetWorldRayDirection();
+    const float ray_tmin = optixGetRayTmin();
+    const float ray_tmax = optixGetRayTmax();
+
+    // Ray-sphere intersection using quadratic formula
+    // Sphere equation: |P - C|² = r²
+    // Ray equation: P = O + tD
+    // Substituting: |O + tD - C|² = r²
+    // Expanding: t²(D·D) + 2t(D·(O-C)) + (O-C)·(O-C) - r² = 0
+
+    const float3 O = make_float3(
+        ray_orig.x - center.x,
+        ray_orig.y - center.y,
+        ray_orig.z - center.z
+    );
+    const float a = dot(ray_dir, ray_dir);  // Should be 1 if normalized
+    const float b = 2.0f * dot(O, ray_dir);
+    const float c = dot(O, O) - radius * radius;
+
+    const float discriminant = b * b - 4.0f * a * c;
+
+    if (discriminant < 0.0f) {
+        // No intersection
+        return;
+    }
+
+    const float sqrt_disc = sqrtf(discriminant);
+    const float inv_2a = 0.5f / a;
+
+    // Calculate both intersection points
+    const float t1 = (-b - sqrt_disc) * inv_2a;  // Near intersection
+    const float t2 = (-b + sqrt_disc) * inv_2a;  // Far intersection
+
+    // Determine ray origin position relative to sphere
+    const float origin_dist_sq = dot(O, O);
+    const float radius_sq = radius * radius;
+    const bool origin_outside = (origin_dist_sq > radius_sq + 0.001f);
+
+    // Report valid intersections
+    if (t1 >= ray_tmin && t1 <= ray_tmax) {
+        // Near intersection (entry from outside OR exit from inside)
+        const float3 hit_point = make_float3(
+            ray_orig.x + t1 * ray_dir.x,
+            ray_orig.y + t1 * ray_dir.y,
+            ray_orig.z + t1 * ray_dir.z
+        );
+        const float3 normal = make_float3(
+            (hit_point.x - center.x) / radius,
+            (hit_point.y - center.y) / radius,
+            (hit_point.z - center.z) / radius
+        );
+
+        // Determine hit type: 0=entry, 1=exit
+        const unsigned int hit_kind = origin_outside ? 0 : 1;
+
+        // Report intersection with normal as attributes
+        optixReportIntersection(
+            t1,
+            hit_kind,
+            __float_as_uint(normal.x),
+            __float_as_uint(normal.y),
+            __float_as_uint(normal.z)
+        );
+    }
+
+    if (t2 >= ray_tmin && t2 <= ray_tmax && t2 != t1) {
+        // Far intersection (typically exit)
+        const float3 hit_point = make_float3(
+            ray_orig.x + t2 * ray_dir.x,
+            ray_orig.y + t2 * ray_dir.y,
+            ray_orig.z + t2 * ray_dir.z
+        );
+        const float3 normal = make_float3(
+            (hit_point.x - center.x) / radius,
+            (hit_point.y - center.y) / radius,
+            (hit_point.z - center.z) / radius
+        );
+
+        // Far intersection is typically an exit (hit_kind=1)
+        const unsigned int hit_kind = 1;
+
+        optixReportIntersection(
+            t2,
+            hit_kind,
+            __float_as_uint(normal.x),
+            __float_as_uint(normal.y),
+            __float_as_uint(normal.z)
+        );
+    }
+}
+
+//==============================================================================
 // Ray generation shader - generates primary rays from camera
 //==============================================================================
 extern "C" __global__ void __raygen__rg() {
@@ -164,25 +273,16 @@ extern "C" __global__ void __closesthit__ch() {
     const float3 ray_direction = optixGetWorldRayDirection();
     const float3 hit_point = ray_origin + ray_direction * t;
 
-    // Compute surface normal: normal = normalize(hit_point - sphere_center)
-    const float3 sphere_center = make_float3(
-        hit_data->sphere_center[0],
-        hit_data->sphere_center[1],
-        hit_data->sphere_center[2]
-    );
+    // Get hit type from custom intersection program
+    const unsigned int hit_kind = optixGetHitKind();
+    const bool entering = (hit_kind == 0);  // 0=entry, 1=exit
 
-    // Manual vector subtraction for hit_point - sphere_center
-    const float3 to_hit = make_float3(
-        hit_point.x - sphere_center.x,
-        hit_point.y - sphere_center.y,
-        hit_point.z - sphere_center.z
+    // Get surface normal from intersection attributes
+    const float3 outward_normal = make_float3(
+        __uint_as_float(optixGetAttribute_0()),
+        __uint_as_float(optixGetAttribute_1()),
+        __uint_as_float(optixGetAttribute_2())
     );
-    const float3 outward_normal = normalize(to_hit);
-
-    // Determine if ray is entering or exiting sphere (negated ray direction)
-    const float3 neg_ray_dir = make_float3(-ray_direction.x, -ray_direction.y, -ray_direction.z);
-    const float cos_theta_i = dot(neg_ray_dir, outward_normal);
-    const bool entering = cos_theta_i > 0.0f;
 
     // Surface normal (points toward incoming ray)
     const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
@@ -192,7 +292,7 @@ extern "C" __global__ void __closesthit__ch() {
     const float n2 = entering ? hit_data->ior : 1.0f;  // Glass or air
     const float r0 = (n1 - n2) / (n1 + n2);
     const float R0 = r0 * r0;
-    const float cos_theta = fabsf(dot(neg_ray_dir, normal));
+    const float cos_theta = fabsf(dot(ray_direction, normal));
     const float one_minus_cos = 1.0f - cos_theta;
     const float fresnel = R0 + (1.0f - R0) * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
 
