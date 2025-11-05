@@ -13,8 +13,6 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
-
 // Vector math helper functions
 namespace VectorMath {
     // Normalize a 3D vector in place
@@ -57,6 +55,18 @@ namespace VectorMath {
             std::ostringstream ss;                                            \
             ss << "CUDA call '" << #call << "' failed: "                      \
                << cudaGetErrorString(err) << " (" << err << ")";              \
+            if (err == 718) {                                                 \
+                ss << "\n\n"                                                  \
+                   << "ERROR 718 (invalid program counter) indicates OptiX " \
+                   << "SDK/driver version mismatch.\n"                        \
+                   << "To diagnose:\n"                                        \
+                   << "  1. Check driver's OptiX version:\n"                 \
+                   << "     strings /usr/lib/x86_64-linux-gnu/libnvoptix.so.* | grep 'OptiX Version'\n" \
+                   << "  2. Check SDK version used to build:\n"              \
+                   << "     grep 'OptiX SDK:' optix-jni/target/native/x86_64-linux/build/CMakeCache.txt\n" \
+                   << "  3. Install matching OptiX SDK from https://developer.nvidia.com/optix\n" \
+                   << "  4. Rebuild: rm -rf optix-jni/target/native && sbt 'project optixJni' compile\n"; \
+            }                                                                 \
             throw std::runtime_error(ss.str());                               \
         }                                                                     \
     } while(0)
@@ -65,11 +75,9 @@ namespace VectorMath {
 static void optixLogCallback(unsigned int level, const char* tag, const char* message, void* /*cbdata*/) {
     std::cerr << "[OptiX][" << level << "][" << tag << "]: " << message << std::endl;
 }
-#endif
 
 // Implementation structure
 struct OptiXWrapper::Impl {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     OptixDeviceContext context = nullptr;
 
     // Camera parameters
@@ -110,7 +118,6 @@ struct OptiXWrapper::Impl {
     OptixTraversableHandle gas_handle = 0;
 
     bool pipeline_built = false;
-#endif
     bool initialized = false;
 };
 
@@ -122,7 +129,6 @@ OptiXWrapper::~OptiXWrapper() {
 }
 
 bool OptiXWrapper::initialize() {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     try {
         // Initialize CUDA runtime
         CUDA_CHECK(cudaFree(0));
@@ -145,58 +151,31 @@ bool OptiXWrapper::initialize() {
         std::cerr << "[OptiX] Initialization failed: " << e.what() << std::endl;
         return false;
     }
-#else
-    // Stub implementation when CUDA/OptiX not available
-    std::cout << "[OptiX] initialize() - stub (CUDA/OptiX not available)" << std::endl;
-    impl->initialized = true;
-    return true;
-#endif
 }
 
 void OptiXWrapper::setSphere(float x, float y, float z, float radius) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     impl->sphere_center[0] = x;
     impl->sphere_center[1] = y;
     impl->sphere_center[2] = z;
     impl->sphere_radius = radius;
-#else
-    // Stub implementation - no-op
-    (void)x; (void)y; (void)z; (void)radius; // Suppress unused parameter warnings
-#endif
 }
 
 void OptiXWrapper::setSphereColor(float r, float g, float b, float a) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     impl->sphere_color[0] = r;
     impl->sphere_color[1] = g;
     impl->sphere_color[2] = b;
     impl->sphere_color[3] = a;
-#else
-    // Stub implementation - no-op
-    (void)r; (void)g; (void)b; (void)a; // Suppress unused parameter warnings
-#endif
 }
 
 void OptiXWrapper::setIOR(float ior) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     impl->sphere_ior = ior;
-#else
-    // Stub implementation - no-op
-    (void)ior; // Suppress unused parameter warning
-#endif
 }
 
 void OptiXWrapper::setScale(float scale) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     impl->sphere_scale = scale;
-#else
-    // Stub implementation - no-op
-    (void)scale; // Suppress unused parameter warning
-#endif
 }
 
 void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float* up, float fov) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     // Store eye position and FOV
     std::memcpy(impl->camera_eye, eye, 3 * sizeof(float));
     impl->fov = fov;
@@ -228,13 +207,8 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     impl->camera_v[0] = v[0] * vlen;
     impl->camera_v[1] = v[1] * vlen;
     impl->camera_v[2] = v[2] * vlen;
-#else
-    // Stub implementation - no-op
-    (void)eye; (void)lookAt; (void)up; (void)fov; // Suppress unused parameter warnings
-#endif
 }
 
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
 // Helper function to read PTX file
 static std::string readPTXFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::binary | std::ios::ate);
@@ -609,22 +583,15 @@ void OptiXWrapper::buildPipeline() {
     // Allocate params buffer
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_params), sizeof(Params)));
 }
-#endif
 
 void OptiXWrapper::setLight(const float* direction, float intensity) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     // Store and normalize light direction
     std::memcpy(impl->light_direction, direction, 3 * sizeof(float));
     VectorMath::normalize3f(impl->light_direction);
     impl->light_intensity = intensity;
-#else
-    // Stub implementation - no-op
-    (void)direction; (void)intensity; // Suppress unused parameter warnings
-#endif
 }
 
 void OptiXWrapper::render(int width, int height, unsigned char* output) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     if (!impl->initialized) {
         throw std::runtime_error("[OptiX] render() called before initialize()");
     }
@@ -696,18 +663,10 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
             output[i * 4 + 3] = 255;  // A
         }
     }
-#else
-    // Stub implementation - return gray placeholder
-    std::memset(output, 128, width * height * 4 - 1); // Fill RGB with 128
-    for (int i = 3; i < width * height * 4; i += 4) {
-        output[i] = 255; // Alpha channel
-    }
-#endif
 }
 
 void OptiXWrapper::dispose() {
     if (impl->initialized) {
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
         try {
             // Clean up OptiX pipeline resources
             if (impl->pipeline) {
@@ -783,7 +742,6 @@ void OptiXWrapper::dispose() {
         } catch (const std::exception& e) {
             std::cerr << "[OptiX] Cleanup error: " << e.what() << std::endl;
         }
-#endif
         impl->initialized = false;
     }
 }

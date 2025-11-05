@@ -2,15 +2,8 @@
 #define OPTIX_WRAPPER_H
 
 #include <memory>
-
-// Conditional includes based on availability
-#ifdef HAVE_OPTIX
 #include <optix.h>
-#endif
-
-#ifdef HAVE_CUDA
 #include <cuda_runtime.h>
-#endif
 
 // Shared data structures for OptiX shaders (used by both C++ and CUDA code)
 #include "OptiXData.h"
@@ -20,8 +13,7 @@
  * This class encapsulates all OptiX state and provides a simplified
  * interface for the JNI layer.
  *
- * When built without CUDA/OptiX support (HAVE_CUDA and HAVE_OPTIX not defined),
- * provides stub implementations that return placeholder data.
+ * Requires CUDA Toolkit 12.0+ and NVIDIA OptiX SDK 8.0+.
  */
 class OptiXWrapper {
 public:
@@ -53,7 +45,6 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl;
 
-#if defined(HAVE_CUDA) && defined(HAVE_OPTIX)
     // Pipeline build steps (called in sequence by buildPipeline)
     void buildPipeline();
     void buildGeometryAccelerationStructure();
@@ -61,7 +52,6 @@ private:
     void createProgramGroups(OptixModule sphere_module);
     void createPipeline();
     void setupShaderBindingTable();
-#endif
 };
 
 #endif // OPTIX_WRAPPER_H

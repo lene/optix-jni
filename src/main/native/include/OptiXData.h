@@ -1,7 +1,6 @@
 #ifndef OPTIX_DATA_H
 #define OPTIX_DATA_H
 
-#ifdef HAVE_OPTIX
 #include <optix.h>
 
 // Launch parameters passed to OptiX shaders
@@ -46,7 +45,5 @@ struct SbtRecord {
 typedef SbtRecord<RayGenData>   RayGenSbtRecord;
 typedef SbtRecord<MissData>     MissSbtRecord;
 typedef SbtRecord<HitGroupData> HitGroupSbtRecord;
-
-#endif // HAVE_OPTIX
 
 #endif // OPTIX_DATA_H
