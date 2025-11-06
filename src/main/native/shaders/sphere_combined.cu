@@ -32,13 +32,17 @@ __device__ inline float3 operator*(float3 v, float s) {
 
 //==============================================================================
 // Custom Sphere Intersection Program
+// Based on NVIDIA OptiX SDK 9.0 sphere.cu example
 //==============================================================================
 extern "C" __global__ void __intersection__sphere()
 {
-    // Get hit group data containing sphere parameters
     const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
 
-    // Extract sphere geometry
+    const float3 ray_orig = optixGetWorldRayOrigin();
+    const float3 ray_dir  = optixGetWorldRayDirection();
+    const float  ray_tmin = optixGetRayTmin();
+    const float  ray_tmax = optixGetRayTmax();
+
     const float3 center = make_float3(
         hit_data->sphere_center[0],
         hit_data->sphere_center[1],
@@ -46,96 +50,69 @@ extern "C" __global__ void __intersection__sphere()
     );
     const float radius = hit_data->sphere_radius;
 
-    // Get ray parameters
-    const float3 ray_orig = optixGetWorldRayOrigin();
-    const float3 ray_dir = optixGetWorldRayDirection();
-    const float ray_tmin = optixGetRayTmin();
-    const float ray_tmax = optixGetRayTmax();
-
-    // Ray-sphere intersection using quadratic formula
-    // Sphere equation: |P - C|² = r²
-    // Ray equation: P = O + tD
-    // Substituting: |O + tD - C|² = r²
-    // Expanding: t²(D·D) + 2t(D·(O-C)) + (O-C)·(O-C) - r² = 0
-
-    const float3 O = make_float3(
+    // Vector from ray origin to sphere center
+    const float3 oc = make_float3(
         ray_orig.x - center.x,
         ray_orig.y - center.y,
         ray_orig.z - center.z
     );
-    const float a = dot(ray_dir, ray_dir);  // Should be 1 if normalized
-    const float b = 2.0f * dot(O, ray_dir);
-    const float c = dot(O, O) - radius * radius;
 
-    const float discriminant = b * b - 4.0f * a * c;
+    // Standard ray-sphere intersection using quadratic formula
+    // Ray equation: P(t) = origin + t * direction
+    // Sphere equation: |P - center|^2 = radius^2
+    // Substitute and solve: at^2 + bt + c = 0
+    const float a = dot(ray_dir, ray_dir);
+    const float b = 2.0f * dot(ray_dir, oc);
+    const float c = dot(oc, oc) - radius * radius;
+    const float disc = b * b - 4.0f * a * c;
 
-    if (discriminant < 0.0f) {
-        // No intersection
-        return;
-    }
+    if (disc >= 0.0f)
+    {
+        const float sqrt_disc = sqrtf(disc);
 
-    const float sqrt_disc = sqrtf(discriminant);
-    const float inv_2a = 0.5f / a;
+        // Two potential intersections: (-b ± sqrt(disc)) / (2a)
+        const float t1 = (-b - sqrt_disc) / (2.0f * a);  // Near intersection
+        const float t2 = (-b + sqrt_disc) / (2.0f * a);  // Far intersection
 
-    // Calculate both intersection points
-    const float t1 = (-b - sqrt_disc) * inv_2a;  // Near intersection
-    const float t2 = (-b + sqrt_disc) * inv_2a;  // Far intersection
+        // Try near intersection first (entry point)
+        if (t1 > ray_tmin && t1 < ray_tmax)
+        {
+            // Compute hit point and normal
+            const float3 hit_point = ray_orig + ray_dir * t1;
+            const float3 normal = normalize(make_float3(
+                hit_point.x - center.x,
+                hit_point.y - center.y,
+                hit_point.z - center.z
+            ));
 
-    // Determine ray origin position relative to sphere
-    const float origin_dist_sq = dot(O, O);
-    const float radius_sq = radius * radius;
-    const bool origin_outside = (origin_dist_sq > radius_sq + 0.001f);
+            optixReportIntersection(
+                t1,
+                0,  // hit_kind = 0 for entry
+                __float_as_uint(normal.x),
+                __float_as_uint(normal.y),
+                __float_as_uint(normal.z)
+            );
+        }
 
-    // Report valid intersections
-    if (t1 >= ray_tmin && t1 <= ray_tmax) {
-        // Near intersection (entry from outside OR exit from inside)
-        const float3 hit_point = make_float3(
-            ray_orig.x + t1 * ray_dir.x,
-            ray_orig.y + t1 * ray_dir.y,
-            ray_orig.z + t1 * ray_dir.z
-        );
-        const float3 normal = make_float3(
-            (hit_point.x - center.x) / radius,
-            (hit_point.y - center.y) / radius,
-            (hit_point.z - center.z) / radius
-        );
+        // Try far intersection (exit point) - always try both if in range
+        if (t2 > ray_tmin && t2 < ray_tmax)
+        {
+            // Compute hit point and normal
+            const float3 hit_point = ray_orig + ray_dir * t2;
+            const float3 normal = normalize(make_float3(
+                hit_point.x - center.x,
+                hit_point.y - center.y,
+                hit_point.z - center.z
+            ));
 
-        // Determine hit type: 0=entry, 1=exit
-        const unsigned int hit_kind = origin_outside ? 0 : 1;
-
-        // Report intersection with normal as attributes
-        optixReportIntersection(
-            t1,
-            hit_kind,
-            __float_as_uint(normal.x),
-            __float_as_uint(normal.y),
-            __float_as_uint(normal.z)
-        );
-    }
-
-    if (t2 >= ray_tmin && t2 <= ray_tmax && t2 != t1) {
-        // Far intersection (typically exit)
-        const float3 hit_point = make_float3(
-            ray_orig.x + t2 * ray_dir.x,
-            ray_orig.y + t2 * ray_dir.y,
-            ray_orig.z + t2 * ray_dir.z
-        );
-        const float3 normal = make_float3(
-            (hit_point.x - center.x) / radius,
-            (hit_point.y - center.y) / radius,
-            (hit_point.z - center.z) / radius
-        );
-
-        // Far intersection is typically an exit (hit_kind=1)
-        const unsigned int hit_kind = 1;
-
-        optixReportIntersection(
-            t2,
-            hit_kind,
-            __float_as_uint(normal.x),
-            __float_as_uint(normal.y),
-            __float_as_uint(normal.z)
-        );
+            optixReportIntersection(
+                t2,
+                1,  // hit_kind = 1 for exit
+                __float_as_uint(normal.x),
+                __float_as_uint(normal.y),
+                __float_as_uint(normal.z)
+            );
+        }
     }
 }
 
@@ -168,7 +145,8 @@ extern "C" __global__ void __raygen__rg() {
     const float3 ray_direction = normalize(camera_u * u + camera_v * v + camera_w);
 
     // Trace ray
-    unsigned int p0, p1, p2;  // Payload for RGB color
+    unsigned int p0, p1, p2, p3;  // Payload for RGB color + depth
+    p3 = 0;  // Initial depth = 0
     optixTrace(
         params.handle,                     // Acceleration structure
         ray_origin,                        // Ray origin
@@ -181,7 +159,7 @@ extern "C" __global__ void __raygen__rg() {
         0,                       // SBT offset
         1,                       // SBT stride
         0,                       // missSBTIndex
-        p0, p1, p2               // Payload
+        p0, p1, p2, p3           // Payload (RGB + depth)
     );
 
     // Convert payload to RGBA
@@ -287,53 +265,47 @@ extern "C" __global__ void __closesthit__ch() {
     // Surface normal (points toward incoming ray)
     const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
 
+    // Get current depth from payload
+    const unsigned int depth = optixGetPayload_3();
+    const unsigned int MAX_DEPTH = 2;
+
+    // If max depth reached, return simple diffuse shading
+    if (depth >= MAX_DEPTH) {
+        const float3 light_dir_normalized = normalize(make_float3(
+            hit_data->light_dir[0],
+            hit_data->light_dir[1],
+            hit_data->light_dir[2]
+        ));
+        const float diffuse = fmaxf(0.0f, dot(normal, light_dir_normalized));
+        const float ambient = 0.3f;
+        const float lighting = ambient + (1.0f - ambient) * diffuse;
+
+        const unsigned int r = static_cast<unsigned int>(hit_data->sphere_color[0] * lighting * 255.0f);
+        const unsigned int g = static_cast<unsigned int>(hit_data->sphere_color[1] * lighting * 255.0f);
+        const unsigned int b = static_cast<unsigned int>(hit_data->sphere_color[2] * lighting * 255.0f);
+
+        optixSetPayload_0(r);
+        optixSetPayload_1(g);
+        optixSetPayload_2(b);
+        return;
+    }
+
     // Compute Fresnel reflectance using Schlick approximation
-    const float n1 = entering ? 1.0f : hit_data->ior;  // Air or glass
-    const float n2 = entering ? hit_data->ior : 1.0f;  // Glass or air
+    const float n1 = entering ? 1.0f : hit_data->ior;
+    const float n2 = entering ? hit_data->ior : 1.0f;
     const float r0 = (n1 - n2) / (n1 + n2);
     const float R0 = r0 * r0;
     const float cos_theta = fabsf(dot(ray_direction, normal));
     const float one_minus_cos = 1.0f - cos_theta;
     const float fresnel = R0 + (1.0f - R0) * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
 
-    // Compute reflected ray direction: r = d - 2(d·n)n
-    const float dot_dn = dot(ray_direction, normal);
-    const float3 reflect_dir = make_float3(
-        ray_direction.x - 2.0f * dot_dn * normal.x,
-        ray_direction.y - 2.0f * dot_dn * normal.y,
-        ray_direction.z - 2.0f * dot_dn * normal.z
-    );
-
-    // Cast reflected ray
-    unsigned int reflect_r, reflect_g, reflect_b;
-    const float3 reflect_origin = hit_point + reflect_dir * Constants::CONTINUATION_RAY_OFFSET;
-    optixTrace(
-        params.handle,
-        reflect_origin,
-        reflect_dir,
-        Constants::CONTINUATION_RAY_OFFSET,
-        Constants::MAX_RAY_DISTANCE,
-        0.0f,
-        OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_NONE,
-        0,  // SBT offset
-        1,  // SBT stride
-        0,  // missSBTIndex
-        reflect_r, reflect_g, reflect_b
-    );
-
-    // Compute refracted ray using Snell's law
+    // Compute refraction with Snell's law
     const float eta = n1 / n2;
     const float k = 1.0f - eta * eta * (1.0f - cos_theta * cos_theta);
 
-    unsigned int refract_r, refract_g, refract_b;
-    if (k < 0.0f) {
-        // Total internal reflection - use reflected color
-        refract_r = reflect_r;
-        refract_g = reflect_g;
-        refract_b = reflect_b;
-    } else {
-        // Compute refracted direction: t = η·d + (η·cos(θ) - √k)·n
+    unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
+    if (k >= 0.0f) {
+        // Refraction possible
         const float coeff = eta * cos_theta - sqrtf(k);
         const float3 refract_dir = make_float3(
             eta * ray_direction.x + coeff * normal.x,
@@ -341,8 +313,8 @@ extern "C" __global__ void __closesthit__ch() {
             eta * ray_direction.z + coeff * normal.z
         );
 
-        // Cast refracted ray
         const float3 refract_origin = hit_point + refract_dir * Constants::CONTINUATION_RAY_OFFSET;
+        unsigned int next_depth = depth + 1;
         optixTrace(
             params.handle,
             refract_origin,
@@ -352,20 +324,13 @@ extern "C" __global__ void __closesthit__ch() {
             0.0f,
             OptixVisibilityMask(255),
             OPTIX_RAY_FLAG_NONE,
-            0,  // SBT offset
-            1,  // SBT stride
-            0,  // missSBTIndex
-            refract_r, refract_g, refract_b
+            0, 1, 0,
+            refract_r, refract_g, refract_b, next_depth
         );
     }
 
-    // Blend reflected and refracted rays based on Fresnel
-    const unsigned int r = static_cast<unsigned int>(fresnel * reflect_r + (1.0f - fresnel) * refract_r);
-    const unsigned int g = static_cast<unsigned int>(fresnel * reflect_g + (1.0f - fresnel) * refract_g);
-    const unsigned int b = static_cast<unsigned int>(fresnel * reflect_b + (1.0f - fresnel) * refract_b);
-
-    // Set payload (RGB color)
-    optixSetPayload_0(r);
-    optixSetPayload_1(g);
-    optixSetPayload_2(b);
+    // Simple result: just use refracted color (no reflection for now to avoid stack overflow)
+    optixSetPayload_0(refract_r);
+    optixSetPayload_1(refract_g);
+    optixSetPayload_2(refract_b);
 }

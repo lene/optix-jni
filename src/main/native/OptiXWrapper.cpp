@@ -318,8 +318,8 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
 // Load and compile PTX modules, return the sphere intersection module
 OptixModule OptiXWrapper::loadPTXModules() {
     // Load combined PTX module (all three shaders in one file)
-    // PTX file is in optix-jni/target/native/x86_64-linux/bin/ directory (CMake output location)
-    std::string ptx_path = "optix-jni/target/native/x86_64-linux/bin/sphere_combined.ptx";
+    // PTX file is copied to target/native/x86_64-linux/bin/ for runtime access
+    std::string ptx_path = "target/native/x86_64-linux/bin/sphere_combined.ptx";
     std::string ptx_content = readPTXFile(ptx_path);
 
     OptixModuleCompileOptions module_compile_options = {};
@@ -330,7 +330,7 @@ OptixModule OptiXWrapper::loadPTXModules() {
     OptixPipelineCompileOptions pipeline_compile_options = {};
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_compile_options.numPayloadValues = 7; // RGB + entry_distance + absorption_r/g/b
+    pipeline_compile_options.numPayloadValues = 4; // RGB color + depth (optixSetPayload_0/1/2/3)
     pipeline_compile_options.numAttributeValues = 3; // Normal x, y, z from custom intersection
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
@@ -435,7 +435,7 @@ void OptiXWrapper::createPipeline() {
     OptixPipelineCompileOptions pipeline_compile_options = {};
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_compile_options.numPayloadValues = 7; // RGB + entry_distance + absorption_r/g/b
+    pipeline_compile_options.numPayloadValues = 4; // RGB color + depth (optixSetPayload_0/1/2/3)
     pipeline_compile_options.numAttributeValues = 3; // Normal x, y, z from custom intersection
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
