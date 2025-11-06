@@ -30,9 +30,9 @@ object OptiXRendererManualTest extends LazyLogging {
     // Sphere at origin
     renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
 
-    // Set sphere color: semi-transparent green-cyan (alpha=0.5 for absorption)
+    // Set sphere color: semi-opaque green-cyan (alpha=0.5)
     // RGB values (0, 1, 0.5) create green-cyan tint
-    // Alpha 0.5 creates moderate absorption
+    // Alpha 0.5 means 50% opacity (semi-transparent)
     renderer.setSphereColor(0.0f, 1.0f, 0.5f, 0.5f)
 
     // Set index of refraction for glass (1.5)

@@ -30,6 +30,55 @@ __device__ inline float3 operator*(float3 v, float s) {
     return make_float3(v.x * s, v.y * s, v.z * s);
 }
 
+__device__ inline float3 operator*(float3 a, float3 b) {
+    return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
+// Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
+// Where:
+//   I₀ = initial intensity
+//   α = absorption coefficient (derived from color RGB and alpha)
+//   d = distance traveled through medium
+//
+// Alpha interpretation (standard graphics convention):
+//   alpha=1.0 → fully opaque (maximum absorption)
+//   alpha=0.0 → fully transparent (no absorption)
+//
+// Color interpretation (RGB):
+//   Each channel controls wavelength-dependent absorption
+//   RGB(1,1,1) → no color tint (white/gray when opaque)
+//   RGB(1,0,0) → absorbs green/blue, shows red (red tinted when opaque)
+__device__ inline float3 computeBeerLambertAbsorption(
+    const float3 color_rgb,
+    const float alpha,
+    const float distance)
+{
+    // Absorption factor: higher alpha = more absorption (standard convention)
+    const float absorption_factor = alpha;
+
+    // Avoid log(0) by clamping color channels
+    const float3 safe_color = make_float3(
+        fmaxf(color_rgb.x, 0.01f),
+        fmaxf(color_rgb.y, 0.01f),
+        fmaxf(color_rgb.z, 0.01f)
+    );
+
+    // Absorption coefficient for each wavelength
+    // -log(color) gives absorption: dark colors (low values) = high absorption
+    const float3 absorption_coeff = make_float3(
+        -logf(safe_color.x) * absorption_factor,
+        -logf(safe_color.y) * absorption_factor,
+        -logf(safe_color.z) * absorption_factor
+    );
+
+    // Apply Beer-Lambert law: exp(-α · d)
+    return make_float3(
+        expf(-absorption_coeff.x * distance),
+        expf(-absorption_coeff.y * distance),
+        expf(-absorption_coeff.z * distance)
+    );
+}
+
 //==============================================================================
 // Custom Sphere Intersection Program
 // Based on NVIDIA OptiX SDK 9.0 sphere.cu example
@@ -269,8 +318,40 @@ extern "C" __global__ void __closesthit__ch() {
     const unsigned int depth = optixGetPayload_3();
     const unsigned int MAX_DEPTH = 2;
 
-    // If max depth reached, return simple diffuse shading
-    if (depth >= MAX_DEPTH) {
+    // If IOR is 1.0, treat as opaque sphere (no refraction/transmission)
+    const bool is_opaque = (fabsf(hit_data->ior - 1.0f) < 0.01f);
+
+    // Get sphere alpha
+    const float sphere_alpha = hit_data->sphere_color[3];
+
+    // Handle fully transparent spheres - trace continuation ray through sphere
+    if (sphere_alpha < 0.01f) {
+        // Sphere is fully transparent, let ray continue as if sphere doesn't exist
+        const float3 continue_origin = hit_point + ray_direction * Constants::CONTINUATION_RAY_OFFSET;
+        unsigned int continue_r = 0, continue_g = 0, continue_b = 0;
+        unsigned int next_depth = depth;  // Don't increment depth for transparent pass-through
+
+        optixTrace(
+            params.handle,
+            continue_origin,
+            ray_direction,  // Continue in same direction
+            Constants::CONTINUATION_RAY_OFFSET,
+            Constants::MAX_RAY_DISTANCE,
+            0.0f,
+            OptixVisibilityMask(255),
+            OPTIX_RAY_FLAG_NONE,
+            0, 1, 0,
+            continue_r, continue_g, continue_b, next_depth
+        );
+
+        optixSetPayload_0(continue_r);
+        optixSetPayload_1(continue_g);
+        optixSetPayload_2(continue_b);
+        return;
+    }
+
+    // If max depth reached or opaque sphere, return simple diffuse shading
+    if (depth >= MAX_DEPTH || is_opaque) {
         const float3 light_dir_normalized = normalize(make_float3(
             hit_data->light_dir[0],
             hit_data->light_dir[1],
@@ -280,9 +361,28 @@ extern "C" __global__ void __closesthit__ch() {
         const float ambient = 0.3f;
         const float lighting = ambient + (1.0f - ambient) * diffuse;
 
-        const unsigned int r = static_cast<unsigned int>(hit_data->sphere_color[0] * lighting * 255.0f);
-        const unsigned int g = static_cast<unsigned int>(hit_data->sphere_color[1] * lighting * 255.0f);
-        const unsigned int b = static_cast<unsigned int>(hit_data->sphere_color[2] * lighting * 255.0f);
+        // Get sphere color
+        const float3 sphere_color = make_float3(
+            hit_data->sphere_color[0],
+            hit_data->sphere_color[1],
+            hit_data->sphere_color[2]
+        );
+
+        // Apply alpha-based opacity for opaque spheres
+        // For opaque spheres, alpha controls opacity (standard graphics convention)
+        // alpha=1.0 → fully opaque, alpha=0.0 → fully transparent
+        const float3 lit_color = make_float3(
+            sphere_color.x * lighting,
+            sphere_color.y * lighting,
+            sphere_color.z * lighting
+        );
+
+        // Simply scale by alpha (opacity)
+        const float3 absorbed_color = lit_color * sphere_alpha;
+
+        const unsigned int r = static_cast<unsigned int>(fminf(absorbed_color.x * 255.0f, 255.0f));
+        const unsigned int g = static_cast<unsigned int>(fminf(absorbed_color.y * 255.0f, 255.0f));
+        const unsigned int b = static_cast<unsigned int>(fminf(absorbed_color.z * 255.0f, 255.0f));
 
         optixSetPayload_0(r);
         optixSetPayload_1(g);
@@ -327,6 +427,41 @@ extern "C" __global__ void __closesthit__ch() {
             0, 1, 0,
             refract_r, refract_g, refract_b, next_depth
         );
+
+        // Apply Beer-Lambert absorption if exiting glass
+        if (!entering) {
+            // Distance traveled through glass ≈ t (from refracted ray origin to exit)
+            // Scale by physical scale parameter
+            const float distance_in_glass = t * hit_data->scale;
+
+            // Get glass color and alpha
+            const float3 glass_color = make_float3(
+                hit_data->sphere_color[0],
+                hit_data->sphere_color[1],
+                hit_data->sphere_color[2]
+            );
+            const float glass_alpha = hit_data->sphere_color[3];
+
+            // Compute absorption for this distance
+            const float3 absorption = computeBeerLambertAbsorption(
+                glass_color,
+                glass_alpha,
+                distance_in_glass
+            );
+
+            // Apply absorption to refracted color
+            const float3 refract_color = make_float3(
+                static_cast<float>(refract_r) / 255.0f,
+                static_cast<float>(refract_g) / 255.0f,
+                static_cast<float>(refract_b) / 255.0f
+            );
+            const float3 absorbed_color = refract_color * absorption;
+
+            // Convert back to unsigned int
+            refract_r = static_cast<unsigned int>(fminf(absorbed_color.x * 255.0f, 255.0f));
+            refract_g = static_cast<unsigned int>(fminf(absorbed_color.y * 255.0f, 255.0f));
+            refract_b = static_cast<unsigned int>(fminf(absorbed_color.z * 255.0f, 255.0f));
+        }
     }
 
     // Simple result: just use refracted color (no reflection for now to avoid stack overflow)
