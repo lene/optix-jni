@@ -21,10 +21,10 @@ object OptiXRendererTest:
     val StandardImageSize = (800, 600)  // Large size for visual validation
 
     // Default sphere configuration
-    val DefaultSphere = (0.0f, 0.0f, 0.0f, 1.5f)
+    val DefaultSphere = (0.0f, 0.0f, 0.0f, 0.5f)
 
     // Default camera configuration
-    val DefaultCameraEye = Array(0.0f, 0.0f, 3.0f)
+    val DefaultCameraEye = Array(0.0f, 0.5f, 3.0f)
     val DefaultCameraLookAt = Array(0.0f, 0.0f, 0.0f)
     val DefaultCameraUp = Array(0.0f, 1.0f, 0.0f)
     val DefaultCameraFov = 60.0f

@@ -95,6 +95,17 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLight(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlane(
+    JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value) {
+    try {
+        if (g_wrapper != nullptr) {
+            g_wrapper->setPlane(axis, positive == JNI_TRUE, value);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error in setPlane: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT jbyteArray JNICALL Java_menger_optix_OptiXRenderer_render(
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {

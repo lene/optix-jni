@@ -19,9 +19,12 @@ struct RayGenData {
     float camera_w[3];      // Camera forward vector (points toward lookAt)
 };
 
-// Miss shader data (background)
+// Miss shader data (background and plane)
 struct MissData {
     float r, g, b;          // Background color
+    int   plane_axis;       // 0=X, 1=Y, 2=Z
+    bool  plane_positive;   // true=positive normal, false=negative normal
+    float plane_value;      // Plane position along axis
 };
 
 // Hit group shader data (sphere material)
