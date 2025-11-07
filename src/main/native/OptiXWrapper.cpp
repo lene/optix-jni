@@ -102,6 +102,11 @@ struct OptiXWrapper::Impl {
     float light_direction[3] = {0.5f, 0.5f, -0.5f};
     float light_intensity = 1.0f;
 
+    // Plane parameters (default: y=-2 with +Y normal)
+    int plane_axis = 1;          // 0=X, 1=Y, 2=Z
+    bool plane_positive = true;  // true=positive normal, false=negative normal
+    float plane_value = -2.0f;   // Plane position along axis
+
     // OptiX pipeline resources (created once, reused)
     OptixPipeline pipeline = nullptr;
     OptixModule module = nullptr;
@@ -118,6 +123,8 @@ struct OptiXWrapper::Impl {
     OptixTraversableHandle gas_handle = 0;
 
     bool pipeline_built = false;
+    bool plane_params_dirty = false;  // Flag to track when plane params change
+    bool sphere_params_dirty = false; // Flag to track when sphere params change
     bool initialized = false;
 };
 
@@ -158,6 +165,7 @@ void OptiXWrapper::setSphere(float x, float y, float z, float radius) {
     impl->sphere_center[1] = y;
     impl->sphere_center[2] = z;
     impl->sphere_radius = radius;
+    impl->sphere_params_dirty = true;
 }
 
 void OptiXWrapper::setSphereColor(float r, float g, float b, float a) {
@@ -165,14 +173,17 @@ void OptiXWrapper::setSphereColor(float r, float g, float b, float a) {
     impl->sphere_color[1] = g;
     impl->sphere_color[2] = b;
     impl->sphere_color[3] = a;
+    impl->sphere_params_dirty = true;
 }
 
 void OptiXWrapper::setIOR(float ior) {
     impl->sphere_ior = ior;
+    impl->sphere_params_dirty = true;
 }
 
 void OptiXWrapper::setScale(float scale) {
     impl->sphere_scale = scale;
+    impl->sphere_params_dirty = true;
 }
 
 void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float* up, float fov) {
@@ -487,6 +498,20 @@ void OptiXWrapper::createPipeline() {
 
 // Set up Shader Binding Table (SBT)
 void OptiXWrapper::setupShaderBindingTable() {
+    // Clean up old SBT records if they exist (for pipeline rebuild)
+    if (impl->sbt.raygenRecord) {
+        cudaFree(reinterpret_cast<void*>(impl->sbt.raygenRecord));
+        impl->sbt.raygenRecord = 0;
+    }
+    if (impl->sbt.missRecordBase) {
+        cudaFree(reinterpret_cast<void*>(impl->sbt.missRecordBase));
+        impl->sbt.missRecordBase = 0;
+    }
+    if (impl->sbt.hitgroupRecordBase) {
+        cudaFree(reinterpret_cast<void*>(impl->sbt.hitgroupRecordBase));
+        impl->sbt.hitgroupRecordBase = 0;
+    }
+
     // Ray generation record
     {
         RayGenSbtRecord rg_sbt;
@@ -516,6 +541,9 @@ void OptiXWrapper::setupShaderBindingTable() {
         ms_sbt.data.r = OptiXConstants::DEFAULT_BG_R;
         ms_sbt.data.g = OptiXConstants::DEFAULT_BG_G;
         ms_sbt.data.b = OptiXConstants::DEFAULT_BG_B;
+        ms_sbt.data.plane_axis = impl->plane_axis;
+        ms_sbt.data.plane_positive = impl->plane_positive;
+        ms_sbt.data.plane_value = impl->plane_value;
 
         OPTIX_CHECK(optixSbtRecordPackHeader(impl->miss_prog_group, &ms_sbt));
 
@@ -563,14 +591,38 @@ void OptiXWrapper::setupShaderBindingTable() {
 
 // Build OptiX pipeline (orchestrates all pipeline build steps)
 void OptiXWrapper::buildPipeline() {
+    // Clean up old pipeline resources if they exist (for pipeline rebuild)
+    if (impl->pipeline) {
+        optixPipelineDestroy(impl->pipeline);
+        impl->pipeline = nullptr;
+    }
+    if (impl->raygen_prog_group) {
+        optixProgramGroupDestroy(impl->raygen_prog_group);
+        impl->raygen_prog_group = nullptr;
+    }
+    if (impl->miss_prog_group) {
+        optixProgramGroupDestroy(impl->miss_prog_group);
+        impl->miss_prog_group = nullptr;
+    }
+    if (impl->hitgroup_prog_group) {
+        optixProgramGroupDestroy(impl->hitgroup_prog_group);
+        impl->hitgroup_prog_group = nullptr;
+    }
+    if (impl->module) {
+        optixModuleDestroy(impl->module);
+        impl->module = nullptr;
+    }
+
     buildGeometryAccelerationStructure();
     OptixModule sphere_module = loadPTXModules();
     createProgramGroups(sphere_module);
     createPipeline();
     setupShaderBindingTable();
 
-    // Allocate params buffer
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_params), sizeof(Params)));
+    // Allocate params buffer (only on first build)
+    if (!impl->d_params) {
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_params), sizeof(Params)));
+    }
 }
 
 void OptiXWrapper::setLight(const float* direction, float intensity) {
@@ -578,6 +630,13 @@ void OptiXWrapper::setLight(const float* direction, float intensity) {
     std::memcpy(impl->light_direction, direction, 3 * sizeof(float));
     VectorMath::normalize3f(impl->light_direction);
     impl->light_intensity = intensity;
+}
+
+void OptiXWrapper::setPlane(int axis, bool positive, float value) {
+    impl->plane_axis = axis;
+    impl->plane_positive = positive;
+    impl->plane_value = value;
+    impl->plane_params_dirty = true;  // Mark pipeline as needing rebuild
 }
 
 void OptiXWrapper::render(int width, int height, unsigned char* output) {
@@ -590,10 +649,13 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
         impl->image_width = width;
         impl->image_height = height;
 
-        // Build OptiX pipeline on first render call
-        if (!impl->pipeline_built) {
+        // Build OptiX pipeline on first render call or when params change
+        if (!impl->pipeline_built || impl->plane_params_dirty || impl->sphere_params_dirty) {
+            // Debug: Pipeline rebuild due to parameter change
             buildPipeline();
             impl->pipeline_built = true;
+            impl->plane_params_dirty = false;
+            impl->sphere_params_dirty = false;
         }
 
         // Allocate GPU image buffer

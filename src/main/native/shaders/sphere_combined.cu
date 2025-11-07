@@ -173,7 +173,7 @@ extern "C" __global__ void __intersection__sphere()
             t           = root2 * l;  // Convert back to real t
             normal      = (O + root2 * D) / radius;  // Outward normal
             if (t > ray_tmin && t < ray_tmax)
-                optixReportIntersection(t, 0,
+                optixReportIntersection(t, 1,  // hit_kind = 1 for EXIT
                     __float_as_uint(normal.x),
                     __float_as_uint(normal.y),
                     __float_as_uint(normal.z),
@@ -194,8 +194,9 @@ extern "C" __global__ void __raygen__rg() {
     const uint3 dim = optixGetLaunchDimensions();
 
     // Calculate normalized device coordinates [-1, 1]
+    // Note: Flip V so that idx.y=0 (top) maps to v=+1 and idx.y=height (bottom) maps to v=-1
     const float u = (static_cast<float>(idx.x) + 0.5f) / static_cast<float>(dim.x) * 2.0f - 1.0f;
-    const float v = (static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y) * 2.0f - 1.0f;
+    const float v = -((static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y) * 2.0f - 1.0f);
 
     // Construct ray direction from camera basis vectors
     const float3 ray_origin = make_float3(
@@ -252,38 +253,66 @@ extern "C" __global__ void __miss__ms() {
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
 
-    // Checkered plane at z=-10
-    const float plane_z = -10.0f;
+    // Extract plane parameters from miss_data
+    const int plane_axis = miss_data->plane_axis;         // 0=X, 1=Y, 2=Z
+    const float plane_value = miss_data->plane_value;     // Position along axis
+    // Note: plane_positive (normal direction) is currently not used - plane is visible from both sides
 
-    // Ray-plane intersection: origin.z + t * direction.z = plane_z
-    // Solve for t: t = (plane_z - origin.z) / direction.z
+    // Get ray origin/direction component for the plane axis
+    float ray_orig_comp, ray_dir_comp;
+    if (plane_axis == 0) {  // X axis
+        ray_orig_comp = ray_origin.x;
+        ray_dir_comp = ray_direction.x;
+    } else if (plane_axis == 1) {  // Y axis
+        ray_orig_comp = ray_origin.y;
+        ray_dir_comp = ray_direction.y;
+    } else {  // Z axis
+        ray_orig_comp = ray_origin.z;
+        ray_dir_comp = ray_direction.z;
+    }
+
     unsigned int r, g, b;
 
-    if (ray_direction.z < 0.0f) {  // Ray pointing towards plane (negative z)
-        const float t = (plane_z - ray_origin.z) / ray_direction.z;
+    // Plane visible from both sides - just check for valid intersection
+    // Only compute if ray direction component is non-zero
+    if (fabsf(ray_dir_comp) > 1e-6f) {
+        const float t = (plane_value - ray_orig_comp) / ray_dir_comp;
 
         if (t > 0.0f) {  // Intersection is in front of ray origin
-            // Compute intersection point
-            const float hit_x = ray_origin.x + t * ray_direction.x;
-            const float hit_y = ray_origin.y + t * ray_direction.y;
+            // Compute full intersection point
+            const float3 hit_point = ray_origin + ray_direction * t;
 
-            // Checkered pattern with 0.5 unit squares
-            const float checker_size = 0.5f;
-            const int check_x = static_cast<int>(floorf(hit_x / checker_size));
-            const int check_y = static_cast<int>(floorf(hit_y / checker_size));
+            // For checker pattern, use the two components perpendicular to plane axis
+            float checker_u, checker_v;
+            if (plane_axis == 0) {  // X axis plane (YZ plane)
+                checker_u = hit_point.y;
+                checker_v = hit_point.z;
+            } else if (plane_axis == 1) {  // Y axis plane (XZ plane)
+                checker_u = hit_point.x;
+                checker_v = hit_point.z;
+            } else {  // Z axis plane (XY plane)
+                checker_u = hit_point.x;
+                checker_v = hit_point.y;
+            }
+
+            // Checkered pattern with 1.0 unit squares
+            const float checker_size = 1.0f;
+            const int check_u = static_cast<int>(floorf(checker_u / checker_size));
+            const int check_v = static_cast<int>(floorf(checker_v / checker_size));
 
             // XOR to create checkerboard pattern
-            const bool is_light = ((check_x + check_y) & 1) == 0;
+            const bool is_light = ((check_u + check_v) & 1) == 0;
 
-            // Light gray (240, 240, 240) and dark gray (40, 40, 40)
+            // Medium gray (120, 120, 120) and very dark gray (20, 20, 20)
+            // These colors are distinct from light spheres (200+) and white (255)
             if (is_light) {
-                r = 240;
-                g = 240;
-                b = 240;
+                r = 120;
+                g = 120;
+                b = 120;
             } else {
-                r = 40;
-                g = 40;
-                b = 40;
+                r = 20;
+                g = 20;
+                b = 20;
             }
         } else {
             // No intersection (t < 0), use background color
@@ -333,11 +362,9 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Get current depth from payload
     const unsigned int depth = optixGetPayload_3();
-    const unsigned int MAX_DEPTH = 2;
+    const unsigned int MAX_DEPTH = 5;  // Increased to allow internal reflections
 
     // If IOR is 1.0, treat as opaque sphere (no refraction/transmission)
-    const bool is_opaque = (fabsf(hit_data->ior - 1.0f) < 0.01f);
-
     // Get sphere alpha
     const float sphere_alpha = hit_data->sphere_color[3];
 
@@ -367,8 +394,8 @@ extern "C" __global__ void __closesthit__ch() {
         return;
     }
 
-    // If max depth reached or opaque sphere, return simple diffuse shading
-    if (depth >= MAX_DEPTH || is_opaque) {
+    // Handle fully opaque spheres (alpha >= 0.99) - solid surface with diffuse shading
+    if (sphere_alpha >= 0.99f) {
         const float3 light_dir_normalized = normalize(make_float3(
             hit_data->light_dir[0],
             hit_data->light_dir[1],
@@ -378,32 +405,35 @@ extern "C" __global__ void __closesthit__ch() {
         const float ambient = 0.3f;
         const float lighting = ambient + (1.0f - ambient) * diffuse;
 
-        // Get sphere color
+        // Get sphere color (RGB only, ignore alpha for solid spheres)
         const float3 sphere_color = make_float3(
             hit_data->sphere_color[0],
             hit_data->sphere_color[1],
             hit_data->sphere_color[2]
         );
 
-        // Apply alpha-based opacity for opaque spheres
-        // For opaque spheres, alpha controls opacity (standard graphics convention)
-        // alpha=1.0 → fully opaque, alpha=0.0 → fully transparent
+        // Apply lighting to solid sphere surface
         const float3 lit_color = make_float3(
             sphere_color.x * lighting,
             sphere_color.y * lighting,
             sphere_color.z * lighting
         );
 
-        // Simply scale by alpha (opacity)
-        const float3 absorbed_color = lit_color * sphere_alpha;
-
-        const unsigned int r = static_cast<unsigned int>(fminf(absorbed_color.x * 255.0f, 255.0f));
-        const unsigned int g = static_cast<unsigned int>(fminf(absorbed_color.y * 255.0f, 255.0f));
-        const unsigned int b = static_cast<unsigned int>(fminf(absorbed_color.z * 255.0f, 255.0f));
+        const unsigned int r = static_cast<unsigned int>(fminf(lit_color.x * 255.0f, 255.0f));
+        const unsigned int g = static_cast<unsigned int>(fminf(lit_color.y * 255.0f, 255.0f));
+        const unsigned int b = static_cast<unsigned int>(fminf(lit_color.z * 255.0f, 255.0f));
 
         optixSetPayload_0(r);
         optixSetPayload_1(g);
         optixSetPayload_2(b);
+        return;
+    }
+
+    // If max depth reached, return black to avoid infinite recursion
+    if (depth >= MAX_DEPTH) {
+        optixSetPayload_0(0);
+        optixSetPayload_1(0);
+        optixSetPayload_2(0);
         return;
     }
 
@@ -415,6 +445,30 @@ extern "C" __global__ void __closesthit__ch() {
     const float cos_theta = fabsf(dot(ray_direction, normal));
     const float one_minus_cos = 1.0f - cos_theta;
     const float fresnel = R0 + (1.0f - R0) * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+
+    // Compute reflection direction: r = d - 2(d·n)n
+    const float3 reflect_dir = make_float3(
+        ray_direction.x - 2.0f * cos_theta * normal.x,
+        ray_direction.y - 2.0f * cos_theta * normal.y,
+        ray_direction.z - 2.0f * cos_theta * normal.z
+    );
+
+    // Trace reflected ray
+    unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+    const float3 reflect_origin = hit_point + reflect_dir * Constants::CONTINUATION_RAY_OFFSET;
+    unsigned int next_depth = depth + 1;
+    optixTrace(
+        params.handle,
+        reflect_origin,
+        reflect_dir,
+        Constants::CONTINUATION_RAY_OFFSET,
+        Constants::MAX_RAY_DISTANCE,
+        0.0f,
+        OptixVisibilityMask(255),
+        OPTIX_RAY_FLAG_NONE,
+        0, 1, 0,
+        reflect_r, reflect_g, reflect_b, next_depth
+    );
 
     // Compute refraction with Snell's law
     const float eta = n1 / n2;
@@ -431,7 +485,6 @@ extern "C" __global__ void __closesthit__ch() {
         );
 
         const float3 refract_origin = hit_point + refract_dir * Constants::CONTINUATION_RAY_OFFSET;
-        unsigned int next_depth = depth + 1;
         optixTrace(
             params.handle,
             refract_origin,
@@ -444,45 +497,68 @@ extern "C" __global__ void __closesthit__ch() {
             0, 1, 0,
             refract_r, refract_g, refract_b, next_depth
         );
-
-        // Apply Beer-Lambert absorption if exiting glass
-        if (!entering) {
-            // Distance traveled through glass ≈ t (from refracted ray origin to exit)
-            // Scale by physical scale parameter
-            const float distance_in_glass = t * hit_data->scale;
-
-            // Get glass color and alpha
-            const float3 glass_color = make_float3(
-                hit_data->sphere_color[0],
-                hit_data->sphere_color[1],
-                hit_data->sphere_color[2]
-            );
-            const float glass_alpha = hit_data->sphere_color[3];
-
-            // Compute absorption for this distance
-            const float3 absorption = computeBeerLambertAbsorption(
-                glass_color,
-                glass_alpha,
-                distance_in_glass
-            );
-
-            // Apply absorption to refracted color
-            const float3 refract_color = make_float3(
-                static_cast<float>(refract_r) / 255.0f,
-                static_cast<float>(refract_g) / 255.0f,
-                static_cast<float>(refract_b) / 255.0f
-            );
-            const float3 absorbed_color = refract_color * absorption;
-
-            // Convert back to unsigned int
-            refract_r = static_cast<unsigned int>(fminf(absorbed_color.x * 255.0f, 255.0f));
-            refract_g = static_cast<unsigned int>(fminf(absorbed_color.y * 255.0f, 255.0f));
-            refract_b = static_cast<unsigned int>(fminf(absorbed_color.z * 255.0f, 255.0f));
-        }
+    } else {
+        // Total internal reflection - use reflected ray result for refraction too
+        refract_r = reflect_r;
+        refract_g = reflect_g;
+        refract_b = reflect_b;
     }
 
-    // Simple result: just use refracted color (no reflection for now to avoid stack overflow)
-    optixSetPayload_0(refract_r);
-    optixSetPayload_1(refract_g);
-    optixSetPayload_2(refract_b);
+    // Apply Beer-Lambert absorption to refracted component (only at EXIT)
+    float3 refract_color = make_float3(
+        static_cast<float>(refract_r) / 255.0f,
+        static_cast<float>(refract_g) / 255.0f,
+        static_cast<float>(refract_b) / 255.0f
+    );
+
+    if (!entering)  // Exiting - apply absorption to refracted ray
+    {
+        // Get glass color and alpha
+        const float3 glass_color = make_float3(
+            hit_data->sphere_color[0],
+            hit_data->sphere_color[1],
+            hit_data->sphere_color[2]
+        );
+        const float glass_alpha = hit_data->sphere_color[3];
+
+        // Calculate extinction constant from color and alpha
+        // STANDARD GRAPHICS ALPHA CONVENTION:
+        // alpha=0.0 → fully transparent (no absorption)
+        // alpha=1.0 → fully opaque (maximum absorption)
+        // Scale factor of 5.0 ensures alpha=1.0 gives ~99% absorption at sphere diameter
+        const float absorption_scale = 5.0f;
+        const float3 extinction_constant = make_float3(
+            -logf(fmaxf(glass_color.x, 0.01f)) * glass_alpha * absorption_scale,
+            -logf(fmaxf(glass_color.y, 0.01f)) * glass_alpha * absorption_scale,
+            -logf(fmaxf(glass_color.z, 0.01f)) * glass_alpha * absorption_scale
+        );
+
+        // Apply Beer-Lambert using t (which varies from ~0.7 at edges to ~1.2 at center)
+        const float3 beer_attenuation = make_float3(
+            expf(-extinction_constant.x * t * hit_data->scale),
+            expf(-extinction_constant.y * t * hit_data->scale),
+            expf(-extinction_constant.z * t * hit_data->scale)
+        );
+
+        // Apply absorption to refracted ray
+        refract_color = refract_color * beer_attenuation;
+    }
+
+    // Blend reflected and refracted rays using Fresnel coefficient
+    const float3 reflect_color = make_float3(
+        static_cast<float>(reflect_r) / 255.0f,
+        static_cast<float>(reflect_g) / 255.0f,
+        static_cast<float>(reflect_b) / 255.0f
+    );
+
+    // Final color = fresnel * reflected + (1 - fresnel) * refracted
+    const float3 final_color = make_float3(
+        fresnel * reflect_color.x + (1.0f - fresnel) * refract_color.x,
+        fresnel * reflect_color.y + (1.0f - fresnel) * refract_color.y,
+        fresnel * reflect_color.z + (1.0f - fresnel) * refract_color.z
+    );
+
+    optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * 255.0f, 255.0f)));
+    optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * 255.0f, 255.0f)));
+    optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * 255.0f, 255.0f)));
 }

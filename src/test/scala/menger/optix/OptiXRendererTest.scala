@@ -17,7 +17,8 @@ object OptiXRendererTest:
   // Test configuration constants
   object TestConfig:
     val SmallImageSize = (10, 10)
-    val StandardImageSize = (800, 600)
+    val TestImageSize = (400, 300)  // Standard size for integration tests
+    val StandardImageSize = (800, 600)  // Large size for visual validation
 
     // Default sphere configuration
     val DefaultSphere = (0.0f, 0.0f, 0.0f, 1.5f)
