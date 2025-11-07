@@ -331,7 +331,7 @@ OptixModule OptiXWrapper::loadPTXModules() {
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
     pipeline_compile_options.numPayloadValues = 4; // RGB color + depth (optixSetPayload_0/1/2/3)
-    pipeline_compile_options.numAttributeValues = 3; // Normal x, y, z from custom intersection
+    pipeline_compile_options.numAttributeValues = 4; // Normal x, y, z + radius from SDK intersection
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
     pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
@@ -436,7 +436,7 @@ void OptiXWrapper::createPipeline() {
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
     pipeline_compile_options.numPayloadValues = 4; // RGB color + depth (optixSetPayload_0/1/2/3)
-    pipeline_compile_options.numAttributeValues = 3; // Normal x, y, z from custom intersection
+    pipeline_compile_options.numAttributeValues = 4; // Normal x, y, z + radius from SDK intersection
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
     pipeline_compile_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;

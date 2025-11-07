@@ -13,8 +13,12 @@ namespace Constants {
 }
 
 // Device-side vector math helper functions
+__device__ inline float length(float3 v) {
+    return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
 __device__ inline float3 normalize(float3 v) {
-    const float len = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+    const float len = length(v);
     return make_float3(v.x / len, v.y / len, v.z / len);
 }
 
@@ -26,12 +30,24 @@ __device__ inline float3 operator+(float3 a, float3 b) {
     return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
 
+__device__ inline float3 operator-(float3 a, float3 b) {
+    return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
 __device__ inline float3 operator*(float3 v, float s) {
+    return make_float3(v.x * s, v.y * s, v.z * s);
+}
+
+__device__ inline float3 operator*(float s, float3 v) {
     return make_float3(v.x * s, v.y * s, v.z * s);
 }
 
 __device__ inline float3 operator*(float3 a, float3 b) {
     return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
+__device__ inline float3 operator/(float3 v, float s) {
+    return make_float3(v.x / s, v.y / s, v.z / s);
 }
 
 // Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
@@ -81,7 +97,8 @@ __device__ inline float3 computeBeerLambertAbsorption(
 
 //==============================================================================
 // Custom Sphere Intersection Program
-// Based on NVIDIA OptiX SDK 9.0 sphere.cu example
+// From NVIDIA OptiX SDK 9.0 sphere.cu
+// Uses normalized direction + length correction for numerical stability
 //==============================================================================
 extern "C" __global__ void __intersection__sphere()
 {
@@ -99,68 +116,68 @@ extern "C" __global__ void __intersection__sphere()
     );
     const float radius = hit_data->sphere_radius;
 
-    // Vector from ray origin to sphere center
-    const float3 oc = make_float3(
-        ray_orig.x - center.x,
-        ray_orig.y - center.y,
-        ray_orig.z - center.z
-    );
+    // SDK approach: normalize ray direction and track length separately
+    // This provides better numerical stability
+    const float3 O = ray_orig - center;
+    const float  l = 1.0f / length(ray_dir);  // Inverse length
+    const float3 D = ray_dir * l;             // Normalized direction
 
-    // Standard ray-sphere intersection using quadratic formula
-    // Ray equation: P(t) = origin + t * direction
-    // Sphere equation: |P - center|^2 = radius^2
-    // Substitute and solve: at^2 + bt + c = 0
-    const float a = dot(ray_dir, ray_dir);
-    const float b = 2.0f * dot(ray_dir, oc);
-    const float c = dot(oc, oc) - radius * radius;
-    const float disc = b * b - 4.0f * a * c;
+    // Ray-sphere intersection with normalized direction
+    float b    = dot(O, D);
+    float c    = dot(O, O) - radius * radius;
+    float disc = b * b - c;
 
-    if (disc >= 0.0f)
+    if (disc > 0.0f)
     {
-        const float sqrt_disc = sqrtf(disc);
+        float sdisc        = sqrtf(disc);
+        float root1        = (-b - sdisc);  // Near intersection (in normalized space)
+        float root11       = 0.0f;
+        bool  check_second = true;
 
-        // Two potential intersections: (-b ± sqrt(disc)) / (2a)
-        const float t1 = (-b - sqrt_disc) / (2.0f * a);  // Near intersection
-        const float t2 = (-b + sqrt_disc) / (2.0f * a);  // Far intersection
-
-        // Try near intersection first (entry point)
-        if (t1 > ray_tmin && t1 < ray_tmax)
+        // Numerical refinement for large distances (SDK feature)
+        const bool do_refine = fabsf(root1) > (10.0f * radius);
+        if (do_refine)
         {
-            // Compute hit point and normal
-            const float3 hit_point = ray_orig + ray_dir * t1;
-            const float3 normal = normalize(make_float3(
-                hit_point.x - center.x,
-                hit_point.y - center.y,
-                hit_point.z - center.z
-            ));
+            // Refine root1 for better accuracy
+            float3 O1 = O + root1 * D;
+            b         = dot(O1, D);
+            c         = dot(O1, O1) - radius * radius;
+            disc      = b * b - c;
 
-            optixReportIntersection(
-                t1,
-                0,  // hit_kind = 0 for entry
-                __float_as_uint(normal.x),
-                __float_as_uint(normal.y),
-                __float_as_uint(normal.z)
-            );
+            if (disc > 0.0f)
+            {
+                sdisc  = sqrtf(disc);
+                root11 = (-b - sdisc);
+            }
         }
 
-        // Try far intersection (exit point) - always try both if in range
-        if (t2 > ray_tmin && t2 < ray_tmax)
+        // Report near intersection (entry)
+        float  t;
+        float3 normal;
+        t = (root1 + root11) * l;  // Convert back to real t using inverse length
+        if (t > ray_tmin && t < ray_tmax)
         {
-            // Compute hit point and normal
-            const float3 hit_point = ray_orig + ray_dir * t2;
-            const float3 normal = normalize(make_float3(
-                hit_point.x - center.x,
-                hit_point.y - center.y,
-                hit_point.z - center.z
-            ));
-
-            optixReportIntersection(
-                t2,
-                1,  // hit_kind = 1 for exit
+            normal = (O + (root1 + root11) * D) / radius;  // Outward normal
+            if (optixReportIntersection(t, 0,
                 __float_as_uint(normal.x),
                 __float_as_uint(normal.y),
-                __float_as_uint(normal.z)
-            );
+                __float_as_uint(normal.z),
+                __float_as_uint(radius)))
+                check_second = false;
+        }
+
+        // Report far intersection (exit)
+        if (check_second)
+        {
+            float root2 = (-b + sdisc) + (do_refine ? root1 : 0);
+            t           = root2 * l;  // Convert back to real t
+            normal      = (O + root2 * D) / radius;  // Outward normal
+            if (t > ray_tmin && t < ray_tmax)
+                optixReportIntersection(t, 0,
+                    __float_as_uint(normal.x),
+                    __float_as_uint(normal.y),
+                    __float_as_uint(normal.z),
+                    __float_as_uint(radius));
         }
     }
 }
