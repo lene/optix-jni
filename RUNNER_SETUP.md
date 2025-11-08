@@ -191,7 +191,7 @@ docker run --rm --gpus all \
     ldconfig || true
 
     # Run tests
-    ENABLE_OPTIX_JNI=true sbt 'project optixJni' test
+    sbt 'project optixJni' test
 "
 ```
 
