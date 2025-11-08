@@ -166,6 +166,7 @@ set_target_properties(optix_shaders PROPERTIES
 # Main JNI Library
 #=============================================================================
 add_library(optixjni SHARED
+    OptiXContext.cpp
     OptiXWrapper.cpp
     JNIBindings.cpp
 )
@@ -197,3 +198,50 @@ install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/optix_shaders.dir/shaders/sphere_c
 set_target_properties(optixjni PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
+
+#=============================================================================
+# Google Test for Unit Tests
+#=============================================================================
+# Only build tests if this is the main project or explicitly requested
+option(BUILD_OPTIX_TESTS "Build OptiX unit tests" ON)
+
+if(BUILD_OPTIX_TESTS)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        URL https://github.com/google/googletest/archive/release-1.12.1.zip
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    )
+
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+    FetchContent_MakeAvailable(googletest)
+
+    enable_testing()
+
+    # Create test executable
+    add_executable(optixcontext_test
+        tests/OptiXContextTest.cpp
+        tests/optix_function_table.cpp  # Define optix function table for tests
+        OptiXContext.cpp  # Need to compile OptiXContext again for tests
+    )
+
+    target_include_directories(optixcontext_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CUDAToolkit_INCLUDE_DIRS}
+        ${OptiX_INCLUDE_DIR}
+    )
+
+    target_link_libraries(optixcontext_test PRIVATE
+        gtest_main
+        CUDA::cuda_driver
+        CUDA::cudart
+    )
+
+    # Discover and register tests with CTest
+    include(GoogleTest)
+    gtest_discover_tests(optixcontext_test)
+
+    message(STATUS "✓ Google Test enabled for OptiXContext unit tests")
+endif()
