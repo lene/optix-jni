@@ -58,34 +58,39 @@ static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
 
 // Implementation structure
 struct OptiXWrapper::Impl {
-    OptiXContext optix_context;  // Low-level OptiX context wrapper
+    OptiXContext optix_context;
 
-    // Camera parameters
-    float camera_eye[3] = {0.0f, 0.0f, 3.0f};
-    float camera_u[3] = {1.0f, 0.0f, 0.0f};
-    float camera_v[3] = {0.0f, 1.0f, 0.0f};
-    float camera_w[3] = {0.0f, 0.0f, -1.0f};
-    float fov = 60.0f;
+    struct CameraParams {
+        float eye[3] = {0.0f, 0.0f, 3.0f};
+        float u[3] = {1.0f, 0.0f, 0.0f};
+        float v[3] = {0.0f, 1.0f, 0.0f};
+        float w[3] = {0.0f, 0.0f, -1.0f};
+        float fov = 60.0f;
+    } camera;
 
-    // Image dimensions (for aspect ratio calculation)
+    struct SphereParams {
+        float center[3] = {0.0f, 0.0f, 0.0f};
+        float radius = 1.5f;
+        float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // white, fully opaque
+        float ior = 1.0f;  // air/vacuum (no refraction)
+        float scale = 1.0f;  // 1.0 = meters
+        bool dirty = false;
+    } sphere;
+
+    struct LightParams {
+        float direction[3] = {0.5f, 0.5f, -0.5f};
+        float intensity = 1.0f;
+    } light;
+
+    struct PlaneParams {
+        int axis = 1;          // 0=X, 1=Y, 2=Z
+        bool positive = true;  // true=positive normal, false=negative normal
+        float value = -2.0f;   // position along axis
+        bool dirty = false;
+    } plane;
+
     unsigned int image_width = 800;
     unsigned int image_height = 600;
-
-    // Sphere parameters
-    float sphere_center[3] = {0.0f, 0.0f, 0.0f};
-    float sphere_radius = 1.5f;
-    float sphere_color[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // Default: white, fully opaque
-    float sphere_ior = 1.0f;  // Default: IOR of air/vacuum (no refraction)
-    float sphere_scale = 1.0f;  // Default: 1.0 = meters
-
-    // Light parameters
-    float light_direction[3] = {0.5f, 0.5f, -0.5f};
-    float light_intensity = 1.0f;
-
-    // Plane parameters (default: y=-2 with +Y normal)
-    int plane_axis = 1;          // 0=X, 1=Y, 2=Z
-    bool plane_positive = true;  // true=positive normal, false=negative normal
-    float plane_value = -2.0f;   // Plane position along axis
 
     // OptiX pipeline resources (created once, reused)
     OptixPipeline pipeline = nullptr;
@@ -95,18 +100,16 @@ struct OptiXWrapper::Impl {
     OptixProgramGroup hitgroup_prog_group = nullptr;
 
     // GPU buffers (created once, reused)
-    CUdeviceptr d_gas_output_buffer = 0;     // Geometry acceleration structure
-    CUdeviceptr d_params = 0;                 // Launch parameters
-    CUdeviceptr d_vertex_buffer = 0;          // Sphere center position
-    CUdeviceptr d_radius_buffer = 0;          // Sphere radius
-    CUdeviceptr d_image = 0;                  // Cached image buffer (reused across renders)
-    size_t cached_image_size = 0;             // Size of cached image buffer in bytes
+    CUdeviceptr d_gas_output_buffer = 0;
+    CUdeviceptr d_params = 0;
+    CUdeviceptr d_vertex_buffer = 0;
+    CUdeviceptr d_radius_buffer = 0;
+    CUdeviceptr d_image = 0;
+    size_t cached_image_size = 0;
     OptixShaderBindingTable sbt = {};
     OptixTraversableHandle gas_handle = 0;
 
     bool pipeline_built = false;
-    bool plane_params_dirty = false;  // Flag to track when plane params change
-    bool sphere_params_dirty = false; // Flag to track when sphere params change
     bool initialized = false;
 };
 
@@ -136,63 +139,63 @@ bool OptiXWrapper::initialize() {
 }
 
 void OptiXWrapper::setSphere(float x, float y, float z, float radius) {
-    impl->sphere_center[0] = x;
-    impl->sphere_center[1] = y;
-    impl->sphere_center[2] = z;
-    impl->sphere_radius = radius;
-    impl->sphere_params_dirty = true;
+    impl->sphere.center[0] = x;
+    impl->sphere.center[1] = y;
+    impl->sphere.center[2] = z;
+    impl->sphere.radius = radius;
+    impl->sphere.dirty = true;
 }
 
 void OptiXWrapper::setSphereColor(float r, float g, float b, float a) {
-    impl->sphere_color[0] = r;
-    impl->sphere_color[1] = g;
-    impl->sphere_color[2] = b;
-    impl->sphere_color[3] = a;
-    impl->sphere_params_dirty = true;
+    impl->sphere.color[0] = r;
+    impl->sphere.color[1] = g;
+    impl->sphere.color[2] = b;
+    impl->sphere.color[3] = a;
+    impl->sphere.dirty = true;
 }
 
 void OptiXWrapper::setIOR(float ior) {
-    impl->sphere_ior = ior;
-    impl->sphere_params_dirty = true;
+    impl->sphere.ior = ior;
+    impl->sphere.dirty = true;
 }
 
 void OptiXWrapper::setScale(float scale) {
-    impl->sphere_scale = scale;
-    impl->sphere_params_dirty = true;
+    impl->sphere.scale = scale;
+    impl->sphere.dirty = true;
 }
 
 void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float* up, float fov) {
     // Store eye position and FOV
-    std::memcpy(impl->camera_eye, eye, 3 * sizeof(float));
-    impl->fov = fov;
+    std::memcpy(impl->camera.eye, eye, 3 * sizeof(float));
+    impl->camera.fov = fov;
 
     // Calculate W (view direction)
-    impl->camera_w[0] = lookAt[0] - eye[0];
-    impl->camera_w[1] = lookAt[1] - eye[1];
-    impl->camera_w[2] = lookAt[2] - eye[2];
-    VectorMath::normalize3f(impl->camera_w);
+    impl->camera.w[0] = lookAt[0] - eye[0];
+    impl->camera.w[1] = lookAt[1] - eye[1];
+    impl->camera.w[2] = lookAt[2] - eye[2];
+    VectorMath::normalize3f(impl->camera.w);
 
     // Calculate U (right = up × W)
     float u[3];
-    VectorMath::cross3f(u, up, impl->camera_w);
+    VectorMath::cross3f(u, up, impl->camera.w);
     VectorMath::normalize3f(u);
 
     // Calculate V (W × U)
     float v[3];
-    VectorMath::cross3f(v, impl->camera_w, u);
+    VectorMath::cross3f(v, impl->camera.w, u);
 
     // Scale by FOV and aspect ratio
     float aspect_ratio = static_cast<float>(impl->image_width) / static_cast<float>(impl->image_height);
     float ulen = std::tan(fov * 0.5f * M_PI / 180.0f);
     float vlen = ulen / aspect_ratio;
 
-    impl->camera_u[0] = u[0] * ulen;
-    impl->camera_u[1] = u[1] * ulen;
-    impl->camera_u[2] = u[2] * ulen;
+    impl->camera.u[0] = u[0] * ulen;
+    impl->camera.u[1] = u[1] * ulen;
+    impl->camera.u[2] = u[2] * ulen;
 
-    impl->camera_v[0] = v[0] * vlen;
-    impl->camera_v[1] = v[1] * vlen;
-    impl->camera_v[2] = v[2] * vlen;
+    impl->camera.v[0] = v[0] * vlen;
+    impl->camera.v[1] = v[1] * vlen;
+    impl->camera.v[2] = v[2] * vlen;
 }
 
 // Helper function to read PTX file from the first location that exists
@@ -201,12 +204,12 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
 void OptiXWrapper::buildGeometryAccelerationStructure() {
     // Create AABB (Axis-Aligned Bounding Box) for custom sphere primitive
     OptixAabb aabb;
-    aabb.minX = impl->sphere_center[0] - impl->sphere_radius;
-    aabb.minY = impl->sphere_center[1] - impl->sphere_radius;
-    aabb.minZ = impl->sphere_center[2] - impl->sphere_radius;
-    aabb.maxX = impl->sphere_center[0] + impl->sphere_radius;
-    aabb.maxY = impl->sphere_center[1] + impl->sphere_radius;
-    aabb.maxZ = impl->sphere_center[2] + impl->sphere_radius;
+    aabb.minX = impl->sphere.center[0] - impl->sphere.radius;
+    aabb.minY = impl->sphere.center[1] - impl->sphere.radius;
+    aabb.minZ = impl->sphere.center[2] - impl->sphere.radius;
+    aabb.maxX = impl->sphere.center[0] + impl->sphere.radius;
+    aabb.maxY = impl->sphere.center[1] + impl->sphere.radius;
+    aabb.maxZ = impl->sphere.center[2] + impl->sphere.radius;
 
     // Configure acceleration structure build
     OptixAccelBuildOptions accel_options = {};
@@ -311,10 +314,10 @@ void OptiXWrapper::setupShaderBindingTable() {
 
     // Ray generation record data
     RayGenData rg_data;
-    std::memcpy(rg_data.cam_eye, impl->camera_eye, sizeof(float) * 3);
-    std::memcpy(rg_data.camera_u, impl->camera_u, sizeof(float) * 3);
-    std::memcpy(rg_data.camera_v, impl->camera_v, sizeof(float) * 3);
-    std::memcpy(rg_data.camera_w, impl->camera_w, sizeof(float) * 3);
+    std::memcpy(rg_data.cam_eye, impl->camera.eye, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_u, impl->camera.u, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_v, impl->camera.v, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_w, impl->camera.w, sizeof(float) * 3);
 
     impl->sbt.raygenRecord = impl->optix_context.createRaygenSBTRecord(
         impl->raygen_prog_group,
@@ -336,8 +339,8 @@ void OptiXWrapper::setupShaderBindingTable() {
 
     // Hit group record data (material properties moved to Params for performance)
     HitGroupData hg_data;
-    std::memcpy(hg_data.sphere_center, impl->sphere_center, sizeof(float) * 3);
-    hg_data.sphere_radius = impl->sphere_radius;
+    std::memcpy(hg_data.sphere_center, impl->sphere.center, sizeof(float) * 3);
+    hg_data.sphere_radius = impl->sphere.radius;
 
     impl->sbt.hitgroupRecordBase = impl->optix_context.createHitgroupSBTRecord(
         impl->hitgroup_prog_group,
@@ -385,16 +388,16 @@ void OptiXWrapper::buildPipeline() {
 
 void OptiXWrapper::setLight(const float* direction, float intensity) {
     // Store and normalize light direction
-    std::memcpy(impl->light_direction, direction, 3 * sizeof(float));
-    VectorMath::normalize3f(impl->light_direction);
-    impl->light_intensity = intensity;
+    std::memcpy(impl->light.direction, direction, 3 * sizeof(float));
+    VectorMath::normalize3f(impl->light.direction);
+    impl->light.intensity = intensity;
 }
 
 void OptiXWrapper::setPlane(int axis, bool positive, float value) {
-    impl->plane_axis = axis;
-    impl->plane_positive = positive;
-    impl->plane_value = value;
-    impl->plane_params_dirty = true;  // Mark pipeline as needing rebuild
+    impl->plane.axis = axis;
+    impl->plane.positive = positive;
+    impl->plane.value = value;
+    impl->plane.dirty = true;  // Mark pipeline as needing rebuild
 }
 
 void OptiXWrapper::render(int width, int height, unsigned char* output) {
@@ -408,12 +411,12 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
         impl->image_height = height;
 
         // Build OptiX pipeline on first render call or when params change
-        if (!impl->pipeline_built || impl->plane_params_dirty || impl->sphere_params_dirty) {
+        if (!impl->pipeline_built || impl->plane.dirty || impl->sphere.dirty) {
             // Debug: Pipeline rebuild due to parameter change
             buildPipeline();
             impl->pipeline_built = true;
-            impl->plane_params_dirty = false;
-            impl->sphere_params_dirty = false;
+            impl->plane.dirty = false;
+            impl->sphere.dirty = false;
         }
 
         // Reuse GPU image buffer (allocate only if size changed)
@@ -438,14 +441,14 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
         params.handle = impl->gas_handle;
 
         // Dynamic scene data (moved from SBT for performance)
-        std::memcpy(params.sphere_color, impl->sphere_color, sizeof(float) * 4);
-        params.sphere_ior = impl->sphere_ior;
-        params.sphere_scale = impl->sphere_scale;
-        std::memcpy(params.light_dir, impl->light_direction, sizeof(float) * 3);
-        params.light_intensity = impl->light_intensity;
-        params.plane_axis = impl->plane_axis;
-        params.plane_positive = impl->plane_positive;
-        params.plane_value = impl->plane_value;
+        std::memcpy(params.sphere_color, impl->sphere.color, sizeof(float) * 4);
+        params.sphere_ior = impl->sphere.ior;
+        params.sphere_scale = impl->sphere.scale;
+        std::memcpy(params.light_dir, impl->light.direction, sizeof(float) * 3);
+        params.light_intensity = impl->light.intensity;
+        params.plane_axis = impl->plane.axis;
+        params.plane_positive = impl->plane.positive;
+        params.plane_value = impl->plane.value;
 
         // Copy params to GPU
         CUDA_CHECK(cudaMemcpy(
