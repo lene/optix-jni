@@ -35,6 +35,35 @@ protected:
     void TearDown() override {
         // Cleanup happens in OptiXContext destructor
     }
+
+    // Helper: Create default module compile options
+    OptixModuleCompileOptions createDefaultModuleOptions() {
+        OptixModuleCompileOptions module_options = {};
+        module_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+        module_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+        module_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
+        return module_options;
+    }
+
+    // Helper: Create default pipeline compile options
+    OptixPipelineCompileOptions createDefaultPipelineOptions() {
+        OptixPipelineCompileOptions pipeline_options = {};
+        pipeline_options.usesMotionBlur = false;
+        pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+        pipeline_options.numPayloadValues = 4;
+        pipeline_options.numAttributeValues = 4;
+        pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
+        pipeline_options.pipelineLaunchParamsVariableName = "params";
+        pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
+        return pipeline_options;
+    }
+
+    // Helper: Create minimal pipeline options (for error tests)
+    OptixPipelineCompileOptions createMinimalPipelineOptions() {
+        OptixPipelineCompileOptions pipeline_options = {};
+        pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+        return pipeline_options;
+    }
 };
 
 //=============================================================================
@@ -87,29 +116,14 @@ TEST_F(OptiXContextTest, CreateModuleFromPTXSucceeds) {
     ASSERT_TRUE(context.initialize());
 
     std::string ptx_content = readPTXFile();
-
     if (ptx_content.empty()) {
         GTEST_SKIP() << "PTX file not found in any search location";
     }
 
-    OptixModuleCompileOptions module_options = {};
-    module_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-    module_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-    module_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
-
-    OptixPipelineCompileOptions pipeline_options = {};
-    pipeline_options.usesMotionBlur = false;
-    pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_options.numPayloadValues = 4;
-    pipeline_options.numAttributeValues = 4;
-    pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
-    pipeline_options.pipelineLaunchParamsVariableName = "params";
-    pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
-
     OptixModule module = context.createModuleFromPTX(
         ptx_content,
-        module_options,
-        pipeline_options
+        createDefaultModuleOptions(),
+        createDefaultPipelineOptions()
     );
 
     EXPECT_NE(nullptr, module);
@@ -121,12 +135,12 @@ TEST_F(OptiXContextTest, CreateModuleFromPTXSucceeds) {
 TEST_F(OptiXContextTest, CreateModuleWithInvalidPTXThrows) {
     ASSERT_TRUE(context.initialize());
 
-    OptixModuleCompileOptions module_options = {};
-    OptixPipelineCompileOptions pipeline_options = {};
-    pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-
     EXPECT_THROW(
-        context.createModuleFromPTX("invalid ptx", module_options, pipeline_options),
+        context.createModuleFromPTX(
+            "invalid ptx",
+            createDefaultModuleOptions(),
+            createMinimalPipelineOptions()
+        ),
         std::runtime_error
     );
 }
@@ -145,26 +159,15 @@ TEST_F(OptiXContextTest, CreateRaygenProgramGroupSucceeds) {
     ASSERT_TRUE(context.initialize());
 
     std::string ptx_content = readPTXFile();
-
     if (ptx_content.empty()) {
         GTEST_SKIP() << "PTX file not found";
     }
 
-    OptixModuleCompileOptions module_options = {};
-    module_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-    module_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-    module_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
-
-    OptixPipelineCompileOptions pipeline_options = {};
-    pipeline_options.usesMotionBlur = false;
-    pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_options.numPayloadValues = 4;
-    pipeline_options.numAttributeValues = 4;
-    pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
-    pipeline_options.pipelineLaunchParamsVariableName = "params";
-    pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
-
-    OptixModule module = context.createModuleFromPTX(ptx_content, module_options, pipeline_options);
+    OptixModule module = context.createModuleFromPTX(
+        ptx_content,
+        createDefaultModuleOptions(),
+        createDefaultPipelineOptions()
+    );
 
     OptixProgramGroup raygen = context.createRaygenProgramGroup(module, "__raygen__rg");
     EXPECT_NE(nullptr, raygen);
@@ -179,19 +182,11 @@ TEST_F(OptiXContextTest, CreateMissProgramGroupSucceeds) {
     std::string ptx_content = readPTXFile();
     if (ptx_content.empty()) GTEST_SKIP() << "PTX file not found";
 
-    OptixModuleCompileOptions module_options = {};
-    module_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-    module_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-    module_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
-
-    OptixPipelineCompileOptions pipeline_options = {};
-    pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_options.numPayloadValues = 4;
-    pipeline_options.numAttributeValues = 4;
-    pipeline_options.pipelineLaunchParamsVariableName = "params";
-    pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
-
-    OptixModule module = context.createModuleFromPTX(ptx_content, module_options, pipeline_options);
+    OptixModule module = context.createModuleFromPTX(
+        ptx_content,
+        createDefaultModuleOptions(),
+        createDefaultPipelineOptions()
+    );
 
     OptixProgramGroup miss = context.createMissProgramGroup(module, "__miss__ms");
     EXPECT_NE(nullptr, miss);
@@ -206,19 +201,11 @@ TEST_F(OptiXContextTest, CreateHitgroupProgramGroupSucceeds) {
     std::string ptx_content = readPTXFile();
     if (ptx_content.empty()) GTEST_SKIP() << "PTX file not found";
 
-    OptixModuleCompileOptions module_options = {};
-    module_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-    module_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-    module_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
-
-    OptixPipelineCompileOptions pipeline_options = {};
-    pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_options.numPayloadValues = 4;
-    pipeline_options.numAttributeValues = 4;
-    pipeline_options.pipelineLaunchParamsVariableName = "params";
-    pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
-
-    OptixModule module = context.createModuleFromPTX(ptx_content, module_options, pipeline_options);
+    OptixModule module = context.createModuleFromPTX(
+        ptx_content,
+        createDefaultModuleOptions(),
+        createDefaultPipelineOptions()
+    );
 
     OptixProgramGroup hitgroup = context.createHitgroupProgramGroup(
         module, "__closesthit__ch",
@@ -274,19 +261,11 @@ TEST_F(OptiXContextTest, CreateRaygenSBTRecordSucceeds) {
     std::string ptx_content = readPTXFile();
     if (ptx_content.empty()) GTEST_SKIP() << "PTX file not found";
 
-    OptixModuleCompileOptions module_options = {};
-    module_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
-    module_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
-    module_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
-
-    OptixPipelineCompileOptions pipeline_options = {};
-    pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-    pipeline_options.numPayloadValues = 4;
-    pipeline_options.numAttributeValues = 4;
-    pipeline_options.pipelineLaunchParamsVariableName = "params";
-    pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
-
-    OptixModule module = context.createModuleFromPTX(ptx_content, module_options, pipeline_options);
+    OptixModule module = context.createModuleFromPTX(
+        ptx_content,
+        createDefaultModuleOptions(),
+        createDefaultPipelineOptions()
+    );
     OptixProgramGroup raygen = context.createRaygenProgramGroup(module, "__raygen__rg");
 
     RayGenData raygen_data;
@@ -316,12 +295,12 @@ TEST_F(OptiXContextTest, OperationBeforeInitializeThrows) {
     // Fresh context without initialize
     OptiXContext uninit_context;
 
-    OptixModuleCompileOptions module_options = {};
-    OptixPipelineCompileOptions pipeline_options = {};
-    pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-
     EXPECT_THROW(
-        uninit_context.createModuleFromPTX("test", module_options, pipeline_options),
+        uninit_context.createModuleFromPTX(
+            "test",
+            createDefaultModuleOptions(),
+            createMinimalPipelineOptions()
+        ),
         std::runtime_error
     );
 }

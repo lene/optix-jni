@@ -210,7 +210,7 @@ OptixPipeline OptiXContext::createPipeline(
         OPTIX_CHECK(optixUtilAccumulateStackSizes(program_groups[i], &stack_sizes, nullptr));
     }
 
-    uint32_t max_trace_depth = 2;  // Primary ray + shadow/refraction ray
+    uint32_t max_trace_depth = MAX_TRACE_DEPTH;  // Must match shader MAX_TRACE_DEPTH
     uint32_t max_cc_depth = 0;
     uint32_t max_dc_depth = 0;
     uint32_t direct_callable_stack_size_from_traversal;

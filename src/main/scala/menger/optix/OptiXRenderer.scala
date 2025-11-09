@@ -24,13 +24,29 @@ class OptiXRenderer extends LazyLogging:
   // Native method declarations (private - use public wrappers)
   @native private def initializeNative(): Boolean
   @native private def disposeNative(): Unit
+
+  /** Set sphere geometry (center position and radius) */
   @native def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
+
+  /** Set sphere material color (RGBA, 0.0-1.0, alpha: 0.0=transparent, 1.0=opaque) */
   @native def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit
+
+  /** Set index of refraction (1.0=no refraction, 1.5=glass, 1.33=water, 2.42=diamond) */
   @native def setIOR(ior: Float): Unit
+
+  /** Set physical scale factor (1.0=meters, 0.01=centimeters) */
   @native def setScale(scale: Float): Unit
+
+  /** Set camera parameters (eye position, lookAt point, up vector, field of view in degrees) */
   @native def setCamera(eye: Array[Float], lookAt: Array[Float], up: Array[Float], fov: Float): Unit
+
+  /** Set directional light (normalized direction vector, intensity multiplier) */
   @native def setLight(direction: Array[Float], intensity: Float): Unit
+
+  /** Set clipping plane (axis: 0=X 1=Y 2=Z, positive: plane normal direction, value: position) */
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
+
+  /** Render scene and return RGBA image data (width × height × 4 bytes) */
   @native def render(width: Int, height: Int): Array[Byte]
 
   // Idempotent initialization - safe to call multiple times
@@ -65,15 +81,16 @@ class OptiXRenderer extends LazyLogging:
         false
     .getOrElse(false)
 
-  // Exits application if library loading or initialization fails
-  def ensureAvailable(): OptiXRenderer =
+  // Ensures OptiX is available, returns Try with error details
+  def ensureAvailable(): Try[OptiXRenderer] =
     if !OptiXRenderer.isLibraryLoaded then
-      ErrorHandling.errorExit(
+      Failure(OptiXNotAvailableException(
         "OptiX native library failed to load - ensure CUDA and OptiX are available"
-      )
-    if !initialize() then
-      ErrorHandling.errorExit("Failed to initialize OptiX renderer")
-    this
+      ))
+    else if !initialize() then
+      Failure(OptiXNotAvailableException("Failed to initialize OptiX renderer"))
+    else
+      Success(this)
 
 object OptiXRenderer extends LazyLogging:
   private val libraryName = "optixjni"
@@ -158,3 +175,6 @@ object OptiXRenderer extends LazyLogging:
       case e: Exception =>
         logger.error(s"Failed to load native library '$libraryName'", e)
         Failure(e)
+
+// Exception thrown when OptiX is not available
+case class OptiXNotAvailableException(message: String) extends Exception(message)

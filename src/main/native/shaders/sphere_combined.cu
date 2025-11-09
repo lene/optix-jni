@@ -1,5 +1,6 @@
 #include <optix.h>
 #include "../include/OptiXData.h"
+#include "../include/VectorMath.h"
 
 extern "C" {
     __constant__ Params params;
@@ -7,44 +8,6 @@ extern "C" {
 
 // Import ray tracing constants from OptiXData.h
 using namespace RayTracingConstants;
-
-// Device-side vector math helper functions
-__device__ inline float length(float3 v) {
-    return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
-}
-
-__device__ inline float3 normalize(float3 v) {
-    const float len = length(v);
-    return make_float3(v.x / len, v.y / len, v.z / len);
-}
-
-__device__ inline float dot(float3 a, float3 b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-__device__ inline float3 operator+(float3 a, float3 b) {
-    return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
-}
-
-__device__ inline float3 operator-(float3 a, float3 b) {
-    return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
-}
-
-__device__ inline float3 operator*(float3 v, float s) {
-    return make_float3(v.x * s, v.y * s, v.z * s);
-}
-
-__device__ inline float3 operator*(float s, float3 v) {
-    return make_float3(v.x * s, v.y * s, v.z * s);
-}
-
-__device__ inline float3 operator*(float3 a, float3 b) {
-    return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
-}
-
-__device__ inline float3 operator/(float3 v, float s) {
-    return make_float3(v.x / s, v.y / s, v.z / s);
-}
 
 // Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
 // Where:
@@ -60,36 +23,6 @@ __device__ inline float3 operator/(float3 v, float s) {
 //   Each channel controls wavelength-dependent absorption
 //   RGB(1,1,1) → no color tint (white/gray when opaque)
 //   RGB(1,0,0) → absorbs green/blue, shows red (red tinted when opaque)
-__device__ inline float3 computeBeerLambertAbsorption(
-    const float3 color_rgb,
-    const float alpha,
-    const float distance)
-{
-    // Absorption factor: higher alpha = more absorption (standard convention)
-    const float absorption_factor = alpha;
-
-    // Avoid log(0) by clamping color channels
-    const float3 safe_color = make_float3(
-        fmaxf(color_rgb.x, COLOR_CHANNEL_MIN_SAFE_VALUE),
-        fmaxf(color_rgb.y, COLOR_CHANNEL_MIN_SAFE_VALUE),
-        fmaxf(color_rgb.z, COLOR_CHANNEL_MIN_SAFE_VALUE)
-    );
-
-    // Absorption coefficient for each wavelength
-    // -log(color) gives absorption: dark colors (low values) = high absorption
-    const float3 absorption_coeff = make_float3(
-        -logf(safe_color.x) * absorption_factor,
-        -logf(safe_color.y) * absorption_factor,
-        -logf(safe_color.z) * absorption_factor
-    );
-
-    // Apply Beer-Lambert law: exp(-α · d)
-    return make_float3(
-        expf(-absorption_coeff.x * distance),
-        expf(-absorption_coeff.y * distance),
-        expf(-absorption_coeff.z * distance)
-    );
-}
 
 //==============================================================================
 // Custom Sphere Intersection Program

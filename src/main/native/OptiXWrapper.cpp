@@ -3,6 +3,7 @@
 #include "include/OptiXConstants.h"
 #include "include/OptiXErrorChecking.h"
 #include "include/OptiXFileUtils.h"
+#include "include/VectorMath.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
@@ -11,28 +12,6 @@
 #include <vector>
 #include <cerrno>
 #include <unistd.h>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-// Vector math helper functions
-namespace VectorMath {
-    // Normalize a 3D vector in place
-    inline void normalize3f(float v[3]) {
-        const float len = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
-        v[0] /= len;
-        v[1] /= len;
-        v[2] /= len;
-    }
-
-    // Cross product: result = a × b
-    inline void cross3f(float result[3], const float a[3], const float b[3]) {
-        result[0] = a[1]*b[2] - a[2]*b[1];
-        result[1] = a[2]*b[0] - a[0]*b[2];
-        result[2] = a[0]*b[1] - a[1]*b[0];
-    }
-}
 #include <cuda_runtime.h>
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
@@ -102,8 +81,6 @@ struct OptiXWrapper::Impl {
     // GPU buffers (created once, reused)
     CUdeviceptr d_gas_output_buffer = 0;
     CUdeviceptr d_params = 0;
-    CUdeviceptr d_vertex_buffer = 0;
-    CUdeviceptr d_radius_buffer = 0;
     CUdeviceptr d_image = 0;
     size_t cached_image_size = 0;
     OptixShaderBindingTable sbt = {};
@@ -198,9 +175,6 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     impl->camera.v[2] = v[2] * vlen;
 }
 
-// Helper function to read PTX file from the first location that exists
-
-// Build geometry acceleration structure for the sphere
 void OptiXWrapper::buildGeometryAccelerationStructure() {
     // Create AABB (Axis-Aligned Bounding Box) for custom sphere primitive
     OptixAabb aabb;

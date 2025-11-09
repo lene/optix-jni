@@ -157,8 +157,8 @@ target_include_directories(optix_shaders PRIVATE
 # OptiX PTX shaders can only target ONE architecture at a time
 # Use virtual architecture (PTX) for forward compatibility
 #
-# Using compute_86 (Ampere) to match RTX A1000
-# PTX will be JIT-compiled at runtime to actual GPU architecture
+# Using virtual architecture 86 for PTX intermediate representation
+# JIT-compiled at runtime for forward compatibility with any GPU >= sm_86
 set_target_properties(optix_shaders PROPERTIES
     CUDA_PTX_COMPILATION ON
     CUDA_SEPARABLE_COMPILATION ON
