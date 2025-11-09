@@ -54,10 +54,6 @@ class AbsorptionTest extends AnyFlatSpec
       cy2 * TEST_IMAGE_SIZE._1 + cx2
     )
 
-    logger.info(
-      f"Absorption scale test: scale=0.5 brightness=$bright1%.2f, " +
-      f"scale=2.0 brightness=$bright2%.2f"
-    )
     bright1 should be > bright2  // Higher scale = more absorption = darker
 
   it should "show center-to-edge gradient" in:
@@ -77,5 +73,4 @@ class AbsorptionTest extends AnyFlatSpec
     )
 
     // With absorption, center should be darker (negative gradient)
-    logger.info(f"Absorption gradient: $gradient%.2f")
     gradient should be > MIN_ABSORPTION_GRADIENT

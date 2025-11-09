@@ -100,10 +100,6 @@ class RefractionTest extends AnyFlatSpec
       TEST_IMAGE_SIZE._2
     )
 
-    logger.info(
-      f"Edge brightness: Water(1.33)=$edgeBrightnessWater%.2f " +
-      f"Diamond(2.42)=$edgeBrightnessDiamond%.2f"
-    )
     edgeBrightnessDiamond should be >= edgeBrightnessWater
 
   it should "transmit green light through green glass" in:

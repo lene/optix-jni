@@ -13,16 +13,11 @@ import scala.util.{Try, Success, Failure}
 object LibraryLoadTest extends LazyLogging:
 
   def main(args: Array[String]): Unit =
-    // Check if library is already loaded
-    logger.info(s"Library loaded status: ${OptiXRenderer.isLibraryLoaded}")
-
     // Create renderer using functional Try
     val rendererResult = Try(new OptiXRenderer())
 
     rendererResult match
       case Success(renderer) =>
-        logger.info("Created OptiXRenderer instance successfully")
-
         // Try to call initialize
         val initResult = Try(renderer.initialize())
 
@@ -52,9 +47,7 @@ object LibraryLoadTest extends LazyLogging:
   def runWithComposition(): Try[Boolean] =
     for
       renderer <- Try(new OptiXRenderer())
-      _         = logger.info("Created OptiXRenderer instance successfully")
       result   <- Try(renderer.initialize())
-      _         = logger.info(s"Initialize returned: $result")
     yield result
 
   /**

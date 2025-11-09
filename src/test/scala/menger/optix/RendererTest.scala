@@ -137,8 +137,6 @@ class RendererTest extends AnyFlatSpec
     val savedFile = TestUtilities.savePPM("optix_test_output.ppm", imageData,
       STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
-    logger.info(s"\n=== Rendered image saved to: ${savedFile.getAbsolutePath}")
-
     savedFile.exists() shouldBe true
     val expectedSize = s"P6\n${STANDARD_IMAGE_SIZE._1} ${STANDARD_IMAGE_SIZE._2}\n255\n".length +
       STANDARD_IMAGE_SIZE._1 * STANDARD_IMAGE_SIZE._2 * 3
@@ -527,9 +525,6 @@ class RendererTest extends AnyFlatSpec
     val isBackground = (rgb.r != 255 || rgb.g != 255 || rgb.b != 255) &&
                        (Math.abs(rgb.r - rgb.g) < BACKGROUND_GRAYSCALE_TOLERANCE &&
                         Math.abs(rgb.g - rgb.b) < BACKGROUND_GRAYSCALE_TOLERANCE)
-
-    if !isBackground then
-      logger.info(f"Alpha=0.0 center pixel: RGB(${rgb.r}%d, ${rgb.g}%d, ${rgb.b}%d)")
 
     isBackground should be (true)
 

@@ -30,8 +30,6 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.nativeHandle should not be 0L
       renderer1.nativeHandle should not equal renderer2.nativeHandle
 
-      logger.info(s"Instance 1 handle: 0x${renderer1.nativeHandle.toHexString}")
-      logger.info(s"Instance 2 handle: 0x${renderer2.nativeHandle.toHexString}")
     } finally {
       renderer1.dispose()
       renderer2.dispose()
@@ -98,9 +96,6 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       val red2 = countRedPixels(img2)
       val blue2 = countBluePixels(img2)
 
-      logger.info(s"Renderer 1 (red sphere): red=$red1 blue=$blue1")
-      logger.info(s"Renderer 2 (blue sphere): red=$red2 blue=$blue2")
-
       // Renderer 1 should have more red pixels
       red1 should be > blue1
 
@@ -146,9 +141,6 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       nonZero1 should be > 0
       nonZero2 should be > 0
-
-      logger.info(s"Renderer 1 (640x480): ${nonZero1} non-zero bytes")
-      logger.info(s"Renderer 2 (1024x768): ${nonZero2} non-zero bytes")
 
     } finally {
       renderer1.dispose()
@@ -225,8 +217,6 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     // Dispose second renderer
     renderer2.dispose()
     renderer2.nativeHandle should be (0L)
-
-    logger.info(s"Disposed independently: 0x${handle1.toHexString} and 0x${handle2.toHexString}")
   }
 
   it should "support creating many instances sequentially" in {
@@ -256,7 +246,6 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     }
 
     handles.size should be (instanceCount)
-    logger.info(s"Created $instanceCount instances with unique handles")
   }
 
   it should "reject operations on uninitialized instance" in {
@@ -315,8 +304,6 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       val img = renderer.render(200, 200)
       img.length should be (200 * 200 * 4)
 
-      logger.info(s"Idempotence test: handle=0x${handle.toHexString} after 3 initialize() calls")
-
     } finally {
       renderer.dispose()
     }
@@ -339,8 +326,6 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
       val img = renderer.render(200, 200)
       img.length should be (200 * 200 * 4)
-
-      logger.info(s"isAvailable + initialize pattern: handle=0x${handle.toHexString}")
 
     } finally {
       renderer.dispose()

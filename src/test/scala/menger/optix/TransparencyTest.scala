@@ -126,8 +126,6 @@ class TransparencyTest extends AnyFlatSpec
       )
     }
 
-    logger.info(s"Alpha green-area series: ${greenAreas.mkString(", ")}")
-
     // Green pixel count should increase monotonically with alpha
     greenAreas(0) shouldBe 0  // alpha=0.0 → invisible
     greenAreas(4) should be > greenAreas(3)  // alpha=1.0 > alpha=0.75
@@ -148,7 +146,6 @@ class TransparencyTest extends AnyFlatSpec
       TEST_IMAGE_SIZE._2
     )
 
-    logger.info(f"Transparent green sphere RGB ratios: R=$r%.3f G=$g%.3f B=$b%.3f")
     // With plane interaction, ratios vary but should not all be equal (not grayscale)
     val maxRatio = math.max(r, math.max(g, b))
     val minRatio = math.min(r, math.min(g, b))

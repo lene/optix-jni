@@ -39,7 +39,6 @@ class MaterialTest extends AnyFlatSpec
       TEST_IMAGE_SIZE._2
     )
 
-    logger.info(f"Water material RGB: R=$r%.3f G=$g%.3f B=$b%.3f")
     b should be >= r  // Blue tint
 
   "Clear glass" should "render correctly" in:
@@ -67,6 +66,5 @@ class MaterialTest extends AnyFlatSpec
       TEST_IMAGE_SIZE._2
     )
 
-    logger.info(f"Green glass RGB: R=$r%.3f G=$g%.3f B=$b%.3f")
     g should be > r
     g should be > b

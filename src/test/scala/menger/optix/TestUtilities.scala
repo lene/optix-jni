@@ -50,7 +50,6 @@ object TestUtilities extends LazyLogging:
         // Skip alpha (data(offset + 3))
       }
 
-      logger.info(s"Saved ${width}x${height} image to $filename (${file.length()} bytes)")
       file
     }
 
@@ -86,7 +85,6 @@ object TestUtilities extends LazyLogging:
 
       val file = new File(filename)
       ImageIO.write(image, "PNG", file)
-      logger.info(s"Saved ${width}x${height} PNG image to $filename")
       file
     }
 

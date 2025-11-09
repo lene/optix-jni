@@ -213,7 +213,7 @@ JNIEXPORT jbyteArray JNICALL Java_menger_optix_OptiXRenderer_render(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_dispose(JNIEnv* env, jobject obj) {
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_disposeNative(JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {

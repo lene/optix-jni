@@ -27,8 +27,9 @@ class OptiXRenderer extends LazyLogging:
   // Track initialization state to ensure idempotence
   private var initialized: Boolean = false
 
-  // Native method declarations (private - use public initialize() instead)
+  // Native method declarations (private - use public wrappers)
   @native private def initializeNative(): Boolean
+  @native private def disposeNative(): Unit
   @native def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
   @native def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit
   @native def setIOR(ior: Float): Unit
@@ -37,7 +38,6 @@ class OptiXRenderer extends LazyLogging:
   @native def setLight(direction: Array[Float], intensity: Float): Unit
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
   @native def render(width: Int, height: Int): Array[Byte]
-  @native def dispose(): Unit
 
   /**
    * Initialize the OptiX renderer.
@@ -55,10 +55,20 @@ class OptiXRenderer extends LazyLogging:
       val result = initializeNative()
       if result then
         initialized = true
-        logger.debug("OptiX renderer initialized successfully")
       else
         logger.error("Failed to initialize OptiX renderer")
       result
+
+  /**
+   * Dispose of OptiX resources.
+   *
+   * Cleans up GPU buffers and OptiX pipeline resources. After calling dispose(),
+   * the renderer can be re-initialized by calling initialize() again.
+   */
+  def dispose(): Unit =
+    if initialized then
+      disposeNative()
+      initialized = false
 
   // Convenience method with default alpha parameter for backward compatibility
   def setSphereColor(r: Float, g: Float, b: Float): Unit =
@@ -105,7 +115,6 @@ object OptiXRenderer extends LazyLogging:
   // Functional helper methods for library loading
   private def loadFromSystemPath(): Try[Unit] = Try:
     System.loadLibrary(libraryName)
-    logger.info(s"Loaded $libraryName from java.library.path")
 
   private def detectPlatform(): Try[String] = Try:
     val os = System.getProperty("os.name").toLowerCase
@@ -154,7 +163,6 @@ object OptiXRenderer extends LazyLogging:
       out.close()
       stream.close()
     System.load(tempFile.toAbsolutePath.toString)
-    logger.info(s"Loaded $libraryName from classpath via temp file: ${tempFile.toAbsolutePath}")
 
   private def loadFromClasspath(): Try[Unit] =
     for
