@@ -80,7 +80,6 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphere(
         if (wrapper != nullptr) {
             wrapper->setSphere(x, y, z, radius);
         } else {
-            std::cerr << "[JNI] setSphere called on uninitialized instance" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setSphere: " << e.what() << std::endl;
@@ -94,7 +93,6 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphereColor(
         if (wrapper != nullptr) {
             wrapper->setSphereColor(r, g, b, a);
         } else {
-            std::cerr << "[JNI] setSphereColor called on uninitialized instance" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setSphereColor: " << e.what() << std::endl;
@@ -108,7 +106,6 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIOR(
         if (wrapper != nullptr) {
             wrapper->setIOR(ior);
         } else {
-            std::cerr << "[JNI] setIOR called on uninitialized instance" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setIOR: " << e.what() << std::endl;
@@ -122,7 +119,6 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setScale(
         if (wrapper != nullptr) {
             wrapper->setScale(scale);
         } else {
-            std::cerr << "[JNI] setScale called on uninitialized instance" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setScale: " << e.what() << std::endl;
@@ -144,7 +140,6 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCamera(
             env->ReleaseFloatArrayElements(lookAt, lookAtArr, 0);
             env->ReleaseFloatArrayElements(up, upArr, 0);
         } else {
-            std::cerr << "[JNI] setCamera called on uninitialized instance" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setCamera: " << e.what() << std::endl;
@@ -160,7 +155,6 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLight(
             wrapper->setLight(dirArr, intensity);
             env->ReleaseFloatArrayElements(direction, dirArr, 0);
         } else {
-            std::cerr << "[JNI] setLight called on uninitialized instance" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setLight: " << e.what() << std::endl;
@@ -174,7 +168,6 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlane(
         if (wrapper != nullptr) {
             wrapper->setPlane(axis, positive == JNI_TRUE, value);
         } else {
-            std::cerr << "[JNI] setPlane called on uninitialized instance" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setPlane: " << e.what() << std::endl;
@@ -186,7 +179,6 @@ JNIEXPORT jbyteArray JNICALL Java_menger_optix_OptiXRenderer_render(
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
-            std::cerr << "[JNI] render called on uninitialized instance" << std::endl;
             return nullptr;
         }
 

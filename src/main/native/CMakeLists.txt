@@ -237,7 +237,7 @@ if(BUILD_OPTIX_TESTS)
     )
 
     target_link_libraries(optixcontext_test PRIVATE
-        gtest_main
+        gtest
         CUDA::cuda_driver
         CUDA::cudart
     )

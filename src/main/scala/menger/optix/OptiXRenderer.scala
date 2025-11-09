@@ -4,20 +4,14 @@ import com.typesafe.scalalogging.LazyLogging
 
 import java.io.{FileOutputStream, InputStream}
 import java.nio.file.Files
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
+import scala.util.control.Exception.catching
 
-/**
- * JNI interface to OptiX ray tracing renderer.
- *
- * This class provides a Scala interface to native OptiX functionality
- * for rendering spheres and other geometry with hardware-accelerated
- * ray tracing.
- *
- * Phase 1: Basic structure with placeholder implementations
- * Phase 2: Actual OptiX context and data structure implementation
- * Phase 3: Full pipeline and shader implementation
- * Phase 4: Complete integration and testing
- */
+// JNI interface to OptiX ray tracing renderer
+// Phase 1: Basic structure with placeholder implementations
+// Phase 2: Actual OptiX context and data structure implementation
+// Phase 3: Full pipeline and shader implementation
+// Phase 4: Complete integration and testing
 class OptiXRenderer extends LazyLogging:
 
   // Native handle to the C++ OptiXWrapper instance (0 = not initialized)
@@ -39,15 +33,7 @@ class OptiXRenderer extends LazyLogging:
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
   @native def render(width: Int, height: Int): Array[Byte]
 
-  /**
-   * Initialize the OptiX renderer.
-   *
-   * This method is idempotent - calling it multiple times is safe and will
-   * return true after the first successful initialization without performing
-   * redundant work.
-   *
-   * @return true if initialized successfully (or already initialized), false on failure
-   */
+  // Idempotent initialization - safe to call multiple times
   def initialize(): Boolean =
     if initialized then
       true  // Already initialized, return success
@@ -59,12 +45,7 @@ class OptiXRenderer extends LazyLogging:
         logger.error("Failed to initialize OptiX renderer")
       result
 
-  /**
-   * Dispose of OptiX resources.
-   *
-   * Cleans up GPU buffers and OptiX pipeline resources. After calling dispose(),
-   * the renderer can be re-initialized by calling initialize() again.
-   */
+  // Can be re-initialized after dispose by calling initialize() again
   def dispose(): Unit =
     if initialized then
       disposeNative()
@@ -74,10 +55,6 @@ class OptiXRenderer extends LazyLogging:
   def setSphereColor(r: Float, g: Float, b: Float): Unit =
     setSphereColor(r, g, b, 1.0f)
 
-  /**
-   * Check if OptiX is available on this system.
-   * @return true if OptiX can be initialized
-   */
   def isAvailable: Boolean =
     Try(initialize()).recover:
       case e: UnsatisfiedLinkError =>
@@ -88,14 +65,7 @@ class OptiXRenderer extends LazyLogging:
         false
     .getOrElse(false)
 
-  /**
-   * Ensure OptiX is available and initialized.
-   *
-   * This method checks that the native library is loaded and initializes
-   * the renderer. If any step fails, the application exits with an error.
-   *
-   * @return this renderer instance for method chaining
-   */
+  // Exits application if library loading or initialization fails
   def ensureAvailable(): OptiXRenderer =
     if !OptiXRenderer.isLibraryLoaded then
       ErrorHandling.errorExit(
@@ -113,8 +83,10 @@ object OptiXRenderer extends LazyLogging:
   def isLibraryLoaded: Boolean = libraryLoaded
 
   // Functional helper methods for library loading
-  private def loadFromSystemPath(): Try[Unit] = Try:
-    System.loadLibrary(libraryName)
+  private def loadFromSystemPath(): Try[Unit] =
+    catching(classOf[UnsatisfiedLinkError]).withTry:
+      System.loadLibrary(libraryName)
+      logger.info(s"Loaded $libraryName from java.library.path")
 
   private def detectPlatform(): Try[String] = Try:
     val os = System.getProperty("os.name").toLowerCase
@@ -163,6 +135,7 @@ object OptiXRenderer extends LazyLogging:
       out.close()
       stream.close()
     System.load(tempFile.toAbsolutePath.toString)
+    logger.debug(s"Loaded $libraryName from classpath via temp file: ${tempFile.toAbsolutePath}")
 
   private def loadFromClasspath(): Try[Unit] =
     for

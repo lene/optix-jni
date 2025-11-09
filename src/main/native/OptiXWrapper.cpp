@@ -2,6 +2,7 @@
 #include "include/OptiXContext.h"
 #include "include/OptiXConstants.h"
 #include "include/OptiXErrorChecking.h"
+#include "include/OptiXFileUtils.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
@@ -194,27 +195,7 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     impl->camera_v[2] = v[2] * vlen;
 }
 
-// Helper function to read PTX file
-static std::string readPTXFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        // Try to provide helpful error information
-        std::ostringstream ss;
-        ss << "Failed to open PTX file: " << filename;
-        ss << " (errno: " << errno << " - " << std::strerror(errno) << ")";
-        throw std::runtime_error(ss.str());
-    }
-
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
-
-    std::string content(size, '\0');
-    if (!file.read(&content[0], size)) {
-        throw std::runtime_error("Failed to read PTX file: " + filename);
-    }
-
-    return content;
-}
+// Helper function to read PTX file from the first location that exists
 
 // Build geometry acceleration structure for the sphere
 void OptiXWrapper::buildGeometryAccelerationStructure() {
@@ -244,10 +225,16 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
 
 // Load and compile PTX modules, return the sphere intersection module
 OptixModule OptiXWrapper::loadPTXModules() {
-    // Load combined PTX module (all three shaders in one file)
-    // PTX file is copied to target/native/x86_64-linux/bin/ for runtime access
-    std::string ptx_path = "target/native/x86_64-linux/bin/sphere_combined.ptx";
-    std::string ptx_content = readPTXFile(ptx_path);
+    // Try multiple PTX locations in priority order:
+    // 1. Working directory (for packaged app after OptiXRenderer extracts from JAR)
+    // 2. Build output directory (for sbt run / sbt test)
+    // 3. Classes directory (for IntelliJ/IDE runs)
+    std::vector<std::string> ptx_search_paths = {
+        "target/native/x86_64-linux/bin/sphere_combined.ptx",  // Extracted from JAR
+        "optix-jni/target/native/x86_64-linux/bin/sphere_combined.ptx",  // sbt build output
+        "optix-jni/target/classes/native/x86_64-linux/sphere_combined.ptx"  // sbt-jni managed
+    };
+    std::string ptx_content = optix_utils::readPTXFile(ptx_search_paths);
 
     OptixModuleCompileOptions module_compile_options = {};
     module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;

@@ -2,21 +2,24 @@
 #include "../include/OptiXContext.h"
 #include "../include/OptiXData.h"
 #include "../include/OptiXConstants.h"
+#include "../include/OptiXFileUtils.h"
 
 #include <fstream>
 #include <sstream>
 
-// Helper to read PTX file for module tests
-static std::string readPTXFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        return "";
+// Helper to read PTX file for module tests - tries multiple locations
+static std::string readPTXFile() {
+    std::vector<std::string> search_paths = {
+        "target/native/x86_64-linux/bin/sphere_combined.ptx",
+        "optix-jni/target/native/x86_64-linux/bin/sphere_combined.ptx",
+        "optix-jni/target/classes/native/x86_64-linux/sphere_combined.ptx"
+    };
+
+    try {
+        return optix_utils::readPTXFile(search_paths);
+    } catch (const std::runtime_error&) {
+        return "";  // Not found - tests will skip
     }
-    std::streamsize size = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::string content(size, '\0');
-    file.read(&content[0], size);
-    return content;
 }
 
 // Test fixture for OptiXContext tests
@@ -83,12 +86,10 @@ TEST_F(OptiXContextTest, DoubleDestroyIsSafe) {
 TEST_F(OptiXContextTest, CreateModuleFromPTXSucceeds) {
     ASSERT_TRUE(context.initialize());
 
-    // Try to load the sphere PTX file
-    std::string ptx_path = "target/native/x86_64-linux/bin/sphere_combined.ptx";
-    std::string ptx_content = readPTXFile(ptx_path);
+    std::string ptx_content = readPTXFile();
 
     if (ptx_content.empty()) {
-        GTEST_SKIP() << "PTX file not found at " << ptx_path;
+        GTEST_SKIP() << "PTX file not found in any search location";
     }
 
     OptixModuleCompileOptions module_options = {};
@@ -143,8 +144,7 @@ TEST_F(OptiXContextTest, DestroyNullModuleIsSafe) {
 TEST_F(OptiXContextTest, CreateRaygenProgramGroupSucceeds) {
     ASSERT_TRUE(context.initialize());
 
-    std::string ptx_path = "target/native/x86_64-linux/bin/sphere_combined.ptx";
-    std::string ptx_content = readPTXFile(ptx_path);
+    std::string ptx_content = readPTXFile();
 
     if (ptx_content.empty()) {
         GTEST_SKIP() << "PTX file not found";
@@ -176,7 +176,7 @@ TEST_F(OptiXContextTest, CreateRaygenProgramGroupSucceeds) {
 TEST_F(OptiXContextTest, CreateMissProgramGroupSucceeds) {
     ASSERT_TRUE(context.initialize());
 
-    std::string ptx_content = readPTXFile("target/native/x86_64-linux/bin/sphere_combined.ptx");
+    std::string ptx_content = readPTXFile();
     if (ptx_content.empty()) GTEST_SKIP() << "PTX file not found";
 
     OptixModuleCompileOptions module_options = {};
@@ -203,7 +203,7 @@ TEST_F(OptiXContextTest, CreateMissProgramGroupSucceeds) {
 TEST_F(OptiXContextTest, CreateHitgroupProgramGroupSucceeds) {
     ASSERT_TRUE(context.initialize());
 
-    std::string ptx_content = readPTXFile("target/native/x86_64-linux/bin/sphere_combined.ptx");
+    std::string ptx_content = readPTXFile();
     if (ptx_content.empty()) GTEST_SKIP() << "PTX file not found";
 
     OptixModuleCompileOptions module_options = {};
@@ -271,7 +271,7 @@ TEST_F(OptiXContextTest, DestroyNullGASIsSafe) {
 TEST_F(OptiXContextTest, CreateRaygenSBTRecordSucceeds) {
     ASSERT_TRUE(context.initialize());
 
-    std::string ptx_content = readPTXFile("target/native/x86_64-linux/bin/sphere_combined.ptx");
+    std::string ptx_content = readPTXFile();
     if (ptx_content.empty()) GTEST_SKIP() << "PTX file not found";
 
     OptixModuleCompileOptions module_options = {};
@@ -326,4 +326,25 @@ TEST_F(OptiXContextTest, OperationBeforeInitializeThrows) {
     );
 }
 
-// Main function provided by gtest_main library
+// Custom main to suppress verbose output
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+
+    // Suppress individual test output, only show summary
+    ::testing::TestEventListeners& listeners = ::testing::UnitTest::GetInstance()->listeners();
+    delete listeners.Release(listeners.default_result_printer());
+    listeners.Append(new ::testing::EmptyTestEventListener());
+
+    int result = RUN_ALL_TESTS();
+
+    // Print concise summary
+    const ::testing::UnitTest* unit_test = ::testing::UnitTest::GetInstance();
+    if (result == 0) {
+        std::cout << "All " << unit_test->successful_test_count()
+                  << " C++ tests passed" << std::endl;
+    } else {
+        std::cout << unit_test->failed_test_count() << " C++ tests FAILED" << std::endl;
+    }
+
+    return result;
+}
