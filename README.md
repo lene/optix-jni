@@ -73,6 +73,88 @@ When you need to update components (e.g., new CUDA/Java/sbt version):
 
 Total image size: ~11GB (but CUDA layer shared across all NVIDIA images)
 
+## Architecture
+
+### Two-Layer Design
+
+**Low-Level (OptiXContext):**
+- Pure OptiX API wrapper, stateless (only holds device context)
+- Explicit resource management (create/destroy pairs)
+- 1:1 mapping to OptiX operations
+- 16 Google Test C++ unit tests
+
+**High-Level (OptiXWrapper):**
+- Scene state management (sphere, camera, light, plane, material)
+- Convenience methods for scene setup
+- Performance: scene data in Params (not SBT) for fast parameter updates
+- Uses OptiXContext via composition
+
+### Directory Structure
+
+```
+optix-jni/src/main/
+  native/
+    CMakeLists.txt          # CMake build config
+    OptiXContext.cpp        # Low-level OptiX wrapper
+    OptiXWrapper.cpp        # High-level scene renderer
+    JNIBindings.cpp         # JNI interface
+    include/
+      OptiXContext.h
+      OptiXWrapper.h
+      OptiXData.h           # Shared data structures (Params, SBT)
+      OptiXConstants.h      # Magic number constants
+    shaders/
+      sphere_combined.cu    # Combined CUDA shaders (ONLY this file is compiled)
+    tests/
+      OptiXContextTest.cpp  # Google Test suite (16 tests)
+
+  scala/menger/optix/
+    OptiXRenderer.scala     # Main Scala API
+
+target/native/x86_64-linux/
+  bin/
+    liboptixjni.so          # Compiled JNI shared library
+    sphere_combined.ptx     # Compiled CUDA kernels
+```
+
+**IMPORTANT:** Only `sphere_combined.cu` is compiled. Separate shader files (`sphere_miss.cu`, `sphere_closesthit.cu`, `sphere_raygen.cu`) are outdated and NOT used. Check `CMakeLists.txt` to verify.
+
+### Key Components
+
+**OptiXContext** (`OptiXContext.h/.cpp`):
+- `initialize()`/`destroy()` - Device context lifecycle
+- `createModuleFromPTX()`/`destroyModule()` - Shader compilation
+- `createRaygenProgramGroup()`, `createMissProgramGroup()`, `createHitgroupProgramGroup()`
+- `createPipeline()`/`destroyPipeline()` - Pipeline assembly
+- `buildCustomPrimitiveGAS()`/`destroyGAS()` - Geometry acceleration
+- `createRaygenSBTRecord()`, `createMissSBTRecord()`, `createHitgroupSBTRecord()`
+- `launch()` - OptiX kernel execution
+
+**OptiXWrapper** (`OptiXWrapper.h/.cpp`):
+- `setSphere()`, `setSphereColor()`, `setIOR()`, `setScale()` - Scene config
+- `setCamera()`, `setLight()`, `setPlane()` - Environment
+- `render()` - High-level rendering (builds pipeline if needed, returns RGBA image)
+
+**JNI Interface** (`JNIBindings.cpp`, `OptiXRenderer.scala`):
+- Per-instance native handles (multiple renderer instances supported)
+- Error propagation via return codes
+- Functional-style library loading with Try monad
+
+**Shaders** (`sphere_combined.cu`):
+- Ray generation, miss, closest hit, custom sphere intersection
+- Reads scene data from Params struct (not SBT) for performance
+- Compiled to PTX at build time
+
+### Build Process
+
+1. sbt-jni plugin detects `CMakeLists.txt`
+2. CMake compiles C++/CUDA to PTX
+3. Google Test suite runs (16 C++ tests)
+4. Artifacts copied to `target/native/*/bin/`
+5. Scala loads native library via functional loader with Try monad
+
+**Note:** sbt-jni runs CMake every compile, but CMake skips unchanged files. Minimal output via `-Wno-dev`, `--log-level=WARNING`, `CMAKE_INSTALL_MESSAGE LAZY`.
+
 ## Local Development
 
 For local development with OptiX support, see the main project's `GPU_DEVELOPMENT.md`.
