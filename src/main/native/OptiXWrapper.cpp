@@ -371,14 +371,11 @@ void OptiXWrapper::setupShaderBindingTable() {
         rg_data
     );
 
-    // Miss record data
+    // Miss record data (plane parameters moved to Params for performance)
     MissData ms_data;
     ms_data.r = OptiXConstants::DEFAULT_BG_R;
     ms_data.g = OptiXConstants::DEFAULT_BG_G;
     ms_data.b = OptiXConstants::DEFAULT_BG_B;
-    ms_data.plane_axis = impl->plane_axis;
-    ms_data.plane_positive = impl->plane_positive;
-    ms_data.plane_value = impl->plane_value;
 
     impl->sbt.missRecordBase = impl->optix_context.createMissSBTRecord(
         impl->miss_prog_group,
@@ -387,15 +384,10 @@ void OptiXWrapper::setupShaderBindingTable() {
     impl->sbt.missRecordStrideInBytes = sizeof(MissSbtRecord);
     impl->sbt.missRecordCount = 1;
 
-    // Hit group record data
+    // Hit group record data (material properties moved to Params for performance)
     HitGroupData hg_data;
     std::memcpy(hg_data.sphere_center, impl->sphere_center, sizeof(float) * 3);
     hg_data.sphere_radius = impl->sphere_radius;
-    std::memcpy(hg_data.sphere_color, impl->sphere_color, sizeof(float) * 4);
-    std::memcpy(hg_data.light_dir, impl->light_direction, sizeof(float) * 3);
-    hg_data.light_intensity = impl->light_intensity;
-    hg_data.ior = impl->sphere_ior;
-    hg_data.scale = impl->sphere_scale;
 
     impl->sbt.hitgroupRecordBase = impl->optix_context.createHitgroupSBTRecord(
         impl->hitgroup_prog_group,
@@ -485,6 +477,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
         params.image_width = width;
         params.image_height = height;
         params.handle = impl->gas_handle;
+
+        // Dynamic scene data (moved from SBT for performance)
+        std::memcpy(params.sphere_color, impl->sphere_color, sizeof(float) * 4);
+        params.sphere_ior = impl->sphere_ior;
+        params.sphere_scale = impl->sphere_scale;
+        std::memcpy(params.light_dir, impl->light_direction, sizeof(float) * 3);
+        params.light_intensity = impl->light_intensity;
+        params.plane_axis = impl->plane_axis;
+        params.plane_positive = impl->plane_positive;
+        params.plane_value = impl->plane_value;
 
         // Copy params to GPU
         CUDA_CHECK(cudaMemcpy(

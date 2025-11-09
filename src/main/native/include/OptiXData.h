@@ -4,11 +4,23 @@
 #include <optix.h>
 
 // Launch parameters passed to OptiX shaders
+// NOTE: Dynamic scene data moved here from SBT for better performance
+// (parameter changes require only cudaMemcpy, not SBT rebuild)
 struct Params {
     unsigned char* image;        // Output image buffer (RGBA)
     unsigned int   image_width;
     unsigned int   image_height;
     OptixTraversableHandle handle; // Scene geometry handle
+
+    // Dynamic scene data (moved from SBT for performance)
+    float sphere_color[4];      // Sphere color (RGBA, 0.0-1.0)
+    float sphere_ior;           // Index of refraction (1.0 = no refraction, 1.5 = glass)
+    float sphere_scale;         // Physical scale (1.0 = meters, 0.01 = centimeters)
+    float light_dir[3];         // Light direction
+    float light_intensity;      // Light intensity
+    int   plane_axis;           // 0=X, 1=Y, 2=Z
+    bool  plane_positive;       // true=positive normal, false=negative normal
+    float plane_value;          // Plane position along axis
 };
 
 // Ray generation shader data (camera)
@@ -19,23 +31,15 @@ struct RayGenData {
     float camera_w[3];      // Camera forward vector (points toward lookAt)
 };
 
-// Miss shader data (background and plane)
+// Miss shader data (background only - plane moved to Params)
 struct MissData {
     float r, g, b;          // Background color
-    int   plane_axis;       // 0=X, 1=Y, 2=Z
-    bool  plane_positive;   // true=positive normal, false=negative normal
-    float plane_value;      // Plane position along axis
 };
 
-// Hit group shader data (sphere material)
+// Hit group shader data (geometry only - material moved to Params)
 struct HitGroupData {
     float sphere_center[3]; // Sphere center position
     float sphere_radius;    // Sphere radius
-    float sphere_color[4];  // Sphere color (RGBA, 0.0-1.0)
-    float light_dir[3];     // Light direction
-    float light_intensity;  // Light intensity
-    float ior;              // Index of refraction (1.0 = no refraction, 1.5 = glass)
-    float scale;            // Physical scale (1.0 = meters, 0.01 = centimeters)
 };
 
 // Shader Binding Table (SBT) record structures

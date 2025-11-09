@@ -253,9 +253,9 @@ extern "C" __global__ void __miss__ms() {
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
 
-    // Extract plane parameters from miss_data
-    const int plane_axis = miss_data->plane_axis;         // 0=X, 1=Y, 2=Z
-    const float plane_value = miss_data->plane_value;     // Position along axis
+    // Extract plane parameters from params (moved from SBT for performance)
+    const int plane_axis = params.plane_axis;         // 0=X, 1=Y, 2=Z
+    const float plane_value = params.plane_value;     // Position along axis
     // Note: plane_positive (normal direction) is currently not used - plane is visible from both sides
 
     // Get ray origin/direction component for the plane axis
@@ -364,9 +364,8 @@ extern "C" __global__ void __closesthit__ch() {
     const unsigned int depth = optixGetPayload_3();
     const unsigned int MAX_DEPTH = 5;  // Increased to allow internal reflections
 
-    // If IOR is 1.0, treat as opaque sphere (no refraction/transmission)
-    // Get sphere alpha
-    const float sphere_alpha = hit_data->sphere_color[3];
+    // Get sphere alpha from params (moved from SBT for performance)
+    const float sphere_alpha = params.sphere_color[3];
 
     // Handle fully transparent spheres - trace continuation ray through sphere
     if (sphere_alpha < 0.01f) {
@@ -397,19 +396,19 @@ extern "C" __global__ void __closesthit__ch() {
     // Handle fully opaque spheres (alpha >= 0.99) - solid surface with diffuse shading
     if (sphere_alpha >= 0.99f) {
         const float3 light_dir_normalized = normalize(make_float3(
-            hit_data->light_dir[0],
-            hit_data->light_dir[1],
-            hit_data->light_dir[2]
+            params.light_dir[0],
+            params.light_dir[1],
+            params.light_dir[2]
         ));
         const float diffuse = fmaxf(0.0f, dot(normal, light_dir_normalized));
         const float ambient = 0.3f;
         const float lighting = ambient + (1.0f - ambient) * diffuse;
 
-        // Get sphere color (RGB only, ignore alpha for solid spheres)
+        // Get sphere color from params (RGB only, ignore alpha for solid spheres)
         const float3 sphere_color = make_float3(
-            hit_data->sphere_color[0],
-            hit_data->sphere_color[1],
-            hit_data->sphere_color[2]
+            params.sphere_color[0],
+            params.sphere_color[1],
+            params.sphere_color[2]
         );
 
         // Apply lighting to solid sphere surface
@@ -438,8 +437,9 @@ extern "C" __global__ void __closesthit__ch() {
     }
 
     // Compute Fresnel reflectance using Schlick approximation
-    const float n1 = entering ? 1.0f : hit_data->ior;
-    const float n2 = entering ? hit_data->ior : 1.0f;
+    // Get IOR from params (moved from SBT for performance)
+    const float n1 = entering ? 1.0f : params.sphere_ior;
+    const float n2 = entering ? params.sphere_ior : 1.0f;
     const float r0 = (n1 - n2) / (n1 + n2);
     const float R0 = r0 * r0;
     const float cos_theta = fabsf(dot(ray_direction, normal));
@@ -513,13 +513,13 @@ extern "C" __global__ void __closesthit__ch() {
 
     if (!entering)  // Exiting - apply absorption to refracted ray
     {
-        // Get glass color and alpha
+        // Get glass color and alpha from params (moved from SBT for performance)
         const float3 glass_color = make_float3(
-            hit_data->sphere_color[0],
-            hit_data->sphere_color[1],
-            hit_data->sphere_color[2]
+            params.sphere_color[0],
+            params.sphere_color[1],
+            params.sphere_color[2]
         );
-        const float glass_alpha = hit_data->sphere_color[3];
+        const float glass_alpha = params.sphere_color[3];
 
         // Calculate extinction constant from color and alpha
         // STANDARD GRAPHICS ALPHA CONVENTION:
@@ -534,10 +534,11 @@ extern "C" __global__ void __closesthit__ch() {
         );
 
         // Apply Beer-Lambert using t (which varies from ~0.7 at edges to ~1.2 at center)
+        // Get scale from params (moved from SBT for performance)
         const float3 beer_attenuation = make_float3(
-            expf(-extinction_constant.x * t * hit_data->scale),
-            expf(-extinction_constant.y * t * hit_data->scale),
-            expf(-extinction_constant.z * t * hit_data->scale)
+            expf(-extinction_constant.x * t * params.sphere_scale),
+            expf(-extinction_constant.y * t * params.sphere_scale),
+            expf(-extinction_constant.z * t * params.sphere_scale)
         );
 
         // Apply absorption to refracted ray

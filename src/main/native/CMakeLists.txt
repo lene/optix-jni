@@ -5,6 +5,9 @@ project(optixjni LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Suppress verbose install messages
+set(CMAKE_INSTALL_MESSAGE LAZY)
+
 #=============================================================================
 # Detect CUDA Availability (REQUIRED)
 #=============================================================================
