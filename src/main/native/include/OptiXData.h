@@ -3,6 +3,40 @@
 
 #include <optix.h>
 
+// Ray tracing configuration
+// This constant is used by both the C++ pipeline setup and CUDA shaders
+constexpr unsigned int MAX_TRACE_DEPTH = 5;  // Allow internal reflections in glass (entry + exit + reflections)
+
+// Ray tracing constants (shared between C++ and CUDA shaders)
+namespace RayTracingConstants {
+    // Ray distance limits
+    constexpr float MAX_RAY_DISTANCE = 1e16f;          // Maximum ray travel distance
+    constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Offset to avoid self-intersection
+
+    // Color conversion (float [0,1] to byte [0,255])
+    constexpr float COLOR_SCALE_FACTOR = 255.99f;      // Slightly less than 256 to avoid overflow
+    constexpr float COLOR_BYTE_MAX = 255.0f;           // Maximum byte value for RGB
+
+    // Alpha channel thresholds (based on 1-byte precision: 1/255 and 254/255)
+    constexpr float ALPHA_FULLY_TRANSPARENT_THRESHOLD = 1.0f / 255.0f;   // ~0.00392 (alpha < this = transparent)
+    constexpr float ALPHA_FULLY_OPAQUE_THRESHOLD = 254.0f / 255.0f;      // ~0.99608 (alpha >= this = opaque)
+
+    // Beer-Lambert absorption (for volume rendering)
+    constexpr float COLOR_CHANNEL_MIN_SAFE_VALUE = 1.0f / 255.0f;  // Minimum to avoid log(0) in absorption
+    constexpr float BEER_LAMBERT_ABSORPTION_SCALE = 5.0f;          // Scale factor for absorption intensity
+
+    // Sphere intersection refinement
+    constexpr float SPHERE_INTERSECTION_REFINEMENT_THRESHOLD = 10.0f;  // Refine if |root| > threshold * radius
+
+    // Lighting model
+    constexpr float AMBIENT_LIGHT_FACTOR = 0.3f;  // Ambient light contribution (30%)
+
+    // Plane rendering (checkered pattern)
+    constexpr float PLANE_CHECKER_SIZE = 1.0f;            // Size of checker squares
+    constexpr unsigned int PLANE_CHECKER_LIGHT_GRAY = 120;  // Light gray checker RGB value
+    constexpr unsigned int PLANE_CHECKER_DARK_GRAY = 20;    // Dark gray checker RGB value
+}
+
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)

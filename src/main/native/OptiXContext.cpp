@@ -31,7 +31,7 @@
             std::ostringstream ss;                                            \
             ss << "CUDA call '" << #call << "' failed: "                      \
                << cudaGetErrorString(err) << " (" << err << ")";              \
-            if (err == 718) {                                                 \
+            if (err == OptiXConstants::CUDA_ERROR_INVALID_PROGRAM_COUNTER) {  \
                 ss << "\n\n"                                                  \
                    << "ERROR 718 (invalid program counter) indicates OptiX " \
                    << "SDK/driver version mismatch.\n"                        \

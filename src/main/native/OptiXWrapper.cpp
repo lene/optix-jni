@@ -56,7 +56,7 @@ namespace VectorMath {
             std::ostringstream ss;                                            \
             ss << "CUDA call '" << #call << "' failed: "                      \
                << cudaGetErrorString(err) << " (" << err << ")";              \
-            if (err == 718) {                                                 \
+            if (err == OptiXConstants::CUDA_ERROR_INVALID_PROGRAM_COUNTER) {  \
                 ss << "\n\n"                                                  \
                    << "ERROR 718 (invalid program counter) indicates OptiX " \
                    << "SDK/driver version mismatch.\n"                        \
@@ -93,7 +93,6 @@ static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
 // Implementation structure
 struct OptiXWrapper::Impl {
     OptiXContext optix_context;  // Low-level OptiX context wrapper
-    OptixDeviceContext context = nullptr;  // TODO: Remove after migration complete
 
     // Camera parameters
     float camera_eye[3] = {0.0f, 0.0f, 3.0f};
@@ -158,9 +157,6 @@ bool OptiXWrapper::initialize() {
             std::cerr << "[OptiX] OptiXContext initialization failed" << std::endl;
             return false;
         }
-
-        // Get the OptiX device context for backward compatibility
-        impl->context = impl->optix_context.getContext();
 
         impl->initialized = true;
         return true;
@@ -332,7 +328,7 @@ void OptiXWrapper::createPipeline() {
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
 
     OptixPipelineLinkOptions pipeline_link_options = {};
-    pipeline_link_options.maxTraceDepth = OptiXConstants::MAX_TRACE_DEPTH;
+    pipeline_link_options.maxTraceDepth = MAX_TRACE_DEPTH;  // Defined in OptiXData.h
 
     // Use OptiXContext to create pipeline
     impl->pipeline = impl->optix_context.createPipeline(
@@ -596,7 +592,6 @@ void OptiXWrapper::dispose() {
 
             // Clean up OptiX context
             impl->optix_context.destroy();
-            impl->context = nullptr;
 
             impl->pipeline_built = false;
 

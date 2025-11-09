@@ -5,12 +5,8 @@ extern "C" {
     __constant__ Params params;
 }
 
-// Constants for ray tracing
-namespace Constants {
-    constexpr float MAX_RAY_DISTANCE = 1e16f;
-    constexpr float COLOR_SCALE_FACTOR = 255.99f;  // Slightly less than 256 to avoid overflow
-    constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Small offset to avoid self-intersection
-}
+// Import ray tracing constants from OptiXData.h
+using namespace RayTracingConstants;
 
 // Device-side vector math helper functions
 __device__ inline float length(float3 v) {
@@ -74,9 +70,9 @@ __device__ inline float3 computeBeerLambertAbsorption(
 
     // Avoid log(0) by clamping color channels
     const float3 safe_color = make_float3(
-        fmaxf(color_rgb.x, 0.01f),
-        fmaxf(color_rgb.y, 0.01f),
-        fmaxf(color_rgb.z, 0.01f)
+        fmaxf(color_rgb.x, COLOR_CHANNEL_MIN_SAFE_VALUE),
+        fmaxf(color_rgb.y, COLOR_CHANNEL_MIN_SAFE_VALUE),
+        fmaxf(color_rgb.z, COLOR_CHANNEL_MIN_SAFE_VALUE)
     );
 
     // Absorption coefficient for each wavelength
@@ -135,7 +131,7 @@ extern "C" __global__ void __intersection__sphere()
         bool  check_second = true;
 
         // Numerical refinement for large distances (SDK feature)
-        const bool do_refine = fabsf(root1) > (10.0f * radius);
+        const bool do_refine = fabsf(root1) > (SPHERE_INTERSECTION_REFINEMENT_THRESHOLD * radius);
         if (do_refine)
         {
             // Refine root1 for better accuracy
@@ -219,7 +215,7 @@ extern "C" __global__ void __raygen__rg() {
         ray_origin,                        // Ray origin
         ray_direction,                     // Ray direction
         0.0f,                              // tmin
-        Constants::MAX_RAY_DISTANCE,       // tmax
+        MAX_RAY_DISTANCE,       // tmax
         0.0f,                              // rayTime
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
@@ -295,36 +291,36 @@ extern "C" __global__ void __miss__ms() {
                 checker_v = hit_point.y;
             }
 
-            // Checkered pattern with 1.0 unit squares
-            const float checker_size = 1.0f;
+            // Checkered pattern
+            const float checker_size = PLANE_CHECKER_SIZE;
             const int check_u = static_cast<int>(floorf(checker_u / checker_size));
             const int check_v = static_cast<int>(floorf(checker_v / checker_size));
 
             // XOR to create checkerboard pattern
             const bool is_light = ((check_u + check_v) & 1) == 0;
 
-            // Medium gray (120, 120, 120) and very dark gray (20, 20, 20)
+            // Medium gray and very dark gray checker colors
             // These colors are distinct from light spheres (200+) and white (255)
             if (is_light) {
-                r = 120;
-                g = 120;
-                b = 120;
+                r = PLANE_CHECKER_LIGHT_GRAY;
+                g = PLANE_CHECKER_LIGHT_GRAY;
+                b = PLANE_CHECKER_LIGHT_GRAY;
             } else {
-                r = 20;
-                g = 20;
-                b = 20;
+                r = PLANE_CHECKER_DARK_GRAY;
+                g = PLANE_CHECKER_DARK_GRAY;
+                b = PLANE_CHECKER_DARK_GRAY;
             }
         } else {
             // No intersection (t < 0), use background color
-            r = static_cast<unsigned int>(miss_data->r * Constants::COLOR_SCALE_FACTOR);
-            g = static_cast<unsigned int>(miss_data->g * Constants::COLOR_SCALE_FACTOR);
-            b = static_cast<unsigned int>(miss_data->b * Constants::COLOR_SCALE_FACTOR);
+            r = static_cast<unsigned int>(miss_data->r * COLOR_SCALE_FACTOR);
+            g = static_cast<unsigned int>(miss_data->g * COLOR_SCALE_FACTOR);
+            b = static_cast<unsigned int>(miss_data->b * COLOR_SCALE_FACTOR);
         }
     } else {
         // Ray not pointing towards plane, use background color
-        r = static_cast<unsigned int>(miss_data->r * Constants::COLOR_SCALE_FACTOR);
-        g = static_cast<unsigned int>(miss_data->g * Constants::COLOR_SCALE_FACTOR);
-        b = static_cast<unsigned int>(miss_data->b * Constants::COLOR_SCALE_FACTOR);
+        r = static_cast<unsigned int>(miss_data->r * COLOR_SCALE_FACTOR);
+        g = static_cast<unsigned int>(miss_data->g * COLOR_SCALE_FACTOR);
+        b = static_cast<unsigned int>(miss_data->b * COLOR_SCALE_FACTOR);
     }
 
     // Set payload
@@ -362,15 +358,14 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Get current depth from payload
     const unsigned int depth = optixGetPayload_3();
-    const unsigned int MAX_DEPTH = 5;  // Increased to allow internal reflections
 
     // Get sphere alpha from params (moved from SBT for performance)
     const float sphere_alpha = params.sphere_color[3];
 
     // Handle fully transparent spheres - trace continuation ray through sphere
-    if (sphere_alpha < 0.01f) {
+    if (sphere_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
         // Sphere is fully transparent, let ray continue as if sphere doesn't exist
-        const float3 continue_origin = hit_point + ray_direction * Constants::CONTINUATION_RAY_OFFSET;
+        const float3 continue_origin = hit_point + ray_direction * CONTINUATION_RAY_OFFSET;
         unsigned int continue_r = 0, continue_g = 0, continue_b = 0;
         unsigned int next_depth = depth;  // Don't increment depth for transparent pass-through
 
@@ -378,8 +373,8 @@ extern "C" __global__ void __closesthit__ch() {
             params.handle,
             continue_origin,
             ray_direction,  // Continue in same direction
-            Constants::CONTINUATION_RAY_OFFSET,
-            Constants::MAX_RAY_DISTANCE,
+            CONTINUATION_RAY_OFFSET,
+            MAX_RAY_DISTANCE,
             0.0f,
             OptixVisibilityMask(255),
             OPTIX_RAY_FLAG_NONE,
@@ -393,16 +388,15 @@ extern "C" __global__ void __closesthit__ch() {
         return;
     }
 
-    // Handle fully opaque spheres (alpha >= 0.99) - solid surface with diffuse shading
-    if (sphere_alpha >= 0.99f) {
+    // Handle fully opaque spheres (alpha >= threshold) - solid surface with diffuse shading
+    if (sphere_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
         const float3 light_dir_normalized = normalize(make_float3(
             params.light_dir[0],
             params.light_dir[1],
             params.light_dir[2]
         ));
         const float diffuse = fmaxf(0.0f, dot(normal, light_dir_normalized));
-        const float ambient = 0.3f;
-        const float lighting = ambient + (1.0f - ambient) * diffuse;
+        const float lighting = AMBIENT_LIGHT_FACTOR + (1.0f - AMBIENT_LIGHT_FACTOR) * diffuse;
 
         // Get sphere color from params (RGB only, ignore alpha for solid spheres)
         const float3 sphere_color = make_float3(
@@ -429,7 +423,7 @@ extern "C" __global__ void __closesthit__ch() {
     }
 
     // If max depth reached, return black to avoid infinite recursion
-    if (depth >= MAX_DEPTH) {
+    if (depth >= MAX_TRACE_DEPTH) {
         optixSetPayload_0(0);
         optixSetPayload_1(0);
         optixSetPayload_2(0);
@@ -455,14 +449,14 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Trace reflected ray
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    const float3 reflect_origin = hit_point + reflect_dir * Constants::CONTINUATION_RAY_OFFSET;
+    const float3 reflect_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
     unsigned int next_depth = depth + 1;
     optixTrace(
         params.handle,
         reflect_origin,
         reflect_dir,
-        Constants::CONTINUATION_RAY_OFFSET,
-        Constants::MAX_RAY_DISTANCE,
+        CONTINUATION_RAY_OFFSET,
+        MAX_RAY_DISTANCE,
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
@@ -484,13 +478,13 @@ extern "C" __global__ void __closesthit__ch() {
             eta * ray_direction.z + coeff * normal.z
         );
 
-        const float3 refract_origin = hit_point + refract_dir * Constants::CONTINUATION_RAY_OFFSET;
+        const float3 refract_origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
         optixTrace(
             params.handle,
             refract_origin,
             refract_dir,
-            Constants::CONTINUATION_RAY_OFFSET,
-            Constants::MAX_RAY_DISTANCE,
+            CONTINUATION_RAY_OFFSET,
+            MAX_RAY_DISTANCE,
             0.0f,
             OptixVisibilityMask(255),
             OPTIX_RAY_FLAG_NONE,
@@ -525,12 +519,11 @@ extern "C" __global__ void __closesthit__ch() {
         // STANDARD GRAPHICS ALPHA CONVENTION:
         // alpha=0.0 → fully transparent (no absorption)
         // alpha=1.0 → fully opaque (maximum absorption)
-        // Scale factor of 5.0 ensures alpha=1.0 gives ~99% absorption at sphere diameter
-        const float absorption_scale = 5.0f;
+        const float absorption_scale = BEER_LAMBERT_ABSORPTION_SCALE;
         const float3 extinction_constant = make_float3(
-            -logf(fmaxf(glass_color.x, 0.01f)) * glass_alpha * absorption_scale,
-            -logf(fmaxf(glass_color.y, 0.01f)) * glass_alpha * absorption_scale,
-            -logf(fmaxf(glass_color.z, 0.01f)) * glass_alpha * absorption_scale
+            -logf(fmaxf(glass_color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+            -logf(fmaxf(glass_color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+            -logf(fmaxf(glass_color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale
         );
 
         // Apply Beer-Lambert using t (which varies from ~0.7 at edges to ~1.2 at center)
