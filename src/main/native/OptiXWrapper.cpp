@@ -98,6 +98,8 @@ struct OptiXWrapper::Impl {
     CUdeviceptr d_params = 0;                 // Launch parameters
     CUdeviceptr d_vertex_buffer = 0;          // Sphere center position
     CUdeviceptr d_radius_buffer = 0;          // Sphere radius
+    CUdeviceptr d_image = 0;                  // Cached image buffer (reused across renders)
+    size_t cached_image_size = 0;             // Size of cached image buffer in bytes
     OptixShaderBindingTable sbt = {};
     OptixTraversableHandle gas_handle = 0;
 
@@ -427,14 +429,23 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
             impl->sphere_params_dirty = false;
         }
 
-        // Allocate GPU image buffer
-        CUdeviceptr d_image;
-        const size_t image_size = width * height * 4; // RGBA
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_image), image_size));
+        // Reuse GPU image buffer (allocate only if size changed)
+        const size_t required_size = width * height * 4; // RGBA
+        if (impl->cached_image_size != required_size) {
+            // Free old buffer if it exists
+            if (impl->d_image) {
+                CUDA_CHECK(cudaFree(reinterpret_cast<void*>(impl->d_image)));
+                impl->d_image = 0;
+                impl->cached_image_size = 0;
+            }
+            // Allocate new buffer with exact required size
+            CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_image), required_size));
+            impl->cached_image_size = required_size;
+        }
 
-        // Set up launch parameters
+        // Set up launch parameters (use cached buffer)
         Params params;
-        params.image = reinterpret_cast<unsigned char*>(d_image);
+        params.image = reinterpret_cast<unsigned char*>(impl->d_image);
         params.image_width = width;
         params.image_height = height;
         params.handle = impl->gas_handle;
@@ -469,13 +480,10 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
         // Copy result back to CPU
         CUDA_CHECK(cudaMemcpy(
             output,
-            reinterpret_cast<void*>(d_image),
-            image_size,
+            reinterpret_cast<void*>(impl->d_image),
+            required_size,
             cudaMemcpyDeviceToHost
         ));
-
-        // Clean up GPU image buffer
-        CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_image)));
 
     } catch (const std::exception& e) {
         std::cerr << "[OptiX] Render failed: " << e.what() << std::endl;
@@ -529,14 +537,11 @@ void OptiXWrapper::dispose() {
                 impl->d_params = 0;
             }
 
-            if (impl->d_vertex_buffer) {
-                cudaFree(reinterpret_cast<void*>(impl->d_vertex_buffer));
-                impl->d_vertex_buffer = 0;
-            }
-
-            if (impl->d_radius_buffer) {
-                cudaFree(reinterpret_cast<void*>(impl->d_radius_buffer));
-                impl->d_radius_buffer = 0;
+            // Clean up cached image buffer
+            if (impl->d_image) {
+                cudaFree(reinterpret_cast<void*>(impl->d_image));
+                impl->d_image = 0;
+                impl->cached_image_size = 0;
             }
 
             // Clean up SBT buffers using OptiXContext
