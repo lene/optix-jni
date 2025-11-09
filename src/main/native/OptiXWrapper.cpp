@@ -1,6 +1,7 @@
 #include "include/OptiXWrapper.h"
 #include "include/OptiXContext.h"
 #include "include/OptiXConstants.h"
+#include "include/OptiXErrorChecking.h"
 #include <iostream>
 #include <cstring>
 #include <sstream>
@@ -35,42 +36,6 @@ namespace VectorMath {
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
 #include <optix_stack_size.h>
-
-// OptiX error checking macro
-#define OPTIX_CHECK(call)                                                     \
-    do {                                                                      \
-        OptixResult res = call;                                               \
-        if (res != OPTIX_SUCCESS) {                                           \
-            std::ostringstream ss;                                            \
-            ss << "OptiX call '" << #call << "' failed: "                     \
-               << optixGetErrorName(res) << " (" << res << ")";               \
-            throw std::runtime_error(ss.str());                               \
-        }                                                                     \
-    } while(0)
-
-// CUDA error checking macro
-#define CUDA_CHECK(call)                                                      \
-    do {                                                                      \
-        cudaError_t err = call;                                               \
-        if (err != cudaSuccess) {                                             \
-            std::ostringstream ss;                                            \
-            ss << "CUDA call '" << #call << "' failed: "                      \
-               << cudaGetErrorString(err) << " (" << err << ")";              \
-            if (err == OptiXConstants::CUDA_ERROR_INVALID_PROGRAM_COUNTER) {  \
-                ss << "\n\n"                                                  \
-                   << "ERROR 718 (invalid program counter) indicates OptiX " \
-                   << "SDK/driver version mismatch.\n"                        \
-                   << "To diagnose:\n"                                        \
-                   << "  1. Check driver's OptiX version:\n"                 \
-                   << "     strings /usr/lib/x86_64-linux-gnu/libnvoptix.so.* | grep 'OptiX Version'\n" \
-                   << "  2. Check SDK version used to build:\n"              \
-                   << "     grep 'OptiX SDK:' optix-jni/target/native/x86_64-linux/build/CMakeCache.txt\n" \
-                   << "  3. Install matching OptiX SDK from https://developer.nvidia.com/optix\n" \
-                   << "  4. Rebuild: rm -rf optix-jni/target/native && sbt 'project optixJni' compile\n"; \
-            }                                                                 \
-            throw std::runtime_error(ss.str());                               \
-        }                                                                     \
-    } while(0)
 
 // OptiX log callback
 static void optixLogCallback(unsigned int level, const char* tag, const char* message, void* /*cbdata*/) {

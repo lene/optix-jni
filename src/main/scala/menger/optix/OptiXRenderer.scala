@@ -20,8 +20,15 @@ import scala.util.{Failure, Try}
  */
 class OptiXRenderer extends LazyLogging:
 
-  // Native method declarations
-  @native def initialize(): Boolean
+  // Native handle to the C++ OptiXWrapper instance (0 = not initialized)
+  // Note: Must be accessible to JNI (not private)
+  @volatile var nativeHandle: Long = 0L
+
+  // Track initialization state to ensure idempotence
+  private var initialized: Boolean = false
+
+  // Native method declarations (private - use public initialize() instead)
+  @native private def initializeNative(): Boolean
   @native def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
   @native def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit
   @native def setIOR(ior: Float): Unit
@@ -31,6 +38,27 @@ class OptiXRenderer extends LazyLogging:
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
   @native def render(width: Int, height: Int): Array[Byte]
   @native def dispose(): Unit
+
+  /**
+   * Initialize the OptiX renderer.
+   *
+   * This method is idempotent - calling it multiple times is safe and will
+   * return true after the first successful initialization without performing
+   * redundant work.
+   *
+   * @return true if initialized successfully (or already initialized), false on failure
+   */
+  def initialize(): Boolean =
+    if initialized then
+      true  // Already initialized, return success
+    else
+      val result = initializeNative()
+      if result then
+        initialized = true
+        logger.debug("OptiX renderer initialized successfully")
+      else
+        logger.error("Failed to initialize OptiX renderer")
+      result
 
   // Convenience method with default alpha parameter for backward compatibility
   def setSphereColor(r: Float, g: Float, b: Float): Unit =
@@ -50,14 +78,18 @@ class OptiXRenderer extends LazyLogging:
         false
     .getOrElse(false)
 
+  /**
+   * Ensure OptiX is available and initialized.
+   *
+   * This method checks that the native library is loaded and initializes
+   * the renderer. If any step fails, the application exits with an error.
+   *
+   * @return this renderer instance for method chaining
+   */
   def ensureAvailable(): OptiXRenderer =
     if !OptiXRenderer.isLibraryLoaded then
       ErrorHandling.errorExit(
         "OptiX native library failed to load - ensure CUDA and OptiX are available"
-      )
-    if !isAvailable then
-      ErrorHandling.errorExit(
-        "OptiX not available on this system - ensure CUDA and OptiX are available"
       )
     if !initialize() then
       ErrorHandling.errorExit("Failed to initialize OptiX renderer")
