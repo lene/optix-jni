@@ -2,7 +2,9 @@
 
 **Goal:** Improve code quality, maintainability, and architecture of OptiX JNI bindings.
 
-**Estimated Total Time:** 12-16 hours
+**Estimated Total Time:** 15-20 hours (updated with new Phase 4)
+
+**Status:** Phase 4 complete
 
 ---
 
@@ -390,24 +392,135 @@ Actual loading uses imperative style (lines 69-131).
 **Solution A (recommended):** Delete unused methods
 **Solution B:** Refactor to use functional methods consistently
 
-**Choose A for now** - simpler and actual code works fine.
-
-### 3.7 Clean Up Scala Library Loading
-**File:** `OptiXRenderer.scala`
-
-**Current issues:**
-- Mix of imperative try/catch and functional Try
-- PTX extraction embedded in library loading
-- Long nested blocks
-
-**Improvements:**
-- Extract PTX extraction to separate method
-- Simplify error handling
-- Add clearer comments
+**Status:** ✅ **COMPLETE** - Chose Solution A, deleted 62 lines of unused code
 
 ---
 
-## Phase 4: Move Dynamic Scene Data to Params (Optional)
+## Phase 4: Convert Library Loading to Functional Style
+
+**Goal:** Replace imperative library loading with functional composition using Try/for-comprehension.
+
+**Time Estimate:** 1-2 hours
+
+**Status:** ✅ Complete
+
+**Actual Time:** ~1 hour
+
+### 4.1 Functional Style Benefits
+
+**Current (Imperative):**
+- Nested try-catch blocks (3 levels deep)
+- Mutable variables (`bytesRead` in while loops)
+- Side effects mixed with logic
+- Returns Boolean (loses exception information)
+
+**Target (Functional):**
+- `Try[Unit]` for error handling
+- `for` comprehension for sequencing
+- Tail-recursive stream copying
+- Preserves exception details
+
+### 4.2 Implementation Steps
+
+**1. Create helper functions** (~30 min)
+```scala
+private def loadFromSystemPath(): Try[Unit] = Try:
+  System.loadLibrary(libraryName)
+  logger.info(s"Loaded $libraryName from java.library.path")
+
+private def detectPlatform(): Try[String] = Try:
+  val os = System.getProperty("os.name").toLowerCase
+  val arch = System.getProperty("os.arch").toLowerCase
+  (os, arch) match
+    case (o, a) if o.contains("linux") && (a.contains("amd64") || a.contains("x86_64")) =>
+      "x86_64-linux"
+    case _ =>
+      throw new UnsupportedOperationException(s"Unsupported platform: $os/$arch")
+
+private def copyStreamToFile(stream: InputStream, out: FileOutputStream): Try[Unit] = Try:
+  val buffer = new Array[Byte](8192)
+  @scala.annotation.tailrec
+  def copyLoop(): Unit =
+    stream.read(buffer) match
+      case -1 => // done
+      case bytesRead =>
+        out.write(buffer, 0, bytesRead)
+        copyLoop()
+  copyLoop()
+```
+
+**2. Compose library loading** (~30 min)
+```scala
+private def loadFromClasspath(): Try[Unit] =
+  for
+    platform <- detectPlatform()
+    resourcePath = s"/native/$platform/lib$libraryName.so"
+    stream <- Try(Option(getClass.getResourceAsStream(resourcePath))
+      .getOrElse(throw new IllegalStateException(s"Resource not found: $resourcePath")))
+    tempFile <- Try(Files.createTempFile(s"lib$libraryName", ".so"))
+    _ <- Using.resource(new FileOutputStream(tempFile.toFile)): out =>
+      Using.resource(stream): in =>
+        copyStreamToFile(in, out)
+    _ <- Try:
+      tempFile.toFile.deleteOnExit()
+      System.load(tempFile.toAbsolutePath.toString)
+      logger.info(s"Loaded from classpath: $tempFile")
+  yield ()
+
+private def extractPTX(platform: String): Try[Unit] =
+  for
+    ptxPath = s"/native/$platform/sphere_combined.ptx"
+    stream <- Try(Option(getClass.getResourceAsStream(ptxPath)))
+    _ <- stream.fold(Try(())): s =>
+      Try:
+        val dir = new java.io.File("target/native/x86_64-linux/bin")
+        dir.mkdirs()
+        val file = new java.io.File(dir, "sphere_combined.ptx")
+        Using.resource(new FileOutputStream(file)): out =>
+          Using.resource(s): in =>
+            copyStreamToFile(in, out)
+        logger.debug(s"Extracted PTX: ${file.getAbsolutePath}")
+  yield ()
+```
+
+**3. Update main loading logic** (~30 min)
+```scala
+private val libraryLoaded: Boolean =
+  loadFromSystemPath()
+    .recoverWith:
+      case _: UnsatisfiedLinkError =>
+        logger.debug("Trying classpath...")
+        for
+          platform <- detectPlatform()
+          _ <- loadFromClasspath()
+          _ <- extractPTX(platform)
+        yield ()
+    .fold(
+      error =>
+        logger.error(s"Failed to load $libraryName", error)
+        false,
+      _ => true
+    )
+```
+
+### 4.3 Testing
+
+- Verify loads from java.library.path
+- Verify fallback to classpath works
+- Verify PTX extraction works
+- Run full test suite (96 tests)
+
+### 4.4 Success Criteria
+
+- ✅ No mutable variables
+- ✅ No while loops
+- ✅ No nested try-catch
+- ✅ All 96 tests pass
+- ✅ Library loading works in both modes
+
+---
+
+## Phase 5 (was Phase 4): Move Dynamic Scene Data to Params (Optional)
 
 **Goal:** Improve performance by avoiding SBT rebuilds on parameter changes.
 
@@ -464,11 +577,13 @@ struct HitGroupData {
 
 ---
 
-## Phase 5: Testing & Documentation
+## Phase 6 (was Phase 5): Testing & Documentation
 
 **Time Estimate:** 2-3 hours
 
-### 5.1 Run Test Suite After Each Phase
+**Status:** Not started
+
+### 6.1 Run Test Suite After Each Phase
 ```bash
 sbt "project optixJni" test --warn
 ```
@@ -480,7 +595,7 @@ sbt "project optixJni" test --warn
 - Verify resource cleanup (memory leaks)
 - Check for logic errors in refactored code
 
-### 5.2 Update Documentation
+### 6.2 Update Documentation
 **File:** `CLAUDE.md`
 
 **Add section:** "OptiX JNI Architecture"
@@ -519,7 +634,7 @@ The OptiX bindings use a two-layer architecture:
 - `menger/optix/OptiXRenderer.scala`
 ```
 
-### 5.3 Update CHANGELOG.md
+### 6.3 Update CHANGELOG.md
 ```markdown
 ## [Unreleased]
 
