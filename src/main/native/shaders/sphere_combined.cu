@@ -422,11 +422,37 @@ extern "C" __global__ void __closesthit__ch() {
         return;
     }
 
-    // If max depth reached, return black to avoid infinite recursion
+    // If max depth reached, trace one final non-recursive ray to get background/plane color
+    // This avoids black artifacts from depth cutoff
     if (depth >= MAX_TRACE_DEPTH) {
-        optixSetPayload_0(0);
-        optixSetPayload_1(0);
-        optixSetPayload_2(0);
+        // Compute reflection direction for final ray
+        const float cos_theta = fabsf(dot(ray_direction, normal));
+        const float3 reflect_dir = make_float3(
+            ray_direction.x - 2.0f * cos_theta * normal.x,
+            ray_direction.y - 2.0f * cos_theta * normal.y,
+            ray_direction.z - 2.0f * cos_theta * normal.z
+        );
+
+        // Trace one final ray at MAX_TRACE_DEPTH (will not recurse further)
+        unsigned int final_r = 0, final_g = 0, final_b = 0;
+        unsigned int final_depth = MAX_TRACE_DEPTH;  // Keep at max depth to prevent recursion
+        const float3 final_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
+        optixTrace(
+            params.handle,
+            final_origin,
+            reflect_dir,
+            CONTINUATION_RAY_OFFSET,
+            MAX_RAY_DISTANCE,
+            0.0f,
+            OptixVisibilityMask(255),
+            OPTIX_RAY_FLAG_NONE,
+            0, 1, 0,
+            final_r, final_g, final_b, final_depth
+        );
+
+        optixSetPayload_0(final_r);
+        optixSetPayload_1(final_g);
+        optixSetPayload_2(final_b);
         return;
     }
 
