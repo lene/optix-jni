@@ -137,21 +137,40 @@ set(SOURCES
 
 ---
 
-## Phase 2: Refactor High-Level Layer (OptiXSceneRenderer)
+## Phase 2: Refactor High-Level Layer (OptiXWrapper → OptiXContext)
 
 **Goal:** Use OptiXContext for all low-level operations, focus on scene management.
 
 **Time Estimate:** 3-4 hours
 
-### 2.1 Rename OptiXWrapper → OptiXSceneRenderer
-**Files:**
-- `optix-jni/src/main/native/include/OptiXWrapper.h` → `OptiXSceneRenderer.h`
-- `optix-jni/src/main/native/OptiXWrapper.cpp` → `OptiXSceneRenderer.cpp`
+**Status:** Ready to start (Phase 1 complete with 16 passing unit tests)
 
-**Update references in:**
-- `JNIBindings.cpp`
-- `standalone_test.cpp`
-- `CMakeLists.txt`
+**Approach:** Incremental refactoring to keep tests passing at each step
+
+### 2.1 Update Impl Struct to Include OptiXContext
+
+**Changes to `OptiXWrapper.cpp`:**
+```cpp
+struct OptiXWrapper::Impl {
+    OptiXContext context;  // NEW: Low-level context (was OptixDeviceContext)
+
+    // Keep all scene state:
+    // - camera_eye, camera_u, camera_v, camera_w, fov
+    // - sphere_center, sphere_radius, sphere_color, sphere_ior, sphere_scale
+    // - light_direction, light_intensity
+    // - plane_axis, plane_positive, plane_value
+
+    // Keep pipeline handles (created via context):
+    // - pipeline, module, raygen_prog_group, miss_prog_group, hitgroup_prog_group
+    // - d_gas_output_buffer, gas_handle, sbt
+
+    // Keep dirty flags:
+    // - pipeline_built, plane_params_dirty, sphere_params_dirty, initialized
+};
+```
+
+**Note:** Don't change `OptixDeviceContext context` to `OptiXContext context` yet.
+Instead, add `OptiXContext optix_context` as a new member first.
 
 ### 2.2 Refactor OptiXSceneRenderer to Use OptiXContext
 **File:** `OptiXSceneRenderer.cpp`

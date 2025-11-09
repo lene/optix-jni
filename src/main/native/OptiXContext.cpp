@@ -267,7 +267,7 @@ OptixPipeline OptiXContext::createPipeline(
         direct_callable_stack_size_from_traversal,
         direct_callable_stack_size_from_state,
         continuation_stack_size,
-        max_trace_depth
+        1  // maxTraversableGraphDepth (1 for ALLOW_SINGLE_GAS)
     ));
 
     return pipeline;
