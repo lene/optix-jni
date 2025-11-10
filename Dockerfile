@@ -1,5 +1,5 @@
 # Docker image for OptiX JNI CI builds
-# Pre-installs CUDA, OptiX, Java, and sbt to speed up CI jobs
+# Pre-installs CUDA, OptiX, Java, sbt, and common CI tools to speed up CI jobs
 #
 # Layer structure (optimized for caching):
 #   1. CUDA 12.8 (from NVIDIA base image, ~9GB)
@@ -7,6 +7,7 @@
 #   3. OptiX SDK 9.0 (~500MB)
 #   4. Java 25 (~400MB)
 #   5. sbt 1.11.7 (~100MB)
+#   6. CI tools (xvfb, valgrind, curl, etc., ~150MB)
 #
 # Image tag format: {CUDA}-{OptiX}-{Java}-{sbt}
 # Example: registry.gitlab.com/lilacashes/menger/optix-cuda:12.8-9.0-25-1.11.7
@@ -19,26 +20,26 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Layer 2: Build tools
 # Install CMake, g++, and other build dependencies
 RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    ca-certificates \
     cmake \
     g++ \
-    wget \
     gnupg2 \
     lsb-release \
-    ca-certificates \
-    apt-transport-https \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Layer 3: OptiX SDK 9.0
-# The OptiX SDK installer is stored in this directory (checked into git)
-# When installed with --prefix=/usr/local, it extracts directly to /usr/local/
-# (not to /usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64)
+# Create target directory explicitly and install there, then create symlink
 COPY NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64.sh /tmp/optix-installer.sh
-RUN chmod +x /tmp/optix-installer.sh && \
-    /tmp/optix-installer.sh --skip-license --prefix=/usr/local && \
+RUN chmod +x /tmp/optix-installer.sh ; \
+    mkdir -p /usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64 ; \
+    /tmp/optix-installer.sh --skip-license --prefix=/usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64 ; \
+    ln -s /usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64 /usr/local/optix ; \
     rm /tmp/optix-installer.sh
 
 # Set OptiX environment variable for CMake auto-detection
-ENV OPTIX_ROOT=/usr/local
+ENV OPTIX_ROOT=/usr/local/optix
 
 # Layer 4: Java 25 (LTS, supported until 2031)
 # Install from Eclipse Temurin (formerly AdoptOpenJDK)
@@ -57,6 +58,19 @@ RUN echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" > /etc/apt/so
     echo "deb [signed-by=/usr/share/keyrings/sbt-archive-keyring.gpg] https://repo.scala-sbt.org/scalasbt/debian all main" > /etc/apt/sources.list.d/sbt.list && \
     apt-get update && apt-get install -y sbt git && \
     rm -rf /var/lib/apt/lists/*
+
+# Layer 6: CI tools commonly used across jobs
+# Pre-install packages to speed up CI jobs and avoid repeated apt-get updates
+RUN apt-get update && apt-get install -y \
+    bc \
+    curl \
+    mesa-utils \
+    time \
+    unzip \
+    valgrind \
+    x11-xserver-utils \
+    xvfb \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for running builds (optional, for security)
 RUN useradd -m -s /bin/bash builder

@@ -29,10 +29,13 @@ class PerformanceTest extends AnyFlatSpec
     with LazyLogging
     with RendererFixture:
 
+  val runningUnderSanitizer: Boolean = sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
+
   // Ensure library is loaded before running tests
   OptiXRenderer.isLibraryLoaded shouldBe true
 
   "OptiX renderer" should "achieve >10 FPS for opaque spheres" in:
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
     val fps = TestUtilities.measureFPS(
       renderer,
       TestScenario.performanceBaseline()
@@ -45,6 +48,7 @@ class PerformanceTest extends AnyFlatSpec
     fps should be > MIN_FPS
 
   it should "achieve >10 FPS for transparent spheres" in:
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
     val fps = TestUtilities.measureFPS(
       renderer,
       TestScenario.performanceTransparent()
@@ -58,6 +62,7 @@ class PerformanceTest extends AnyFlatSpec
     fps should be > MIN_FPS
 
   it should "achieve >10 FPS for high-IOR materials" in:
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
     val fps = TestUtilities.measureFPS(
       renderer,
       TestScenario.diamondSphere()
@@ -71,6 +76,7 @@ class PerformanceTest extends AnyFlatSpec
     fps should be > MIN_FPS
 
   it should "achieve >10 FPS for large spheres" in:
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
     val fps = TestUtilities.measureFPS(
       renderer,
       TestScenario.largeSphere()

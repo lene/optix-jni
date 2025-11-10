@@ -424,7 +424,10 @@ class RendererTest extends AnyFlatSpec
     g should be > r
     g should be > b
 
+  val runningUnderSanitizer: Boolean = sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
+
   "Performance" should "achieve reasonable rendering performance" in:
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
     TestScenario.default()
       .withSphereRadius(1.5f)
       .applyTo(renderer)
@@ -451,6 +454,7 @@ class RendererTest extends AnyFlatSpec
     fps should be > MIN_FPS
 
   it should "achieve reasonable performance with transparent spheres" in:
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
     TestScenario.default()
       .withSphereColor(SEMI_TRANSPARENT_WHITE)
       .withSphereRadius(1.5f)

@@ -119,6 +119,10 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
   it should "maintain performance with repeated renders" in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
+    // Skip performance test under compute-sanitizer (20x slowdown from instrumentation)
+    val runningUnderSanitizer = sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
+
     val renderer = new OptiXRenderer()
 
     try {
