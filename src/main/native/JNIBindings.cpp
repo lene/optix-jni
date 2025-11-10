@@ -146,6 +146,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCamera(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_updateImageDimensions(
+    JNIEnv* env, jobject obj, jint width, jint height) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->updateImageDimensions(width, height);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateImageDimensions: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLight(
     JNIEnv* env, jobject obj, jfloatArray direction, jfloat intensity) {
     try {

@@ -31,6 +31,7 @@ public:
 
     // Camera configuration
     void setCamera(const float* eye, const float* lookAt, const float* up, float fov);
+    void updateImageDimensions(int width, int height);
 
     // Light configuration
     void setLight(const float* direction, float intensity);

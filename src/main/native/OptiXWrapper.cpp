@@ -45,6 +45,7 @@ struct OptiXWrapper::Impl {
         float v[3] = {0.0f, 1.0f, 0.0f};
         float w[3] = {0.0f, 0.0f, -1.0f};
         float fov = 60.0f;
+        bool dirty = false;
     } camera;
 
     struct SphereParams {
@@ -165,6 +166,8 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     float aspect_ratio = static_cast<float>(impl->image_width) / static_cast<float>(impl->image_height);
     float ulen = std::tan(fov * 0.5f * M_PI / 180.0f);
     float vlen = ulen / aspect_ratio;
+    std::cout << "[OptiXWrapper] setCamera: dims=" << impl->image_width << "x" << impl->image_height
+              << " aspect=" << aspect_ratio << " fov=" << fov << "° ulen=" << ulen << " vlen=" << vlen << std::endl;
 
     impl->camera.u[0] = u[0] * ulen;
     impl->camera.u[1] = u[1] * ulen;
@@ -173,6 +176,17 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     impl->camera.v[0] = v[0] * vlen;
     impl->camera.v[1] = v[1] * vlen;
     impl->camera.v[2] = v[2] * vlen;
+
+    impl->camera.dirty = true;
+}
+
+void OptiXWrapper::updateImageDimensions(int width, int height) {
+    std::cout << "[OptiXWrapper] updateImageDimensions: " << width << "x" << height
+              << " (before: " << impl->image_width << "x" << impl->image_height << ")" << std::endl;
+    impl->image_width = width;
+    impl->image_height = height;
+    std::cout << "[OptiXWrapper] updateImageDimensions: updated to " << impl->image_width
+              << "x" << impl->image_height << std::endl;
 }
 
 void OptiXWrapper::buildGeometryAccelerationStructure() {
@@ -380,17 +394,17 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
     }
 
     try {
-        // Update image dimensions for aspect ratio calculations
-        impl->image_width = width;
-        impl->image_height = height;
+        // Note: Image dimensions for aspect ratio should be set via updateImageDimensions()
+        // BEFORE calling setCamera(). Do not update them here!
 
         // Build OptiX pipeline on first render call or when params change
-        if (!impl->pipeline_built || impl->plane.dirty || impl->sphere.dirty) {
+        if (!impl->pipeline_built || impl->plane.dirty || impl->sphere.dirty || impl->camera.dirty) {
             // Debug: Pipeline rebuild due to parameter change
             buildPipeline();
             impl->pipeline_built = true;
             impl->plane.dirty = false;
             impl->sphere.dirty = false;
+            impl->camera.dirty = false;
         }
 
         // Reuse GPU image buffer (allocate only if size changed)

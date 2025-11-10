@@ -40,6 +40,9 @@ class OptiXRenderer extends LazyLogging:
   /** Set camera parameters (eye position, lookAt point, up vector, field of view in degrees) */
   @native def setCamera(eye: Array[Float], lookAt: Array[Float], up: Array[Float], fov: Float): Unit
 
+  /** Update image dimensions for aspect ratio calculations (called before setCamera on resize) */
+  @native def updateImageDimensions(width: Int, height: Int): Unit
+
   /** Set directional light (normalized direction vector, intensity multiplier) */
   @native def setLight(direction: Array[Float], intensity: Float): Unit
 
