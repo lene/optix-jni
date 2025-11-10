@@ -16,7 +16,10 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
     for (y <- 0 until height) {
       val idx = (y * width + centerX) * 4
       val r = img(idx) & 0xFF
-      if (r > 50) {
+      val g = img(idx + 1) & 0xFF
+      val b = img(idx + 2) & 0xFF
+      // Detect pure red sphere: red must be dominant and high
+      if (r > 200 && r > g * 3 && r > b * 3) {
         count += 1
       }
     }
@@ -33,7 +36,10 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
     for (x <- 0 until width) {
       val idx = (centerY * width + x) * 4
       val r = img(idx) & 0xFF
-      if (r > 50) {
+      val g = img(idx + 1) & 0xFF
+      val b = img(idx + 2) & 0xFF
+      // Detect pure red sphere: red must be dominant and high
+      if (r > 200 && r > g * 3 && r > b * 3) {
         count += 1
       }
     }
@@ -60,9 +66,10 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       renderer.updateImageDimensions(800, 800)
       renderer.setCamera(eye, lookAt, up, fov)
       val img1 = renderer.render(800, 800)
+      TestUtilities.savePPM("window_resize_diameter_800x800.ppm", img1, 800, 800)
       val vDiam1 = measureVerticalDiameter(img1, 800, 800)
       val hDiam1 = measureHorizontalDiameter(img1, 800, 800)
-      logger.info(s"800x800: vertical=${vDiam1}px, horizontal=${hDiam1}px")
+      logger.info(s"800x800: vertical=${vDiam1}px, horizontal=${hDiam1}px (saved to window_resize_diameter_800x800.ppm)")
 
       // In square aspect, vertical and horizontal should be approximately equal
       Math.abs(vDiam1 - hDiam1) should be < 5
@@ -71,9 +78,10 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       renderer.updateImageDimensions(1600, 800)
       renderer.setCamera(eye, lookAt, up, fov)
       val img2 = renderer.render(1600, 800)
+      TestUtilities.savePPM("window_resize_diameter_1600x800.ppm", img2, 1600, 800)
       val vDiam2 = measureVerticalDiameter(img2, 1600, 800)
       val hDiam2 = measureHorizontalDiameter(img2, 1600, 800)
-      logger.info(s"1600x800: vertical=${vDiam2}px, horizontal=${hDiam2}px")
+      logger.info(s"1600x800: vertical=${vDiam2}px, horizontal=${hDiam2}px (saved to window_resize_diameter_1600x800.ppm)")
 
       // CRITICAL: Vertical diameter should stay the same!
       // When we make the window wider, we should see MORE on the sides,
@@ -88,9 +96,10 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       renderer.updateImageDimensions(800, 1600)
       renderer.setCamera(eye, lookAt, up, fov)
       val img3 = renderer.render(800, 1600)
+      TestUtilities.savePPM("window_resize_diameter_800x1600.ppm", img3, 800, 1600)
       val vDiam3 = measureVerticalDiameter(img3, 800, 1600)
       val hDiam3 = measureHorizontalDiameter(img3, 800, 1600)
-      logger.info(s"800x1600: vertical=${vDiam3}px, horizontal=${hDiam3}px")
+      logger.info(s"800x1600: vertical=${vDiam3}px, horizontal=${hDiam3}px (saved to window_resize_diameter_800x1600.ppm)")
 
       // When we make the window taller, horizontal diameter should stay the same
       Math.abs(hDiam3 - hDiam1) should be < 5
