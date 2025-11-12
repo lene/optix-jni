@@ -30,8 +30,6 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       val img1 = renderer.render(800, 800)
       img1 should not be null
       img1.length shouldBe 800 * 800 * 4
-      TestUtilities.savePPM("window_resize_800x800.ppm", img1, 800, 800)
-      logger.info("Saved 800x800 image to window_resize_800x800.ppm")
 
       // Sample the center pixel - sphere should be visible
       val centerIdx1 = (400 * 800 + 400) * 4
@@ -46,8 +44,6 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       val img2 = renderer.render(1600, 800)
       img2 should not be null
       img2.length shouldBe 1600 * 800 * 4
-      TestUtilities.savePPM("window_resize_1600x800.ppm", img2, 1600, 800)
-      logger.info("Saved 1600x800 image to window_resize_1600x800.ppm")
 
       // Sample the center pixel - sphere should still be visible and similar brightness
       val centerIdx2 = (400 * 1600 + 800) * 4
@@ -66,8 +62,6 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       val img3 = renderer.render(800, 1600)
       img3 should not be null
       img3.length shouldBe 800 * 1600 * 4
-      TestUtilities.savePPM("window_resize_800x1600.ppm", img3, 800, 1600)
-      logger.info("Saved 800x1600 image to window_resize_800x1600.ppm")
 
       // Sample the center pixel
       val centerIdx3 = (800 * 800 + 400) * 4
@@ -103,8 +97,6 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.updateImageDimensions(800, 800)
       renderer.setCamera(eye, lookAt, up, fov)
       val img1 = renderer.render(800, 800)
-      TestUtilities.savePPM("window_resize_lookat_800x800.ppm", img1, 800, 800)
-      logger.info("Saved 800x800 look-at image to window_resize_lookat_800x800.ppm")
 
       // Center pixel should show the green sphere
       val centerIdx1 = (400 * 800 + 400) * 4
@@ -115,8 +107,6 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.updateImageDimensions(1600, 800)
       renderer.setCamera(eye, lookAt, up, fov)
       val img2 = renderer.render(1600, 800)
-      TestUtilities.savePPM("window_resize_lookat_1600x800.ppm", img2, 1600, 800)
-      logger.info("Saved 1600x800 look-at image to window_resize_lookat_1600x800.ppm")
 
       // Center pixel (vertically centered, horizontally centered)
       val centerIdx2 = (400 * 1600 + 800) * 4

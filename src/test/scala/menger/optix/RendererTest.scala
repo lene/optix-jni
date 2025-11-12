@@ -407,6 +407,9 @@ class RendererTest extends AnyFlatSpec
     math.abs(rgb.r - rgb.b) should be < GRAYSCALE_TOLERANCE
 
   it should "support integer color API (0-255 range)" in:
+    renderer.updateImageDimensions(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    renderer.setCamera(Array(0.0f, 0.5f, 3.0f), Array(0.0f, 0.0f, 0.0f), Array(0.0f, 1.0f, 0.0f), 60.0f)
+    renderer.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
     renderer.setSphere(0.0f, 0.0f, 0.0f, 0.5f)
     renderer.setSphereColor(0, 255, 0, 128)  // Integer version: green, 50% opacity
     renderer.setIOR(1.0f)

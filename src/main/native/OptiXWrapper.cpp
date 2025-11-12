@@ -69,8 +69,8 @@ struct OptiXWrapper::Impl {
         bool dirty = false;
     } plane;
 
-    unsigned int image_width = 800;
-    unsigned int image_height = 600;
+    int image_width = -1;
+    int image_height = -1;
 
     // OptiX pipeline resources (created once, reused)
     OptixPipeline pipeline = nullptr;
@@ -163,11 +163,10 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     VectorMath::cross3f(v, impl->camera.w, u);
 
     // Scale by FOV and aspect ratio
+    // IMPORTANT: fov parameter is HORIZONTAL FOV in degrees
     float aspect_ratio = static_cast<float>(impl->image_width) / static_cast<float>(impl->image_height);
-    float ulen = std::tan(fov * 0.5f * M_PI / 180.0f);
-    float vlen = ulen / aspect_ratio;
-    std::cout << "[OptiXWrapper] setCamera: dims=" << impl->image_width << "x" << impl->image_height
-              << " aspect=" << aspect_ratio << " fov=" << fov << "° ulen=" << ulen << " vlen=" << vlen << std::endl;
+    float ulen = std::tan(fov * 0.5f * M_PI / 180.0f);  // Horizontal FOV
+    float vlen = ulen / aspect_ratio;                    // Vertical derived from horizontal
 
     impl->camera.u[0] = u[0] * ulen;
     impl->camera.u[1] = u[1] * ulen;
@@ -181,12 +180,8 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
 }
 
 void OptiXWrapper::updateImageDimensions(int width, int height) {
-    std::cout << "[OptiXWrapper] updateImageDimensions: " << width << "x" << height
-              << " (before: " << impl->image_width << "x" << impl->image_height << ")" << std::endl;
     impl->image_width = width;
     impl->image_height = height;
-    std::cout << "[OptiXWrapper] updateImageDimensions: updated to " << impl->image_width
-              << "x" << impl->image_height << std::endl;
 }
 
 void OptiXWrapper::buildGeometryAccelerationStructure() {

@@ -87,12 +87,17 @@ case class PlaneConfig(
  *
  * Immutable builder for configuring renderer state. All withX methods
  * return a new TestScenario instance (functional style).
+ *
+ * @param imageDimensions Optional image dimensions (width, height). If None, tests must
+ *                        provide dimensions to render() method. If Some, applyTo() will
+ *                        configure the renderer with these dimensions before setting camera.
  */
 case class TestScenario(
   sphere: SphereConfig = SphereConfig(),
   camera: CameraConfig = CameraConfig(),
   light: LightConfig = LightConfig(),
-  plane: Option[PlaneConfig] = None
+  plane: Option[PlaneConfig] = None,
+  imageDimensions: Option[(Int, Int)] = Some((800, 600))
 ):
 
   // ========== Sphere Configuration ==========
@@ -149,15 +154,28 @@ case class TestScenario(
   def withoutPlane(): TestScenario =
     copy(plane = None)
 
+  // ========== Image Dimensions Configuration ==========
+
+  def withImageDimensions(width: Int, height: Int): TestScenario =
+    copy(imageDimensions = Some((width, height)))
+
+  def withoutImageDimensions(): TestScenario =
+    copy(imageDimensions = None)
+
   // ========== Apply and Render ==========
 
   /**
    * Applies this scenario's configuration to an OptiXRenderer.
    *
-   * Sets camera, light, sphere, IOR, and optionally plane.
+   * Sets image dimensions (if configured), camera, light, sphere, IOR, and optionally plane.
    * Does NOT call initialize() or dispose() - caller is responsible.
    */
   def applyTo(renderer: OptiXRenderer): Unit =
+    // Image dimensions (must be set before camera for correct aspect ratio)
+    imageDimensions.foreach { case (width, height) =>
+      renderer.updateImageDimensions(width, height)
+    }
+
     // Camera
     renderer.setCamera(
       Array(camera.eye._1, camera.eye._2, camera.eye._3),
@@ -191,10 +209,14 @@ case class TestScenario(
    * Applies configuration to renderer and renders image.
    *
    * Convenience method that combines applyTo() and render().
+   * If imageDimensions are not configured in the scenario, uses the provided width/height.
    *
    */
   def render(renderer: OptiXRenderer, width: Int, height: Int): Array[Byte] =
     applyTo(renderer)
+    // If dimensions weren't set in applyTo, ensure they're set now
+    if imageDimensions.isEmpty then
+      renderer.updateImageDimensions(width, height)
     renderer.render(width, height)
 
 /**
