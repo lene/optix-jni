@@ -13,14 +13,14 @@ This document outlines the comprehensive plan for enhancing the OptiX ray tracin
 
 1. **Quality:** Adaptive antialiasing, realistic shadows, caustics
 2. **Performance:** Ray statistics for optimization insights
-3. **Interactivity:** Mouse camera control, dynamic window resizing
+3. **Interactivity:** Mouse camera control
 4. **Flexibility:** Multiple configurable light sources
 
 ---
 
 ## Sprint Breakdown
 
-### Sprint 1: Foundation (10-15 hours)
+### Sprint 1: Foundation (4-6 hours)
 Quick wins that establish core capabilities and visual improvements.
 
 ### Sprint 2: Interactivity (10-13 hours)
@@ -32,7 +32,11 @@ Implement sophisticated antialiasing for production-quality output.
 ### Sprint 4: Advanced Lighting (15-25 hours)
 Add photon mapping for physically accurate caustics.
 
-**Total estimated effort:** 45-68 hours
+### Sprint 5: Complex Features (Status: Deferred)
+Features requiring further investigation and prototyping.
+
+**Total estimated effort (Sprints 1-4):** 39-59 hours
+**Deferred (Sprint 5):** 10-20 hours additional
 
 ---
 
@@ -42,59 +46,7 @@ Add photon mapping for physically accurate caustics.
 
 ## Sprint 1: Foundation
 
-### 1.1 Dynamic Window Resizing
-
-**Priority:** HIGH
-**Effort:** 2-3 hours
-**Risk:** Very Low
-
-#### Goal
-Resize window → automatically re-render at new resolution with adjusted FOV to maintain proper aspect ratio.
-
-#### Implementation
-
-**Approach:**
-- Listen for LibGDX `resize(width, height)` events
-- Calculate new aspect ratio and adjust horizontal FOV
-- Re-render at new dimensions
-
-**FOV Calculation:**
-```scala
-val aspectRatio = width.toFloat / height
-val verticalFOV = 45f // degrees
-val horizontalFOV = 2f * atan(tan(toRadians(verticalFOV) / 2) * aspectRatio)
-```
-
-**GPU Buffer Handling:**
-- GPU buffer reuse system (already implemented) handles dynamic allocation
-- No memory leaks or redundant allocations
-
-#### Files to Modify
-
-- `src/main/scala/menger/InteractiveMengerEngine.scala`
-  - Override `resize(width: Int, height: Int)` callback
-  - Call OptiX re-render with new dimensions
-
-- `src/main/scala/menger/OptiXResources.scala`
-  - Add method to update camera with new aspect ratio
-  - Trigger re-render when dimensions change
-
-#### Testing
-
-1. **Manual test:** Resize window to various aspect ratios (16:9, 4:3, 21:9)
-2. **Visual test:** Sphere should not appear stretched or distorted
-3. **Performance test:** No memory leaks during repeated resizing
-
-#### Acceptance Criteria
-
-- ✅ Window resizes smoothly without crashes
-- ✅ Image re-renders at new resolution within 1 second
-- ✅ Aspect ratio preserved (no distortion)
-- ✅ FOV adjusts correctly for wider/taller windows
-
----
-
-### 1.2 Ray Statistics
+### 1.1 Ray Statistics
 
 **Priority:** HIGH
 **Effort:** 4-6 hours
@@ -220,7 +172,7 @@ def render(width: Int, height: Int): (Array[Byte], RayStats)
 
 ---
 
-### 1.3 Shadow Rays
+### 1.2 Shadow Rays
 
 **Priority:** HIGH
 **Effort:** 4-6 hours
@@ -1172,6 +1124,74 @@ If full photon mapping is too complex, consider:
 
 ---
 
+## Sprint 5: Complex Features (Deferred)
+
+### 5.1 Dynamic Window Resizing
+
+**Priority:** LOW (Deferred)
+**Effort:** 10-20 hours (revised from initial 2-3 hour estimate)
+**Risk:** HIGH
+**Status:** DEFERRED - Requires further investigation
+
+#### Revision History
+
+**Initial estimate:** 2-3 hours (Very Low risk)
+**Actual time spent:** 15+ hours with no resolution
+**Status change:** 2025-11-13 - Moved to Sprint 5, deprioritized
+
+#### Issue Summary
+
+Despite 15+ hours of investigation and multiple implementation attempts, dynamic window resizing with OptiX renderer remains unresolved. The feature exhibits complex interactions between LibGDX window events, OptiX buffer management, and camera parameter updates that require deeper architectural investigation.
+
+#### Goal
+
+Resize window → automatically re-render at new resolution with adjusted FOV to maintain proper aspect ratio.
+
+#### Known Challenges
+
+1. **Timing Issues:** LibGDX resize events vs OptiX buffer reallocation sequence unclear
+2. **FOV Calculation:** Multiple attempted approaches for aspect ratio preservation failed
+3. **Buffer Management:** Dynamic GPU buffer allocation during resize may have race conditions
+4. **Camera Updates:** Uncertainty about correct camera parameter update sequence
+5. **Testing Difficulty:** Interactive testing required; automated tests insufficient to reproduce issue
+
+#### Investigation Required Before Implementation
+
+1. **Root Cause Analysis:**
+   - Profile exact sequence of LibGDX resize events
+   - Trace OptiX buffer lifecycle during resize
+   - Identify where aspect ratio distortion originates (camera vs buffer vs rendering)
+
+2. **Architecture Review:**
+   - Evaluate whether current OptiXResources design supports dynamic resizing
+   - Consider whether refactoring is needed before feature can work
+   - Research how other OptiX applications handle window resizing
+
+3. **Prototyping:**
+   - Create minimal reproducible example outside main codebase
+   - Test different buffer management strategies in isolation
+   - Validate FOV calculation approaches with known-good reference
+
+4. **Alternative Approaches:**
+   - Fixed-size OptiX render with letterboxing/pillarboxing
+   - Deferred resize (delay OptiX update until resize complete)
+   - Separate OptiX window with independent size control
+
+#### Acceptance Criteria (Unchanged)
+
+- ✅ Window resizes smoothly without crashes
+- ✅ Image re-renders at new resolution within 1 second
+- ✅ Aspect ratio preserved (no distortion)
+- ✅ FOV adjusts correctly for wider/taller windows
+
+#### Decision Rationale
+
+After 15+ hours of effort with no resolution, the cost-benefit ratio no longer justifies continued work on this feature. The feature provides quality-of-life improvement but is not critical to core functionality. Priority features (ray statistics, shadows, mouse control, antialiasing) provide more user value per development hour.
+
+**Recommendation:** Defer until Sprints 1-4 complete, then reassess if still needed. If pursued, allocate dedicated investigation time before implementation.
+
+---
+
 ## Development Workflow
 
 ### For Each Feature
@@ -1271,7 +1291,6 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 |---------|----------|------------------------------|
 | Statistics | <5% | <160ms |
 | Shadows | 20-30% | 180-200ms |
-| Window resize | N/A (on-demand) | <1s for re-render |
 
 ### Sprint 2 Targets
 
@@ -1302,6 +1321,14 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 **Risk:** Shadow rays expensive with many plane hits
 **Mitigation:** Early ray termination, optimize plane intersection tests
 
+### Sprint 5 Risks
+
+**Risk:** Window resize feature may require architectural refactoring
+**Mitigation:** Perform thorough investigation before committing to implementation
+
+**Risk:** Effort may exceed 20 hours if fundamental issues discovered
+**Mitigation:** Set hard time-box limit; consider alternative approaches or abandon feature
+
 ### Sprint 2 Risks
 
 **Risk:** Multiple lights with shadows causes exponential slowdown
@@ -1329,10 +1356,9 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 
 ### Sprint 1
 
-- ✅ All 3 features implemented and tested
+- ✅ All 2 features implemented and tested
 - ✅ Statistics provide actionable performance insights
 - ✅ Shadows dramatically improve visual realism
-- ✅ Window resizing feels responsive (<1s re-render)
 - ✅ Performance overhead <30% vs. baseline
 
 ### Sprint 2
@@ -1357,25 +1383,37 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 - ✅ Render time <5 seconds for typical scenes
 - ✅ No major artifacts (verified against reference)
 
+### Sprint 5
+
+- ✅ Root cause identified for window resize issue
+- ✅ Prototype validates chosen approach
+- ✅ Implementation completed within time-box (10-20 hours)
+- ✅ All acceptance criteria met OR decision made to abandon feature
+
 ---
 
 ## Timeline Estimate
 
-**Optimistic (focused development):**
-- Sprint 1: 1-2 days
+**Optimistic (focused development, Sprints 1-4):**
+- Sprint 1: 1 day
 - Sprint 2: 2-3 days
 - Sprint 3: 2-3 days
 - Sprint 4: 3-5 days
-- **Total: 8-13 days**
+- **Total: 8-12 days**
 
-**Realistic (with testing, documentation, iteration):**
-- Sprint 1: 2-3 days
+**Realistic (with testing, documentation, iteration, Sprints 1-4):**
+- Sprint 1: 1-2 days
 - Sprint 2: 3-4 days
 - Sprint 3: 4-5 days
 - Sprint 4: 5-7 days
-- **Total: 14-19 days**
+- **Total: 13-18 days**
 
-**Buffer for unknowns:** +20% → **17-23 days total**
+**Buffer for unknowns:** +20% → **16-22 days total (Sprints 1-4)**
+
+**Sprint 5 (if pursued later):**
+- Investigation: 2-4 days
+- Implementation: 1-2 days (if straightforward) OR 3-8 days (if refactoring needed)
+- **Sprint 5 Total: 3-12 days** (highly variable based on findings)
 
 ---
 
@@ -1450,4 +1488,6 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 
 **Document Status:** ✅ **Complete and Ready for Implementation**
 
-**Next Step:** Begin Sprint 1, Feature 1.1 - Dynamic Window Resizing
+**Last Updated:** 2025-11-13 - Deprioritized dynamic window resizing to Sprint 5
+
+**Next Step:** Begin Sprint 1, Feature 1.1 - Ray Statistics
