@@ -40,7 +40,7 @@ public:
     void setPlane(int axis, bool positive, float value);
 
     // Rendering
-    void render(int width, int height, unsigned char* output);
+    void render(int width, int height, unsigned char* output, RayStats* stats = nullptr);
 
     // Cleanup
     void dispose();

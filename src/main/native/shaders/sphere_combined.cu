@@ -140,6 +140,12 @@ extern "C" __global__ void __raygen__rg() {
 
     const float3 ray_direction = normalize(camera_u * u + camera_v * v + camera_w);
 
+    // Track primary ray in statistics
+    if (params.stats) {
+        atomicAdd(&params.stats->primary_rays, 1ULL);
+        atomicAdd(&params.stats->total_rays, 1ULL);
+    }
+
     // Trace ray
     unsigned int p0, p1, p2, p3;  // Payload for RGB color + depth
     p3 = 0;  // Initial depth = 0
@@ -292,6 +298,12 @@ extern "C" __global__ void __closesthit__ch() {
     // Get current depth from payload
     const unsigned int depth = optixGetPayload_3();
 
+    // Track depth statistics
+    if (params.stats) {
+        atomicMax(&params.stats->max_depth_reached, depth + 1);
+        atomicMin(&params.stats->min_depth_reached, depth + 1);
+    }
+
     // Get sphere alpha from params (moved from SBT for performance)
     const float sphere_alpha = params.sphere_color[3];
 
@@ -407,6 +419,11 @@ extern "C" __global__ void __closesthit__ch() {
     );
 
     // Trace reflected ray
+    if (params.stats) {
+        atomicAdd(&params.stats->reflected_rays, 1ULL);
+        atomicAdd(&params.stats->total_rays, 1ULL);
+    }
+
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
     const float3 reflect_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
     unsigned int next_depth = depth + 1;
@@ -430,6 +447,11 @@ extern "C" __global__ void __closesthit__ch() {
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
     if (k >= 0.0f) {
         // Refraction possible
+        if (params.stats) {
+            atomicAdd(&params.stats->refracted_rays, 1ULL);
+            atomicAdd(&params.stats->total_rays, 1ULL);
+        }
+
         const float coeff = eta * cos_theta - sqrtf(k);
         const float3 refract_dir = make_float3(
             eta * ray_direction.x + coeff * normal.x,

@@ -84,6 +84,7 @@ struct OptiXWrapper::Impl {
     CUdeviceptr d_params = 0;
     CUdeviceptr d_image = 0;
     size_t cached_image_size = 0;
+    CUdeviceptr d_stats = 0;  // Ray statistics buffer
     OptixShaderBindingTable sbt = {};
     OptixTraversableHandle gas_handle = 0;
 
@@ -383,7 +384,7 @@ void OptiXWrapper::setPlane(int axis, bool positive, float value) {
     impl->plane.dirty = true;  // Mark pipeline as needing rebuild
 }
 
-void OptiXWrapper::render(int width, int height, unsigned char* output) {
+void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats* stats) {
     if (!impl->initialized) {
         throw std::runtime_error("[OptiX] render() called before initialize()");
     }
@@ -416,6 +417,21 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
             impl->cached_image_size = required_size;
         }
 
+        // Allocate stats buffer on first render
+        if (!impl->d_stats) {
+            CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_stats), sizeof(RayStats)));
+        }
+
+        // Zero out stats buffer before render
+        RayStats zero_stats = {};
+        zero_stats.min_depth_reached = UINT_MAX;  // Initialize to max value for atomicMin
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(impl->d_stats),
+            &zero_stats,
+            sizeof(RayStats),
+            cudaMemcpyHostToDevice
+        ));
+
         // Set up launch parameters (use cached buffer)
         Params params;
         params.image = reinterpret_cast<unsigned char*>(impl->d_image);
@@ -432,6 +448,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
         params.plane_axis = impl->plane.axis;
         params.plane_positive = impl->plane.positive;
         params.plane_value = impl->plane.value;
+        params.stats = reinterpret_cast<RayStats*>(impl->d_stats);
 
         // Copy params to GPU
         CUDA_CHECK(cudaMemcpy(
@@ -457,6 +474,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output) {
             required_size,
             cudaMemcpyDeviceToHost
         ));
+
+        // Copy stats back if requested
+        if (stats) {
+            CUDA_CHECK(cudaMemcpy(
+                stats,
+                reinterpret_cast<void*>(impl->d_stats),
+                sizeof(RayStats),
+                cudaMemcpyDeviceToHost
+            ));
+        }
 
     } catch (const std::exception& e) {
         std::cerr << "[OptiX] Render failed: " << e.what() << std::endl;
@@ -508,6 +535,11 @@ void OptiXWrapper::dispose() {
             if (impl->d_params) {
                 cudaFree(reinterpret_cast<void*>(impl->d_params));
                 impl->d_params = 0;
+            }
+
+            if (impl->d_stats) {
+                cudaFree(reinterpret_cast<void*>(impl->d_stats));
+                impl->d_stats = 0;
             }
 
             // Clean up cached image buffer

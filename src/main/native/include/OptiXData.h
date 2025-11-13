@@ -37,6 +37,16 @@ namespace RayTracingConstants {
     constexpr unsigned int PLANE_CHECKER_DARK_GRAY = 20;    // Dark gray checker RGB value
 }
 
+// Ray statistics tracking
+struct RayStats {
+    unsigned long long total_rays;      // Total rays cast during render
+    unsigned long long primary_rays;    // Camera rays (equals pixel count)
+    unsigned long long reflected_rays;  // Rays from Fresnel reflection
+    unsigned long long refracted_rays;  // Rays transmitted through sphere
+    unsigned int max_depth_reached;     // Deepest ray recursion
+    unsigned int min_depth_reached;     // Shallowest ray recursion (should be 1)
+};
+
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
@@ -55,6 +65,9 @@ struct Params {
     int   plane_axis;           // 0=X, 1=Y, 2=Z
     bool  plane_positive;       // true=positive normal, false=negative normal
     float plane_value;          // Plane position along axis
+
+    // Ray statistics (GPU buffer)
+    RayStats* stats;            // Pointer to GPU stats buffer
 };
 
 // Ray generation shader data (camera)

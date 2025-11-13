@@ -186,7 +186,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlane(
     }
 }
 
-JNIEXPORT jbyteArray JNICALL Java_menger_optix_OptiXRenderer_render(
+JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -195,24 +195,50 @@ JNIEXPORT jbyteArray JNICALL Java_menger_optix_OptiXRenderer_render(
         }
 
         int size = width * height * 4; // RGBA
-        jbyteArray result = env->NewByteArray(size);
-        if (result == nullptr) {
+        jbyteArray imageArray = env->NewByteArray(size);
+        if (imageArray == nullptr) {
             std::cerr << "[JNI] Failed to allocate byte array for render output" << std::endl;
             return nullptr;
         }
 
-        jbyte* buffer = env->GetByteArrayElements(result, nullptr);
+        jbyte* buffer = env->GetByteArrayElements(imageArray, nullptr);
         if (buffer == nullptr) {
             std::cerr << "[JNI] Failed to get byte array elements" << std::endl;
             return nullptr;
         }
 
-        wrapper->render(width, height, reinterpret_cast<unsigned char*>(buffer));
+        // Get stats from render
+        RayStats stats;
+        wrapper->render(width, height, reinterpret_cast<unsigned char*>(buffer), &stats);
 
-        env->ReleaseByteArrayElements(result, buffer, 0);
+        env->ReleaseByteArrayElements(imageArray, buffer, 0);
+
+        // Create RenderResult object (image + stats)
+        jclass resultClass = env->FindClass("menger/optix/RenderResult");
+        if (resultClass == nullptr) {
+            std::cerr << "[JNI] Failed to find RenderResult class" << std::endl;
+            return nullptr;
+        }
+
+        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJII)V");
+        if (constructor == nullptr) {
+            std::cerr << "[JNI] Failed to find RenderResult constructor" << std::endl;
+            return nullptr;
+        }
+
+        jobject result = env->NewObject(resultClass, constructor,
+            imageArray,
+            static_cast<jlong>(stats.total_rays),
+            static_cast<jlong>(stats.primary_rays),
+            static_cast<jlong>(stats.reflected_rays),
+            static_cast<jlong>(stats.refracted_rays),
+            static_cast<jint>(stats.max_depth_reached),
+            static_cast<jint>(stats.min_depth_reached)
+        );
+
         return result;
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in render: " << e.what() << std::endl;
+        std::cerr << "[JNI] Error in renderWithStats: " << e.what() << std::endl;
         return nullptr;
     }
 }

@@ -7,6 +7,35 @@ import java.nio.file.Files
 import scala.util.{Failure, Success, Try}
 import scala.util.control.Exception.catching
 
+// Ray statistics from OptiX rendering
+case class RayStats(
+  totalRays: Long,
+  primaryRays: Long,
+  reflectedRays: Long,
+  refractedRays: Long,
+  maxDepthReached: Int,
+  minDepthReached: Int
+)
+
+// Combined result from rendering with statistics
+case class RenderResult(
+  image: Array[Byte],
+  totalRays: Long,
+  primaryRays: Long,
+  reflectedRays: Long,
+  refractedRays: Long,
+  maxDepthReached: Int,
+  minDepthReached: Int
+):
+  def stats: RayStats = RayStats(
+    totalRays,
+    primaryRays,
+    reflectedRays,
+    refractedRays,
+    maxDepthReached,
+    minDepthReached
+  )
+
 // JNI interface to OptiX ray tracing renderer
 // Phase 1: Basic structure with placeholder implementations
 // Phase 2: Actual OptiX context and data structure implementation
@@ -49,8 +78,14 @@ class OptiXRenderer extends LazyLogging:
   /** Set clipping plane (axis: 0=X 1=Y 2=Z, positive: plane normal direction, value: position) */
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
 
+  /** Render scene with ray statistics */
+  @native def renderWithStats(width: Int, height: Int): RenderResult
+
   /** Render scene and return RGBA image data (width × height × 4 bytes) */
-  @native def render(width: Int, height: Int): Array[Byte]
+  def render(width: Int, height: Int): Array[Byte] =
+    val result = renderWithStats(width, height)
+    // TODO: Consider returning Option[Array[Byte]] to avoid null (would require updating all call sites)
+    if result == null then null else result.image
 
   // Idempotent initialization - safe to call multiple times
   def initialize(): Boolean =
