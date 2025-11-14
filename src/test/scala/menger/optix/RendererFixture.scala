@@ -28,10 +28,16 @@ import org.scalatest.flatspec.AnyFlatSpec
 trait RendererFixture extends BeforeAndAfterEach:
   this: AnyFlatSpec =>
 
-  import scala.compiletime.uninitialized
-
   /** The OptiXRenderer instance available to all tests */
-  protected var renderer: OptiXRenderer = uninitialized
+  private var rendererOpt: Option[OptiXRenderer] = None
+
+  /**
+   * Provides access to the initialized renderer.
+   * Tests can use this directly as if it were a regular field.
+   */
+  protected def renderer: OptiXRenderer = rendererOpt.getOrElse(
+    throw new IllegalStateException("Renderer not initialized - test fixture may not have run beforeEach")
+  )
 
   /**
    * Creates and initializes a new OptiXRenderer before each test.
@@ -39,8 +45,9 @@ trait RendererFixture extends BeforeAndAfterEach:
    */
   override def beforeEach(): Unit =
     super.beforeEach()
-    renderer = new OptiXRenderer()
-    renderer.initialize()
+    val r = new OptiXRenderer()
+    r.initialize()
+    rendererOpt = Some(r)
     setupDefaults()
 
   /**
@@ -49,9 +56,8 @@ trait RendererFixture extends BeforeAndAfterEach:
    */
   override def afterEach(): Unit =
     try
-      if renderer != null then
-        renderer.dispose()
-        renderer = null
+      rendererOpt.foreach(_.dispose())
+      rendererOpt = None
     finally
       super.afterEach()
 
@@ -98,3 +104,11 @@ trait RendererFixture extends BeforeAndAfterEach:
    */
   protected def setSphereColor(red: Float, green: Float, blue: Float, alpha: Float): Unit =
     renderer.setSphereColor(red, green, blue, alpha)
+
+  /**
+   * Helper method to render and unwrap the Option for test convenience.
+   * Fails the test if rendering returns None.
+   */
+  protected def renderImage(width: Int, height: Int): Array[Byte] =
+    renderer.render(width, height).getOrElse:
+      fail(s"Rendering failed - returned None for ${width}x${height}")

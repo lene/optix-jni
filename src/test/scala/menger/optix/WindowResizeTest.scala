@@ -27,8 +27,7 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.setCamera(eye, lookAt, up, fov)
 
       // Render at 800x800
-      val img1 = renderer.render(800, 800)
-      img1 should not be null
+      val img1 = renderer.render(800, 800).get
       img1.length shouldBe 800 * 800 * 4
 
       // Sample the center pixel - sphere should be visible
@@ -41,8 +40,7 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.setCamera(eye, lookAt, up, fov)
 
       // Render at 1600x800
-      val img2 = renderer.render(1600, 800)
-      img2 should not be null
+      val img2 = renderer.render(1600, 800).get
       img2.length shouldBe 1600 * 800 * 4
 
       // Sample the center pixel - sphere should still be visible and similar brightness
@@ -59,8 +57,7 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.setCamera(eye, lookAt, up, fov)
 
       // Render at 800x1600
-      val img3 = renderer.render(800, 1600)
-      img3 should not be null
+      val img3 = renderer.render(800, 1600).get
       img3.length shouldBe 800 * 1600 * 4
 
       // Sample the center pixel
@@ -96,7 +93,7 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       // Render at square aspect ratio
       renderer.updateImageDimensions(800, 800)
       renderer.setCamera(eye, lookAt, up, fov)
-      val img1 = renderer.render(800, 800)
+      val img1 = renderer.render(800, 800).get
 
       // Center pixel should show the green sphere
       val centerIdx1 = (400 * 800 + 400) * 4
@@ -106,7 +103,7 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       // Render at wide aspect ratio - sphere should still be centered vertically
       renderer.updateImageDimensions(1600, 800)
       renderer.setCamera(eye, lookAt, up, fov)
-      val img2 = renderer.render(1600, 800)
+      val img2 = renderer.render(1600, 800).get
 
       // Center pixel (vertically centered, horizontally centered)
       val centerIdx2 = (400 * 1600 + 800) * 4

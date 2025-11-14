@@ -24,7 +24,7 @@ class PlaneTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withPlane(1, false, -2.0f)  // Floor at y=-2
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
 
     imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
 
@@ -34,7 +34,7 @@ class PlaneTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withPlane(1, true, 2.0f)  // Ceiling at y=2
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
 
     imageData should showPlaneInRegion("top", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
 
@@ -45,7 +45,7 @@ class PlaneTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withPlane(1, false, -2.0f)  // Floor at y=-2
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
 
     // Floor should be visible through transparent sphere
     imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)

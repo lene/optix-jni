@@ -37,7 +37,7 @@ class TransparencyTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)  // Y-axis floor at y=-2
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Opaque sphere should have substantial green area
     val greenArea = ImageValidation.spherePixelArea(
@@ -53,7 +53,7 @@ class TransparencyTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Should have some variation (sphere+background)
     imageData should haveBrightnessStdDevGreaterThan(
@@ -67,7 +67,7 @@ class TransparencyTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Semi-transparent sphere should have fewer green pixels than opaque sphere
     val greenArea = ImageValidation.spherePixelArea(
@@ -83,7 +83,7 @@ class TransparencyTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Very transparent sphere should have fewer green pixels than opaque
     val greenArea = ImageValidation.spherePixelArea(
@@ -98,7 +98,7 @@ class TransparencyTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Fully transparent sphere should have NO green pixels (invisible)
     val greenArea = ImageValidation.spherePixelArea(
@@ -118,7 +118,7 @@ class TransparencyTest extends AnyFlatSpec
     val alphas = Seq(0, 64, 128, 191, 255)  // 0.0, 0.25, 0.5, 0.75, 1.0
     val greenAreas = alphas.map { alpha =>
       setSphereColor(0.0f, 1.0f, 0.0f, alpha / 255.0f)
-      val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+      val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
       ImageValidation.spherePixelArea(
         imageData,
         TEST_IMAGE_SIZE._1,
@@ -137,7 +137,7 @@ class TransparencyTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Image should show color variation (not grayscale)
     val (r, g, b) = ImageValidation.colorChannelRatio(
@@ -157,7 +157,7 @@ class TransparencyTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Checkered floor should be visible at bottom
     imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)

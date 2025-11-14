@@ -11,7 +11,7 @@ import ThresholdConstants.*
  *
  * Usage:
  * {{{
- * val imageData = renderer.render(800, 600)
+ * val imageData = renderer.render(800, 600).get
  * imageData should haveSphereCenterAt(400, 300, tolerance = 30)
  * imageData should haveBrightnessGreaterThan(10.0)
  * imageData should haveGreenAsDominantColor

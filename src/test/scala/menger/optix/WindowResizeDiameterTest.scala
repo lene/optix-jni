@@ -77,7 +77,7 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
         // Render at 800x800 (square baseline)
         renderer.updateImageDimensions(800, 800)
         renderer.setCamera(eye, lookAt, up, fov)
-        val img = renderer.render(800, 800)
+        val img = renderer.render(800, 800).get
 
         baselineVDiam = measureVerticalDiameter(img, 800, 800)
         baselineHDiam = measureHorizontalDiameter(img, 800, 800)
@@ -111,7 +111,7 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       // Render at 1600x800 (wide 2:1 - width doubled)
       renderer.updateImageDimensions(1600, 800)
       renderer.setCamera(eye, lookAt, up, fov)
-      val img2 = renderer.render(1600, 800)
+      val img2 = renderer.render(1600, 800).get
       val vDiam2 = measureVerticalDiameter(img2, 1600, 800)
       val hDiam2 = measureHorizontalDiameter(img2, 1600, 800)
       logger.info(s"1600x800: vertical=${vDiam2}px, horizontal=${hDiam2}px")
@@ -145,7 +145,7 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       // Render at 800x1600 (tall 1:2 - height doubled)
       renderer.updateImageDimensions(800, 1600)
       renderer.setCamera(eye, lookAt, up, fov)
-      val img3 = renderer.render(800, 1600)
+      val img3 = renderer.render(800, 1600).get
       val vDiam3 = measureVerticalDiameter(img3, 800, 1600)
       val hDiam3 = measureHorizontalDiameter(img3, 800, 1600)
       logger.info(s"800x1600: vertical=${vDiam3}px, horizontal=${hDiam3}px")

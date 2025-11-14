@@ -64,13 +64,13 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       val img1 = renderer1.render(400, 300)
       val img2 = renderer2.render(400, 300)
 
-      img1 should not be null
-      img2 should not be null
-      img1.length should be (400 * 300 * 4)
-      img2.length should be (400 * 300 * 4)
+      img1 shouldBe defined
+      img2 shouldBe defined
+      img1.get.length should be (400 * 300 * 4)
+      img2.get.length should be (400 * 300 * 4)
 
       // Images should be different (different spheres)
-      img1 should not equal img2
+      img1.get should not equal img2.get
 
       // Count pixels with dominant red vs blue
       def countRedPixels(img: Array[Byte]): Int = {
@@ -91,10 +91,10 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
         }
       }
 
-      val red1 = countRedPixels(img1)
-      val blue1 = countBluePixels(img1)
-      val red2 = countRedPixels(img2)
-      val blue2 = countBluePixels(img2)
+      val red1 = countRedPixels(img1.get)
+      val blue1 = countBluePixels(img1.get)
+      val red2 = countRedPixels(img2.get)
+      val blue2 = countBluePixels(img2.get)
 
       // Renderer 1 should have more red pixels
       red1 should be > blue1
@@ -132,12 +132,12 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       val img1 = renderer1.render(640, 480)
       val img2 = renderer2.render(1024, 768)
 
-      img1.length should be (640 * 480 * 4)
-      img2.length should be (1024 * 768 * 4)
+      img1.get.length should be (640 * 480 * 4)
+      img2.get.length should be (1024 * 768 * 4)
 
       // Both should have rendered successfully (non-zero pixels)
-      val nonZero1 = img1.count(_ != 0)
-      val nonZero2 = img2.count(_ != 0)
+      val nonZero1 = img1.get.count(_ != 0)
+      val nonZero2 = img2.get.count(_ != 0)
 
       nonZero1 should be > 0
       nonZero2 should be > 0
@@ -175,17 +175,17 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       val img2b = renderer2.render(400, 300)
 
       // All renders should succeed
-      img1a.length should be (400 * 300 * 4)
-      img2a.length should be (400 * 300 * 4)
-      img1b.length should be (400 * 300 * 4)
-      img2b.length should be (400 * 300 * 4)
+      img1a.get.length should be (400 * 300 * 4)
+      img2a.get.length should be (400 * 300 * 4)
+      img1b.get.length should be (400 * 300 * 4)
+      img2b.get.length should be (400 * 300 * 4)
 
       // Same renderer should produce same image
-      img1a should equal (img1b)
-      img2a should equal (img2b)
+      img1a.get should equal (img1b.get)
+      img2a.get should equal (img2b.get)
 
       // Different renderers should produce different images
-      img1a should not equal img2a
+      img1a.get should not equal img2a.get
 
     } finally {
       renderer1.dispose()
@@ -212,7 +212,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     // Second renderer should still work
     renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
     val img = renderer2.render(400, 300)
-    img.length should be (400 * 300 * 4)
+    img.get.length should be (400 * 300 * 4)
 
     // Dispose second renderer
     renderer2.dispose()
@@ -237,7 +237,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
         // Verify it works
         renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
-        val img = renderer.render(200, 200)
+        val img = renderer.render(200, 200).get
         img.length should be (200 * 200 * 4)
 
       } finally {
@@ -259,9 +259,9 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     noException should be thrownBy renderer.setSphere(0, 0, 0, 1)
     noException should be thrownBy renderer.setSphereColor(1, 0, 0, 1)
 
-    // render should return null on uninitialized instance
+    // render should return None on uninitialized instance
     val img = renderer.render(400, 300)
-    img should be (null)
+    img shouldBe None
   }
 
   it should "allow re-initialization check" in {
@@ -301,7 +301,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Renderer should still work normally
       renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
-      val img = renderer.render(200, 200)
+      val img = renderer.render(200, 200).get
       img.length should be (200 * 200 * 4)
 
     } finally {
@@ -324,7 +324,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Renderer should work
       renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
-      val img = renderer.render(200, 200)
+      val img = renderer.render(200, 200).get
       img.length should be (200 * 200 * 4)
 
     } finally {

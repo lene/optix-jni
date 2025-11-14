@@ -37,7 +37,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .applyTo(renderer)
 
     // Execute
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
     // Verify
     imageData should not be null
@@ -54,7 +54,7 @@ class OpaqueSphereTest extends AnyFlatSpec
     TestScenario.default()
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val area = ImageValidation.spherePixelArea(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -68,7 +68,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_GREEN)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val area = ImageValidation.spherePixelArea(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -82,7 +82,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_GREEN)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val area = ImageValidation.spherePixelArea(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -95,7 +95,7 @@ class OpaqueSphereTest extends AnyFlatSpec
     TestScenario.default()
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val (centerX, centerY) = ImageValidation.detectSphereCenter(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -113,7 +113,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .withSpherePosition(1.0f, 0.0f, 0.0f)  // Offset to right
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val (centerX, _) = ImageValidation.detectSphereCenter(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -128,7 +128,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_RED)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val dominantChannel = ImageValidation.dominantColorChannel(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -142,7 +142,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_GREEN)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val dominantChannel = ImageValidation.dominantColorChannel(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -156,7 +156,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_BLUE)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val dominantChannel = ImageValidation.dominantColorChannel(
       imageData,
       TEST_IMAGE_SIZE._1,
@@ -170,7 +170,7 @@ class OpaqueSphereTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_WHITE)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val dominantChannel = ImageValidation.dominantColorChannel(
       imageData,
       TEST_IMAGE_SIZE._1,

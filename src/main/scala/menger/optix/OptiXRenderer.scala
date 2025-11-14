@@ -82,10 +82,8 @@ class OptiXRenderer extends LazyLogging:
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
   /** Render scene and return RGBA image data (width × height × 4 bytes) */
-  def render(width: Int, height: Int): Array[Byte] =
-    val result = renderWithStats(width, height)
-    // TODO: Consider returning Option[Array[Byte]] to avoid null (would require updating all call sites)
-    if result == null then null else result.image
+  def render(width: Int, height: Int): Option[Array[Byte]] =
+    Option(renderWithStats(width, height)).map(_.image)
 
   // Idempotent initialization - safe to call multiple times
   def initialize(): Boolean =

@@ -217,7 +217,7 @@ case class TestScenario(
     // If dimensions weren't set in applyTo, ensure they're set now
     if imageDimensions.isEmpty then
       renderer.updateImageDimensions(width, height)
-    renderer.render(width, height)
+    renderer.render(width, height).get
 
 /**
  * Pre-configured test scenarios for common materials and use cases.

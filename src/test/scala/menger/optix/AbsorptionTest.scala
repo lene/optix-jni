@@ -30,7 +30,7 @@ class AbsorptionTest extends AnyFlatSpec
 
     // Measure brightness at scale=0.5 (less absorption)
     renderer.setScale(0.5f)
-    val image1 = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val image1 = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val (cx1, cy1) = ImageValidation.detectSphereCenter(
       image1,
       TEST_IMAGE_SIZE._1,
@@ -43,7 +43,7 @@ class AbsorptionTest extends AnyFlatSpec
 
     // Measure brightness at scale=2.0 (more absorption)
     renderer.setScale(2.0f)
-    val image2 = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val image2 = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val (cx2, cy2) = ImageValidation.detectSphereCenter(
       image2,
       TEST_IMAGE_SIZE._1,
@@ -65,7 +65,7 @@ class AbsorptionTest extends AnyFlatSpec
 
     renderer.setScale(2.0f)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
     val gradient = ImageValidation.brightnessGradient(
       imageData,
       TEST_IMAGE_SIZE._1,

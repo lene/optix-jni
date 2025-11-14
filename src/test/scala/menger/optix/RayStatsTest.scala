@@ -146,7 +146,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "have image data matching render() output" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val standardRender = renderer.render(800, 600)
+    val standardRender = renderImage(800, 600)
     val statsRender = renderer.renderWithStats(800, 600)
 
     statsRender.image.length shouldBe standardRender.length
