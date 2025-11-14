@@ -1,7 +1,8 @@
 # OptiX Renderer Enhancement Plan
 
 **Created:** 2025-11-09
-**Status:** Planning Complete, Ready for Implementation
+**Updated:** 2025-11-14
+**Status:** Sprint 1 In Progress (Feature 1.1 Complete)
 
 ## Overview
 
@@ -18,25 +19,58 @@ This document outlines the comprehensive plan for enhancing the OptiX ray tracin
 
 ---
 
+## Progress Summary
+
+### Completed Features
+- ✅ **Ray Statistics (1.1)** - Completed 2025-11-14
+  - Tracks total, primary, reflected, refracted rays
+  - Displays formatted statistics via `--stats` flag
+  - Zero performance overhead when disabled
+  - Time spent: ~6 hours
+
+### In Progress
+- 🔄 **Shadow Rays (1.2)** - Starting 2025-11-14
+
+### Investigation Completed (Deferred)
+- ⏸️ **Dynamic Window Resizing (5.1)** - Investigated 2025-11-09 to 2025-11-14
+  - Time spent: ~10 hours investigation
+  - Result: Deferred to Sprint 5 due to complexity
+  - See Sprint 5 section for details
+
+### Code Quality Improvements (2025-11-14)
+- ✅ Fixed boolean operator precedence bug in AnimationSpecification
+- ✅ Made model caches thread-safe (ConcurrentHashMap in Cube/Sphere)
+- ✅ Documented intentional use of `throw` and `.get` for clarity
+- ✅ All 95 tests passing
+- Time spent: ~2 hours
+
+**Total time spent so far:** ~18 hours (6h features + 10h resize investigation + 2h code quality)
+
+---
+
 ## Sprint Breakdown
 
-### Sprint 1: Foundation (4-6 hours)
+### Sprint 1: Foundation (4-6 hours) - IN PROGRESS
 Quick wins that establish core capabilities and visual improvements.
+- ✅ Feature 1.1: Ray Statistics (COMPLETE - 6 hours)
+- 🔄 Feature 1.2: Shadow Rays (NEXT - estimated 4-6 hours)
 
-### Sprint 2: Interactivity (10-13 hours)
+### Sprint 2: Interactivity (10-13 hours) - PLANNED
 Make the OptiX window fully interactive and user-friendly.
 
-### Sprint 3: Advanced Quality (10-15 hours)
+### Sprint 3: Advanced Quality (10-15 hours) - PLANNED
 Implement sophisticated antialiasing for production-quality output.
 
-### Sprint 4: Advanced Lighting (15-25 hours)
+### Sprint 4: Advanced Lighting (15-25 hours) - PLANNED
 Add photon mapping for physically accurate caustics.
 
-### Sprint 5: Complex Features (Status: Deferred)
+### Sprint 5: Complex Features (Status: Deferred) - DEFERRED
 Features requiring further investigation and prototyping.
+- ⏸️ Feature 5.1: Dynamic Window Resizing (10+ hours spent, no resolution)
 
 **Total estimated effort (Sprints 1-4):** 39-59 hours
 **Deferred (Sprint 5):** 10-20 hours additional
+**Actual time spent:** 18 hours (as of 2025-11-14)
 
 ---
 
@@ -1486,8 +1520,10 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 
 ---
 
-**Document Status:** ✅ **Complete and Ready for Implementation**
+**Document Status:** 🔄 **Sprint 1 In Progress**
 
-**Last Updated:** 2025-11-13 - Deprioritized dynamic window resizing to Sprint 5
+**Last Updated:** 2025-11-14 - Updated progress tracking
 
-**Next Step:** Begin Sprint 1, Feature 1.1 - Ray Statistics
+**Next Step:** Implement Sprint 1, Feature 1.2 - Shadow Rays
+
+**Completed:** Feature 1.1 - Ray Statistics ✅
