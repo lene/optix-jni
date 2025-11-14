@@ -30,6 +30,7 @@ This document outlines the comprehensive plan for enhancing the OptiX ray tracin
 
 ### In Progress
 - 🔄 **Shadow Rays (1.2)** - Starting 2025-11-14
+  - See detailed implementation plan: [SHADOW_RAYS_PLAN.md](SHADOW_RAYS_PLAN.md)
 
 ### Investigation Completed (Deferred)
 - ⏸️ **Dynamic Window Resizing (5.1)** - Investigated 2025-11-09 to 2025-11-14
