@@ -36,6 +36,9 @@ public:
     // Light configuration
     void setLight(const float* direction, float intensity);
 
+    // Shadow configuration
+    void setShadows(bool enabled);
+
     // Plane configuration
     void setPlane(int axis, bool positive, float value);
 

@@ -13,6 +13,7 @@ case class RayStats(
   primaryRays: Long,
   reflectedRays: Long,
   refractedRays: Long,
+  shadowRays: Long,
   maxDepthReached: Int,
   minDepthReached: Int
 )
@@ -24,6 +25,7 @@ case class RenderResult(
   primaryRays: Long,
   reflectedRays: Long,
   refractedRays: Long,
+  shadowRays: Long,
   maxDepthReached: Int,
   minDepthReached: Int
 ):
@@ -32,6 +34,7 @@ case class RenderResult(
     primaryRays,
     reflectedRays,
     refractedRays,
+    shadowRays,
     maxDepthReached,
     minDepthReached
   )
@@ -74,6 +77,9 @@ class OptiXRenderer extends LazyLogging:
 
   /** Set directional light (normalized direction vector, intensity multiplier) */
   @native def setLight(direction: Array[Float], intensity: Float): Unit
+
+  /** Enable/disable shadow rays for realistic lighting (default: false) */
+  @native def setShadows(enabled: Boolean): Unit
 
   /** Set clipping plane (axis: 0=X 1=Y 2=Z, positive: plane normal direction, value: position) */
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit

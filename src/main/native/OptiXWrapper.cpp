@@ -69,6 +69,8 @@ struct OptiXWrapper::Impl {
         bool dirty = false;
     } plane;
 
+    bool shadows_enabled = false;  // Enable shadow ray tracing
+
     int image_width = -1;
     int image_height = -1;
 
@@ -78,6 +80,8 @@ struct OptiXWrapper::Impl {
     OptixProgramGroup raygen_prog_group = nullptr;
     OptixProgramGroup miss_prog_group = nullptr;
     OptixProgramGroup hitgroup_prog_group = nullptr;
+    OptixProgramGroup shadow_miss_prog_group = nullptr;
+    OptixProgramGroup shadow_hitgroup_prog_group = nullptr;
 
     // GPU buffers (created once, reused)
     CUdeviceptr d_gas_output_buffer = 0;
@@ -241,19 +245,32 @@ OptixModule OptiXWrapper::loadPTXModules() {
     return impl->module;
 }
 
-// Create program groups (raygen, miss, hit group)
+// Create program groups (raygen, miss, hit group, shadow miss, shadow hit group)
 void OptiXWrapper::createProgramGroups(OptixModule sphere_module) {
     // Use OptiXContext to create program groups
     impl->raygen_prog_group = impl->optix_context.createRaygenProgramGroup(
         impl->module, "__raygen__rg"
     );
 
+    // Primary ray miss program
     impl->miss_prog_group = impl->optix_context.createMissProgramGroup(
         impl->module, "__miss__ms"
     );
 
+    // Shadow ray miss program
+    impl->shadow_miss_prog_group = impl->optix_context.createMissProgramGroup(
+        impl->module, "__miss__shadow"
+    );
+
+    // Primary ray hit group (closest hit + intersection)
     impl->hitgroup_prog_group = impl->optix_context.createHitgroupProgramGroup(
         impl->module, "__closesthit__ch",
+        impl->module, "__intersection__sphere"
+    );
+
+    // Shadow ray hit group (only closest hit, same intersection program)
+    impl->shadow_hitgroup_prog_group = impl->optix_context.createHitgroupProgramGroup(
+        impl->module, "__closesthit__shadow",
         impl->module, "__intersection__sphere"
     );
 }
@@ -263,7 +280,9 @@ void OptiXWrapper::createPipeline() {
     OptixProgramGroup program_groups[] = {
         impl->raygen_prog_group,
         impl->miss_prog_group,
-        impl->hitgroup_prog_group
+        impl->hitgroup_prog_group,
+        impl->shadow_miss_prog_group,
+        impl->shadow_hitgroup_prog_group
     };
 
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
@@ -276,7 +295,7 @@ void OptiXWrapper::createPipeline() {
         pipeline_compile_options,
         pipeline_link_options,
         program_groups,
-        3
+        5  // Updated from 3 to 5 (added shadow miss and shadow hitgroup)
     );
 }
 
@@ -308,30 +327,58 @@ void OptiXWrapper::setupShaderBindingTable() {
         rg_data
     );
 
-    // Miss record data (plane parameters moved to Params for performance)
+    // Miss records: [0] = primary ray miss, [1] = shadow ray miss
     MissData ms_data;
     ms_data.r = OptiXConstants::DEFAULT_BG_R;
     ms_data.g = OptiXConstants::DEFAULT_BG_G;
     ms_data.b = OptiXConstants::DEFAULT_BG_B;
 
-    impl->sbt.missRecordBase = impl->optix_context.createMissSBTRecord(
-        impl->miss_prog_group,
-        ms_data
-    );
-    impl->sbt.missRecordStrideInBytes = sizeof(MissSbtRecord);
-    impl->sbt.missRecordCount = 1;
+    // Allocate array for 2 miss records
+    MissSbtRecord miss_records[2];
+    optixSbtRecordPackHeader(impl->miss_prog_group, &miss_records[0]);
+    miss_records[0].data = ms_data;
 
-    // Hit group record data (material properties moved to Params for performance)
+    // Shadow miss has no data (just marks as not occluded)
+    optixSbtRecordPackHeader(impl->shadow_miss_prog_group, &miss_records[1]);
+    miss_records[1].data = ms_data;  // Reuse same data (not used by shadow miss)
+
+    CUdeviceptr d_miss_records;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_miss_records), sizeof(miss_records)));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(d_miss_records),
+        miss_records,
+        sizeof(miss_records),
+        cudaMemcpyHostToDevice
+    ));
+    impl->sbt.missRecordBase = d_miss_records;
+    impl->sbt.missRecordStrideInBytes = sizeof(MissSbtRecord);
+    impl->sbt.missRecordCount = 2;
+
+    // Hit group records: [0] = primary ray hitgroup, [1] = shadow ray hitgroup
     HitGroupData hg_data;
     std::memcpy(hg_data.sphere_center, impl->sphere.center, sizeof(float) * 3);
     hg_data.sphere_radius = impl->sphere.radius;
 
-    impl->sbt.hitgroupRecordBase = impl->optix_context.createHitgroupSBTRecord(
-        impl->hitgroup_prog_group,
-        hg_data
-    );
+    // Allocate array for 2 hitgroup records
+    HitGroupSbtRecord hitgroup_records[2];
+    optixSbtRecordPackHeader(impl->hitgroup_prog_group, &hitgroup_records[0]);
+    hitgroup_records[0].data = hg_data;
+
+    // Shadow hitgroup uses same geometry data
+    optixSbtRecordPackHeader(impl->shadow_hitgroup_prog_group, &hitgroup_records[1]);
+    hitgroup_records[1].data = hg_data;
+
+    CUdeviceptr d_hitgroup_records;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(d_hitgroup_records),
+        hitgroup_records,
+        sizeof(hitgroup_records),
+        cudaMemcpyHostToDevice
+    ));
+    impl->sbt.hitgroupRecordBase = d_hitgroup_records;
     impl->sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
-    impl->sbt.hitgroupRecordCount = 1;
+    impl->sbt.hitgroupRecordCount = 2;
 }
 
 // Build OptiX pipeline (orchestrates all pipeline build steps)
@@ -349,9 +396,17 @@ void OptiXWrapper::buildPipeline() {
         impl->optix_context.destroyProgramGroup(impl->miss_prog_group);
         impl->miss_prog_group = nullptr;
     }
+    if (impl->shadow_miss_prog_group) {
+        impl->optix_context.destroyProgramGroup(impl->shadow_miss_prog_group);
+        impl->shadow_miss_prog_group = nullptr;
+    }
     if (impl->hitgroup_prog_group) {
         impl->optix_context.destroyProgramGroup(impl->hitgroup_prog_group);
         impl->hitgroup_prog_group = nullptr;
+    }
+    if (impl->shadow_hitgroup_prog_group) {
+        impl->optix_context.destroyProgramGroup(impl->shadow_hitgroup_prog_group);
+        impl->shadow_hitgroup_prog_group = nullptr;
     }
     if (impl->module) {
         impl->optix_context.destroyModule(impl->module);
@@ -375,6 +430,11 @@ void OptiXWrapper::setLight(const float* direction, float intensity) {
     std::memcpy(impl->light.direction, direction, 3 * sizeof(float));
     VectorMath::normalize3f(impl->light.direction);
     impl->light.intensity = intensity;
+}
+
+void OptiXWrapper::setShadows(bool enabled) {
+    impl->shadows_enabled = enabled;
+    // Synchronized to GPU params before render
 }
 
 void OptiXWrapper::setPlane(int axis, bool positive, float value) {
@@ -445,6 +505,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.sphere_scale = impl->sphere.scale;
         std::memcpy(params.light_dir, impl->light.direction, sizeof(float) * 3);
         params.light_intensity = impl->light.intensity;
+        params.shadows_enabled = impl->shadows_enabled;
         params.plane_axis = impl->plane.axis;
         params.plane_positive = impl->plane.positive;
         params.plane_value = impl->plane.value;

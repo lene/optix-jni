@@ -12,6 +12,7 @@ namespace RayTracingConstants {
     // Ray distance limits
     constexpr float MAX_RAY_DISTANCE = 1e16f;          // Maximum ray travel distance
     constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Offset to avoid self-intersection
+    constexpr float SHADOW_RAY_OFFSET = 0.001f;        // Offset for shadow ray origin (avoid shadow acne)
 
     // Color conversion (float [0,1] to byte [0,255])
     constexpr float COLOR_SCALE_FACTOR = 255.99f;      // Slightly less than 256 to avoid overflow
@@ -43,6 +44,7 @@ struct RayStats {
     unsigned long long primary_rays;    // Camera rays (equals pixel count)
     unsigned long long reflected_rays;  // Rays from Fresnel reflection
     unsigned long long refracted_rays;  // Rays transmitted through sphere
+    unsigned long long shadow_rays;     // Rays cast to check light occlusion
     unsigned int max_depth_reached;     // Deepest ray recursion
     unsigned int min_depth_reached;     // Shallowest ray recursion (should be 1)
 };
@@ -65,6 +67,7 @@ struct Params {
     int   plane_axis;           // 0=X, 1=Y, 2=Z
     bool  plane_positive;       // true=positive normal, false=negative normal
     float plane_value;          // Plane position along axis
+    bool  shadows_enabled;      // Enable shadow ray tracing
 
     // Ray statistics (GPU buffer)
     RayStats* stats;            // Pointer to GPU stats buffer

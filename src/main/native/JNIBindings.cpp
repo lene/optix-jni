@@ -173,6 +173,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLight(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setShadows(
+    JNIEnv* env, jobject obj, jboolean enabled) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setShadows(enabled == JNI_TRUE);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setShadows: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlane(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value) {
     try {
@@ -220,7 +232,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
             return nullptr;
         }
 
-        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJII)V");
+        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJII)V");
         if (constructor == nullptr) {
             std::cerr << "[JNI] Failed to find RenderResult constructor" << std::endl;
             return nullptr;
@@ -232,6 +244,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
             static_cast<jlong>(stats.primary_rays),
             static_cast<jlong>(stats.reflected_rays),
             static_cast<jlong>(stats.refracted_rays),
+            static_cast<jlong>(stats.shadow_rays),
             static_cast<jint>(stats.max_depth_reached),
             static_cast<jint>(stats.min_depth_reached)
         );

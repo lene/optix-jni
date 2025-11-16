@@ -249,6 +249,65 @@ extern "C" __global__ void __miss__ms() {
                 g = PLANE_CHECKER_DARK_GRAY;
                 b = PLANE_CHECKER_DARK_GRAY;
             }
+
+            // Apply shadow rays to plane if enabled
+            if (params.shadows_enabled) {
+                // Compute plane normal based on axis
+                float3 plane_normal;
+                if (plane_axis == 0) {  // X axis
+                    plane_normal = make_float3(1.0f, 0.0f, 0.0f);
+                } else if (plane_axis == 1) {  // Y axis
+                    plane_normal = make_float3(0.0f, 1.0f, 0.0f);
+                } else {  // Z axis
+                    plane_normal = make_float3(0.0f, 0.0f, 1.0f);
+                }
+
+                // Get light direction
+                const float3 light_dir_normalized = normalize(make_float3(
+                    params.light_dir[0],
+                    params.light_dir[1],
+                    params.light_dir[2]
+                ));
+
+                // Check shadows from both sides of plane (plane is double-sided)
+                const float diffuse = fabsf(dot(plane_normal, light_dir_normalized));
+                if (diffuse > 0.01f) {
+                    // Offset origin to avoid self-intersection
+                    const float3 shadow_origin = hit_point + plane_normal * SHADOW_RAY_OFFSET;
+
+                    // Trace shadow ray toward light
+                    unsigned int shadow_occluded = 0;
+
+                    optixTrace(
+                        params.handle,
+                        shadow_origin,
+                        light_dir_normalized,
+                        SHADOW_RAY_OFFSET,           // tmin
+                        1e16f,                        // tmax (effectively infinite)
+                        0.0f,                         // ray time
+                        OptixVisibilityMask(255),
+                        OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+                        1,                            // SBT ray type offset (1 = shadow ray)
+                        1,                            // SBT stride
+                        1,                            // Miss SBT index (1 = shadow miss)
+                        shadow_occluded               // Payload: 0=visible, 1=occluded
+                    );
+
+                    // Apply shadow darkening if occluded
+                    if (shadow_occluded > 0) {
+                        // Make shadow VERY dark for testing (pure black)
+                        r = 0;
+                        g = 0;
+                        b = 0;
+                    }
+
+                    // Update statistics
+                    if (params.stats) {
+                        atomicAdd(&params.stats->shadow_rays, 1ULL);
+                        atomicAdd(&params.stats->total_rays, 1ULL);
+                    }
+                }
+            }
         } else {
             // No intersection (t < 0), use background color
             r = static_cast<unsigned int>(miss_data->r * COLOR_SCALE_FACTOR);
@@ -341,7 +400,41 @@ extern "C" __global__ void __closesthit__ch() {
             params.light_dir[2]
         ));
         const float diffuse = fmaxf(0.0f, dot(normal, light_dir_normalized));
-        const float lighting = AMBIENT_LIGHT_FACTOR + (1.0f - AMBIENT_LIGHT_FACTOR) * diffuse;
+
+        // Shadow ray check (if enabled and surface is lit)
+        float shadow_factor = 1.0f;
+        if (params.shadows_enabled && diffuse > 0.0f) {
+            // Offset origin to avoid self-intersection
+            const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
+
+            // Trace shadow ray toward light
+            unsigned int shadow_occluded = 0;
+
+            optixTrace(
+                params.handle,
+                shadow_origin,
+                light_dir_normalized,
+                SHADOW_RAY_OFFSET,           // tmin
+                1e16f,                        // tmax (effectively infinite)
+                0.0f,                         // ray time
+                OptixVisibilityMask(255),
+                OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,  // Early exit optimization
+                1,                            // SBT ray type offset (1 = shadow ray)
+                1,                            // SBT stride
+                1,                            // Miss SBT index (1 = shadow miss)
+                shadow_occluded               // Payload: 0=visible, 1=occluded
+            );
+
+            shadow_factor = shadow_occluded > 0 ? 0.0f : 1.0f;
+
+            // Update statistics
+            if (params.stats) {
+                atomicAdd(&params.stats->shadow_rays, 1ULL);
+                atomicAdd(&params.stats->total_rays, 1ULL);
+            }
+        }
+
+        const float lighting = AMBIENT_LIGHT_FACTOR + shadow_factor * (1.0f - AMBIENT_LIGHT_FACTOR) * diffuse;
 
         // Get sphere color from params (RGB only, ignore alpha for solid spheres)
         const float3 sphere_color = make_float3(
@@ -536,4 +629,20 @@ extern "C" __global__ void __closesthit__ch() {
     optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * 255.0f, 255.0f)));
     optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * 255.0f, 255.0f)));
     optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * 255.0f, 255.0f)));
+}
+
+//==============================================================================
+// Shadow ray miss shader - light is visible (no occlusion)
+//==============================================================================
+extern "C" __global__ void __miss__shadow() {
+    // Shadow ray missed all geometry - light is visible
+    // Payload remains 0 (not occluded)
+}
+
+//==============================================================================
+// Shadow ray closest hit shader - marks shadow ray as occluded
+//==============================================================================
+extern "C" __global__ void __closesthit__shadow() {
+    // Shadow ray hit something - mark as occluded
+    optixSetPayload_0(1);  // Set occlusion flag to 1 (occluded)
 }

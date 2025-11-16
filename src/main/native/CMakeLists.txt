@@ -26,14 +26,15 @@ endif()
 # the best version for the actual GPU at runtime.
 #
 # Architectures included:
-# - 52-real: Maxwell  (GTX 900 series, Tesla M40, 2014)
 # - 75-real: Turing   (RTX 20xx, Tesla T4, 2018)
 # - 86-real: Ampere   (RTX 30xx, A100, 2020)
 # - 89-real: Ada      (RTX 40xx, L40, 2022)
 # - 75-virtual: PTX intermediate code for forward compatibility with future GPUs
 #
-# This single artifact works on any GPU from 2014 onwards.
-set(CMAKE_CUDA_ARCHITECTURES "52-real;75-real;86-real;89-real;75-virtual")
+# NOTE: Maxwell (compute_52, 2014) is NOT supported - removed in CUDA 12.0+
+# That architecture is over a decade old. Do not re-add it.
+# Minimum supported: Turing (compute_75, 2018) - 7 years old is reasonable.
+set(CMAKE_CUDA_ARCHITECTURES "75-real;86-real;89-real;75-virtual")
 
 enable_language(CUDA)
 set(CMAKE_CUDA_STANDARD 17)

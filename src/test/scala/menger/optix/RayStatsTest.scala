@@ -152,3 +152,68 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     statsRender.image.length shouldBe standardRender.length
     // Images should be identical (same rendering)
     statsRender.image shouldBe standardRender
+
+  "Shadow ray statistics" should "be zero when shadows disabled (default)" in:
+    TestScenario.default().applyTo(renderer)
+    // Shadows disabled by default
+
+    val result = renderer.renderWithStats(800, 600)
+
+    result.shadowRays shouldBe 0L
+
+  it should "track shadow rays when shadows enabled" in:
+    TestScenario.default().applyTo(renderer)
+    renderer.setShadows(true)
+
+    val result = renderer.renderWithStats(800, 600)
+
+    // Should have cast shadow rays for lit pixels
+    result.shadowRays should be > 0L
+
+  it should "include shadow rays in total ray count" in:
+    TestScenario.default().applyTo(renderer)
+    renderer.setShadows(true)
+
+    val result = renderer.renderWithStats(800, 600)
+
+    // Total rays should include primary + shadow rays (at minimum)
+    result.totalRays should be >= (result.primaryRays + result.shadowRays)
+
+  it should "not cast shadow rays for pixels facing away from light" in:
+    // Opaque sphere with light behind the camera (opposite direction)
+    renderer.setSphere(0f, 0f, 0f, 0.5f)
+    renderer.setSphereColor(1f, 0f, 0f, 1.0f)  // Opaque red
+    renderer.setCamera(
+      Array(0f, 0f, 3f),   // Camera in front
+      Array(0f, 0f, 0f),
+      Array(0f, 1f, 0f),
+      60f
+    )
+    renderer.setLight(
+      Array(0f, 0f, -1f),  // Light behind camera (away from sphere)
+      1.0f
+    )
+    renderer.setShadows(true)
+
+    val result = renderer.renderWithStats(800, 600)
+
+    // All visible surfaces face away from light, so diffuse=0, no shadow rays
+    result.shadowRays shouldBe 0L
+
+  it should "have consistent shadow ray counts across multiple renders" in:
+    TestScenario.default().applyTo(renderer)
+    renderer.setShadows(true)
+
+    val result1 = renderer.renderWithStats(800, 600)
+    val result2 = renderer.renderWithStats(800, 600)
+
+    result1.shadowRays shouldBe result2.shadowRays
+
+  it should "include shadowRays in stats accessor" in:
+    TestScenario.default().applyTo(renderer)
+    renderer.setShadows(true)
+
+    val result = renderer.renderWithStats(800, 600)
+    val stats = result.stats
+
+    stats.shadowRays shouldBe result.shadowRays
