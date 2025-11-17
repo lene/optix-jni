@@ -38,8 +38,9 @@ RUN chmod +x /tmp/optix-installer.sh ; \
     ln -s /usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64 /usr/local/optix ; \
     rm /tmp/optix-installer.sh
 
-# Set OptiX environment variable for CMake auto-detection
+# Set OptiX and CUDA environment variables for CMake auto-detection
 ENV OPTIX_ROOT=/usr/local/optix
+ENV CUDA_HOME=/usr/local/cuda
 
 # Layer 4: Java 25 (LTS, supported until 2031)
 # Install from Eclipse Temurin (formerly AdoptOpenJDK)
