@@ -41,6 +41,7 @@ public:
 
     // Plane configuration
     void setPlane(int axis, bool positive, float value);
+    void setPlaneSolidColor(bool solid);  // true=solid gray, false=checkerboard
 
     // Rendering
     void render(int width, int height, unsigned char* output, RayStats* stats = nullptr);

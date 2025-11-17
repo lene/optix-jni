@@ -45,6 +45,9 @@ trait RendererFixture extends BeforeAndAfterEach:
    */
   override def beforeEach(): Unit =
     super.beforeEach()
+    // Explicitly trigger companion object initialization to ensure library is loaded
+    // This prevents UnsatisfiedLinkError with testOnly on certain test classes
+    require(OptiXRenderer.isLibraryLoaded, "OptiX native library failed to load")
     val r = new OptiXRenderer()
     r.initialize()
     rendererOpt = Some(r)

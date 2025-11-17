@@ -36,6 +36,7 @@ namespace RayTracingConstants {
     constexpr float PLANE_CHECKER_SIZE = 1.0f;            // Size of checker squares
     constexpr unsigned int PLANE_CHECKER_LIGHT_GRAY = 120;  // Light gray checker RGB value
     constexpr unsigned int PLANE_CHECKER_DARK_GRAY = 20;    // Dark gray checker RGB value
+    constexpr unsigned int PLANE_SOLID_LIGHT_GRAY = 200;    // Solid plane color (good for shadow visibility)
 }
 
 // Ray statistics tracking
@@ -67,6 +68,7 @@ struct Params {
     int   plane_axis;           // 0=X, 1=Y, 2=Z
     bool  plane_positive;       // true=positive normal, false=negative normal
     float plane_value;          // Plane position along axis
+    bool  plane_solid_color;    // true=solid light gray, false=checkerboard pattern
     bool  shadows_enabled;      // Enable shadow ray tracing
 
     // Ray statistics (GPU buffer)

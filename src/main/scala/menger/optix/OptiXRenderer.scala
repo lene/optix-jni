@@ -81,6 +81,9 @@ class OptiXRenderer extends LazyLogging:
   /** Enable/disable shadow rays for realistic lighting (default: false) */
   @native def setShadows(enabled: Boolean): Unit
 
+  /** Set plane rendering mode: solid light gray (true) or checkerboard (false, default) */
+  @native def setPlaneSolidColor(solid: Boolean): Unit
+
   /** Set clipping plane (axis: 0=X 1=Y 2=Z, positive: plane normal direction, value: position) */
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
 

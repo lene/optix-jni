@@ -69,7 +69,8 @@ struct OptiXWrapper::Impl {
         bool dirty = false;
     } plane;
 
-    bool shadows_enabled = false;  // Enable shadow ray tracing
+    bool shadows_enabled = false;      // Enable shadow ray tracing
+    bool plane_solid_color = false;    // true=solid color, false=checkerboard
 
     int image_width = -1;
     int image_height = -1;
@@ -437,6 +438,11 @@ void OptiXWrapper::setShadows(bool enabled) {
     // Synchronized to GPU params before render
 }
 
+void OptiXWrapper::setPlaneSolidColor(bool solid) {
+    impl->plane_solid_color = solid;
+    // Synchronized to GPU params before render
+}
+
 void OptiXWrapper::setPlane(int axis, bool positive, float value) {
     impl->plane.axis = axis;
     impl->plane.positive = positive;
@@ -509,6 +515,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.plane_axis = impl->plane.axis;
         params.plane_positive = impl->plane.positive;
         params.plane_value = impl->plane.value;
+        params.plane_solid_color = impl->plane_solid_color;
         params.stats = reinterpret_cast<RayStats*>(impl->d_stats);
 
         // Copy params to GPU
@@ -527,6 +534,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             width,
             height
         );
+
+        // Synchronize to flush printf output
+        CUDA_CHECK(cudaDeviceSynchronize());
 
         // Copy result back to CPU
         CUDA_CHECK(cudaMemcpy(

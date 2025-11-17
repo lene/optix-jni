@@ -185,6 +185,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setShadows(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneSolidColor(
+    JNIEnv* env, jobject obj, jboolean solid) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setPlaneSolidColor(solid == JNI_TRUE);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setPlaneSolidColor: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlane(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value) {
     try {
