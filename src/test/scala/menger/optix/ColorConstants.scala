@@ -27,6 +27,7 @@ object ColorConstants:
   val OPAQUE_WHITE = (1.0f, 1.0f, 1.0f, 1.0f)
   val OPAQUE_LIGHT_GRAY = (0.784f, 0.784f, 0.784f, 1.0f)  // RGB(200, 200, 200)
   val OPAQUE_MEDIUM_GRAY = (0.5f, 0.5f, 0.5f, 1.0f)
+  val OPAQUE_SHADOW_TEST_GRAY = (0.75f, 0.75f, 0.75f, 1.0f)  // Standard gray for shadow tests
 
   // ========== Transparency Levels (White Base) ==========
 
@@ -63,6 +64,7 @@ object ColorConstants:
   // ========== Refraction Test Colors ==========
 
   val REFRACTION_TEST_GRAY = (0.784f, 0.784f, 0.784f, 0.784f)
+  val RED_TINTED_GLASS = (1.0f, 0.392f, 0.392f, 0.502f)       // RGB(255, 100, 100)
   val BLUE_TINTED_GLASS = (0.392f, 0.588f, 1.0f, 0.502f)      // RGB(100, 150, 255)
   val HIGHLY_TRANSPARENT_GRAY = (0.392f, 0.392f, 0.392f, 0.392f)
 

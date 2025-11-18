@@ -37,7 +37,25 @@ namespace RayTracingConstants {
     constexpr unsigned int PLANE_CHECKER_LIGHT_GRAY = 120;  // Light gray checker RGB value
     constexpr unsigned int PLANE_CHECKER_DARK_GRAY = 20;    // Dark gray checker RGB value
     constexpr unsigned int PLANE_SOLID_LIGHT_GRAY = 200;    // Solid plane color (good for shadow visibility)
+
+    // Multiple light sources
+    constexpr int MAX_LIGHTS = 8;  // Maximum number of simultaneous light sources
 }
+
+// Light source types
+enum class LightType {
+    DIRECTIONAL = 0,  // Parallel rays from infinity (sun-like), no distance attenuation
+    POINT = 1         // Radiate from position, inverse-square falloff
+};
+
+// Light source definition
+struct Light {
+    LightType type;       // Directional or point light
+    float direction[3];   // Light direction (normalized) for directional lights
+    float position[3];    // Light position for point lights
+    float color[3];       // RGB color (0.0-1.0)
+    float intensity;      // Brightness multiplier
+};
 
 // Ray statistics tracking
 struct RayStats {
@@ -63,8 +81,8 @@ struct Params {
     float sphere_color[4];      // Sphere color (RGBA, 0.0-1.0)
     float sphere_ior;           // Index of refraction (1.0 = no refraction, 1.5 = glass)
     float sphere_scale;         // Physical scale (1.0 = meters, 0.01 = centimeters)
-    float light_dir[3];         // Light direction
-    float light_intensity;      // Light intensity
+    Light lights[RayTracingConstants::MAX_LIGHTS];  // Array of light sources
+    int   num_lights;           // Number of active lights
     int   plane_axis;           // 0=X, 1=Y, 2=Z
     bool  plane_positive;       // true=positive normal, false=negative normal
     float plane_value;          // Plane position along axis

@@ -57,10 +57,24 @@ struct OptiXWrapper::Impl {
         bool dirty = false;
     } sphere;
 
-    struct LightParams {
-        float direction[3] = {0.5f, 0.5f, -0.5f};
-        float intensity = 1.0f;
-    } light;
+    Light lights[RayTracingConstants::MAX_LIGHTS];
+    int num_lights = 1;  // Start with one default directional light
+
+    // Constructor to initialize default light
+    Impl() {
+        // Default directional light from top-right-front (normalized)
+        lights[0].type = LightType::DIRECTIONAL;
+        lights[0].direction[0] = 0.577350f;   // 0.5 / sqrt(0.75)
+        lights[0].direction[1] = 0.577350f;   // 0.5 / sqrt(0.75)
+        lights[0].direction[2] = -0.577350f;  // -0.5 / sqrt(0.75)
+        lights[0].position[0] = 0.0f;
+        lights[0].position[1] = 0.0f;
+        lights[0].position[2] = 0.0f;
+        lights[0].color[0] = 1.0f;
+        lights[0].color[1] = 1.0f;
+        lights[0].color[2] = 1.0f;
+        lights[0].intensity = 1.0f;
+    }
 
     struct PlaneParams {
         int axis = 1;          // 0=X, 1=Y, 2=Z
@@ -426,11 +440,50 @@ void OptiXWrapper::buildPipeline() {
     }
 }
 
+void OptiXWrapper::setLights(const Light* lights, int count) {
+    if (count < 0 || count > RayTracingConstants::MAX_LIGHTS) {
+        throw std::invalid_argument(
+            "Light count " + std::to_string(count) +
+            " out of range [0, " + std::to_string(RayTracingConstants::MAX_LIGHTS) + "]"
+        );
+    }
+
+    if (lights == nullptr && count > 0) {
+        throw std::invalid_argument("Light array is null but count is " + std::to_string(count));
+    }
+
+    // Copy lights array
+    impl->num_lights = count;
+    for (int i = 0; i < count; ++i) {
+        impl->lights[i] = lights[i];
+    }
+}
+
 void OptiXWrapper::setLight(const float* direction, float intensity) {
-    // Store and normalize light direction
-    std::memcpy(impl->light.direction, direction, 3 * sizeof(float));
-    VectorMath::normalize3f(impl->light.direction);
-    impl->light.intensity = intensity;
+    // Backward compatibility: convert single light to Light struct
+    Light light;
+    light.type = LightType::DIRECTIONAL;
+
+    // Normalize direction
+    float normalized_dir[3];
+    std::memcpy(normalized_dir, direction, 3 * sizeof(float));
+    VectorMath::normalize3f(normalized_dir);
+    std::memcpy(light.direction, normalized_dir, 3 * sizeof(float));
+
+    // Position unused for directional lights
+    light.position[0] = 0.0f;
+    light.position[1] = 0.0f;
+    light.position[2] = 0.0f;
+
+    // White light
+    light.color[0] = 1.0f;
+    light.color[1] = 1.0f;
+    light.color[2] = 1.0f;
+
+    light.intensity = intensity;
+
+    // Set as single light
+    setLights(&light, 1);
 }
 
 void OptiXWrapper::setShadows(bool enabled) {
@@ -509,8 +562,13 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         std::memcpy(params.sphere_color, impl->sphere.color, sizeof(float) * 4);
         params.sphere_ior = impl->sphere.ior;
         params.sphere_scale = impl->sphere.scale;
-        std::memcpy(params.light_dir, impl->light.direction, sizeof(float) * 3);
-        params.light_intensity = impl->light.intensity;
+
+        // Copy lights array
+        params.num_lights = impl->num_lights;
+        for (int i = 0; i < impl->num_lights; ++i) {
+            params.lights[i] = impl->lights[i];
+        }
+
         params.shadows_enabled = impl->shadows_enabled;
         params.plane_axis = impl->plane.axis;
         params.plane_positive = impl->plane.positive;

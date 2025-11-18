@@ -72,3 +72,45 @@ object ThresholdConstants:
   val SMALL_IMAGE_SIZE = (10, 10)      // Quick smoke tests
   val TEST_IMAGE_SIZE = (400, 300)     // Most integration tests (4:3 aspect)
   val STANDARD_IMAGE_SIZE = (800, 600) // Visual validation (4:3 aspect)
+
+  // ========== Shadow Detection Grid Sizes ==========
+
+  val DEFAULT_SHADOW_GRID = 8   // Standard grid for shadow region detection
+  val LARGE_SHADOW_GRID = 10    // Fine-grained grid for precise shadow detection
+
+  // ========== Shadow Brightness Thresholds (out of 255) ==========
+
+  val TRANSPARENT_SHADOW_MIN_BRIGHTNESS = 130.0  // alpha=0.0 shadow region should be bright
+  val OPAQUE_SHADOW_MAX_BRIGHTNESS = 95.0        // alpha=1.0 shadow region should be dark
+  val DARK_SHADOW_THRESHOLD = 150.0              // Threshold for "dark" shadow
+
+  // ========== Shadow Comparison Ratios ==========
+
+  val TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO = 1.3  // Transparent shadow should be 1.3x brighter than opaque
+  val MAX_SHADOW_DARKENING_RATIO = 0.65          // Shadow can darken to 65% of lit brightness
+  val MODERATE_SHADOW_RATIO = 0.8                // Moderate shadow darkening (80% of lit brightness)
+  val MIN_SHADOW_CONTRAST_RATIO = 0.85           // Minimum shadow contrast (85% as bright)
+  val ALPHA_TOLERANCE_LOWER_RATIO = 0.90         // Alpha comparison tolerance (90% of expected)
+  val ALPHA_TOLERANCE_UPPER_RATIO = 1.10         // Alpha comparison tolerance (110% of expected)
+  val RADIUS_TOLERANCE_RATIO = 1.05              // Radius-based shadow size tolerance (5%)
+
+  // ========== Shadow Position Tolerances (pixels) ==========
+
+  val CENTER_TOLERANCE_FRACTION = 0.15           // 15% of image width for centering
+  val WIDE_CENTER_TOLERANCE_FRACTION = 0.2       // 20% for looser centering tests
+  val MIN_SHADOW_SHIFT = 50                      // Minimum detectable shadow shift
+  val MODERATE_SHADOW_SHIFT = 40                 // Moderate shadow position change
+  val SMALL_SHADOW_SHIFT = 10                    // Small but detectable shift
+
+  // ========== Shadow Region Fractions ==========
+
+  val BOTTOM_REGION_FRACTION = 0.4               // 40% of image height for bottom region
+
+  // ========== Shadow Performance Limits ==========
+
+  val MAX_SHADOW_OVERHEAD = 1.0                  // Max 100% performance overhead for shadows
+  val RENDER_ITERATIONS = 10                     // Number of iterations for performance tests
+
+  // ========== Shadow Brightness Comparison Tolerance ==========
+
+  val BRIGHTNESS_TOLERANCE = 1.0                 // ±1 brightness unit for floating-point variance

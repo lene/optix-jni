@@ -257,28 +257,58 @@ extern "C" __global__ void __miss__ms() {
                 }
             }
 
-            // Apply shadow rays to plane if enabled
-            if (params.shadows_enabled) {
-                // Compute plane normal based on axis
-                float3 plane_normal;
-                if (plane_axis == 0) {  // X axis
-                    plane_normal = make_float3(1.0f, 0.0f, 0.0f);
-                } else if (plane_axis == 1) {  // Y axis
-                    plane_normal = make_float3(0.0f, 1.0f, 0.0f);
-                } else {  // Z axis
-                    plane_normal = make_float3(0.0f, 0.0f, 1.0f);
+            // Apply lighting from multiple light sources to plane
+            // Compute plane normal based on axis
+            float3 plane_normal;
+            if (plane_axis == 0) {  // X axis
+                plane_normal = make_float3(1.0f, 0.0f, 0.0f);
+            } else if (plane_axis == 1) {  // Y axis
+                plane_normal = make_float3(0.0f, 1.0f, 0.0f);
+            } else {  // Z axis
+                plane_normal = make_float3(0.0f, 0.0f, 1.0f);
+            }
+
+            // Accumulate lighting from all light sources
+            float3 total_lighting = make_float3(0.0f, 0.0f, 0.0f);
+
+            for (int light_idx = 0; light_idx < params.num_lights; ++light_idx) {
+                const Light& light = params.lights[light_idx];
+
+                // Calculate light direction and distance attenuation
+                float3 light_dir;
+                float attenuation = 1.0f;
+
+                if (light.type == LightType::DIRECTIONAL) {
+                    light_dir = normalize(make_float3(
+                        light.direction[0],
+                        light.direction[1],
+                        light.direction[2]
+                    ));
+                } else if (light.type == LightType::POINT) {
+                    const float3 light_pos = make_float3(
+                        light.position[0],
+                        light.position[1],
+                        light.position[2]
+                    );
+                    const float3 to_light = light_pos - hit_point;
+                    const float distance = length(to_light);
+                    light_dir = to_light / distance;
+                    attenuation = 1.0f / (1.0f + distance * distance);
                 }
 
-                // Get light direction
-                const float3 light_dir_normalized = normalize(make_float3(
-                    params.light_dir[0],
-                    params.light_dir[1],
-                    params.light_dir[2]
-                ));
+                // Calculate raw dot product for shadow ray decision
+                const float raw_ndotl = dot(plane_normal, light_dir);
 
-                // Check shadows from both sides of plane (plane is double-sided)
-                const float diffuse = fabsf(dot(plane_normal, light_dir_normalized));
-                if (diffuse > 0.01f) {
+                // Plane is double-sided for lighting, use absolute value
+                const float ndotl = fabsf(raw_ndotl);
+
+                if (ndotl <= 1.0f/255.0f) {
+                    continue;
+                }
+
+                // Shadow ray check (if enabled)
+                float shadow_factor = 1.0f;
+                if (params.shadows_enabled && ndotl > 1.0f/255.0f) {
                     // Offset origin to avoid self-intersection
                     const float3 shadow_origin = hit_point + plane_normal * SHADOW_RAY_OFFSET;
 
@@ -288,7 +318,7 @@ extern "C" __global__ void __miss__ms() {
                     optixTrace(
                         params.handle,
                         shadow_origin,
-                        light_dir_normalized,
+                        light_dir,
                         SHADOW_RAY_OFFSET,           // tmin
                         1e16f,                        // tmax (effectively infinite)
                         0.0f,                         // ray time
@@ -300,18 +330,9 @@ extern "C" __global__ void __miss__ms() {
                         shadow_payload                // Payload: float packed as uint
                     );
 
-                    // Unpack shadow attenuation (0.0 = no shadow, 1.0 = full shadow)
+                    // Unpack shadow attenuation and convert to shadow factor
                     const float shadow_attenuation = __uint_as_float(shadow_payload);
-
-                    // Convert to shadow factor (1.0 = fully lit, 0.0 = fully shadowed)
-                    const float shadow_factor = 1.0f - shadow_attenuation;
-
-                    // Apply lighting with ambient term (same formula as sphere shader)
-                    // Plane color doesn't have diffuse baked in, so apply full lighting formula
-                    const float lighting_factor = AMBIENT_LIGHT_FACTOR + shadow_factor * (1.0f - AMBIENT_LIGHT_FACTOR) * diffuse;
-                    r = static_cast<unsigned int>(r * lighting_factor);
-                    g = static_cast<unsigned int>(g * lighting_factor);
-                    b = static_cast<unsigned int>(b * lighting_factor);
+                    shadow_factor = 1.0f - shadow_attenuation;
 
                     // Update statistics
                     if (params.stats) {
@@ -319,7 +340,21 @@ extern "C" __global__ void __miss__ms() {
                         atomicAdd(&params.stats->total_rays, 1ULL);
                     }
                 }
+
+                // Accumulate contribution from this light
+                const float3 light_color = make_float3(
+                    light.color[0],
+                    light.color[1],
+                    light.color[2]
+                );
+                total_lighting = total_lighting + light_color * light.intensity * attenuation * ndotl * shadow_factor;
             }
+
+            // Add ambient and apply to plane color
+            const float3 lighting = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR) + total_lighting * (1.0f - AMBIENT_LIGHT_FACTOR);
+            r = static_cast<unsigned int>(r * lighting.x);
+            g = static_cast<unsigned int>(g * lighting.y);
+            b = static_cast<unsigned int>(b * lighting.z);
         } else {
             // No intersection (t < 0), use background color
             r = static_cast<unsigned int>(miss_data->r * COLOR_SCALE_FACTOR);
@@ -406,51 +441,94 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Handle fully opaque spheres (alpha >= threshold) - solid surface with diffuse shading
     if (sphere_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
-        const float3 light_dir_normalized = normalize(make_float3(
-            params.light_dir[0],
-            params.light_dir[1],
-            params.light_dir[2]
-        ));
-        const float diffuse = fmaxf(0.0f, dot(normal, light_dir_normalized));
+        // Accumulate lighting from all light sources
+        float3 total_lighting = make_float3(0.0f, 0.0f, 0.0f);
 
-        // Shadow ray check (if enabled and surface is lit)
-        float shadow_factor = 1.0f;
-        if (params.shadows_enabled && diffuse > 0.0f) {
-            // Offset origin to avoid self-intersection
-            const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
+        for (int light_idx = 0; light_idx < params.num_lights; ++light_idx) {
+            const Light& light = params.lights[light_idx];
 
-            // Trace shadow ray toward light
-            unsigned int shadow_payload = 0;
+            // Calculate light direction and distance attenuation based on light type
+            float3 light_dir;
+            float attenuation = 1.0f;
 
-            optixTrace(
-                params.handle,
-                shadow_origin,
-                light_dir_normalized,
-                SHADOW_RAY_OFFSET,           // tmin
-                1e16f,                        // tmax (effectively infinite)
-                0.0f,                         // ray time
-                OptixVisibilityMask(255),
-                OPTIX_RAY_FLAG_NONE,         // Need closest hit to get alpha value
-                1,                            // SBT ray type offset (1 = shadow ray)
-                2,                            // SBT stride (2 ray types: primary + shadow)
-                1,                            // Miss SBT index (1 = shadow miss)
-                shadow_payload                // Payload: float packed as uint
-            );
-
-            // Unpack shadow attenuation and convert to shadow factor
-            // shadow_attenuation: 0.0 = no occlusion, 1.0 = full occlusion
-            // shadow_factor: 1.0 = fully lit, 0.0 = fully shadowed
-            const float shadow_attenuation = __uint_as_float(shadow_payload);
-            shadow_factor = 1.0f - shadow_attenuation;
-
-            // Update statistics
-            if (params.stats) {
-                atomicAdd(&params.stats->shadow_rays, 1ULL);
-                atomicAdd(&params.stats->total_rays, 1ULL);
+            if (light.type == LightType::DIRECTIONAL) {
+                // Directional light: use direction directly (already points toward light)
+                light_dir = normalize(make_float3(
+                    light.direction[0],
+                    light.direction[1],
+                    light.direction[2]
+                ));
+                // No distance attenuation for directional lights
+            } else if (light.type == LightType::POINT) {
+                // Point light: calculate direction from hit point to light position
+                const float3 light_pos = make_float3(
+                    light.position[0],
+                    light.position[1],
+                    light.position[2]
+                );
+                const float3 to_light = light_pos - hit_point;
+                const float distance = length(to_light);
+                light_dir = to_light / distance;  // Normalize
+                // Inverse-square falloff with minimum distance to avoid singularity
+                attenuation = 1.0f / (1.0f + distance * distance);
             }
+
+            // Calculate diffuse term (N · L)
+            const float ndotl = fmaxf(0.0f, dot(normal, light_dir));
+
+            // Skip shadow calculation if surface not lit by this light
+            if (ndotl <= 0.0f) {
+                continue;
+            }
+
+            // Shadow ray check (if enabled)
+            float shadow_factor = 1.0f;
+            if (params.shadows_enabled) {
+                // Offset origin to avoid self-intersection
+                const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
+
+                // Trace shadow ray toward light
+                unsigned int shadow_payload = 0;
+
+                optixTrace(
+                    params.handle,
+                    shadow_origin,
+                    light_dir,
+                    SHADOW_RAY_OFFSET,           // tmin
+                    1e16f,                        // tmax (effectively infinite)
+                    0.0f,                         // ray time
+                    OptixVisibilityMask(255),
+                    OPTIX_RAY_FLAG_NONE,         // Need closest hit to get alpha value
+                    1,                            // SBT ray type offset (1 = shadow ray)
+                    2,                            // SBT stride (2 ray types: primary + shadow)
+                    1,                            // Miss SBT index (1 = shadow miss)
+                    shadow_payload                // Payload: float packed as uint
+                );
+
+                // Unpack shadow attenuation and convert to shadow factor
+                // shadow_attenuation: 0.0 = no occlusion, 1.0 = full occlusion
+                // shadow_factor: 1.0 = fully lit, 0.0 = fully shadowed
+                const float shadow_attenuation = __uint_as_float(shadow_payload);
+                shadow_factor = 1.0f - shadow_attenuation;
+
+                // Update statistics
+                if (params.stats) {
+                    atomicAdd(&params.stats->shadow_rays, 1ULL);
+                    atomicAdd(&params.stats->total_rays, 1ULL);
+                }
+            }
+
+            // Accumulate contribution from this light
+            const float3 light_color = make_float3(
+                light.color[0],
+                light.color[1],
+                light.color[2]
+            );
+            total_lighting = total_lighting + light_color * light.intensity * attenuation * ndotl * shadow_factor;
         }
 
-        const float lighting = AMBIENT_LIGHT_FACTOR + shadow_factor * (1.0f - AMBIENT_LIGHT_FACTOR) * diffuse;
+        // Add ambient lighting
+        const float3 lighting = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR) + total_lighting * (1.0f - AMBIENT_LIGHT_FACTOR);
 
         // Get sphere color from params (RGB only, ignore alpha for solid spheres)
         const float3 sphere_color = make_float3(
@@ -459,11 +537,11 @@ extern "C" __global__ void __closesthit__ch() {
             params.sphere_color[2]
         );
 
-        // Apply lighting to solid sphere surface
+        // Apply lighting to solid sphere surface (component-wise multiplication)
         const float3 lit_color = make_float3(
-            sphere_color.x * lighting,
-            sphere_color.y * lighting,
-            sphere_color.z * lighting
+            sphere_color.x * lighting.x,
+            sphere_color.y * lighting.y,
+            sphere_color.z * lighting.z
         );
 
         const unsigned int r = static_cast<unsigned int>(fminf(lit_color.x * 255.0f, 255.0f));

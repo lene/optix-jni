@@ -34,7 +34,8 @@ public:
     void updateImageDimensions(int width, int height);
 
     // Light configuration
-    void setLight(const float* direction, float intensity);
+    void setLight(const float* direction, float intensity);  // Backward compatible (converts to single light)
+    void setLights(const Light* lights, int count);  // Multiple lights (up to MAX_LIGHTS)
 
     // Shadow configuration
     void setShadows(bool enabled);

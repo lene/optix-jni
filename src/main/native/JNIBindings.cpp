@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "include/OptiXWrapper.h"
 #include <iostream>
+#include <cstring>
 
 /**
  * @file JNIBindings.cpp
@@ -170,6 +171,94 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLight(
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setLight: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
+    JNIEnv* env, jobject obj, jobjectArray lightsArray) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return;
+        }
+
+        jsize count = env->GetArrayLength(lightsArray);
+
+        // Validate count BEFORE creating stack array to prevent buffer overflow
+        if (count < 0 || count > RayTracingConstants::MAX_LIGHTS) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string message = "Light count " + std::to_string(count) +
+                                " out of range [0, " + std::to_string(RayTracingConstants::MAX_LIGHTS) + "]";
+            env->ThrowNew(exception_class, message.c_str());
+            return;
+        }
+
+        // Find Light class and field IDs
+        jclass lightClass = env->FindClass("menger/optix/Light");
+        if (lightClass == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to find Light class");
+            return;
+        }
+
+        jfieldID typeField = env->GetFieldID(lightClass, "lightType", "I");
+        jfieldID directionField = env->GetFieldID(lightClass, "direction", "[F");
+        jfieldID positionField = env->GetFieldID(lightClass, "position", "[F");
+        jfieldID colorField = env->GetFieldID(lightClass, "color", "[F");
+        jfieldID intensityField = env->GetFieldID(lightClass, "intensity", "F");
+
+        if (typeField == nullptr || directionField == nullptr || positionField == nullptr ||
+            colorField == nullptr || intensityField == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to find Light fields");
+            return;
+        }
+
+        // Convert Java lights to C++ lights
+        Light lights[RayTracingConstants::MAX_LIGHTS];
+        for (jsize i = 0; i < count; ++i) {
+            jobject lightObj = env->GetObjectArrayElement(lightsArray, i);
+            if (lightObj == nullptr) {
+                std::cerr << "[JNI] Light at index " << i << " is null" << std::endl;
+                continue;
+            }
+
+            // Extract fields
+            jint type = env->GetIntField(lightObj, typeField);
+            lights[i].type = static_cast<LightType>(type);
+
+            jfloatArray dirArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, directionField));
+            jfloat* dirArr = env->GetFloatArrayElements(dirArray, nullptr);
+            std::memcpy(lights[i].direction, dirArr, 3 * sizeof(float));
+            env->ReleaseFloatArrayElements(dirArray, dirArr, 0);
+
+            jfloatArray posArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, positionField));
+            jfloat* posArr = env->GetFloatArrayElements(posArray, nullptr);
+            std::memcpy(lights[i].position, posArr, 3 * sizeof(float));
+            env->ReleaseFloatArrayElements(posArray, posArr, 0);
+
+            jfloatArray colArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, colorField));
+            jfloat* colArr = env->GetFloatArrayElements(colArray, nullptr);
+            std::memcpy(lights[i].color, colArr, 3 * sizeof(float));
+            env->ReleaseFloatArrayElements(colArray, colArr, 0);
+
+            lights[i].intensity = env->GetFloatField(lightObj, intensityField);
+
+            env->DeleteLocalRef(lightObj);
+        }
+
+        // Call C++ method (may throw std::invalid_argument)
+        wrapper->setLights(lights, count);
+
+    } catch (const std::invalid_argument& e) {
+        // Convert C++ validation exception to Java IllegalArgumentException
+        jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+        env->ThrowNew(exception_class, e.what());
+
+    } catch (const std::exception& e) {
+        // Convert other C++ exceptions to Java RuntimeException
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
     }
 }
 

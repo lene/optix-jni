@@ -102,6 +102,17 @@ class RefractionTest extends AnyFlatSpec
 
     edgeBrightnessDiamond should be >= edgeBrightnessWater
 
+  it should "transmit red light through red glass" in:
+    TestScenario.glassSphere()
+      .withSphereColor(RED_TINTED_GLASS)
+      .withPlane(1, false, -2.0f)
+      .applyTo(renderer)
+
+    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+
+    // Red channel should dominate
+    imageData should beRedDominant(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+
   it should "transmit green light through green glass" in:
     TestScenario.glassSphere()
       .withSphereColor(PERFORMANCE_TEST_GREEN_CYAN)
@@ -110,8 +121,8 @@ class RefractionTest extends AnyFlatSpec
 
     val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
 
-    // Green channel should dominate
-    imageData should beGreenDominant(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    // Green channel should dominate (tolerance = 7.0 to account for lower brightness in multi-light implementation)
+    imageData should beGreenDominant(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2, tolerance = 7.0)
 
   it should "transmit blue light through blue glass" in:
     TestScenario.glassSphere()

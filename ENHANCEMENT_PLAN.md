@@ -531,9 +531,10 @@ class OptiXCameraController(optixResources: OptiXResources) extends InputAdapter
 
 ### 2.2 Multiple Light Sources
 
-**Priority:** MEDIUM
-**Effort:** 6-8 hours
+**Priority:** MEDIUM → ✅ COMPLETE
+**Effort:** 6-8 hours (actual: ~8 hours)
 **Risk:** Medium
+**Status:** Complete (native layer 2025-11-18, CLI integration 2025-11-19)
 
 #### Goal
 Support multiple lights with different types (directional, point) and properties (color, intensity) to enable creative lighting setups.

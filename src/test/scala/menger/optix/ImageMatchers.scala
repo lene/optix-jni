@@ -180,13 +180,15 @@ object ImageMatchers:
   def haveDominantChannel(
     expectedChannel: String,
     width: Int,
-    height: Int
+    height: Int,
+    tolerance: Double = GRAYSCALE_CHANNEL_TOLERANCE
   ): Matcher[Array[Byte]] =
     Matcher { imageData =>
       val actualChannel = ImageValidation.dominantColorChannel(
         imageData,
         width,
-        height
+        height,
+        tolerance
       )
       val matches = actualChannel == expectedChannel
 
@@ -203,25 +205,28 @@ object ImageMatchers:
    * Matcher for red-dominant image.
    *
    * Example: `imageData should beRedDominant(width, height)`
+   * Example with custom tolerance: `imageData should beRedDominant(width, height, tolerance = 7.0)`
    */
-  def beRedDominant(width: Int, height: Int): Matcher[Array[Byte]] =
-    haveDominantChannel("r", width, height)
+  def beRedDominant(width: Int, height: Int, tolerance: Double = GRAYSCALE_CHANNEL_TOLERANCE): Matcher[Array[Byte]] =
+    haveDominantChannel("r", width, height, tolerance)
 
   /**
    * Matcher for green-dominant image.
    *
    * Example: `imageData should beGreenDominant(width, height)`
+   * Example with custom tolerance: `imageData should beGreenDominant(width, height, tolerance = 7.0)`
    */
-  def beGreenDominant(width: Int, height: Int): Matcher[Array[Byte]] =
-    haveDominantChannel("g", width, height)
+  def beGreenDominant(width: Int, height: Int, tolerance: Double = GRAYSCALE_CHANNEL_TOLERANCE): Matcher[Array[Byte]] =
+    haveDominantChannel("g", width, height, tolerance)
 
   /**
    * Matcher for blue-dominant image.
    *
    * Example: `imageData should beblueDominant(width, height)`
+   * Example with custom tolerance: `imageData should beBlueDominant(width, height, tolerance = 7.0)`
    */
-  def beBlueDominant(width: Int, height: Int): Matcher[Array[Byte]] =
-    haveDominantChannel("b", width, height)
+  def beBlueDominant(width: Int, height: Int, tolerance: Double = GRAYSCALE_CHANNEL_TOLERANCE): Matcher[Array[Byte]] =
+    haveDominantChannel("b", width, height, tolerance)
 
   /**
    * Matcher for grayscale image.

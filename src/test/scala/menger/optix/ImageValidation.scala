@@ -44,7 +44,12 @@ object ImageValidation:
     getRGB(imageData, pixelIndex).brightness.toDouble
 
   // Returns "r", "g", "b", or "gray" based on center 50% of image
-  def dominantColorChannel(imageData: Array[Byte], width: Int, height: Int): String =
+  def dominantColorChannel(
+    imageData: Array[Byte],
+    width: Int,
+    height: Int,
+    tolerance: Double = GRAYSCALE_CHANNEL_TOLERANCE
+  ): String =
     // Sample center 50% of image
     val startX = width / 4
     val endX = 3 * width / 4
@@ -67,7 +72,7 @@ object ImageValidation:
     val minChannel = math.min(avgR, math.min(avgG, avgB))
 
     // If difference is small, it's grayscale
-    if (maxChannel - minChannel < GRAYSCALE_CHANNEL_TOLERANCE) then "gray"
+    if (maxChannel - minChannel < tolerance) then "gray"
     else if (avgR == maxChannel) then "r"
     else if (avgG == maxChannel) then "g"
     else "b"

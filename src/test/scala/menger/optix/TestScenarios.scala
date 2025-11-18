@@ -377,3 +377,43 @@ object TestScenario:
   def performanceColoredTransparent(): TestScenario = TestScenario(
     sphere = SphereConfig(color = PERFORMANCE_TEST_GREEN_CYAN)
   )
+
+  // ========== Shadow Test Scenarios ==========
+
+  /**
+   * Standard shadow test scenario with solid plane.
+   *
+   * Configured for optimal shadow visibility:
+   * - Gray sphere (0.75, 0.75, 0.75) at origin
+   * - IOR 1.5 (glass-like)
+   * - Horizontal plane below sphere at Y=-0.6
+   * - Camera looking slightly down from Z=5.0
+   * - Light from upper-right (0.5, 0.5, -0.5)
+   * - Image size 800x600
+   *
+   * This matches the setupShadowScene() defaults in ShadowTest.
+   */
+  def shadowTest(alpha: Float = 1.0f): TestScenario = TestScenario(
+    sphere = SphereConfig(
+      position = (0.0f, 0.0f, 0.0f),
+      radius = 0.5f,
+      color = ColorConstants.withAlpha(OPAQUE_SHADOW_TEST_GRAY, alpha),
+      ior = 1.5f
+    ),
+    camera = CameraConfig(
+      eye = (0.0f, 0.0f, 5.0f),
+      lookAt = (0.0f, -0.3f, 0.0f),
+      up = (0.0f, 1.0f, 0.0f),
+      fov = 45.0f
+    ),
+    light = LightConfig(
+      direction = (0.5f, 0.5f, -0.5f),
+      intensity = 1.0f
+    ),
+    plane = Some(PlaneConfig(
+      axis = 1,           // Y-axis
+      positive = true,
+      value = -0.6f
+    )),
+    imageDimensions = Some(ThresholdConstants.STANDARD_IMAGE_SIZE)
+  )

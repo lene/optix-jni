@@ -7,6 +7,53 @@ import java.nio.file.Files
 import scala.util.{Failure, Success, Try}
 import scala.util.control.Exception.catching
 
+// Light source types (must match C++ LightType enum)
+object LightType:
+  val DIRECTIONAL: Int = 0  // Parallel rays from infinity (sun-like), no distance attenuation
+  val POINT: Int = 1         // Radiate from position, inverse-square falloff
+
+// Light source definition
+case class Light(
+  lightType: Int,          // LightType.DIRECTIONAL or LightType.POINT
+  direction: Array[Float], // Light direction (normalized) for directional lights (3 elements)
+  position: Array[Float],  // Light position for point lights (3 elements)
+  color: Array[Float],     // RGB color (0.0-1.0, 3 elements)
+  intensity: Float         // Brightness multiplier
+)
+
+object Light:
+  /** Create a directional light (parallel rays from infinity, no distance attenuation) */
+  def directional(
+    direction: Array[Float],
+    color: Array[Float] = Array(1.0f, 1.0f, 1.0f),
+    intensity: Float = 1.0f
+  ): Light =
+    require(direction.length == 3, "direction must have 3 elements")
+    require(color.length == 3, "color must have 3 elements")
+    Light(
+      lightType = LightType.DIRECTIONAL,
+      direction = direction,
+      position = Array(0.0f, 0.0f, 0.0f),  // Unused for directional lights
+      color = color,
+      intensity = intensity
+    )
+
+  /** Create a point light (radiate from position, inverse-square falloff) */
+  def point(
+    position: Array[Float],
+    color: Array[Float] = Array(1.0f, 1.0f, 1.0f),
+    intensity: Float = 1.0f
+  ): Light =
+    require(position.length == 3, "position must have 3 elements")
+    require(color.length == 3, "color must have 3 elements")
+    Light(
+      lightType = LightType.POINT,
+      direction = Array(0.0f, 0.0f, 0.0f),  // Unused for point lights
+      position = position,
+      color = color,
+      intensity = intensity
+    )
+
 // Ray statistics from OptiX rendering
 case class RayStats(
   totalRays: Long,
@@ -75,8 +122,11 @@ class OptiXRenderer extends LazyLogging:
   /** Update image dimensions for aspect ratio calculations (called before setCamera on resize) */
   @native def updateImageDimensions(width: Int, height: Int): Unit
 
-  /** Set directional light (normalized direction vector, intensity multiplier) */
+  /** Set directional light (normalized direction vector, intensity multiplier) - backward compatible */
   @native def setLight(direction: Array[Float], intensity: Float): Unit
+
+  /** Set multiple light sources (up to MAX_LIGHTS=8) */
+  @native def setLights(lights: Array[Light]): Unit
 
   /** Enable/disable shadow rays for realistic lighting (default: false) */
   @native def setShadows(enabled: Boolean): Unit
