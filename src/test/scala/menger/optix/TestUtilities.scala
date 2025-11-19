@@ -4,28 +4,10 @@ import com.typesafe.scalalogging.LazyLogging
 import java.io.{File, FileOutputStream}
 import scala.util.{Try, Using}
 
-/**
- * Consolidated test utilities for OptiX JNI tests.
- *
- * Provides shared helper functions previously duplicated across test files:
- * - Image file I/O (savePPM)
- * - Common assertions and validations
- * - Test data generation
- *
- * Uses functional programming style (Try, Using) instead of try/catch.
- */
+
 object TestUtilities extends LazyLogging:
 
-  /**
-   * Save image data as PPM (Portable Pixel Map) format.
-   *
-   * PPM is a simple uncompressed image format that's easy to generate.
-   * Can be viewed with GIMP, ImageMagick, or converted with:
-   * `convert output.ppm output.png`
-   *
-   * Functional implementation using scala.util.Using for automatic resource management.
-   *
-   */
+  
   def savePPM(
     filename: String,
     data: Array[Byte],
@@ -53,10 +35,7 @@ object TestUtilities extends LazyLogging:
       file
     }
 
-  /**
-   * Save image data as PNG format using external ImageIO.
-   *
-   */
+  
   def savePNG(
     filename: String,
     data: Array[Byte],
@@ -88,10 +67,7 @@ object TestUtilities extends LazyLogging:
       file
     }
 
-  /**
-   * Create a test renderer with standard configuration.
-   *
-   */
+  
   def createTestRenderer(scenario: TestScenario): Try[OptiXRenderer] =
     for
       renderer <- Try(new OptiXRenderer())
@@ -99,13 +75,7 @@ object TestUtilities extends LazyLogging:
       _         = scenario.applyTo(renderer)
     yield renderer
 
-  /**
-   * Run a test with automatic renderer cleanup.
-   *
-   * Functional pattern for renderer lifecycle management.
-   * Ensures dispose() is called even if test fails.
-   *
-   */
+  
   def withRenderer[A](scenario: TestScenario)(test: OptiXRenderer => A): Try[A] =
     Try {
       val renderer = new OptiXRenderer()
@@ -117,25 +87,18 @@ object TestUtilities extends LazyLogging:
         renderer.dispose()
     }
 
-  /**
-   * Measure rendering performance in frames per second.
-   *
-   * Renders the specified number of frames and calculates average FPS.
-   * Uses functional foreach instead of imperative loops.
-   *
-   */
+  
   def measureFPS(
     renderer: OptiXRenderer,
     scenario: TestScenario,
-    width: Int,
-    height: Int,
+    size: ImageSize,
     frames: Int = 100
   ): Double =
     scenario.applyTo(renderer)
 
     val start = System.nanoTime
     (0 until frames).foreach { _ =>
-      renderer.render(width, height).get
+      renderer.render(size).get
     }
     val duration = (System.nanoTime - start) / 1e9
     frames / duration

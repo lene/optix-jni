@@ -7,12 +7,7 @@ import ColorConstants.*
 import ImageMatchers.*
 import ThresholdConstants.*
 
-/**
- * Plane rendering tests.
- *
- * Tests visibility of floor and ceiling planes with
- * opaque and transparent spheres.
- */
+
 class PlaneTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   // Ensure library is loaded before running tests
@@ -24,9 +19,9 @@ class PlaneTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withPlane(1, false, -2.0f)  // Floor at y=-2
       .applyTo(renderer)
 
-    val imageData = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderImage(TEST_IMAGE_SIZE)
 
-    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)
 
   it should "show ceiling at top of image" in:
     TestScenario.default()
@@ -34,9 +29,9 @@ class PlaneTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withPlane(1, true, 2.0f)  // Ceiling at y=2
       .applyTo(renderer)
 
-    val imageData = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderImage(TEST_IMAGE_SIZE)
 
-    imageData should showPlaneInRegion("top", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showPlaneInRegion("top", TEST_IMAGE_SIZE)
 
   it should "be visible through transparent sphere" in:
     TestScenario.default()
@@ -45,7 +40,7 @@ class PlaneTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withPlane(1, false, -2.0f)  // Floor at y=-2
       .applyTo(renderer)
 
-    val imageData = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderImage(TEST_IMAGE_SIZE)
 
     // Floor should be visible through transparent sphere
-    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)

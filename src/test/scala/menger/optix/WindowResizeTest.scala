@@ -23,12 +23,13 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       val up = Array(0f, 1f, 0f)
       val fov = 45f
 
-      renderer.updateImageDimensions(800, 800)
+      val size1 = ImageSize(800, 800)
+      renderer.updateImageDimensions(size1)
       renderer.setCamera(eye, lookAt, up, fov)
 
       // Render at 800x800
-      val img1 = renderer.render(800, 800).get
-      img1.length shouldBe 800 * 800 * 4
+      val img1 = renderer.render(size1).get
+      img1.length shouldBe ImageValidation.imageByteSize(size1)
 
       // Sample the center pixel - sphere should be visible
       val centerIdx1 = (400 * 800 + 400) * 4
@@ -36,12 +37,13 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       centerR1 should be > 50 // Should have some red from the sphere
 
       // Now resize to wide aspect ratio (1600x800) - 2:1
-      renderer.updateImageDimensions(1600, 800)
+      val size2 = ImageSize(1600, 800)
+      renderer.updateImageDimensions(size2)
       renderer.setCamera(eye, lookAt, up, fov)
 
       // Render at 1600x800
-      val img2 = renderer.render(1600, 800).get
-      img2.length shouldBe 1600 * 800 * 4
+      val img2 = renderer.render(size2).get
+      img2.length shouldBe ImageValidation.imageByteSize(size2)
 
       // Sample the center pixel - sphere should still be visible and similar brightness
       val centerIdx2 = (400 * 1600 + 800) * 4
@@ -53,12 +55,13 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       Math.abs(centerR2 - centerR1) should be < 100
 
       // Now resize to tall aspect ratio (800x1600) - 1:2
-      renderer.updateImageDimensions(800, 1600)
+      val size3 = ImageSize(800, 1600)
+      renderer.updateImageDimensions(size3)
       renderer.setCamera(eye, lookAt, up, fov)
 
       // Render at 800x1600
-      val img3 = renderer.render(800, 1600).get
-      img3.length shouldBe 800 * 1600 * 4
+      val img3 = renderer.render(size3).get
+      img3.length shouldBe ImageValidation.imageByteSize(size3)
 
       // Sample the center pixel
       val centerIdx3 = (800 * 800 + 400) * 4
@@ -91,9 +94,10 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       val fov = 45f
 
       // Render at square aspect ratio
-      renderer.updateImageDimensions(800, 800)
+      val size1 = ImageSize(800, 800)
+      renderer.updateImageDimensions(size1)
       renderer.setCamera(eye, lookAt, up, fov)
-      val img1 = renderer.render(800, 800).get
+      val img1 = renderer.render(size1).get
 
       // Center pixel should show the green sphere
       val centerIdx1 = (400 * 800 + 400) * 4
@@ -101,9 +105,10 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
       centerG1 should be > 50
 
       // Render at wide aspect ratio - sphere should still be centered vertically
-      renderer.updateImageDimensions(1600, 800)
+      val size2 = ImageSize(1600, 800)
+      renderer.updateImageDimensions(size2)
       renderer.setCamera(eye, lookAt, up, fov)
-      val img2 = renderer.render(1600, 800).get
+      val img2 = renderer.render(size2).get
 
       // Center pixel (vertically centered, horizontally centered)
       val centerIdx2 = (400 * 1600 + 800) * 4

@@ -1,16 +1,6 @@
 package menger.optix
 
-/**
- * Named threshold constants for OptiX test validation.
- *
- * Provides well-documented, physics-based threshold values for test assertions,
- * eliminating magic numbers and explaining why specific values are chosen.
- *
- * Thresholds are organized by validation category:
- * - Performance: FPS, timing thresholds
- * - Geometry: Area, size, position tolerances
- * - Rendering: Brightness, standard deviation, color ratios
- */
+
 object ThresholdConstants:
 
   // ========== Performance Thresholds ==========
@@ -69,9 +59,9 @@ object ThresholdConstants:
 
   // ========== Test Image Sizes ==========
 
-  val SMALL_IMAGE_SIZE = (10, 10)      // Quick smoke tests
-  val TEST_IMAGE_SIZE = (400, 300)     // Most integration tests (4:3 aspect)
-  val STANDARD_IMAGE_SIZE = (800, 600) // Visual validation (4:3 aspect)
+  val QUICK_TEST_SIZE = ImageSize(120, 80)      // Fast basic tests (4:3 aspect)
+  val TEST_IMAGE_SIZE = ImageSize(400, 300)     // Most integration tests (4:3 aspect)
+  val STANDARD_IMAGE_SIZE = ImageSize(800, 600) // Visual validation (4:3 aspect)
 
   // ========== Shadow Detection Grid Sizes ==========
 

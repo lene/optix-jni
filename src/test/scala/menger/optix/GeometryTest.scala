@@ -7,32 +7,28 @@ import ColorConstants.*
 import ThresholdConstants.*
 import ImageMatchers.*
 
-/**
- * Geometric validation tests.
- *
- * Tests sphere geometry properties:
- * - Area scaling with radius²
- * - Center position detection
- */
+
 class GeometryTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   // Ensure library is loaded before running tests
   OptiXRenderer.isLibraryLoaded shouldBe true
 
   "Sphere geometry" should "scale area with radius²" in:
+    // Render at radius 0.5
     TestScenario.default()
       .withSphereColor(OPAQUE_GREEN)
+      .withSphereRadius(0.5f)
       .applyTo(renderer)
-
-    // Render at radius 0.5
-    renderer.setSphere(0.0f, 0.0f, 0.0f, 0.5f)
-    val img1 = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
-    val area1 = ImageValidation.spherePixelArea(img1, TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val img1 = renderImage(TEST_IMAGE_SIZE)
+    val area1 = ImageValidation.spherePixelArea(img1, TEST_IMAGE_SIZE)
 
     // Render at radius 1.0 (double radius)
-    renderer.setSphere(0.0f, 0.0f, 0.0f, 1.0f)
-    val img2 = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
-    val area2 = ImageValidation.spherePixelArea(img2, TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    TestScenario.default()
+      .withSphereColor(OPAQUE_GREEN)
+      .withSphereRadius(1.0f)
+      .applyTo(renderer)
+    val img2 = renderImage(TEST_IMAGE_SIZE)
+    val area2 = ImageValidation.spherePixelArea(img2, TEST_IMAGE_SIZE)
 
     // Area should scale with radius² → area2 ≈ 4 × area1
     val ratio = area2.toDouble / area1.toDouble
@@ -43,7 +39,7 @@ class GeometryTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(OPAQUE_GREEN)
       .applyTo(renderer)
 
-    val imageData = renderImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    val imageData = renderImage(TEST_IMAGE_SIZE)
 
     // Use custom matcher for cleaner assertion
-    imageData should haveSphereCenteredInImage(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should haveSphereCenteredInImage(TEST_IMAGE_SIZE)

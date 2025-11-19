@@ -7,23 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import ColorConstants.*
 import ThresholdConstants.*
 
-/**
- * Performance benchmarking tests.
- *
- * Tests rendering performance across different scenarios:
- * - Opaque vs transparent spheres
- * - Different IOR values (no refraction, glass, diamond)
- * - Different sphere sizes
- *
- * All tests validate >10 FPS threshold for real-time rendering capability.
- *
- * Uses refactored test utilities:
- * - RendererFixture for automatic lifecycle
- * - ColorConstants for performance test configurations
- * - TestScenario.performance*() methods
- * - ThresholdConstants for FPS validation
- * - Helper method to eliminate FPS measurement duplication
- */
+
 class PerformanceTest extends AnyFlatSpec
     with Matchers
     with LazyLogging
@@ -40,8 +24,7 @@ class PerformanceTest extends AnyFlatSpec
       renderer,
       TestScenario.performanceBaseline()
         .withPlane(1, false, -2.0f),
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     logger.info(f"Opaque sphere performance: $fps%.1f FPS")
@@ -54,8 +37,7 @@ class PerformanceTest extends AnyFlatSpec
       TestScenario.performanceTransparent()
         .withIOR(1.5f)
         .withPlane(1, false, -2.0f),
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     logger.info(f"Transparent sphere performance: $fps%.1f FPS")
@@ -68,8 +50,7 @@ class PerformanceTest extends AnyFlatSpec
       TestScenario.diamondSphere()
         .withSphereColor(HIGHLY_TRANSPARENT_WHITE)
         .withPlane(1, false, -2.0f),
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     logger.info(f"Diamond material performance: $fps%.1f FPS")
@@ -84,8 +65,7 @@ class PerformanceTest extends AnyFlatSpec
         .withIOR(1.5f)
         .withSphereRadius(2.0f)
         .withPlane(1, false, -2.0f),
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     logger.info(f"Large sphere performance: $fps%.1f FPS")

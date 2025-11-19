@@ -7,12 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import ColorConstants.*
 import ThresholdConstants.*
 
-/**
- * Integration tests for Beer-Lambert absorption (scale parameter).
- *
- * Tests that absorption increases with scale parameter and creates
- * expected center-to-edge brightness gradients.
- */
+
 class AbsorptionTest extends AnyFlatSpec
     with Matchers
     with LazyLogging
@@ -30,28 +25,26 @@ class AbsorptionTest extends AnyFlatSpec
 
     // Measure brightness at scale=0.5 (less absorption)
     renderer.setScale(0.5f)
-    val image1 = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val image1 = renderer.render(TEST_IMAGE_SIZE).get
     val (cx1, cy1) = ImageValidation.detectSphereCenter(
       image1,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
     val bright1 = ImageValidation.brightness(
       image1,
-      cy1 * TEST_IMAGE_SIZE._1 + cx1
+      cy1 * TEST_IMAGE_SIZE.width + cx1
     )
 
     // Measure brightness at scale=2.0 (more absorption)
     renderer.setScale(2.0f)
-    val image2 = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val image2 = renderer.render(TEST_IMAGE_SIZE).get
     val (cx2, cy2) = ImageValidation.detectSphereCenter(
       image2,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
     val bright2 = ImageValidation.brightness(
       image2,
-      cy2 * TEST_IMAGE_SIZE._1 + cx2
+      cy2 * TEST_IMAGE_SIZE.width + cx2
     )
 
     bright1 should be > bright2  // Higher scale = more absorption = darker
@@ -65,11 +58,10 @@ class AbsorptionTest extends AnyFlatSpec
 
     renderer.setScale(2.0f)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
     val gradient = ImageValidation.brightnessGradient(
       imageData,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     // With absorption, center should be darker (negative gradient)

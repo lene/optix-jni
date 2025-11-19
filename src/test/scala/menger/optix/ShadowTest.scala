@@ -9,7 +9,7 @@ import scala.math.abs
 
 class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
 
-  private val (imageWidth, imageHeight) = STANDARD_IMAGE_SIZE
+  private val imageSize = STANDARD_IMAGE_SIZE
 
   // Helper method for standard shadow scene setup
   def setupShadowScene(
@@ -52,11 +52,11 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
 
     // Render without shadows
     renderer.setShadows(false)
-    val imageWithoutShadows = renderer.render(imageWidth, imageHeight).get
+    val imageWithoutShadows = renderer.render(imageSize).get
 
     // Render with shadows
     renderer.setShadows(true)
-    val imageWithShadows = renderer.render(imageWidth, imageHeight).get
+    val imageWithShadows = renderer.render(imageSize).get
 
     // Images should be different (shadows should darken the plane)
     java.util.Arrays.equals(imageWithoutShadows, imageWithShadows) shouldBe false
@@ -80,11 +80,11 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
 
     // Render with fully transparent sphere (alpha=0.0)
     renderer.setSphereColor(0.75f, 0.75f, 0.75f, 0.0f)
-    val transparentImage = renderer.render(imageWidth, imageHeight).get
+    val transparentImage = renderer.render(imageSize).get
 
     // Render with opaque sphere (alpha=1.0)
     renderer.setSphereColor(0.75f, 0.75f, 0.75f, 1.0f)
-    val opaqueImage = renderer.render(imageWidth, imageHeight).get
+    val opaqueImage = renderer.render(imageSize).get
 
     // Images should be different (opaque sphere casts darker shadow)
     java.util.Arrays.equals(transparentImage, opaqueImage) shouldBe false
@@ -96,11 +96,11 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     val measurements = alphaValues.map { alpha =>
       setupShadowScene(sphereAlpha = alpha)
       renderer.setShadows(true)
-      val image = renderer.render(imageWidth, imageHeight).get
+      val image = renderer.render(imageSize).get
 
       // Find actual shadow location
-      val darkestRegion = detectDarkestRegion(image, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-      val shadowBright = regionBrightness(image, imageWidth, imageHeight, darkestRegion)
+      val darkestRegion = detectDarkestRegion(image, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+      val shadowBright = regionBrightness(image, imageSize, darkestRegion)
 
       (alpha, shadowBright)
     }
@@ -124,16 +124,16 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     // First render opaque to find shadow region
     setupShadowScene(sphereAlpha = 1.0f)
     renderer.setShadows(true)
-    val imageOpaque = renderer.render(imageWidth, imageHeight).get
-    val shadowRegion = detectDarkestRegion(imageOpaque, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val imageOpaque = renderer.render(imageSize).get
+    val shadowRegion = detectDarkestRegion(imageOpaque, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     // Measure that same region in transparent image
     setupShadowScene(sphereAlpha = 0.0f)
     renderer.setShadows(true)
-    val imageTransparent = renderer.render(imageWidth, imageHeight).get
+    val imageTransparent = renderer.render(imageSize).get
 
-    val brightTransparent = regionBrightness(imageTransparent, imageWidth, imageHeight, shadowRegion)
-    val brightOpaque = regionBrightness(imageOpaque, imageWidth, imageHeight, shadowRegion)
+    val brightTransparent = regionBrightness(imageTransparent, imageSize, shadowRegion)
+    val brightOpaque = regionBrightness(imageOpaque, imageSize, shadowRegion)
 
     // Transparent sphere should have brighter "shadow" (minimal darkening)
     withClue(f"Transparent=$brightTransparent%.1f should be > opaque=$brightOpaque%.1f * $TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO") {
@@ -145,16 +145,16 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
 
     // Compare shadows OFF vs ON
     renderer.setShadows(false)
-    val imageOff = renderer.render(imageWidth, imageHeight).get
+    val imageOff = renderer.render(imageSize).get
 
     renderer.setShadows(true)
-    val imageOn = renderer.render(imageWidth, imageHeight).get
+    val imageOn = renderer.render(imageSize).get
 
     // Find darkest region with shadows ON (actual shadow location)
-    val darkestOn = detectDarkestRegion(imageOn, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val darkestOn = detectDarkestRegion(imageOn, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
-    val brightOff = regionBrightness(imageOff, imageWidth, imageHeight, darkestOn)
-    val brightOn = regionBrightness(imageOn, imageWidth, imageHeight, darkestOn)
+    val brightOff = regionBrightness(imageOff, imageSize, darkestOn)
+    val brightOn = regionBrightness(imageOn, imageSize, darkestOn)
 
     // With shadows ON, should be significantly darker than without shadows
     brightOn should be < (brightOff * MAX_SHADOW_DARKENING_RATIO)
@@ -163,21 +163,21 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     // First render opaque to find shadow region
     setupShadowScene(sphereAlpha = 1.0f)
     renderer.setShadows(true)
-    val imageOpaque = renderer.render(imageWidth, imageHeight).get
-    val shadowRegion = detectDarkestRegion(imageOpaque, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val imageOpaque = renderer.render(imageSize).get
+    val shadowRegion = detectDarkestRegion(imageOpaque, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     // Measure that same region in all alpha values
     setupShadowScene(sphereAlpha = 0.0f)
     renderer.setShadows(true)
-    val imageTransparent = renderer.render(imageWidth, imageHeight).get
+    val imageTransparent = renderer.render(imageSize).get
 
     setupShadowScene(sphereAlpha = 0.5f)
     renderer.setShadows(true)
-    val imageHalf = renderer.render(imageWidth, imageHeight).get
+    val imageHalf = renderer.render(imageSize).get
 
-    val brightOpaque = regionBrightness(imageOpaque, imageWidth, imageHeight, shadowRegion)
-    val brightHalf = regionBrightness(imageHalf, imageWidth, imageHeight, shadowRegion)
-    val brightTransparent = regionBrightness(imageTransparent, imageWidth, imageHeight, shadowRegion)
+    val brightOpaque = regionBrightness(imageOpaque, imageSize, shadowRegion)
+    val brightHalf = regionBrightness(imageHalf, imageSize, shadowRegion)
+    val brightTransparent = regionBrightness(imageTransparent, imageSize, shadowRegion)
 
     // Semi-transparent shadow should be: opaque (darkest) < half < transparent (lightest)
     withClue(f"Expected opaque=$brightOpaque%.1f < half=$brightHalf%.1f < transparent=$brightTransparent%.1f") {
@@ -188,14 +188,14 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "have shadow intensity proportional to alpha for alpha=0.25" in:
     setupShadowScene(sphereAlpha = 0.25f)
     renderer.setShadows(true)
-    val image025 = renderer.render(imageWidth, imageHeight).get
+    val image025 = renderer.render(imageSize).get
 
     setupShadowScene(sphereAlpha = 1.0f)
     renderer.setShadows(true)
-    val image100 = renderer.render(imageWidth, imageHeight).get
+    val image100 = renderer.render(imageSize).get
 
-    val bright025 = regionBrightness(image025, imageWidth, imageHeight, detectDarkestRegion(image025, imageWidth, imageHeight))
-    val bright100 = regionBrightness(image100, imageWidth, imageHeight, detectDarkestRegion(image100, imageWidth, imageHeight))
+    val bright025 = regionBrightness(image025, imageSize, detectDarkestRegion(image025, imageSize))
+    val bright100 = regionBrightness(image100, imageSize, detectDarkestRegion(image100, imageSize))
 
     // alpha=0.25 should produce lighter shadow (higher brightness) than alpha=1.0
     bright025 should be > bright100
@@ -203,14 +203,14 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "have shadow intensity proportional to alpha for alpha=0.75" in:
     setupShadowScene(sphereAlpha = 0.75f)
     renderer.setShadows(true)
-    val image075 = renderer.render(imageWidth, imageHeight).get
+    val image075 = renderer.render(imageSize).get
 
     setupShadowScene(sphereAlpha = 1.0f)
     renderer.setShadows(true)
-    val image100 = renderer.render(imageWidth, imageHeight).get
+    val image100 = renderer.render(imageSize).get
 
-    val bright075 = regionBrightness(image075, imageWidth, imageHeight, detectDarkestRegion(image075, imageWidth, imageHeight))
-    val bright100 = regionBrightness(image100, imageWidth, imageHeight, detectDarkestRegion(image100, imageWidth, imageHeight))
+    val bright075 = regionBrightness(image075, imageSize, detectDarkestRegion(image075, imageSize))
+    val bright100 = regionBrightness(image100, imageSize, detectDarkestRegion(image100, imageSize))
 
     // alpha=0.75 should be close to alpha=1.0 but slightly lighter (higher brightness)
     // Allow some tolerance since they're close in value
@@ -224,14 +224,14 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   "Shadows" should "appear on opposite side of sphere from light" in:
     setupShadowScene(lightDir = Array(1.0f, 0.5f, 0.0f))  // Light direction toward +X
     renderer.setShadows(true)
-    val imageRight = renderer.render(imageWidth, imageHeight).get
+    val imageRight = renderer.render(imageSize).get
 
     setupShadowScene(lightDir = Array(-1.0f, 0.5f, 0.0f))  // Light direction toward -X
     renderer.setShadows(true)
-    val imageLeft = renderer.render(imageWidth, imageHeight).get
+    val imageLeft = renderer.render(imageSize).get
 
-    val darkestRight = detectDarkestRegion(imageRight, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-    val darkestLeft = detectDarkestRegion(imageLeft, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val darkestRight = detectDarkestRegion(imageRight, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+    val darkestLeft = detectDarkestRegion(imageLeft, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     val shadowXRight = (darkestRight.x0 + darkestRight.x1) / 2
     val shadowXLeft = (darkestLeft.x0 + darkestLeft.x1) / 2
@@ -242,26 +242,26 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "cast shadow directly below sphere for overhead light" in:
     setupShadowScene(lightDir = Array(0.0f, 1.0f, 0.0f))
     renderer.setShadows(true)
-    val image = renderer.render(imageWidth, imageHeight).get
+    val image = renderer.render(imageSize).get
 
-    val darkest = detectDarkestRegion(image, imageWidth, imageHeight, gridSize = LARGE_SHADOW_GRID)
+    val darkest = detectDarkestRegion(image, imageSize, gridSize = LARGE_SHADOW_GRID)
     val shadowCenterX = (darkest.x0 + darkest.x1) / 2
-    val imageCenterX = imageWidth / 2
+    val imageCenterX = imageSize.width / 2
 
     // Shadow should be roughly centered (within 15% of image width)
-    abs(shadowCenterX - imageCenterX) should be < (imageWidth * CENTER_TOLERANCE_FRACTION).toInt
+    abs(shadowCenterX - imageCenterX) should be < (imageSize.width * CENTER_TOLERANCE_FRACTION).toInt
 
   it should "cast shadow that shifts with light direction (X-axis)" in:
     setupShadowScene(lightDir = Array(1.0f, 0.5f, 0.0f))
     renderer.setShadows(true)
-    val imageRight = renderer.render(imageWidth, imageHeight).get
+    val imageRight = renderer.render(imageSize).get
 
     setupShadowScene(lightDir = Array(-1.0f, 0.5f, 0.0f))
     renderer.setShadows(true)
-    val imageLeft = renderer.render(imageWidth, imageHeight).get
+    val imageLeft = renderer.render(imageSize).get
 
-    val darkestRight = detectDarkestRegion(imageRight, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-    val darkestLeft = detectDarkestRegion(imageLeft, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val darkestRight = detectDarkestRegion(imageRight, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+    val darkestLeft = detectDarkestRegion(imageLeft, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     val shadowXRight = (darkestRight.x0 + darkestRight.x1) / 2
     val shadowXLeft = (darkestLeft.x0 + darkestLeft.x1) / 2
@@ -272,11 +272,11 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "respond to light angle changes" in:
     setupShadowScene(lightDir = Array(0.7f, 0.7f, 0.0f))
     renderer.setShadows(true)
-    val image1 = renderer.render(imageWidth, imageHeight).get
+    val image1 = renderer.render(imageSize).get
 
     setupShadowScene(lightDir = Array(-0.7f, 0.7f, 0.0f))
     renderer.setShadows(true)
-    val image2 = renderer.render(imageWidth, imageHeight).get
+    val image2 = renderer.render(imageSize).get
 
     // Images should be different
     java.util.Arrays.equals(image1, image2) shouldBe false
@@ -284,15 +284,15 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "have minimal shadow contrast for light behind camera" in:
     setupShadowScene(lightDir = Array(0.0f, 0.0f, 1.0f))  // Light from camera direction
     renderer.setShadows(true)
-    val imageOn = renderer.render(imageWidth, imageHeight).get
+    val imageOn = renderer.render(imageSize).get
 
     renderer.setShadows(false)
-    val imageOff = renderer.render(imageWidth, imageHeight).get
+    val imageOff = renderer.render(imageSize).get
 
     // Find darkest region with shadows on
-    val darkest = detectDarkestRegion(imageOn, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-    val brightOn = regionBrightness(imageOn, imageWidth, imageHeight, darkest)
-    val brightOff = regionBrightness(imageOff, imageWidth, imageHeight, darkest)
+    val darkest = detectDarkestRegion(imageOn, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+    val brightOn = regionBrightness(imageOn, imageSize, darkest)
+    val brightOff = regionBrightness(imageOff, imageSize, darkest)
 
     // Shadow should be minimal (brightness similar with shadows on/off)
     brightOn should be > (brightOff * MIN_SHADOW_CONTRAST_RATIO)
@@ -302,7 +302,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     noException should be thrownBy {
-      val image = renderer.render(imageWidth, imageHeight).get
+      val image = renderer.render(imageSize).get
       image.length shouldBe 800 * 600 * 4
     }
 
@@ -311,7 +311,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     noException should be thrownBy {
-      val image = renderer.render(imageWidth, imageHeight).get
+      val image = renderer.render(imageSize).get
       image.length shouldBe 800 * 600 * 4
     }
 
@@ -320,13 +320,13 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   "Shadow position" should "shift with horizontal light direction" in:
     setupShadowScene(lightDir = Array(1.0f, 0.5f, 0.0f))  // Right
     renderer.setShadows(true)
-    val imageRight = renderer.render(imageWidth, imageHeight).get
-    val darkestRight = detectDarkestRegion(imageRight, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val imageRight = renderer.render(imageSize).get
+    val darkestRight = detectDarkestRegion(imageRight, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     setupShadowScene(lightDir = Array(-1.0f, 0.5f, 0.0f))  // Left
     renderer.setShadows(true)
-    val imageLeft = renderer.render(imageWidth, imageHeight).get
-    val darkestLeft = detectDarkestRegion(imageLeft, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val imageLeft = renderer.render(imageSize).get
+    val darkestLeft = detectDarkestRegion(imageLeft, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     val xRight = (darkestRight.x0 + darkestRight.x1) / 2
     val xLeft = (darkestLeft.x0 + darkestLeft.x1) / 2
@@ -338,14 +338,14 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     // Light from right
     setupShadowScene(lightDir = Array(1.0f, 0.5f, 0.0f))
     renderer.setShadows(true)
-    val imageRight = renderer.render(imageWidth, imageHeight).get
-    val darkestRight = detectDarkestRegion(imageRight, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val imageRight = renderer.render(imageSize).get
+    val darkestRight = detectDarkestRegion(imageRight, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     // Light from left
     setupShadowScene(lightDir = Array(-1.0f, 1.0f, 0.0f))
     renderer.setShadows(true)
-    val imageLeft = renderer.render(imageWidth, imageHeight).get
-    val darkestLeft = detectDarkestRegion(imageLeft, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val imageLeft = renderer.render(imageSize).get
+    val darkestLeft = detectDarkestRegion(imageLeft, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     // Shadow position should differ between left and right light
     val posRight = (darkestRight.x0 + darkestRight.x1) / 2
@@ -355,23 +355,23 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "remain centered for overhead light" in:
     setupShadowScene(lightDir = Array(0.0f, 1.0f, 0.0f))
     renderer.setShadows(true)
-    val image = renderer.render(imageWidth, imageHeight).get
-    val darkest = detectDarkestRegion(image, imageWidth, imageHeight, gridSize = LARGE_SHADOW_GRID)
+    val image = renderer.render(imageSize).get
+    val darkest = detectDarkestRegion(image, imageSize, gridSize = LARGE_SHADOW_GRID)
 
-    val centerX = imageWidth / 2
+    val centerX = imageSize.width / 2
     val shadowCenterX = (darkest.x0 + darkest.x1) / 2
 
     // Shadow should be roughly centered (within 20% of image width)
-    abs(shadowCenterX - centerX) should be < (imageWidth * WIDE_CENTER_TOLERANCE_FRACTION).toInt
+    abs(shadowCenterX - centerX) should be < (imageSize.width * WIDE_CENTER_TOLERANCE_FRACTION).toInt
 
   "Shadow coverage" should "increase with sphere radius" in:
     val radii = List(0.3f, 0.5f, 0.8f)
     val measurements = radii.map { radius =>
       setupShadowScene(sphereRadius = radius, sphereY = 0.0f)
       renderer.setShadows(true)
-      val image = renderer.render(imageWidth, imageHeight).get
-      val darkest = detectDarkestRegion(image, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-      val brightness = regionBrightness(image, imageWidth, imageHeight, darkest)
+      val image = renderer.render(imageSize).get
+      val darkest = detectDarkestRegion(image, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+      val brightness = regionBrightness(image, imageSize, darkest)
       (radius, brightness, darkest.area)
     }
 
@@ -389,15 +389,15 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
 
     noException should be thrownBy {
       renderer.setShadows(false)
-      val imageOff = renderer.render(imageWidth, imageHeight).get
+      val imageOff = renderer.render(imageSize).get
 
       renderer.setShadows(true)
-      val imageOn = renderer.render(imageWidth, imageHeight).get
+      val imageOn = renderer.render(imageSize).get
 
       // Should still have visible shadow
-      val darkest = detectDarkestRegion(imageOn, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-      val brightOn = regionBrightness(imageOn, imageWidth, imageHeight, darkest)
-      val brightOff = regionBrightness(imageOff, imageWidth, imageHeight, darkest)
+      val darkest = detectDarkestRegion(imageOn, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+      val brightOn = regionBrightness(imageOn, imageSize, darkest)
+      val brightOff = regionBrightness(imageOff, imageSize, darkest)
 
       brightOn should be < (brightOff * MODERATE_SHADOW_RATIO)
     }
@@ -407,8 +407,8 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     noException should be thrownBy {
-      val image = renderer.render(imageWidth, imageHeight).get
-      val darkest = detectDarkestRegion(image, imageWidth, imageHeight, gridSize = LARGE_SHADOW_GRID)
+      val image = renderer.render(imageSize).get
+      val darkest = detectDarkestRegion(image, imageSize, gridSize = LARGE_SHADOW_GRID)
       darkest.area should be > 0
     }
 
@@ -417,9 +417,9 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     noException should be thrownBy {
-      val image = renderer.render(imageWidth, imageHeight).get
-      val shadowRegion = Region.bottomCenter(imageWidth, imageHeight, fraction = BOTTOM_REGION_FRACTION)
-      val brightness = regionBrightness(image, imageWidth, imageHeight, shadowRegion)
+      val image = renderer.render(imageSize).get
+      val shadowRegion = Region.bottomCenter(imageSize, fraction = BOTTOM_REGION_FRACTION)
+      val brightness = regionBrightness(image, imageSize, shadowRegion)
 
       // Should be noticeably darker
       brightness should be < DARK_SHADOW_THRESHOLD  // Out of 255
@@ -430,14 +430,14 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
 
     noException should be thrownBy {
       renderer.setShadows(false)
-      val imageOff = renderer.render(imageWidth, imageHeight).get
+      val imageOff = renderer.render(imageSize).get
 
       renderer.setShadows(true)
-      val imageOn = renderer.render(imageWidth, imageHeight).get
+      val imageOn = renderer.render(imageSize).get
 
-      val darkest = detectDarkestRegion(imageOn, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-      val brightOn = regionBrightness(imageOn, imageWidth, imageHeight, darkest)
-      val brightOff = regionBrightness(imageOff, imageWidth, imageHeight, darkest)
+      val darkest = detectDarkestRegion(imageOn, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+      val brightOn = regionBrightness(imageOn, imageSize, darkest)
+      val brightOff = regionBrightness(imageOff, imageSize, darkest)
 
       // Some shadow contrast should exist
       brightOn should be < brightOff
@@ -448,7 +448,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     noException should be thrownBy {
-      val image = renderer.render(imageWidth, imageHeight).get
+      val image = renderer.render(imageSize).get
       image.length shouldBe 800 * 600 * 4
     }
 
@@ -456,14 +456,14 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     setupShadowScene(sphereAlpha = 0.5f)
     renderer.setShadows(true)
 
-    val image1 = renderer.render(imageWidth, imageHeight).get
-    val image2 = renderer.render(imageWidth, imageHeight).get
+    val image1 = renderer.render(imageSize).get
+    val image2 = renderer.render(imageSize).get
 
-    val darkest1 = detectDarkestRegion(image1, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
-    val darkest2 = detectDarkestRegion(image2, imageWidth, imageHeight, gridSize = DEFAULT_SHADOW_GRID)
+    val darkest1 = detectDarkestRegion(image1, imageSize, gridSize = DEFAULT_SHADOW_GRID)
+    val darkest2 = detectDarkestRegion(image2, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
-    val bright1 = regionBrightness(image1, imageWidth, imageHeight, darkest1)
-    val bright2 = regionBrightness(image2, imageWidth, imageHeight, darkest2)
+    val bright1 = regionBrightness(image1, imageSize, darkest1)
+    val bright2 = regionBrightness(image2, imageSize, darkest2)
 
     // Should be identical
     bright1 shouldBe bright2 +- BRIGHTNESS_TOLERANCE  // Allow 1 unit variation due to floating point
@@ -474,13 +474,13 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     // Measure without shadows
     renderer.setShadows(false)
     val startNoShadow = System.nanoTime()
-    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageWidth, imageHeight).get)
+    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageSize).get)
     val timeNoShadow = (System.nanoTime() - startNoShadow) / RENDER_ITERATIONS
 
     // Measure with shadows
     renderer.setShadows(true)
     val startWithShadow = System.nanoTime()
-    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageWidth, imageHeight).get)
+    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageSize).get)
     val timeWithShadow = (System.nanoTime() - startWithShadow) / RENDER_ITERATIONS
 
     val overhead = (timeWithShadow - timeNoShadow).toDouble / timeNoShadow

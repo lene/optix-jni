@@ -8,14 +8,7 @@ import ColorConstants.*
 import ThresholdConstants.*
 import ImageMatchers.*
 
-/**
- * Real-world material simulation tests.
- *
- * Tests rendering of materials with realistic optical properties:
- * - Water (IOR=1.33, blue tint)
- * - Clear glass (IOR=1.5, no tint)
- * - Green glass (IOR=1.5, green tint)
- */
+
 class MaterialTest extends AnyFlatSpec
     with Matchers
     with LazyLogging
@@ -32,11 +25,10 @@ class MaterialTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
     val (r, g, b) = ImageValidation.colorChannelRatio(
       imageData,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     b should be >= r  // Blue tint
@@ -48,10 +40,10 @@ class MaterialTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Glass refraction creates brightness variation
-    imageData should showGlassRefraction(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showGlassRefraction(TEST_IMAGE_SIZE)
 
   "Green glass" should "render correctly" in:
     TestScenario.coloredGlassSphere()
@@ -59,11 +51,10 @@ class MaterialTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
     val (r, g, b) = ImageValidation.colorChannelRatio(
       imageData,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     g should be > r

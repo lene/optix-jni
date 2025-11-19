@@ -4,12 +4,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
 
-/**
- * Tests for multi-instance OptiXRenderer support.
- *
- * These tests verify that multiple OptiXRenderer instances can coexist
- * independently without sharing state (fixed in Phase 1 of code quality improvements).
- */
+
 class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
   "Multiple OptiXRenderer instances" should "initialize independently" in {
@@ -61,13 +56,14 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.setCamera(eye, lookAt, up, 60f)
 
       // Render both
-      val img1 = renderer1.render(400, 300)
-      val img2 = renderer2.render(400, 300)
+      val size = ImageSize(400, 300)
+      val img1 = renderer1.render(size)
+      val img2 = renderer2.render(size)
 
       img1 shouldBe defined
       img2 shouldBe defined
-      img1.get.length should be (400 * 300 * 4)
-      img2.get.length should be (400 * 300 * 4)
+      img1.get.length should be (ImageValidation.imageByteSize(size))
+      img2.get.length should be (ImageValidation.imageByteSize(size))
 
       // Images should be different (different spheres)
       img1.get should not equal img2.get
@@ -129,11 +125,13 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.setCamera(eye, lookAt, up, 60f)
 
       // Render at different resolutions
-      val img1 = renderer1.render(640, 480)
-      val img2 = renderer2.render(1024, 768)
+      val size1 = ImageSize(640, 480)
+      val size2 = ImageSize(1024, 768)
+      val img1 = renderer1.render(size1)
+      val img2 = renderer2.render(size2)
 
-      img1.get.length should be (640 * 480 * 4)
-      img2.get.length should be (1024 * 768 * 4)
+      img1.get.length should be (ImageValidation.imageByteSize(size1))
+      img2.get.length should be (ImageValidation.imageByteSize(size2))
 
       // Both should have rendered successfully (non-zero pixels)
       val nonZero1 = img1.get.count(_ != 0)
@@ -169,16 +167,17 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.setCamera(eye, lookAt, up, 60f)
 
       // Interleave renders
-      val img1a = renderer1.render(400, 300)
-      val img2a = renderer2.render(400, 300)
-      val img1b = renderer1.render(400, 300)
-      val img2b = renderer2.render(400, 300)
+      val size = ImageSize(400, 300)
+      val img1a = renderer1.render(size)
+      val img2a = renderer2.render(size)
+      val img1b = renderer1.render(size)
+      val img2b = renderer2.render(size)
 
       // All renders should succeed
-      img1a.get.length should be (400 * 300 * 4)
-      img2a.get.length should be (400 * 300 * 4)
-      img1b.get.length should be (400 * 300 * 4)
-      img2b.get.length should be (400 * 300 * 4)
+      img1a.get.length should be (ImageValidation.imageByteSize(size))
+      img2a.get.length should be (ImageValidation.imageByteSize(size))
+      img1b.get.length should be (ImageValidation.imageByteSize(size))
+      img2b.get.length should be (ImageValidation.imageByteSize(size))
 
       // Same renderer should produce same image
       img1a.get should equal (img1b.get)
@@ -210,9 +209,10 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     renderer1.nativeHandle should be (0L)
 
     // Second renderer should still work
+    val size = ImageSize(400, 300)
     renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
-    val img = renderer2.render(400, 300)
-    img.get.length should be (400 * 300 * 4)
+    val img = renderer2.render(size)
+    img.get.length should be (ImageValidation.imageByteSize(size))
 
     // Dispose second renderer
     renderer2.dispose()
@@ -236,9 +236,10 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
         handles.add(handle)
 
         // Verify it works
+        val size = ImageSize(200, 200)
         renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
-        val img = renderer.render(200, 200).get
-        img.length should be (200 * 200 * 4)
+        val img = renderer.render(size).get
+        img.length should be (ImageValidation.imageByteSize(size))
 
       } finally {
         renderer.dispose()
@@ -260,7 +261,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     noException should be thrownBy renderer.setSphereColor(1, 0, 0, 1)
 
     // render should return None on uninitialized instance
-    val img = renderer.render(400, 300)
+    val img = renderer.render(ImageSize(400, 300))
     img shouldBe None
   }
 
@@ -300,9 +301,10 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       handle should not be 0L
 
       // Renderer should still work normally
+      val size = ImageSize(200, 200)
       renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
-      val img = renderer.render(200, 200).get
-      img.length should be (200 * 200 * 4)
+      val img = renderer.render(size).get
+      img.length should be (ImageValidation.imageByteSize(size))
 
     } finally {
       renderer.dispose()
@@ -323,9 +325,10 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       handle should not be 0L
 
       // Renderer should work
+      val size = ImageSize(200, 200)
       renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
-      val img = renderer.render(200, 200).get
-      img.length should be (200 * 200 * 4)
+      val img = renderer.render(size).get
+      img.length should be (ImageValidation.imageByteSize(size))
 
     } finally {
       renderer.dispose()

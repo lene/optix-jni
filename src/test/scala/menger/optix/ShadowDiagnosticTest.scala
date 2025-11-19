@@ -5,10 +5,7 @@ import org.scalatest.matchers.should.Matchers
 import ShadowValidation.*
 import TestUtilities.*
 
-/**
- * Diagnostic tests to understand actual shadow behavior.
- * These tests print values to help understand what's really happening.
- */
+
 class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   def setupShadowScene(
@@ -31,6 +28,7 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
 
   "Shadow diagnostic" should "show actual brightness values for different alpha" in:
     val alphaValues = List(0.0f, 0.5f, 1.0f)
+    val imageSize = ImageSize(800, 600)
 
     println("\n=== SHADOW BRIGHTNESS DIAGNOSTIC ===")
     println("Saving images to: shadow_alpha_*.ppm")
@@ -38,32 +36,32 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     alphaValues.foreach { alpha =>
       setupShadowScene(sphereAlpha = alpha)
       renderer.setShadows(true)
-      val image = renderer.render(800, 600).get
+      val image = renderer.render(imageSize).get
 
       // Save image for visual inspection
       val filename = f"shadow_alpha_${alpha}%.2f.ppm".replace(".", "_")
-      savePPM(filename, image, 800, 600)
+      savePPM(filename, image, imageSize.width, imageSize.height)
       println(f"Saved: $filename")
 
       // Test multiple regions to find where shadow actually is
       val regions = Map(
-        "bottom-center" -> Region.bottomCenter(800, 600, fraction = 0.2),
-        "top-center" -> Region.topCenter(800, 600, fraction = 0.2),
-        "left-side" -> Region.leftSide(800, 600, fraction = 0.2),
-        "right-side" -> Region.rightSide(800, 600, fraction = 0.2),
+        "bottom-center" -> Region.bottomCenter(imageSize, fraction = 0.2),
+        "top-center" -> Region.topCenter(imageSize, fraction = 0.2),
+        "left-side" -> Region.leftSide(imageSize, fraction = 0.2),
+        "right-side" -> Region.rightSide(imageSize, fraction = 0.2),
         "bottom-left" -> Region(0, 450, 200, 600),
         "bottom-right" -> Region(600, 450, 800, 600)
       )
 
       println(f"\nAlpha = $alpha%.2f:")
       regions.foreach { case (name, region) =>
-        val brightness = regionBrightness(image, 800, 600, region)
+        val brightness = regionBrightness(image, imageSize, region)
         println(f"  $name%-15s: brightness = $brightness%.2f")
       }
 
       // Find darkest region
-      val darkest = detectDarkestRegion(image, 800, 600, gridSize = 8)
-      val darkestBright = regionBrightness(image, 800, 600, darkest)
+      val darkest = detectDarkestRegion(image, imageSize, gridSize = 8)
+      val darkestBright = regionBrightness(image, imageSize, darkest)
       println(f"  darkest-region  : brightness = $darkestBright%.2f at (${darkest.x0}, ${darkest.y0})")
     }
 
@@ -73,24 +71,25 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     true shouldBe true
 
   it should "compare shadows ON vs OFF" in:
+    val imageSize = ImageSize(800, 600)
     println("\n=== SHADOWS ON vs OFF ===")
 
     setupShadowScene(sphereAlpha = 1.0f)
 
     renderer.setShadows(false)
-    val imageOff = renderer.render(800, 600).get
+    val imageOff = renderer.render(imageSize).get
 
     renderer.setShadows(true)
-    val imageOn = renderer.render(800, 600).get
+    val imageOn = renderer.render(imageSize).get
 
     val regions = Map(
-      "bottom-center" -> Region.bottomCenter(800, 600, fraction = 0.2),
-      "top-center" -> Region.topCenter(800, 600, fraction = 0.2)
+      "bottom-center" -> Region.bottomCenter(imageSize, fraction = 0.2),
+      "top-center" -> Region.topCenter(imageSize, fraction = 0.2)
     )
 
     regions.foreach { case (name, region) =>
-      val brightOff = regionBrightness(imageOff, 800, 600, region)
-      val brightOn = regionBrightness(imageOn, 800, 600, region)
+      val brightOff = regionBrightness(imageOff, imageSize, region)
+      val brightOn = regionBrightness(imageOn, imageSize, region)
       val diff = brightOff - brightOn
       val pctChange = (diff / brightOff) * 100.0
 
@@ -102,6 +101,7 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     true shouldBe true
 
   it should "show where shadow appears for different light directions" in:
+    val imageSize = ImageSize(800, 600)
     println("\n=== SHADOW POSITION BY LIGHT DIRECTION ===")
 
     val lightDirs = Map(
@@ -114,12 +114,12 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     lightDirs.foreach { case (name, dir) =>
       setupShadowScene(sphereAlpha = 1.0f, lightDir = dir)
       renderer.setShadows(true)
-      val image = renderer.render(800, 600).get
+      val image = renderer.render(imageSize).get
 
-      val darkest = detectDarkestRegion(image, 800, 600, gridSize = 10)
+      val darkest = detectDarkestRegion(image, imageSize, gridSize = 10)
       val centerX = (darkest.x0 + darkest.x1) / 2
       val centerY = (darkest.y0 + darkest.y1) / 2
-      val brightness = regionBrightness(image, 800, 600, darkest)
+      val brightness = regionBrightness(image, imageSize, darkest)
 
       println(f"Light $name%s: darkest at ($centerX%d, $centerY%d), brightness=$brightness%.2f")
     }

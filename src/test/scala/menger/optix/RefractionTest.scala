@@ -8,17 +8,7 @@ import ColorConstants.*
 import ThresholdConstants.*
 import ImageMatchers.*
 
-/**
- * Integration tests for refractive sphere rendering (Snell's law + Fresnel).
- *
- * Tests IOR (index of refraction) variation:
- * - IOR=1.0 → no refraction (baseline)
- * - IOR=1.33 → water
- * - IOR=1.5 → glass
- * - IOR=2.42 → diamond
- *
- * Validates Fresnel edge brightness and refraction distortion.
- */
+
 class RefractionTest extends AnyFlatSpec
     with Matchers
     with LazyLogging
@@ -34,10 +24,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Should show floor plane through semi-transparent sphere
-    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)
 
   it should "show water-like refraction at IOR=1.33" in:
     TestScenario.waterSphere()
@@ -45,14 +35,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Should show moderate variation (refraction distortion)
-    imageData should haveBrightnessStdDevGreaterThan(
-      MIN_GLASS_REFRACTION_STDDEV,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
-    )
+    imageData should showGlassRefraction(TEST_IMAGE_SIZE)
 
   it should "show glass-like refraction at IOR=1.5" in:
     TestScenario.glassSphere()
@@ -60,10 +46,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Should show strong variation (glass refraction)
-    imageData should showWaterRefraction(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showWaterRefraction(TEST_IMAGE_SIZE)
 
   it should "show diamond-like refraction at IOR=2.42" in:
     TestScenario.diamondSphere()
@@ -71,10 +57,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Should show very high variation (strong refraction)
-    imageData should showDiamondRefraction(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showDiamondRefraction(TEST_IMAGE_SIZE)
 
   it should "increase edge brightness with higher IOR" in:
     TestScenario.default()
@@ -84,20 +70,18 @@ class RefractionTest extends AnyFlatSpec
 
     // Measure edge brightness at IOR=1.33 (water)
     renderer.setIOR(1.33f)
-    val imageWater = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageWater = renderer.render(TEST_IMAGE_SIZE).get
     val edgeBrightnessWater = ImageValidation.edgeBrightness(
       imageWater,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     // Measure edge brightness at IOR=2.42 (diamond)
     renderer.setIOR(2.42f)
-    val imageDiamond = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageDiamond = renderer.render(TEST_IMAGE_SIZE).get
     val edgeBrightnessDiamond = ImageValidation.edgeBrightness(
       imageDiamond,
-      TEST_IMAGE_SIZE._1,
-      TEST_IMAGE_SIZE._2
+      TEST_IMAGE_SIZE
     )
 
     edgeBrightnessDiamond should be >= edgeBrightnessWater
@@ -108,10 +92,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Red channel should dominate
-    imageData should beRedDominant(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should beRedDominant(TEST_IMAGE_SIZE)
 
   it should "transmit green light through green glass" in:
     TestScenario.glassSphere()
@@ -119,10 +103,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Green channel should dominate (tolerance = 7.0 to account for lower brightness in multi-light implementation)
-    imageData should beGreenDominant(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2, tolerance = 7.0)
+    imageData should beGreenDominant(TEST_IMAGE_SIZE, tolerance = 7.0)
 
   it should "transmit blue light through blue glass" in:
     TestScenario.glassSphere()
@@ -130,10 +114,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Blue channel should dominate
-    imageData should beBlueDominant(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should beBlueDominant(TEST_IMAGE_SIZE)
 
   it should "show background distortion through refractive sphere" in:
     TestScenario.glassSphere()
@@ -141,10 +125,10 @@ class RefractionTest extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Checkered floor should be visible through transparent sphere
-    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)
 
     // High variation due to refraction distorting checkered pattern
-    imageData should showWaterRefraction(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
+    imageData should showWaterRefraction(TEST_IMAGE_SIZE)

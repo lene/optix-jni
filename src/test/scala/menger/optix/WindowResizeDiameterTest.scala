@@ -11,50 +11,30 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
   private var baselineVDiam: Int = 0
   private var baselineHDiam: Int = 0
 
-  /**
-   * Detect if a pixel is red using the threshold r > 2*g AND r > 2*b
-   */
+  
   private def isRedPixel(r: Int, g: Int, b: Int): Boolean = {
     r > 2 * g && r > 2 * b
   }
 
-  /**
-   * Measure the vertical diameter of the sphere by scanning the center column.
-   * Returns the number of pixels where the sphere is visible.
-   */
-  private def measureVerticalDiameter(img: Array[Byte], width: Int, height: Int): Int = {
+  private def measureVerticalDiameter(img: Array[Byte], width: Int, height: Int): Int =
     val centerX = width / 2
-    var count = 0
-    for (y <- 0 until height) {
+    (0 until height).count { y =>
       val idx = (y * width + centerX) * 4
       val r = img(idx) & 0xFF
       val g = img(idx + 1) & 0xFF
       val b = img(idx + 2) & 0xFF
-      if (isRedPixel(r, g, b)) {
-        count += 1
-      }
+      isRedPixel(r, g, b)
     }
-    count
-  }
 
-  /**
-   * Measure the horizontal diameter of the sphere by scanning the center row.
-   * Returns the number of pixels where the sphere is visible.
-   */
-  private def measureHorizontalDiameter(img: Array[Byte], width: Int, height: Int): Int = {
+  private def measureHorizontalDiameter(img: Array[Byte], width: Int, height: Int): Int =
     val centerY = height / 2
-    var count = 0
-    for (x <- 0 until width) {
+    (0 until width).count { x =>
       val idx = (centerY * width + x) * 4
       val r = img(idx) & 0xFF
       val g = img(idx + 1) & 0xFF
       val b = img(idx + 2) & 0xFF
-      if (isRedPixel(r, g, b)) {
-        count += 1
-      }
+      isRedPixel(r, g, b)
     }
-    count
-  }
 
   override def beforeAll(): Unit = {
     super.beforeAll()

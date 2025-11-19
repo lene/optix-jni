@@ -22,7 +22,7 @@ case class Light(
 )
 
 object Light:
-  /** Create a directional light (parallel rays from infinity, no distance attenuation) */
+  
   def directional(
     direction: Array[Float],
     color: Array[Float] = Array(1.0f, 1.0f, 1.0f),
@@ -38,7 +38,7 @@ object Light:
       intensity = intensity
     )
 
-  /** Create a point light (radiate from position, inverse-square falloff) */
+  
   def point(
     position: Array[Float],
     color: Array[Float] = Array(1.0f, 1.0f, 1.0f),
@@ -53,6 +53,10 @@ object Light:
       color = color,
       intensity = intensity
     )
+
+case class ImageSize(width: Int, height: Int):
+  require(width > 0, s"width must be positive, got $width")
+  require(height > 0, s"height must be positive, got $height")
 
 // Ray statistics from OptiX rendering
 case class RayStats(
@@ -104,38 +108,22 @@ class OptiXRenderer extends LazyLogging:
   @native private def initializeNative(): Boolean
   @native private def disposeNative(): Unit
 
-  /** Set sphere geometry (center position and radius) */
+  
   @native def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
 
-  /** Set sphere material color (RGBA, 0.0-1.0, alpha: 0.0=transparent, 1.0=opaque) */
+  
   @native def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit
 
-  /** Set index of refraction (1.0=no refraction, 1.5=glass, 1.33=water, 2.42=diamond) */
+  
   @native def setIOR(ior: Float): Unit
 
-  /** Set physical scale factor (1.0=meters, 0.01=centimeters) */
+  
   @native def setScale(scale: Float): Unit
 
-  /** Set camera parameters for ray tracing.
-    *
-    * @param eye Camera position in world space
-    * @param lookAt Point camera is aimed at in world space
-    * @param up Up vector (typically Array(0, 1, 0) for Y-up)
-    * @param horizontalFovDegrees Horizontal field of view in degrees.
-    *                             NOTE: This is HORIZONTAL FOV, which is non-standard.
-    *                             Most graphics APIs use vertical FOV. This value is
-    *                             aspect-ratio independent and matches OptiX SDK convention.
-    *                             Valid range: (0, 180). Typical value: 45.
-    */
+  
   @native private def setCameraNative(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit
 
-  /** Set camera parameters with validation.
-    *
-    * @param eye Camera position in world space
-    * @param lookAt Point camera is aimed at in world space
-    * @param up Up vector (typically Array(0, 1, 0) for Y-up)
-    * @param horizontalFovDegrees Horizontal field of view in degrees (0, 180)
-    */
+  
   def setCamera(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit =
     require(
       horizontalFovDegrees > 0 && horizontalFovDegrees < 180,
@@ -143,30 +131,39 @@ class OptiXRenderer extends LazyLogging:
     )
     setCameraNative(eye, lookAt, up, horizontalFovDegrees)
 
-  /** Update image dimensions for aspect ratio calculations (called before setCamera on resize) */
+
   @native def updateImageDimensions(width: Int, height: Int): Unit
 
-  /** Set directional light (normalized direction vector, intensity multiplier) - backward compatible */
+  def updateImageDimensions(size: ImageSize): Unit =
+    updateImageDimensions(size.width, size.height)
+
+
   @native def setLight(direction: Array[Float], intensity: Float): Unit
 
-  /** Set multiple light sources (up to MAX_LIGHTS=8) */
+  
   @native def setLights(lights: Array[Light]): Unit
 
-  /** Enable/disable shadow rays for realistic lighting (default: false) */
+  
   @native def setShadows(enabled: Boolean): Unit
 
-  /** Set plane rendering mode: solid light gray (true) or checkerboard (false, default) */
+  
   @native def setPlaneSolidColor(solid: Boolean): Unit
 
-  /** Set clipping plane (axis: 0=X 1=Y 2=Z, positive: plane normal direction, value: position) */
+  
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
 
-  /** Render scene with ray statistics */
+
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
-  /** Render scene and return RGBA image data (width × height × 4 bytes) */
+  def renderWithStats(size: ImageSize): RenderResult =
+    renderWithStats(size.width, size.height)
+
+
   def render(width: Int, height: Int): Option[Array[Byte]] =
     Option(renderWithStats(width, height)).map(_.image)
+
+  def render(size: ImageSize): Option[Array[Byte]] =
+    render(size.width, size.height)
 
   // Idempotent initialization - safe to call multiple times
   def initialize(): Boolean =

@@ -1,19 +1,6 @@
 package menger.optix
 
-/**
- * Named color constants for OptiX tests.
- *
- * Provides descriptive names for commonly-used RGBA color values,
- * eliminating magic numbers and improving test readability.
- *
- * Color convention (standard graphics):
- * - RGB values: 0.0 (no intensity) to 1.0 (full intensity)
- * - Alpha: 0.0 (fully transparent, no absorption) to 1.0 (fully opaque, maximum absorption)
- *
- * Float values are normalized to [0.0, 1.0]. To convert from byte values [0, 255]:
- * - Exact: value / 255.0f
- * - Approximate: 0.502f ≈ 128/255, 0.749f ≈ 191/255, etc.
- */
+
 object ColorConstants:
 
   // ========== Pure Primary Colors (Opaque) ==========
