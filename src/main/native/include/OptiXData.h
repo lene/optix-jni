@@ -11,6 +11,7 @@ constexpr unsigned int MAX_TRACE_DEPTH = 5;  // Allow internal reflections in gl
 namespace RayTracingConstants {
     // Ray distance limits
     constexpr float MAX_RAY_DISTANCE = 1e16f;          // Maximum ray travel distance
+    constexpr float SHADOW_RAY_MAX_DISTANCE = 1e16f;   // Shadow rays use effectively infinite distance
     constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Offset to avoid self-intersection
     constexpr float SHADOW_RAY_OFFSET = 0.001f;        // Offset for shadow ray origin (avoid shadow acne)
 
@@ -30,7 +31,8 @@ namespace RayTracingConstants {
     constexpr float SPHERE_INTERSECTION_REFINEMENT_THRESHOLD = 10.0f;  // Refine if |root| > threshold * radius
 
     // Lighting model
-    constexpr float AMBIENT_LIGHT_FACTOR = 0.3f;  // Ambient light contribution (30%)
+    constexpr float AMBIENT_LIGHT_FACTOR = 0.3f;       // Ambient light contribution (30%)
+    constexpr float MIN_LIGHTING_THRESHOLD = 1.0f / 255.0f;  // Minimum NdotL to contribute (sub-pixel)
 
     // Plane rendering (checkered pattern)
     constexpr float PLANE_CHECKER_SIZE = 1.0f;            // Size of checker squares

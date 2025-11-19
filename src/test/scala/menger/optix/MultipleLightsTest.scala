@@ -2,6 +2,7 @@ package menger.optix
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import ThresholdConstants.*
 
 class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -39,7 +40,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    val result = renderer.render(400, 300)
+    val result = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
     result.isDefined shouldBe true
 
   it should "accept multiple lights up to MAX_LIGHTS" in:
@@ -53,7 +54,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    val result = renderer.render(400, 300)
+    val result = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
     result.isDefined shouldBe true
 
   // Category 2: Lighting Behavior
@@ -71,7 +72,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       intensity = 0.5f
     )
     renderer.setLights(Array(singleLight))
-    val imageSingle = renderer.render(800, 600).get
+    val imageSingle = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
     // Two lights from above, same total intensity
     val twoLights = Array(
@@ -79,15 +80,15 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       Light.directional(Array(0.0f, -1.0f, 0.0f), intensity = 0.25f)
     )
     renderer.setLights(twoLights)
-    val imageTwo = renderer.render(800, 600).get
+    val imageTwo = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
     // Brightness should be similar (within 10% due to ambient lighting)
-    val centerRegion = ShadowValidation.Region.centered(400, 300, 50)
+    val centerRegion = ShadowValidation.Region.centered(STANDARD_IMAGE_SIZE._1 / 2, STANDARD_IMAGE_SIZE._2 / 2, 50)
     val brightnessSingle = ShadowValidation.regionBrightness(
-      imageSingle, 800, 600, centerRegion
+      imageSingle, STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2, centerRegion
     )
     val brightnessTwo = ShadowValidation.regionBrightness(
-      imageTwo, 800, 600, centerRegion
+      imageTwo, STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2, centerRegion
     )
 
     val ratio = brightnessTwo / brightnessSingle
@@ -104,27 +105,27 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     // Light from right only
     val lightRight = Light.directional(Array(1.0f, -0.5f, 0.0f))
     renderer.setLights(Array(lightRight))
-    val imageRight = renderer.render(800, 600).get
+    val imageRight = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
     // Light from left only
     val lightLeft = Light.directional(Array(-1.0f, -0.5f, 0.0f))
     renderer.setLights(Array(lightLeft))
-    val imageLeft = renderer.render(800, 600).get
+    val imageLeft = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
     // Both lights
     renderer.setLights(Array(lightRight, lightLeft))
-    val imageBoth = renderer.render(800, 600).get
+    val imageBoth = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
     // With both lights, the combined brightness should be higher
-    val centerRegion = ShadowValidation.Region.centered(400, 300, 50)
+    val centerRegion = ShadowValidation.Region.centered(STANDARD_IMAGE_SIZE._1 / 2, STANDARD_IMAGE_SIZE._2 / 2, 50)
     val brightnessRight = ShadowValidation.regionBrightness(
-      imageRight, 800, 600, centerRegion
+      imageRight, STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2, centerRegion
     )
     val brightnessLeft = ShadowValidation.regionBrightness(
-      imageLeft, 800, 600, centerRegion
+      imageLeft, STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2, centerRegion
     )
     val brightnessBoth = ShadowValidation.regionBrightness(
-      imageBoth, 800, 600, centerRegion
+      imageBoth, STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2, centerRegion
     )
 
     brightnessBoth should be > brightnessRight
@@ -145,7 +146,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       intensity = 2.0f
     )
     renderer.setLights(Array(closeLight))
-    val imageClose = renderer.render(800, 600).get
+    val imageClose = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
     // Point light far from sphere
     val farLight = Light.point(
@@ -153,11 +154,11 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       intensity = 2.0f
     )
     renderer.setLights(Array(farLight))
-    val imageFar = renderer.render(800, 600).get
+    val imageFar = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2).get
 
     // Both should render successfully
-    imageClose.length shouldBe (800 * 600 * 4)
-    imageFar.length shouldBe (800 * 600 * 4)
+    imageClose.length shouldBe (STANDARD_IMAGE_SIZE._1 * STANDARD_IMAGE_SIZE._2 * 4)
+    imageFar.length shouldBe (STANDARD_IMAGE_SIZE._1 * STANDARD_IMAGE_SIZE._2 * 4)
 
     // TODO: Improve test to verify actual falloff behavior
     // Current shader may need tuning for point light distance attenuation
@@ -184,7 +185,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     )
     renderer.setLights(lights)
 
-    val result = renderer.render(800, 600)
+    val result = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2)
     result.isDefined shouldBe true
 
     // Extract RGB channels from center region
@@ -233,7 +234,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     )
     renderer.setLights(lights)
 
-    val result = renderer.render(800, 600)
+    val result = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2)
     result.isDefined shouldBe true
 
     // With two lights from opposite sides, shadows should be softer
@@ -249,12 +250,12 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     // Old API
     renderer.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
 
-    val result = renderer.render(800, 600)
+    val result = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2)
     result.isDefined shouldBe true
 
-    val centerRegion = ShadowValidation.Region.centered(400, 300, 50)
+    val centerRegion = ShadowValidation.Region.centered(STANDARD_IMAGE_SIZE._1 / 2, STANDARD_IMAGE_SIZE._2 / 2, 50)
     val brightness = ShadowValidation.regionBrightness(
-      result.get, 800, 600, centerRegion
+      result.get, STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2, centerRegion
     )
 
     // Should render normally (brightness > ambient which is ~60 with 0.3 factor and gray=200)
@@ -278,7 +279,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setLight(Array(0.0f, -1.0f, 0.0f), 1.0f)
 
     // Should render with single light from above
-    val result = renderer.render(800, 600)
+    val result = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2)
     result.isDefined shouldBe true
 
   "setLights" should "override previous setLight call" in:
@@ -297,7 +298,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setLights(lights)
 
     // Should render with two lights from above
-    val result = renderer.render(800, 600)
+    val result = renderer.render(STANDARD_IMAGE_SIZE._1, STANDARD_IMAGE_SIZE._2)
     result.isDefined shouldBe true
 
   // Category 7: Error Handling
@@ -341,5 +342,5 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    val result = renderer.render(400, 300)
+    val result = renderer.render(TEST_IMAGE_SIZE._1, TEST_IMAGE_SIZE._2)
     result.isDefined shouldBe true

@@ -46,13 +46,13 @@ case class SphereConfig(
  * @param eye Camera position (x, y, z)
  * @param lookAt Point camera is looking at (x, y, z)
  * @param up Up vector (x, y, z)
- * @param fov Field of view in degrees
+ * @param horizontalFov Horizontal field of view in degrees
  */
 case class CameraConfig(
   eye: (Float, Float, Float) = (0.0f, 0.5f, 3.0f),
   lookAt: (Float, Float, Float) = (0.0f, 0.0f, 0.0f),
   up: (Float, Float, Float) = (0.0f, 1.0f, 0.0f),
-  fov: Float = 60.0f
+  horizontalFov: Float = 60.0f
 )
 
 /**
@@ -132,8 +132,8 @@ case class TestScenario(
   def withCameraUp(x: Float, y: Float, z: Float): TestScenario =
     copy(camera = camera.copy(up = (x, y, z)))
 
-  def withFOV(fov: Float): TestScenario =
-    copy(camera = camera.copy(fov = fov))
+  def withHorizontalFOV(horizontalFov: Float): TestScenario =
+    copy(camera = camera.copy(horizontalFov = horizontalFov))
 
   // ========== Light Configuration ==========
 
@@ -181,7 +181,7 @@ case class TestScenario(
       Array(camera.eye._1, camera.eye._2, camera.eye._3),
       Array(camera.lookAt._1, camera.lookAt._2, camera.lookAt._3),
       Array(camera.up._1, camera.up._2, camera.up._3),
-      camera.fov
+      horizontalFovDegrees = camera.horizontalFov
     )
 
     // Light
@@ -404,7 +404,7 @@ object TestScenario:
       eye = (0.0f, 0.0f, 5.0f),
       lookAt = (0.0f, -0.3f, 0.0f),
       up = (0.0f, 1.0f, 0.0f),
-      fov = 45.0f
+      horizontalFov = 45.0f
     ),
     light = LightConfig(
       direction = (0.5f, 0.5f, -0.5f),

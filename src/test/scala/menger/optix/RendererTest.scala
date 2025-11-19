@@ -265,12 +265,12 @@ class RendererTest extends AnyFlatSpec
     val (width, height) = (100, 100)
 
     // Very narrow FOV
-    TestScenario.default().withFOV(1.0f).applyTo(renderer)
+    TestScenario.default().withHorizontalFOV(1.0f).applyTo(renderer)
     val image1 = renderer.render(width, height).get
     image1.length shouldBe ImageValidation.imageByteSize(width, height)
 
     // Very wide FOV
-    TestScenario.default().withFOV(179.0f).applyTo(renderer)
+    TestScenario.default().withHorizontalFOV(179.0f).applyTo(renderer)
     val image2 = renderer.render(width, height).get
     image2.length shouldBe ImageValidation.imageByteSize(width, height)
 

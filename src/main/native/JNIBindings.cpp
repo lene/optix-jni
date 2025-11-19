@@ -126,8 +126,8 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setScale(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCamera(
-    JNIEnv* env, jobject obj, jfloatArray eye, jfloatArray lookAt, jfloatArray up, jfloat fov) {
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCameraNative(
+    JNIEnv* env, jobject obj, jfloatArray eye, jfloatArray lookAt, jfloatArray up, jfloat horizontalFovDegrees) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
@@ -135,7 +135,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCamera(
             jfloat* lookAtArr = env->GetFloatArrayElements(lookAt, nullptr);
             jfloat* upArr = env->GetFloatArrayElements(up, nullptr);
 
-            wrapper->setCamera(eyeArr, lookAtArr, upArr, fov);
+            wrapper->setCamera(eyeArr, lookAtArr, upArr, horizontalFovDegrees);
 
             env->ReleaseFloatArrayElements(eye, eyeArr, 0);
             env->ReleaseFloatArrayElements(lookAt, lookAtArr, 0);

@@ -116,8 +116,32 @@ class OptiXRenderer extends LazyLogging:
   /** Set physical scale factor (1.0=meters, 0.01=centimeters) */
   @native def setScale(scale: Float): Unit
 
-  /** Set camera parameters (eye position, lookAt point, up vector, field of view in degrees) */
-  @native def setCamera(eye: Array[Float], lookAt: Array[Float], up: Array[Float], fov: Float): Unit
+  /** Set camera parameters for ray tracing.
+    *
+    * @param eye Camera position in world space
+    * @param lookAt Point camera is aimed at in world space
+    * @param up Up vector (typically Array(0, 1, 0) for Y-up)
+    * @param horizontalFovDegrees Horizontal field of view in degrees.
+    *                             NOTE: This is HORIZONTAL FOV, which is non-standard.
+    *                             Most graphics APIs use vertical FOV. This value is
+    *                             aspect-ratio independent and matches OptiX SDK convention.
+    *                             Valid range: (0, 180). Typical value: 45.
+    */
+  @native private def setCameraNative(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit
+
+  /** Set camera parameters with validation.
+    *
+    * @param eye Camera position in world space
+    * @param lookAt Point camera is aimed at in world space
+    * @param up Up vector (typically Array(0, 1, 0) for Y-up)
+    * @param horizontalFovDegrees Horizontal field of view in degrees (0, 180)
+    */
+  def setCamera(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit =
+    require(
+      horizontalFovDegrees > 0 && horizontalFovDegrees < 180,
+      s"Horizontal FOV must be in range (0, 180), got $horizontalFovDegrees"
+    )
+    setCameraNative(eye, lookAt, up, horizontalFovDegrees)
 
   /** Update image dimensions for aspect ratio calculations (called before setCamera on resize) */
   @native def updateImageDimensions(width: Int, height: Int): Unit
