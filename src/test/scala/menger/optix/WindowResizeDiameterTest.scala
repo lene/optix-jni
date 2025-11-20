@@ -62,7 +62,6 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
 
         baselineVDiam = measureVerticalDiameter(img, 800, 800)
         baselineHDiam = measureHorizontalDiameter(img, 800, 800)
-        logger.info(s"800x800 baseline: vertical=${baselineVDiam}px, horizontal=${baselineHDiam}px")
 
         // In square aspect, vertical and horizontal should be approximately equal
         Math.abs(baselineVDiam - baselineHDiam) should be < 5
@@ -95,7 +94,6 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       val img2 = renderer.render(1600, 800).get
       val vDiam2 = measureVerticalDiameter(img2, 1600, 800)
       val hDiam2 = measureHorizontalDiameter(img2, 1600, 800)
-      logger.info(s"1600x800: vertical=${vDiam2}px, horizontal=${hDiam2}px")
 
       // CRITICAL: When width doubles, sphere should scale uniformly in BOTH directions
       // Both vertical and horizontal diameters should double (100% increase)
@@ -129,7 +127,6 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       val img3 = renderer.render(800, 1600).get
       val vDiam3 = measureVerticalDiameter(img3, 800, 1600)
       val hDiam3 = measureHorizontalDiameter(img3, 800, 1600)
-      logger.info(s"800x1600: vertical=${vDiam3}px, horizontal=${hDiam3}px")
 
       // CRITICAL: When height doubles, sphere size should NOT change
       // Both vertical and horizontal diameters should stay the same
