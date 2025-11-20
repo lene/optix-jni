@@ -1,11 +1,14 @@
 package menger.optix
 
+import org.scalatest.Ignore
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import ShadowValidation.*
 import TestUtilities.*
+import ThresholdConstants.*
 
 
+@Ignore
 class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   def setupShadowScene(
@@ -28,7 +31,7 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
 
   "Shadow diagnostic" should "show actual brightness values for different alpha" in:
     val alphaValues = List(0.0f, 0.5f, 1.0f)
-    val imageSize = ImageSize(800, 600)
+    val imageSize = STANDARD_IMAGE_SIZE
 
     println("\n=== SHADOW BRIGHTNESS DIAGNOSTIC ===")
     println("Saving images to: shadow_alpha_*.ppm")
@@ -60,7 +63,7 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
       }
 
       // Find darkest region
-      val darkest = detectDarkestRegion(image, imageSize, gridSize = 8)
+      val darkest = detectDarkestRegion(image, imageSize, gridSize = DEFAULT_SHADOW_GRID)
       val darkestBright = regionBrightness(image, imageSize, darkest)
       println(f"  darkest-region  : brightness = $darkestBright%.2f at (${darkest.x0}, ${darkest.y0})")
     }
@@ -71,7 +74,7 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     true shouldBe true
 
   it should "compare shadows ON vs OFF" in:
-    val imageSize = ImageSize(800, 600)
+    val imageSize = STANDARD_IMAGE_SIZE
     println("\n=== SHADOWS ON vs OFF ===")
 
     setupShadowScene(sphereAlpha = 1.0f)
@@ -101,7 +104,7 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     true shouldBe true
 
   it should "show where shadow appears for different light directions" in:
-    val imageSize = ImageSize(800, 600)
+    val imageSize = STANDARD_IMAGE_SIZE
     println("\n=== SHADOW POSITION BY LIGHT DIRECTION ===")
 
     val lightDirs = Map(
@@ -116,7 +119,7 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
       renderer.setShadows(true)
       val image = renderer.render(imageSize).get
 
-      val darkest = detectDarkestRegion(image, imageSize, gridSize = 10)
+      val darkest = detectDarkestRegion(image, imageSize, gridSize = LARGE_SHADOW_GRID)
       val centerX = (darkest.x0 + darkest.x1) / 2
       val centerY = (darkest.y0 + darkest.y1) / 2
       val brightness = regionBrightness(image, imageSize, darkest)

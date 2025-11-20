@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.ImageSize
 import com.typesafe.scalalogging.LazyLogging
 import java.io.{File, FileOutputStream}
 import scala.util.{Try, Using}

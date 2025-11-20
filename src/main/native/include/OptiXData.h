@@ -3,6 +3,10 @@
 
 #include <optix.h>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 // Ray tracing configuration
 // This constant is used by both the C++ pipeline setup and CUDA shaders
 constexpr unsigned int MAX_TRACE_DEPTH = 5;  // Allow internal reflections in glass (entry + exit + reflections)
@@ -42,6 +46,24 @@ namespace RayTracingConstants {
 
     // Multiple light sources
     constexpr int MAX_LIGHTS = 8;  // Maximum number of simultaneous light sources
+
+    // Default geometry values
+    constexpr float DEFAULT_SPHERE_RADIUS = 1.5f;      // Default sphere size for demos and tests
+    constexpr float DEFAULT_CAMERA_Z_DISTANCE = 3.0f;  // Default camera distance from origin
+    constexpr float DEFAULT_FOV_DEGREES = 60.0f;       // Default field of view
+    constexpr float DEFAULT_FLOOR_PLANE_Y = -2.0f;     // Default floor plane position
+
+    // Angle conversion
+    constexpr float DEG_TO_RAD = M_PI / 180.0f;        // Degrees to radians multiplier
+    constexpr float RAD_TO_DEG = 180.0f / M_PI;        // Radians to degrees multiplier
+}
+
+// Material constants (Index of Refraction)
+namespace MaterialConstants {
+    constexpr float IOR_VACUUM = 1.0f;     // Vacuum/air (no refraction)
+    constexpr float IOR_WATER = 1.33f;     // Water
+    constexpr float IOR_GLASS = 1.5f;      // Standard glass
+    constexpr float IOR_DIAMOND = 2.42f;   // Diamond (high dispersion)
 }
 
 // Light source types

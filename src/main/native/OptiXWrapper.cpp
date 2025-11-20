@@ -40,19 +40,19 @@ struct OptiXWrapper::Impl {
     OptiXContext optix_context;
 
     struct CameraParams {
-        float eye[3] = {0.0f, 0.0f, 3.0f};
+        float eye[3] = {0.0f, 0.0f, RayTracingConstants::DEFAULT_CAMERA_Z_DISTANCE};
         float u[3] = {1.0f, 0.0f, 0.0f};
         float v[3] = {0.0f, 1.0f, 0.0f};
         float w[3] = {0.0f, 0.0f, -1.0f};
-        float fov = 60.0f;
+        float fov = RayTracingConstants::DEFAULT_FOV_DEGREES;
         bool dirty = false;
     } camera;
 
     struct SphereParams {
         float center[3] = {0.0f, 0.0f, 0.0f};
-        float radius = 1.5f;
+        float radius = RayTracingConstants::DEFAULT_SPHERE_RADIUS;
         float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // white, fully opaque
-        float ior = 1.0f;  // air/vacuum (no refraction)
+        float ior = MaterialConstants::IOR_VACUUM;
         float scale = 1.0f;  // 1.0 = meters
         bool dirty = false;
     } sphere;
@@ -79,7 +79,7 @@ struct OptiXWrapper::Impl {
     struct PlaneParams {
         int axis = 1;          // 0=X, 1=Y, 2=Z
         bool positive = true;  // true=positive normal, false=negative normal
-        float value = -2.0f;   // position along axis
+        float value = RayTracingConstants::DEFAULT_FLOOR_PLANE_Y;
         bool dirty = false;
     } plane;
 
@@ -185,8 +185,8 @@ void OptiXWrapper::setCamera(const float* eye, const float* lookAt, const float*
     // Scale by FOV and aspect ratio
     // IMPORTANT: fov parameter is HORIZONTAL FOV in degrees
     float aspect_ratio = static_cast<float>(impl->image_width) / static_cast<float>(impl->image_height);
-    float ulen = std::tan(fov * 0.5f * M_PI / 180.0f);  // Horizontal FOV
-    float vlen = ulen / aspect_ratio;                    // Vertical derived from horizontal
+    float ulen = std::tan(fov * 0.5f * RayTracingConstants::DEG_TO_RAD);
+    float vlen = ulen / aspect_ratio;  // Vertical derived from horizontal
 
     impl->camera.u[0] = u[0] * ulen;
     impl->camera.u[1] = u[1] * ulen;

@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.ImageSize
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging

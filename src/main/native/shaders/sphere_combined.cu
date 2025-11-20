@@ -528,9 +528,9 @@ extern "C" __global__ void __closesthit__ch() {
             sphere_color.z * lighting.z
         );
 
-        const unsigned int r = static_cast<unsigned int>(fminf(lit_color.x * 255.0f, 255.0f));
-        const unsigned int g = static_cast<unsigned int>(fminf(lit_color.y * 255.0f, 255.0f));
-        const unsigned int b = static_cast<unsigned int>(fminf(lit_color.z * 255.0f, 255.0f));
+        const unsigned int r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+        const unsigned int g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+        const unsigned int b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
 
         optixSetPayload_0(r);
         optixSetPayload_1(g);
@@ -652,9 +652,9 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Apply Beer-Lambert absorption to refracted component (only at EXIT)
     float3 refract_color = make_float3(
-        static_cast<float>(refract_r) / 255.0f,
-        static_cast<float>(refract_g) / 255.0f,
-        static_cast<float>(refract_b) / 255.0f
+        static_cast<float>(refract_r) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(refract_g) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(refract_b) / RayTracingConstants::COLOR_BYTE_MAX
     );
 
     if (!entering)  // Exiting - apply absorption to refracted ray
@@ -692,9 +692,9 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Blend reflected and refracted rays using Fresnel coefficient
     const float3 reflect_color = make_float3(
-        static_cast<float>(reflect_r) / 255.0f,
-        static_cast<float>(reflect_g) / 255.0f,
-        static_cast<float>(reflect_b) / 255.0f
+        static_cast<float>(reflect_r) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(reflect_g) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(reflect_b) / RayTracingConstants::COLOR_BYTE_MAX
     );
 
     // Final color = fresnel * reflected + (1 - fresnel) * refracted
@@ -704,9 +704,9 @@ extern "C" __global__ void __closesthit__ch() {
         fresnel * reflect_color.z + (1.0f - fresnel) * refract_color.z
     );
 
-    optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * 255.0f, 255.0f)));
-    optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * 255.0f, 255.0f)));
-    optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * 255.0f, 255.0f)));
+    optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
 }
 
 //==============================================================================

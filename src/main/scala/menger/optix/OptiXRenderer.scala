@@ -1,6 +1,7 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
+import menger.common.ImageSize
 
 import java.io.{FileOutputStream, InputStream}
 import java.nio.file.Files
@@ -53,10 +54,6 @@ object Light:
       color = color,
       intensity = intensity
     )
-
-case class ImageSize(width: Int, height: Int):
-  require(width > 0, s"width must be positive, got $width")
-  require(height > 0, s"height must be positive, got $height")
 
 // Ray statistics from OptiX rendering
 case class RayStats(

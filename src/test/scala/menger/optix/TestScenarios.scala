@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.ImageSize
 import ColorConstants.*
 import ThresholdConstants.*
 

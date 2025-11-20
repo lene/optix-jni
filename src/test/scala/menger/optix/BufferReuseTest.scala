@@ -1,8 +1,11 @@
 package menger.optix
 
+import menger.common.ImageSize
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
+
+import ThresholdConstants.*
 
 
 class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
@@ -22,7 +25,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.setCamera(eye, lookAt, up, 60f)
 
       // Render multiple times with same dimensions (should reuse buffer)
-      val size = ImageSize(800, 600)
+      val size = STANDARD_IMAGE_SIZE
       val img1 = renderer.render(size).get
       val img2 = renderer.render(size).get
       val img3 = renderer.render(size).get
@@ -57,7 +60,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
       // Render at different resolutions
       val size1 = ImageSize(640, 480)
       val size2 = ImageSize(1024, 768)
-      val size3 = ImageSize(800, 600)
+      val size3 = STANDARD_IMAGE_SIZE
       val img1 = renderer.render(size1).get
       val img2 = renderer.render(size2).get
       val img3 = renderer.render(size3).get
@@ -90,7 +93,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.setCamera(eye, lookAt, up, 60f)
 
       // Render with different sphere positions (same dimensions)
-      val size = ImageSize(400, 300)
+      val size = TEST_IMAGE_SIZE
       renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
       val img1 = renderer.render(size).get
 
@@ -134,7 +137,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer.setCamera(eye, lookAt, up, 60f)
 
       // Warmup
-      val size = ImageSize(800, 600)
+      val size = STANDARD_IMAGE_SIZE
       renderer.render(size).get
 
       // Time 100 renders at same resolution (should benefit from buffer reuse)
@@ -168,7 +171,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
 
     try {
       // First session
-      val size = ImageSize(400, 300)
+      val size = TEST_IMAGE_SIZE
       renderer.initialize() should be (true)
       renderer.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
       val img1 = renderer.render(size).get

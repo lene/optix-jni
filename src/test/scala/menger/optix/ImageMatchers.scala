@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.ImageSize
 import org.scalatest.matchers.{BeMatcher, MatchResult, Matcher}
 import ThresholdConstants.*
 

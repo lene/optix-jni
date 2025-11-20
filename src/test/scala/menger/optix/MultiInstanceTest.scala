@@ -1,8 +1,11 @@
 package menger.optix
 
+import menger.common.ImageSize
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
+
+import ThresholdConstants.*
 
 
 class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
@@ -56,7 +59,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.setCamera(eye, lookAt, up, 60f)
 
       // Render both
-      val size = ImageSize(400, 300)
+      val size = TEST_IMAGE_SIZE
       val img1 = renderer1.render(size)
       val img2 = renderer2.render(size)
 
@@ -167,7 +170,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.setCamera(eye, lookAt, up, 60f)
 
       // Interleave renders
-      val size = ImageSize(400, 300)
+      val size = TEST_IMAGE_SIZE
       val img1a = renderer1.render(size)
       val img2a = renderer2.render(size)
       val img1b = renderer1.render(size)
@@ -209,7 +212,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     renderer1.nativeHandle should be (0L)
 
     // Second renderer should still work
-    val size = ImageSize(400, 300)
+    val size = TEST_IMAGE_SIZE
     renderer2.setSphere(0.0f, 0.0f, 0.0f, 1.5f)
     val img = renderer2.render(size)
     img.get.length should be (ImageValidation.imageByteSize(size))
@@ -261,7 +264,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
     noException should be thrownBy renderer.setSphereColor(1, 0, 0, 1)
 
     // render should return None on uninitialized instance
-    val img = renderer.render(ImageSize(400, 300))
+    val img = renderer.render(TEST_IMAGE_SIZE)
     img shouldBe None
   }
 
