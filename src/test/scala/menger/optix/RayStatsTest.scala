@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import menger.common.ImageSize
 import org.scalatest.flatspec.AnyFlatSpec
@@ -41,7 +42,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(1f, 0f, 0f, 1.0f)  // Fully opaque
       .withSphereRadius(0.5f)
       .withIOR(1.5f)
-      .withCameraEye(0f, 0f, 3f)
+      .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
 
@@ -55,7 +56,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(1f, 1f, 1f, 0.0f)  // Fully transparent
       .withSphereRadius(0.5f)
       .withIOR(1.0f)  // No refraction
-      .withCameraEye(0f, 0f, 3f)
+      .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
 
@@ -97,7 +98,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereRadius(0.5f)
       .withSphereColor(1f, 1f, 1f, 0.5f)
       .withIOR(1.5f)
-      .withCameraEye(0f, 0f, 3f)
+      .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
     val semiTransparent = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
@@ -107,7 +108,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereRadius(0.5f)
       .withSphereColor(1f, 1f, 1f, 0.2f)
       .withIOR(1.5f)
-      .withCameraEye(0f, 0f, 3f)
+      .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
     val moreTransparent = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
@@ -183,11 +184,11 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default()
       .withSphereRadius(0.5f)
       .withSphereColor(1f, 0f, 0f, 1.0f)  // Opaque red
-      .withCameraEye(0f, 0f, 3f)  // Camera in front
+      .withCameraEye(Vector[3](0f, 0f, 3f))  // Camera in front
       .withHorizontalFOV(60f)
       .applyTo(renderer)
     renderer.setLight(
-      Array(0f, 0f, -1f),  // Light behind camera (away from sphere)
+      Vector[3](0f, 0f, -1f),  // Light behind camera (away from sphere)
       1.0f
     )
     renderer.setShadows(true)

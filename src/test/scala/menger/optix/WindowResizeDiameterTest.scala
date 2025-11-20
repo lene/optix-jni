@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
@@ -46,12 +47,12 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
 
       try {
         // Set up a simple sphere at origin
-        renderer.setSphere(0f, 0f, 0f, 1.0f)
+        renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
         renderer.setSphereColor(1f, 0f, 0f, 1f)
 
-        val eye = Array(0f, 0f, 5f)
-        val lookAt = Array(0f, 0f, 0f)
-        val up = Array(0f, 1f, 0f)
+        val eye = Vector[3](0f, 0f, 5f)
+        val lookAt = Vector[3](0f, 0f, 0f)
+        val up = Vector[3](0f, 1f, 0f)
         val fov = 45f
 
         // Render at 800x800 (square baseline)
@@ -80,12 +81,12 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
 
     try {
       // Set up a simple sphere at origin
-      renderer.setSphere(0f, 0f, 0f, 1.0f)
+      renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
       renderer.setSphereColor(1f, 0f, 0f, 1f)
 
-      val eye = Array(0f, 0f, 5f)
-      val lookAt = Array(0f, 0f, 0f)
-      val up = Array(0f, 1f, 0f)
+      val eye = Vector[3](0f, 0f, 5f)
+      val lookAt = Vector[3](0f, 0f, 0f)
+      val up = Vector[3](0f, 1f, 0f)
       val fov = 45f
 
       // Render at 1600x800 (wide 2:1 - width doubled)
@@ -114,12 +115,12 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
 
     try {
       // Set up a simple sphere at origin
-      renderer.setSphere(0f, 0f, 0f, 1.0f)
+      renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
       renderer.setSphereColor(1f, 0f, 0f, 1f)
 
-      val eye = Array(0f, 0f, 5f)
-      val lookAt = Array(0f, 0f, 0f)
-      val up = Array(0f, 1f, 0f)
+      val eye = Vector[3](0f, 0f, 5f)
+      val lookAt = Vector[3](0f, 0f, 0f)
+      val up = Vector[3](0f, 1f, 0f)
       val fov = 45f
 
       // Render at 800x1600 (tall 1:2 - height doubled)

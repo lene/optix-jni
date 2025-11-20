@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
@@ -93,7 +94,7 @@ class OpaqueSphereTest extends AnyFlatSpec
 
   it should "render with offset position (1, 0, 0)" in:
     TestScenario.default()
-      .withSpherePosition(1.0f, 0.0f, 0.0f)  // Offset to right
+      .withSpherePosition(Vector[3](1.0f, 0.0f, 0.0f))  // Offset to right
       .applyTo(renderer)
 
     val imageData = renderer.render(TEST_IMAGE_SIZE).get

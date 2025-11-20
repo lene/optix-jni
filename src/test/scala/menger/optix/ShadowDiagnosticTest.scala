@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import org.scalatest.Ignore
 import org.scalatest.flatspec.AnyFlatSpec
@@ -13,18 +14,18 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
 
   def setupShadowScene(
     sphereAlpha: Float = 1.0f,
-    lightDir: Array[Float] = Array(0.5f, 0.5f, -0.5f)
+    lightDir: Vector[3] = Vector[3](0.5f, 0.5f, -0.5f)
   ): Unit =
-    renderer.setSphere(0.0f, 0.0f, 0.0f, 0.5f)
+    renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
     renderer.setSphereColor(0.75f, 0.75f, 0.75f, sphereAlpha)
     renderer.setIOR(1.5f)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, -0.6f)
     renderer.setPlaneSolidColor(true)  // Use solid color for shadow visibility
     renderer.setCamera(
-      Array(0.0f, 0.0f, 5.0f),
-      Array(0.0f, -0.3f, 0.0f),
-      Array(0.0f, 1.0f, 0.0f),
+      Vector[3](0.0f, 0.0f, 5.0f),
+      Vector[3](0.0f, -0.3f, 0.0f),
+      Vector[3](0.0f, 1.0f, 0.0f),
       45.0f
     )
     renderer.setLight(lightDir, 1.0f)
@@ -108,10 +109,10 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     println("\n=== SHADOW POSITION BY LIGHT DIRECTION ===")
 
     val lightDirs = Map(
-      "overhead" -> Array(0.0f, 1.0f, 0.0f),
-      "from-right" -> Array(1.0f, 0.5f, 0.0f),
-      "from-left" -> Array(-1.0f, 0.5f, 0.0f),
-      "default" -> Array(0.5f, 0.5f, -0.5f)
+      "overhead" -> Vector[3](0.0f, 1.0f, 0.0f),
+      "from-right" -> Vector[3](1.0f, 0.5f, 0.0f),
+      "from-left" -> Vector[3](-1.0f, 0.5f, 0.0f),
+      "default" -> Vector[3](0.5f, 0.5f, -0.5f)
     )
 
     lightDirs.foreach { case (name, dir) =>

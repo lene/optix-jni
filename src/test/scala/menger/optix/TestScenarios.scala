@@ -1,25 +1,25 @@
 package menger.optix
 
-import menger.common.ImageSize
+import menger.common.{ImageSize, Vector}
 import ColorConstants.*
 import ThresholdConstants.*
 
 case class SphereConfig(
-  position: (Float, Float, Float) = (0.0f, 0.0f, 0.0f),
+  position: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),
   radius: Float = 0.5f,
   color: (Float, Float, Float, Float) = OPAQUE_GREEN,
   ior: Float = 1.0f
 )
 
 case class CameraConfig(
-  eye: (Float, Float, Float) = (0.0f, 0.5f, 3.0f),
-  lookAt: (Float, Float, Float) = (0.0f, 0.0f, 0.0f),
-  up: (Float, Float, Float) = (0.0f, 1.0f, 0.0f),
+  eye: Vector[3] = Vector[3](0.0f, 0.5f, 3.0f),
+  lookAt: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),
+  up: Vector[3] = Vector[3](0.0f, 1.0f, 0.0f),
   horizontalFov: Float = 60.0f
 )
 
 case class LightConfig(
-  direction: (Float, Float, Float) = (0.5f, 0.5f, -0.5f),
+  direction: Vector[3] = Vector[3](0.5f, 0.5f, -0.5f),
   intensity: Float = 1.0f
 )
 
@@ -39,8 +39,8 @@ case class TestScenario(
 
   // ========== Sphere Configuration ==========
 
-  def withSpherePosition(x: Float, y: Float, z: Float): TestScenario =
-    copy(sphere = sphere.copy(position = (x, y, z)))
+  def withSpherePosition(position: Vector[3]): TestScenario =
+    copy(sphere = sphere.copy(position = position))
 
   def withSphereRadius(radius: Float): TestScenario =
     copy(sphere = sphere.copy(radius = radius))
@@ -56,26 +56,25 @@ case class TestScenario(
 
   // ========== Camera Configuration ==========
 
-  def withCameraEye(x: Float, y: Float, z: Float): TestScenario =
-    copy(camera = camera.copy(eye = (x, y, z)))
+  def withCameraEye(eye: Vector[3]): TestScenario =
+    copy(camera = camera.copy(eye = eye))
 
   def withCameraDistance(distance: Float): TestScenario =
-    val (x, y, _) = camera.eye
-    copy(camera = camera.copy(eye = (x, y, distance)))
+    copy(camera = camera.copy(eye = Vector[3](camera.eye(0), camera.eye(1), distance)))
 
-  def withCameraLookAt(x: Float, y: Float, z: Float): TestScenario =
-    copy(camera = camera.copy(lookAt = (x, y, z)))
+  def withCameraLookAt(lookAt: Vector[3]): TestScenario =
+    copy(camera = camera.copy(lookAt = lookAt))
 
-  def withCameraUp(x: Float, y: Float, z: Float): TestScenario =
-    copy(camera = camera.copy(up = (x, y, z)))
+  def withCameraUp(up: Vector[3]): TestScenario =
+    copy(camera = camera.copy(up = up))
 
   def withHorizontalFOV(horizontalFov: Float): TestScenario =
     copy(camera = camera.copy(horizontalFov = horizontalFov))
 
   // ========== Light Configuration ==========
 
-  def withLightDirection(x: Float, y: Float, z: Float): TestScenario =
-    copy(light = light.copy(direction = (x, y, z)))
+  def withLightDirection(direction: Vector[3]): TestScenario =
+    copy(light = light.copy(direction = direction))
 
   def withLightIntensity(intensity: Float): TestScenario =
     copy(light = light.copy(intensity = intensity))
@@ -113,21 +112,21 @@ case class TestScenario(
 
     // Camera
     renderer.setCamera(
-      Array(camera.eye._1, camera.eye._2, camera.eye._3),
-      Array(camera.lookAt._1, camera.lookAt._2, camera.lookAt._3),
-      Array(camera.up._1, camera.up._2, camera.up._3),
+      camera.eye,
+      camera.lookAt,
+      camera.up,
       horizontalFovDegrees = camera.horizontalFov
     )
 
     // Light
     renderer.setLight(
-      Array(light.direction._1, light.direction._2, light.direction._3),
+      light.direction,
       light.intensity
     )
 
     // Sphere
     renderer.setSphere(
-      sphere.position._1, sphere.position._2, sphere.position._3,
+      sphere.position,
       sphere.radius
     )
     renderer.setSphereColor(
@@ -251,19 +250,19 @@ object TestScenario:
   
   def shadowTest(alpha: Float = 1.0f): TestScenario = TestScenario(
     sphere = SphereConfig(
-      position = (0.0f, 0.0f, 0.0f),
+      position = Vector[3](0.0f, 0.0f, 0.0f),
       radius = 0.5f,
       color = ColorConstants.withAlpha(OPAQUE_SHADOW_TEST_GRAY, alpha),
       ior = 1.5f
     ),
     camera = CameraConfig(
-      eye = (0.0f, 0.0f, 5.0f),
-      lookAt = (0.0f, -0.3f, 0.0f),
-      up = (0.0f, 1.0f, 0.0f),
+      eye = Vector[3](0.0f, 0.0f, 5.0f),
+      lookAt = Vector[3](0.0f, -0.3f, 0.0f),
+      up = Vector[3](0.0f, 1.0f, 0.0f),
       horizontalFov = 45.0f
     ),
     light = LightConfig(
-      direction = (0.5f, 0.5f, -0.5f),
+      direction = Vector[3](0.5f, 0.5f, -0.5f),
       intensity = 1.0f
     ),
     plane = Some(PlaneConfig(

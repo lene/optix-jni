@@ -1,5 +1,7 @@
 package menger.optix
 
+import menger.common.Light
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import ThresholdConstants.*
@@ -9,33 +11,37 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   // Category 1: Basic API Tests
 
-  "Light.directional" should "create directional light with correct defaults" in:
-    val light = Light.directional(
-      direction = Array(0.5f, 0.5f, -0.5f)
+  "Light.Directional" should "create directional light with correct defaults" in:
+    val light = Light.Directional(
+      direction = Vector[3](0.5f, 0.5f, -0.5f)
     )
 
-    light.lightType shouldBe LightType.DIRECTIONAL
-    light.direction should have length 3
-    light.color shouldBe Array(1.0f, 1.0f, 1.0f)
+    light.lightType shouldBe menger.common.LightType.Directional
+    light.direction(0) shouldBe 0.5f
+    light.direction(1) shouldBe 0.5f
+    light.direction(2) shouldBe -0.5f
+    light.color shouldBe Vector[3](1.0f, 1.0f, 1.0f)
     light.intensity shouldBe 1.0f
 
-  "Light.point" should "create point light with correct defaults" in:
-    val light = Light.point(
-      position = Array(0.0f, 5.0f, 0.0f)
+  "Light.Point" should "create point light with correct defaults" in:
+    val light = Light.Point(
+      position = Vector[3](0.0f, 5.0f, 0.0f)
     )
 
-    light.lightType shouldBe LightType.POINT
-    light.position should have length 3
-    light.color shouldBe Array(1.0f, 1.0f, 1.0f)
+    light.lightType shouldBe menger.common.LightType.Point
+    light.position(0) shouldBe 0.0f
+    light.position(1) shouldBe 5.0f
+    light.position(2) shouldBe 0.0f
+    light.color shouldBe Vector[3](1.0f, 1.0f, 1.0f)
     light.intensity shouldBe 1.0f
 
   "setLights" should "accept empty array without error" in:
-    renderer.setLights(Array.empty[Light])
+    renderer.setLights(Seq.empty[Light])
     // Should not crash
 
   it should "accept single light" in:
-    val light = Light.directional(Array(0.0f, -1.0f, 0.0f))
-    renderer.setLights(Array(light))
+    val light = Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
+    renderer.setLights(Seq(light))
 
     TestScenario.default()
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
@@ -46,8 +52,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   it should "accept multiple lights up to MAX_LIGHTS" in:
     val lights = (0 until 8).map: i =>
-      Light.directional(Array(i * 0.1f, -1.0f, 0.0f))
-    .toArray
+      Light.Directional(Vector[3](i * 0.1f, -1.0f, 0.0f))
 
     renderer.setLights(lights)
 
@@ -68,17 +73,17 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setPlaneSolidColor(true)
 
     // Single light from above
-    val singleLight = Light.directional(
-      direction = Array(0.0f, -1.0f, 0.0f),
+    val singleLight = Light.Directional(
+      direction = Vector[3](0.0f, -1.0f, 0.0f),
       intensity = 0.5f
     )
-    renderer.setLights(Array(singleLight))
+    renderer.setLights(Seq(singleLight))
     val imageSingle = renderer.render(STANDARD_IMAGE_SIZE).get
 
     // Two lights from above, same total intensity
-    val twoLights = Array(
-      Light.directional(Array(0.0f, -1.0f, 0.0f), intensity = 0.25f),
-      Light.directional(Array(0.0f, -1.0f, 0.0f), intensity = 0.25f)
+    val twoLights = Seq(
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f), intensity = 0.25f),
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f), intensity = 0.25f)
     )
     renderer.setLights(twoLights)
     val imageTwo = renderer.render(STANDARD_IMAGE_SIZE).get
@@ -104,17 +109,17 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     // Light from right only
-    val lightRight = Light.directional(Array(1.0f, -0.5f, 0.0f))
-    renderer.setLights(Array(lightRight))
+    val lightRight = Light.Directional(Vector[3](1.0f, -0.5f, 0.0f))
+    renderer.setLights(Seq(lightRight))
     val imageRight = renderer.render(STANDARD_IMAGE_SIZE).get
 
     // Light from left only
-    val lightLeft = Light.directional(Array(-1.0f, -0.5f, 0.0f))
-    renderer.setLights(Array(lightLeft))
+    val lightLeft = Light.Directional(Vector[3](-1.0f, -0.5f, 0.0f))
+    renderer.setLights(Seq(lightLeft))
     val imageLeft = renderer.render(STANDARD_IMAGE_SIZE).get
 
     // Both lights
-    renderer.setLights(Array(lightRight, lightLeft))
+    renderer.setLights(Seq(lightRight, lightLeft))
     val imageBoth = renderer.render(STANDARD_IMAGE_SIZE).get
 
     // With both lights, the combined brightness should be higher
@@ -142,19 +147,19 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setPlaneSolidColor(true)
 
     // Point light close to sphere (at position 0, 3, 0, sphere is at 0, 0, 0)
-    val closeLight = Light.point(
-      position = Array(0.0f, 3.0f, 0.0f),
+    val closeLight = Light.Point(
+      position = Vector[3](0.0f, 3.0f, 0.0f),
       intensity = 2.0f
     )
-    renderer.setLights(Array(closeLight))
+    renderer.setLights(Seq(closeLight))
     val imageClose = renderer.render(STANDARD_IMAGE_SIZE).get
 
     // Point light far from sphere
-    val farLight = Light.point(
-      position = Array(0.0f, 10.0f, 0.0f),
+    val farLight = Light.Point(
+      position = Vector[3](0.0f, 10.0f, 0.0f),
       intensity = 2.0f
     )
-    renderer.setLights(Array(farLight))
+    renderer.setLights(Seq(farLight))
     val imageFar = renderer.render(STANDARD_IMAGE_SIZE).get
 
     // Both should render successfully
@@ -172,15 +177,15 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .applyTo(renderer)
 
     // Red light from left, blue light from right
-    val lights = Array(
-      Light.directional(
-        direction = Array(-1.0f, -0.5f, 0.0f),
-        color = Array(1.0f, 0.0f, 0.0f),  // Red
+    val lights = Seq(
+      Light.Directional(
+        direction = Vector[3](-1.0f, -0.5f, 0.0f),
+        color = Vector[3](1.0f, 0.0f, 0.0f),  // Red
         intensity = 0.5f
       ),
-      Light.directional(
-        direction = Array(1.0f, -0.5f, 0.0f),
-        color = Array(0.0f, 0.0f, 1.0f),  // Blue
+      Light.Directional(
+        direction = Vector[3](1.0f, -0.5f, 0.0f),
+        color = Vector[3](0.0f, 0.0f, 1.0f),  // Blue
         intensity = 0.5f
       )
     )
@@ -226,9 +231,9 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     // Two lights from different angles
-    val lights = Array(
-      Light.directional(Array(1.0f, -1.0f, 0.0f)),
-      Light.directional(Array(-1.0f, -1.0f, 0.0f))
+    val lights = Seq(
+      Light.Directional(Vector[3](1.0f, -1.0f, 0.0f)),
+      Light.Directional(Vector[3](-1.0f, -1.0f, 0.0f))
     )
     renderer.setLights(lights)
 
@@ -246,7 +251,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .applyTo(renderer)
 
     // Old API
-    renderer.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val result = renderer.render(STANDARD_IMAGE_SIZE)
     result.isDefined shouldBe true
@@ -267,14 +272,14 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .applyTo(renderer)
 
     // Set multiple lights
-    val lights = Array(
-      Light.directional(Array(1.0f, 0.0f, 0.0f)),
-      Light.directional(Array(-1.0f, 0.0f, 0.0f))
+    val lights = Seq(
+      Light.Directional(Vector[3](1.0f, 0.0f, 0.0f)),
+      Light.Directional(Vector[3](-1.0f, 0.0f, 0.0f))
     )
     renderer.setLights(lights)
 
     // Override with single light
-    renderer.setLight(Array(0.0f, -1.0f, 0.0f), 1.0f)
+    renderer.setLight(Vector[3](0.0f, -1.0f, 0.0f), 1.0f)
 
     // Should render with single light from above
     val result = renderer.render(STANDARD_IMAGE_SIZE)
@@ -286,12 +291,12 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .applyTo(renderer)
 
     // Set single light via old API
-    renderer.setLight(Array(1.0f, 0.0f, 0.0f), 1.0f)
+    renderer.setLight(Vector[3](1.0f, 0.0f, 0.0f), 1.0f)
 
     // Override with multiple lights
-    val lights = Array(
-      Light.directional(Array(0.0f, -1.0f, 0.0f)),
-      Light.directional(Array(0.0f, -1.0f, 0.0f))
+    val lights = Seq(
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f)),
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
     )
     renderer.setLights(lights)
 
@@ -304,8 +309,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
   "setLights" should "throw IllegalArgumentException when exceeding MAX_LIGHTS" in:
     // MAX_LIGHTS is 8, try to set 9 lights
     val tooManyLights = (0 until 9).map: i =>
-      Light.directional(Array(0.0f, -1.0f, 0.0f))
-    .toArray
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
 
     val exception = intercept[IllegalArgumentException]:
       renderer.setLights(tooManyLights)
@@ -317,8 +321,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   it should "throw IllegalArgumentException with clear message for count 10" in:
     val tooManyLights = (0 until 10).map: i =>
-      Light.directional(Array(0.0f, -1.0f, 0.0f))
-    .toArray
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
 
     val exception = intercept[IllegalArgumentException]:
       renderer.setLights(tooManyLights)
@@ -329,8 +332,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "succeed with exactly MAX_LIGHTS (8)" in:
     // This should NOT throw
     val exactlyMaxLights = (0 until 8).map: i =>
-      Light.directional(Array(0.0f, -1.0f, 0.0f))
-    .toArray
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
 
     noException should be thrownBy:
       renderer.setLights(exactlyMaxLights)

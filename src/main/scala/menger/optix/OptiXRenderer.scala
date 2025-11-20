@@ -1,59 +1,51 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.ImageSize
+import menger.common.{ImageSize, Vector, x, y, z}
+import menger.common.toArray
 
 import java.io.{FileOutputStream, InputStream}
 import java.nio.file.Files
 import scala.util.{Failure, Success, Try}
 import scala.util.control.Exception.catching
 
+import menger.common.{Light => CommonLight}
+
 // Light source types (must match C++ LightType enum)
-object LightType:
+private object LightTypeJNI:
   val DIRECTIONAL: Int = 0  // Parallel rays from infinity (sun-like), no distance attenuation
   val POINT: Int = 1         // Radiate from position, inverse-square falloff
 
-// Light source definition
+// Package-private case class for JNI boundary (matches C++ expectations)
+// Must be accessible to JNI (not private) but kept in menger.optix package
+// The C++ code looks for "menger/optix/Light" class
 case class Light(
-  lightType: Int,          // LightType.DIRECTIONAL or LightType.POINT
-  direction: Array[Float], // Light direction (normalized) for directional lights (3 elements)
-  position: Array[Float],  // Light position for point lights (3 elements)
-  color: Array[Float],     // RGB color (0.0-1.0, 3 elements)
-  intensity: Float         // Brightness multiplier
+  lightType: Int,
+  direction: Array[Float],
+  position: Array[Float],
+  color: Array[Float],
+  intensity: Float
 )
 
-object Light:
-  
-  def directional(
-    direction: Array[Float],
-    color: Array[Float] = Array(1.0f, 1.0f, 1.0f),
-    intensity: Float = 1.0f
-  ): Light =
-    require(direction.length == 3, "direction must have 3 elements")
-    require(color.length == 3, "color must have 3 elements")
-    Light(
-      lightType = LightType.DIRECTIONAL,
-      direction = direction,
-      position = Array(0.0f, 0.0f, 0.0f),  // Unused for directional lights
-      color = color,
-      intensity = intensity
-    )
-
-  
-  def point(
-    position: Array[Float],
-    color: Array[Float] = Array(1.0f, 1.0f, 1.0f),
-    intensity: Float = 1.0f
-  ): Light =
-    require(position.length == 3, "position must have 3 elements")
-    require(color.length == 3, "color must have 3 elements")
-    Light(
-      lightType = LightType.POINT,
-      direction = Array(0.0f, 0.0f, 0.0f),  // Unused for point lights
-      position = position,
-      color = color,
-      intensity = intensity
-    )
+// Private helper to convert common.Light to JNI representation
+private def toJNILight(light: CommonLight): Light =
+  light match
+    case CommonLight.Directional(dir, color, intensity) =>
+      Light(
+        lightType = LightTypeJNI.DIRECTIONAL,
+        direction = dir.toArray,
+        position = Array(0f, 0f, 0f),  // Unused for directional
+        color = color.toArray,
+        intensity = intensity
+      )
+    case CommonLight.Point(pos, color, intensity) =>
+      Light(
+        lightType = LightTypeJNI.POINT,
+        direction = Array(0f, 0f, 0f),  // Unused for point
+        position = pos.toArray,
+        color = color.toArray,
+        intensity = intensity
+      )
 
 // Ray statistics from OptiX rendering
 case class RayStats(
@@ -105,8 +97,11 @@ class OptiXRenderer extends LazyLogging:
   @native private def initializeNative(): Boolean
   @native private def disposeNative(): Unit
 
-  
-  @native def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
+
+  @native private def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
+
+  def setSphere(center: Vector[3], radius: Float): Unit =
+    setSphere(center.x, center.y, center.z, radius)
 
   
   @native def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit
@@ -117,16 +112,15 @@ class OptiXRenderer extends LazyLogging:
   
   @native def setScale(scale: Float): Unit
 
-  
+
   @native private def setCameraNative(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit
 
-  
-  def setCamera(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit =
+  def setCamera(eye: Vector[3], lookAt: Vector[3], up: Vector[3], horizontalFovDegrees: Float): Unit =
     require(
       horizontalFovDegrees > 0 && horizontalFovDegrees < 180,
       s"Horizontal FOV must be in range (0, 180), got $horizontalFovDegrees"
     )
-    setCameraNative(eye, lookAt, up, horizontalFovDegrees)
+    setCameraNative(eye.toArray, lookAt.toArray, up.toArray, horizontalFovDegrees)
 
 
   @native def updateImageDimensions(width: Int, height: Int): Unit
@@ -135,10 +129,16 @@ class OptiXRenderer extends LazyLogging:
     updateImageDimensions(size.width, size.height)
 
 
-  @native def setLight(direction: Array[Float], intensity: Float): Unit
+  @native private def setLight(direction: Array[Float], intensity: Float): Unit
 
-  
-  @native def setLights(lights: Array[Light]): Unit
+  def setLight(direction: Vector[3], intensity: Float): Unit =
+    setLight(direction.toArray, intensity)
+
+  @native private def setLights(lights: Array[Light]): Unit
+
+  def setLights(lights: Seq[CommonLight]): Unit =
+    val jniLights = lights.map(toJNILight).toArray
+    setLights(jniLights)
 
   
   @native def setShadows(enabled: Boolean): Unit

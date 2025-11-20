@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import menger.common.ImageSize
 import java.nio.file.{Files, Paths}
@@ -36,7 +37,7 @@ object MultipleLightsTestVisualization:
       .applyTo(renderer)
 
     // Old API as used in test
-    renderer.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val width = 800
     val height = 600

@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import java.nio.file.{Files, Paths}
 
@@ -30,7 +31,7 @@ object FarSphereVisualization:
 
     // Setup with HALF the distance: 2 units apart instead of 4
     // sphereY = 1.0f, planeY = -1.0f (2 units apart)
-    renderer.setSphere(0.0f, 1.0f, 0.0f, 0.5f)
+    renderer.setSphere(Vector[3](0.0f, 1.0f, 0.0f), 0.5f)
     renderer.setSphereColor(0.75f, 0.75f, 0.75f, 1.0f)  // Opaque gray
     renderer.setIOR(1.5f)
     renderer.setScale(1.0f)
@@ -39,14 +40,14 @@ object FarSphereVisualization:
 
     // Camera from setupShadowScene
     renderer.setCamera(
-      Array(0.0f, 0.0f, 5.0f),    // eye
-      Array(0.0f, -0.3f, 0.0f),   // lookAt
-      Array(0.0f, 1.0f, 0.0f),    // up
+      Vector[3](0.0f, 0.0f, 5.0f),    // eye
+      Vector[3](0.0f, -0.3f, 0.0f),  // lookAt
+      Vector[3](0.0f, 1.0f, 0.0f),    // up
       45.0f                        // fov
     )
 
     // Default light from setupShadowScene
-    renderer.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val width = 800
     val height = 600

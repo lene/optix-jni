@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import menger.common.ImageSize
 import java.nio.file.{Files, Paths}
@@ -37,13 +38,13 @@ object LightComparisonVisualization:
     renderer1.initialize()
 
     // Set up scene WITHOUT calling setLight - use C++ default
-    renderer1.setSphere(0.0f, 0.0f, 0.0f, 0.5f)
+    renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
     renderer1.setSphereColor(0.784f, 0.784f, 0.784f, 1.0f)  // OPAQUE_LIGHT_GRAY
     renderer1.setIOR(1.0f)
     renderer1.setCamera(
-      Array(0.0f, 0.5f, 3.0f),
-      Array(0.0f, 0.0f, 0.0f),
-      Array(0.0f, 1.0f, 0.0f),
+      Vector[3](0.0f, 0.5f, 3.0f),
+      Vector[3](0.0f, 0.0f, 0.0f),
+      Vector[3](0.0f, 1.0f, 0.0f),
       60.0f
     )
     // NO setLight() call - uses C++ default: (0.577350f, 0.577350f, -0.577350f)
@@ -58,16 +59,16 @@ object LightComparisonVisualization:
     val renderer2 = new OptiXRenderer()
     renderer2.initialize()
 
-    renderer2.setSphere(0.0f, 0.0f, 0.0f, 0.5f)
+    renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
     renderer2.setSphereColor(0.784f, 0.784f, 0.784f, 1.0f)
     renderer2.setIOR(1.0f)
     renderer2.setCamera(
-      Array(0.0f, 0.5f, 3.0f),
-      Array(0.0f, 0.0f, 0.0f),
-      Array(0.0f, 1.0f, 0.0f),
+      Vector[3](0.0f, 0.5f, 3.0f),
+      Vector[3](0.0f, 0.0f, 0.0f),
+      Vector[3](0.0f, 1.0f, 0.0f),
       60.0f
     )
-    renderer2.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
+    renderer2.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val pixels2 = renderer2.render(width, height).get
     savePPM("light_setlight_unnormalized.ppm", pixels2, width, height)
@@ -79,16 +80,16 @@ object LightComparisonVisualization:
     val renderer3 = new OptiXRenderer()
     renderer3.initialize()
 
-    renderer3.setSphere(0.0f, 0.0f, 0.0f, 0.5f)
+    renderer3.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
     renderer3.setSphereColor(0.784f, 0.784f, 0.784f, 1.0f)
     renderer3.setIOR(1.0f)
     renderer3.setCamera(
-      Array(0.0f, 0.5f, 3.0f),
-      Array(0.0f, 0.0f, 0.0f),
-      Array(0.0f, 1.0f, 0.0f),
+      Vector[3](0.0f, 0.5f, 3.0f),
+      Vector[3](0.0f, 0.0f, 0.0f),
+      Vector[3](0.0f, 1.0f, 0.0f),
       60.0f
     )
-    renderer3.setLight(Array(0.577350f, 0.577350f, -0.577350f), 1.0f)
+    renderer3.setLight(Vector[3](0.577350f, 0.577350f, -0.577350f), 1.0f)
 
     val pixels3 = renderer3.render(width, height).get
     savePPM("light_setlight_normalized.ppm", pixels3, width, height)
@@ -104,7 +105,7 @@ object LightComparisonVisualization:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer4)
 
-    renderer4.setLight(Array(0.5f, 0.5f, -0.5f), 1.0f)
+    renderer4.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val pixels4 = renderer4.render(width, height).get
     savePPM("light_exact_test.ppm", pixels4, width, height)

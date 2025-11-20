@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import menger.common.ImageSize
 import org.scalatest.flatspec.AnyFlatSpec
@@ -15,13 +16,13 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
 
     try {
       // Set up a simple sphere
-      renderer.setSphere(0f, 0f, 0f, 1.0f)
+      renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
       renderer.setSphereColor(1f, 0f, 0f, 1f)
 
       // Initial camera setup - square aspect ratio (800x800)
-      val eye = Array(0f, 0f, 5f)
-      val lookAt = Array(0f, 0f, 0f)
-      val up = Array(0f, 1f, 0f)
+      val eye = Vector[3](0f, 0f, 5f)
+      val lookAt = Vector[3](0f, 0f, 0f)
+      val up = Vector[3](0f, 1f, 0f)
       val fov = 45f
 
       val size1 = ImageSize(800, 800)
@@ -85,13 +86,13 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
 
     try {
       // Set up a sphere off-center
-      renderer.setSphere(1f, 0f, 0f, 0.5f)
+      renderer.setSphere(Vector[3](1f, 0f, 0f), 0.5f)
       renderer.setSphereColor(0f, 1f, 0f, 1f) // Green
 
       // Camera looking at (1, 0, 0) where the sphere is
-      val eye = Array(1f, 0f, 5f)
-      val lookAt = Array(1f, 0f, 0f)
-      val up = Array(0f, 1f, 0f)
+      val eye = Vector[3](1f, 0f, 5f)
+      val lookAt = Vector[3](1f, 0f, 0f)
+      val up = Vector[3](0f, 1f, 0f)
       val fov = 45f
 
       // Render at square aspect ratio

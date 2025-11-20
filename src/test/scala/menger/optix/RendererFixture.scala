@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Vector
 
 import menger.common.ImageSize
 import org.scalatest.BeforeAndAfterEach
@@ -39,30 +40,30 @@ trait RendererFixture extends BeforeAndAfterEach:
   protected def setupDefaults(): Unit =
     // Default camera: positioned at (0, 0.5, 3), looking at origin
     renderer.setCamera(
-      Array(0.0f, 0.5f, 3.0f),  // eye position
-      Array(0.0f, 0.0f, 0.0f),  // look-at point
-      Array(0.0f, 1.0f, 0.0f),  // up vector
+      Vector[3](0.0f, 0.5f, 3.0f),  // eye position
+      Vector[3](0.0f, 0.0f, 0.0f),  // look-at point
+      Vector[3](0.0f, 1.0f, 0.0f),  // up vector
       60.0f                     // field of view
     )
 
     // Default light: directional light from upper-right-front
     renderer.setLight(
-      Array(0.5f, 0.5f, -0.5f),  // direction
-      1.0f                        // intensity
+      Vector[3](0.5f, 0.5f, -0.5f),  // direction
+      1.0f                            // intensity
     )
 
     // Default sphere: centered at origin, radius 0.5
     renderer.setSphere(
-      0.0f, 0.0f, 0.0f,  // position (x, y, z)
-      0.5f               // radius
+      Vector[3](0.0f, 0.0f, 0.0f),  // position
+      0.5f                           // radius
     )
 
-  
-  protected def setCameraEye(x: Float, y: Float, z: Float): Unit =
+
+  protected def setCameraEye(eye: Vector[3]): Unit =
     renderer.setCamera(
-      Array(x, y, z),
-      Array(0.0f, 0.0f, 0.0f),
-      Array(0.0f, 1.0f, 0.0f),
+      eye,
+      Vector[3](0.0f, 0.0f, 0.0f),
+      Vector[3](0.0f, 1.0f, 0.0f),
       60.0f
     )
 
