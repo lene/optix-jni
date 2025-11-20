@@ -81,15 +81,15 @@ class OpaqueSphereTest extends AnyFlatSpec
       .applyTo(renderer)
 
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
-    val (centerX, centerY) = ImageValidation.detectSphereCenter(
+    val center = ImageValidation.detectSphereCenter(
       imageData,
       TEST_IMAGE_SIZE
     )
 
     // Sphere at origin should appear near image center
-    centerX should (be >= TEST_IMAGE_SIZE.width / 2 - MIN_OFFSET_DETECTION and
+    center.x should (be >= TEST_IMAGE_SIZE.width / 2 - MIN_OFFSET_DETECTION and
       be <= TEST_IMAGE_SIZE.width / 2 + MIN_OFFSET_DETECTION)
-    centerY should (be >= TEST_IMAGE_SIZE.height / 2 - MIN_OFFSET_DETECTION and
+    center.y should (be >= TEST_IMAGE_SIZE.height / 2 - MIN_OFFSET_DETECTION and
       be <= TEST_IMAGE_SIZE.height / 2 + MIN_OFFSET_DETECTION)
 
   it should "render with offset position (1, 0, 0)" in:
@@ -98,13 +98,13 @@ class OpaqueSphereTest extends AnyFlatSpec
       .applyTo(renderer)
 
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
-    val (centerX, _) = ImageValidation.detectSphereCenter(
+    val center = ImageValidation.detectSphereCenter(
       imageData,
       TEST_IMAGE_SIZE
     )
 
     // Sphere offset to +X should be detected somewhere in image
-    centerX should (be >= 0 and be < TEST_IMAGE_SIZE.width)
+    center.x should (be >= 0 and be < TEST_IMAGE_SIZE.width)
 
   it should "render in pure red" in:
     TestScenario.default()

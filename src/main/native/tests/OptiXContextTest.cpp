@@ -6,6 +6,25 @@
 
 #include <fstream>
 #include <sstream>
+#include <unistd.h>
+#include <fcntl.h>
+
+// RAII helper to suppress stderr during a test (for expected OptiX driver errors)
+class SuppressStderr {
+    int saved_stderr;
+    int dev_null;
+public:
+    SuppressStderr() {
+        saved_stderr = dup(STDERR_FILENO);
+        dev_null = open("/dev/null", O_WRONLY);
+        dup2(dev_null, STDERR_FILENO);
+    }
+    ~SuppressStderr() {
+        dup2(saved_stderr, STDERR_FILENO);
+        close(dev_null);
+        close(saved_stderr);
+    }
+};
 
 // Helper to read PTX file for module tests - tries multiple locations
 static std::string readPTXFile() {
@@ -135,6 +154,8 @@ TEST_F(OptiXContextTest, CreateModuleFromPTXSucceeds) {
 TEST_F(OptiXContextTest, CreateModuleWithInvalidPTXThrows) {
     ASSERT_TRUE(context.initialize());
 
+    // Suppress expected OptiX driver error output for invalid PTX
+    SuppressStderr suppress;
     EXPECT_THROW(
         context.createModuleFromPTX(
             "invalid ptx",

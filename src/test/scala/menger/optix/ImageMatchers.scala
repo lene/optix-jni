@@ -47,15 +47,15 @@ object ImageMatchers:
     tolerance: Int = SPHERE_CENTER_TOLERANCE
   ): Matcher[Array[Byte]] =
     Matcher { imageData =>
-      val (actualX, actualY) = ImageValidation.detectSphereCenter(imageData, size)
-      val xMatch = math.abs(actualX - expectedX) <= tolerance
-      val yMatch = math.abs(actualY - expectedY) <= tolerance
+      val center = ImageValidation.detectSphereCenter(imageData, size)
+      val xMatch = math.abs(center.x - expectedX) <= tolerance
+      val yMatch = math.abs(center.y - expectedY) <= tolerance
       val matches = xMatch && yMatch
 
       imageMatchResult(
         matches,
-        s"Sphere center at ($actualX, $actualY) was not within $tolerance pixels of expected ($expectedX, $expectedY)",
-        s"Sphere center at ($actualX, $actualY) was within $tolerance pixels of ($expectedX, $expectedY) but should not have been",
+        s"Sphere center at (${center.x}, ${center.y}) was not within $tolerance pixels of expected ($expectedX, $expectedY)",
+        s"Sphere center at (${center.x}, ${center.y}) was within $tolerance pixels of ($expectedX, $expectedY) but should not have been",
         size.width,
         size.height
       )
@@ -174,16 +174,16 @@ object ImageMatchers:
     tolerance: Double = 0.1
   ): Matcher[Array[Byte]] =
     Matcher { imageData =>
-      val (r, g, b) = ImageValidation.colorChannelRatio(imageData, size)
-      val rMatch = math.abs(r - expectedR) <= tolerance
-      val gMatch = math.abs(g - expectedG) <= tolerance
-      val bMatch = math.abs(b - expectedB) <= tolerance
+      val ratio = ImageValidation.colorChannelRatio(imageData, size)
+      val rMatch = math.abs(ratio.r - expectedR) <= tolerance
+      val gMatch = math.abs(ratio.g - expectedG) <= tolerance
+      val bMatch = math.abs(ratio.b - expectedB) <= tolerance
       val matches = rMatch && gMatch && bMatch
 
       imageMatchResult(
         matches,
-        f"Color ratio (R=$r%.3f, G=$g%.3f, B=$b%.3f) was not within $tolerance of expected (R=$expectedR%.3f, G=$expectedG%.3f, B=$expectedB%.3f)",
-        f"Color ratio (R=$r%.3f, G=$g%.3f, B=$b%.3f) was within $tolerance of (R=$expectedR%.3f, G=$expectedG%.3f, B=$expectedB%.3f) but should not have been",
+        f"Color ratio (R=${ratio.r}%.3f, G=${ratio.g}%.3f, B=${ratio.b}%.3f) was not within $tolerance of expected (R=$expectedR%.3f, G=$expectedG%.3f, B=$expectedB%.3f)",
+        f"Color ratio (R=${ratio.r}%.3f, G=${ratio.g}%.3f, B=${ratio.b}%.3f) was within $tolerance of (R=$expectedR%.3f, G=$expectedG%.3f, B=$expectedB%.3f) but should not have been",
         size.width,
         size.height
       )
@@ -226,7 +226,7 @@ object ImageMatchers:
 
   def showBackground(size: ImageSize): Matcher[Array[Byte]] =
     Matcher { imageData =>
-      val visible = ImageValidation.backgroundVisibility(imageData, size)
+      val visible = ImageValidation.isBackgroundVisible(imageData, size)
 
       imageMatchResult(
         visible,
@@ -243,7 +243,7 @@ object ImageMatchers:
     size: ImageSize
   ): Matcher[Array[Byte]] =
     Matcher { imageData =>
-      val visible = ImageValidation.planeVisibility(imageData, size, region)
+      val visible = ImageValidation.isPlaneVisible(imageData, size, region)
 
       imageMatchResult(
         visible,

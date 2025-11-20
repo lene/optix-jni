@@ -120,14 +120,14 @@ class TransparencyTest extends AnyFlatSpec
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Image should show color variation (not grayscale)
-    val (r, g, b) = ImageValidation.colorChannelRatio(
+    val ratio = ImageValidation.colorChannelRatio(
       imageData,
       TEST_IMAGE_SIZE
     )
 
     // With plane interaction, ratios vary but should not all be equal (not grayscale)
-    val maxRatio = math.max(r, math.max(g, b))
-    val minRatio = math.min(r, math.min(g, b))
+    val maxRatio = math.max(ratio.r, math.max(ratio.g, ratio.b))
+    val minRatio = math.min(ratio.r, math.min(ratio.g, ratio.b))
     (maxRatio - minRatio) should be > 0.05  // At least 5% difference between channels
 
   it should "preserve background checkered pattern with low alpha" in:

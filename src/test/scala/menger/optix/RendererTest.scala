@@ -414,13 +414,13 @@ class RendererTest extends AnyFlatSpec
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Green should be dominant channel
-    val (r, g, b) = ImageValidation.colorChannelRatio(
+    val ratio = ImageValidation.colorChannelRatio(
       imageData,
       TEST_IMAGE_SIZE
     )
 
-    g should be > r
-    g should be > b
+    ratio.g should be > ratio.r
+    ratio.g should be > ratio.b
 
   val runningUnderSanitizer: Boolean = sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
 

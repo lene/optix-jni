@@ -26,12 +26,12 @@ class MaterialTest extends AnyFlatSpec
       .applyTo(renderer)
 
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
-    val (r, g, b) = ImageValidation.colorChannelRatio(
+    val ratio = ImageValidation.colorChannelRatio(
       imageData,
       TEST_IMAGE_SIZE
     )
 
-    b should be >= r  // Blue tint
+    ratio.b should be >= ratio.r  // Blue tint
 
   "Clear glass" should "render correctly" in:
     TestScenario.glassSphere()
@@ -52,10 +52,10 @@ class MaterialTest extends AnyFlatSpec
       .applyTo(renderer)
 
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
-    val (r, g, b) = ImageValidation.colorChannelRatio(
+    val ratio = ImageValidation.colorChannelRatio(
       imageData,
       TEST_IMAGE_SIZE
     )
 
-    g should be > r
-    g should be > b
+    ratio.g should be > ratio.r
+    ratio.g should be > ratio.b
