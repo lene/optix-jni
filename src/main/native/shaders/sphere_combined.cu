@@ -480,9 +480,12 @@ extern "C" __global__ void __raygen__rg() {
     const uint3 dim = optixGetLaunchDimensions();
 
     // Calculate normalized device coordinates [-1, 1]
-    // Note: Flip V so that idx.y=0 (top) maps to v=+1 and idx.y=height (bottom) maps to v=-1
+    // Screen convention: idx.y=0 is top of screen, idx.y=height is bottom
+    // For floor at bottom: top screen should look up (positive v), bottom should look down (negative v)
+    // Since idx.y increases downward but v should increase upward, we need to flip:
+    // idx.y=0 → v=+1 (top of screen looks up), idx.y=height → v=-1 (bottom looks down)
     const float u = (static_cast<float>(idx.x) + 0.5f) / static_cast<float>(dim.x) * 2.0f - 1.0f;
-    const float v = -((static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y) * 2.0f - 1.0f);
+    const float v = 1.0f - (static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y) * 2.0f;
 
     // Construct ray direction from camera basis vectors
     const float3 ray_origin = make_float3(
@@ -1091,10 +1094,10 @@ extern "C" __global__ void __raygen__hitpoints() {
     const RayGenData* rt_data = reinterpret_cast<RayGenData*>(optixGetSbtDataPointer());
 
     // Generate camera ray (same as __raygen__rg)
-    const float2 d = make_float2(
-        (2.0f * (static_cast<float>(idx.x) + 0.5f) / static_cast<float>(dim.x)) - 1.0f,
-        (2.0f * (static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y)) - 1.0f
-    );
+    // Screen convention: idx.y=0 is top, so flip to get v=+1 at top, v=-1 at bottom
+    const float u = (static_cast<float>(idx.x) + 0.5f) / static_cast<float>(dim.x) * 2.0f - 1.0f;
+    const float v = 1.0f - (static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y) * 2.0f;
+    const float2 d = make_float2(u, v);
 
     const float3 cam_eye = make_float3(rt_data->cam_eye[0], rt_data->cam_eye[1], rt_data->cam_eye[2]);
     const float3 cam_u = make_float3(rt_data->camera_u[0], rt_data->camera_u[1], rt_data->camera_u[2]);
@@ -1234,67 +1237,34 @@ extern "C" __global__ void __caustics_count_grid_cells() {
  * @param flux RGB energy carried by photon
  */
 __device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir, const float3& flux) {
-    // Get grid cell for photon position
-    const uint3 center_cell = getCausticsGridCell(photon_pos);
-    const unsigned int grid_res = params.caustics.grid_resolution;
+    // Simple brute-force search through all hit points
+    // TODO: Use spatial hash grid for efficiency once grid building is implemented
+    const unsigned int num_hp = *params.caustics.num_hit_points;
 
-    // Search 27 neighboring cells (3x3x3) for nearby hit points
-    for (int dz = -1; dz <= 1; ++dz) {
-        for (int dy = -1; dy <= 1; ++dy) {
-            for (int dx = -1; dx <= 1; ++dx) {
-                // Compute neighbor cell with clamping
-                const int nx = static_cast<int>(center_cell.x) + dx;
-                const int ny = static_cast<int>(center_cell.y) + dy;
-                const int nz = static_cast<int>(center_cell.z) + dz;
+    // Check all hit points (slow but accurate for debugging)
+    for (unsigned int hp_idx = 0; hp_idx < num_hp; hp_idx += 1) {
+        HitPoint& hp = params.caustics.hit_points[hp_idx];
 
-                // Skip cells outside grid
-                if (nx < 0 || nx >= static_cast<int>(grid_res) ||
-                    ny < 0 || ny >= static_cast<int>(grid_res) ||
-                    nz < 0 || nz >= static_cast<int>(grid_res)) {
-                    continue;
-                }
+        // Compute distance from photon to hit point
+        const float3 hp_pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
+        const float3 diff = photon_pos - hp_pos;
+        const float dist_sq = dot(diff, diff);
+        const float radius_sq = hp.radius * hp.radius;
 
-                const uint3 neighbor = make_uint3(
-                    static_cast<unsigned int>(nx),
-                    static_cast<unsigned int>(ny),
-                    static_cast<unsigned int>(nz)
-                );
-                const unsigned int cell_idx = getCausticsGridIndex(neighbor);
+        // Check if photon is within hit point's gather radius
+        if (dist_sq < radius_sq) {
+            // Weight by cosine of angle (Lambertian BRDF)
+            const float3 hp_normal = make_float3(hp.normal[0], hp.normal[1], hp.normal[2]);
+            const float cos_theta = fmaxf(0.0f, dot(make_float3(-photon_dir.x, -photon_dir.y, -photon_dir.z), hp_normal));
 
-                // Get hit points in this cell
-                const unsigned int start = params.caustics.grid_offsets[cell_idx];
-                const unsigned int count = params.caustics.grid_counts[cell_idx];
+            if (cos_theta > 0.0f) {
+                // Atomic accumulation of flux
+                atomicAdd(&hp.flux[0], flux.x * cos_theta);
+                atomicAdd(&hp.flux[1], flux.y * cos_theta);
+                atomicAdd(&hp.flux[2], flux.z * cos_theta);
 
-                // Check each hit point in the cell
-                for (unsigned int i = 0; i < count; ++i) {
-                    const unsigned int hp_idx = start + i;
-                    if (hp_idx >= *params.caustics.num_hit_points) continue;
-
-                    HitPoint& hp = params.caustics.hit_points[hp_idx];
-
-                    // Compute distance from photon to hit point
-                    const float3 hp_pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
-                    const float3 diff = photon_pos - hp_pos;
-                    const float dist_sq = dot(diff, diff);
-                    const float radius_sq = hp.radius * hp.radius;
-
-                    // Check if photon is within hit point's gather radius
-                    if (dist_sq < radius_sq) {
-                        // Weight by cosine of angle (Lambertian BRDF)
-                        const float3 hp_normal = make_float3(hp.normal[0], hp.normal[1], hp.normal[2]);
-                        const float cos_theta = fmaxf(0.0f, dot(make_float3(-photon_dir.x, -photon_dir.y, -photon_dir.z), hp_normal));
-
-                        if (cos_theta > 0.0f) {
-                            // Atomic accumulation of flux
-                            atomicAdd(&hp.flux[0], flux.x * cos_theta);
-                            atomicAdd(&hp.flux[1], flux.y * cos_theta);
-                            atomicAdd(&hp.flux[2], flux.z * cos_theta);
-
-                            // Count photons for this hit point (this iteration)
-                            atomicAdd(&hp.new_photons, 1);
-                        }
-                    }
-                }
+                // Count photons for this hit point (this iteration)
+                atomicAdd(&hp.new_photons, 1);
             }
         }
     }
@@ -1598,7 +1568,7 @@ extern "C" __global__ void __caustics_update_radii() {
 //==============================================================================
 
 /**
- * CUDA kernel to compute final caustic radiance and write to image buffer.
+ * OptiX raygen shader to compute final caustic radiance and write to image buffer.
  *
  * Converts accumulated photon flux to radiance estimate:
  *   L = Φ / (π * R² * N_total)
@@ -1607,15 +1577,19 @@ extern "C" __global__ void __caustics_update_radii() {
  *   Φ = accumulated flux
  *   R = final search radius
  *   N_total = total photons traced across all iterations
+ *
+ * Launch with dimensions = (num_hit_points, 1) to process all hit points.
  */
-extern "C" __global__ void __caustics_compute_radiance() {
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= *params.caustics.num_hit_points) return;
+extern "C" __global__ void __raygen__caustics_radiance() {
+    const uint3 idx = optixGetLaunchIndex();
+    if (idx.x >= *params.caustics.num_hit_points) return;
 
-    const HitPoint& hp = params.caustics.hit_points[idx];
+    const HitPoint& hp = params.caustics.hit_points[idx.x];
 
-    // Skip hit points with no accumulated photons
-    if (hp.n == 0) return;
+    // Skip hit points with no accumulated flux
+    // Check flux magnitude instead of photon count (n is only updated by radius kernel)
+    const float flux_magnitude = hp.flux[0] + hp.flux[1] + hp.flux[2];
+    if (flux_magnitude < 1e-10f) return;
 
     // Compute radiance estimate
     const float area = M_PI * hp.radius * hp.radius;
@@ -1631,8 +1605,11 @@ extern "C" __global__ void __caustics_compute_radiance() {
         hp.flux[2] / (area * total_photons)
     );
 
-    // Scale caustic contribution (can be adjusted for artistic effect)
-    const float caustic_scale = 10000.0f;  // Boost caustic visibility
+    // Scale caustic contribution
+    // With proper normalization (flux / (π * R² * N)), values should be reasonable.
+    // Apply moderate scale to account for light intensity and PPM energy conservation.
+    // 10000 provides visible caustics without excessive saturation.
+    const float caustic_scale = 10000.0f;
 
     // Add caustic radiance to the pixel (additive blending)
     const unsigned int pixel_idx = (hp.pixel_y * params.image_width + hp.pixel_x) * 4;
