@@ -111,6 +111,10 @@ struct OptiXWrapper::Impl {
     OptixProgramGroup shadow_miss_prog_group = nullptr;
     OptixProgramGroup shadow_hitgroup_prog_group = nullptr;
 
+    // Caustics program groups (for PPM rendering)
+    OptixProgramGroup caustics_hitpoints_raygen = nullptr;
+    OptixProgramGroup caustics_photons_raygen = nullptr;
+
     // GPU buffers (created once, reused)
     CUdeviceptr d_gas_output_buffer = 0;
     CUdeviceptr d_params = 0;
@@ -314,6 +318,14 @@ void OptiXWrapper::createProgramGroups(OptixModule sphere_module) {
         impl->module, "__closesthit__shadow",
         impl->module, "__intersection__sphere"
     );
+
+    // Caustics raygen programs (for Progressive Photon Mapping)
+    impl->caustics_hitpoints_raygen = impl->optix_context.createRaygenProgramGroup(
+        impl->module, "__raygen__hitpoints"
+    );
+    impl->caustics_photons_raygen = impl->optix_context.createRaygenProgramGroup(
+        impl->module, "__raygen__photons"
+    );
 }
 
 // Create OptiX pipeline and configure stack sizes
@@ -323,7 +335,9 @@ void OptiXWrapper::createPipeline() {
         impl->miss_prog_group,
         impl->hitgroup_prog_group,
         impl->shadow_miss_prog_group,
-        impl->shadow_hitgroup_prog_group
+        impl->shadow_hitgroup_prog_group,
+        impl->caustics_hitpoints_raygen,
+        impl->caustics_photons_raygen
     };
 
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
@@ -336,7 +350,7 @@ void OptiXWrapper::createPipeline() {
         pipeline_compile_options,
         pipeline_link_options,
         program_groups,
-        5  // Updated from 3 to 5 (added shadow miss and shadow hitgroup)
+        7  // Updated to include caustics raygen programs
     );
 }
 
@@ -606,6 +620,54 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             cudaMemcpyHostToDevice
         ));
 
+        // Allocate caustics buffers if enabled (lazy allocation)
+        if (impl->caustics_enabled) {
+            const size_t hit_points_size = RayTracingConstants::MAX_HIT_POINTS * sizeof(HitPoint);
+            if (impl->cached_hit_points_size != hit_points_size) {
+                // Free existing buffers
+                if (impl->d_hit_points) {
+                    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(impl->d_hit_points)));
+                }
+                if (impl->d_num_hit_points) {
+                    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(impl->d_num_hit_points)));
+                }
+                if (impl->d_caustics_grid) {
+                    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(impl->d_caustics_grid)));
+                }
+                if (impl->d_caustics_grid_counts) {
+                    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(impl->d_caustics_grid_counts)));
+                }
+                if (impl->d_caustics_grid_offsets) {
+                    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(impl->d_caustics_grid_offsets)));
+                }
+
+                // Allocate hit points array
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_hit_points), hit_points_size));
+
+                // Allocate counter for atomicAdd
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_num_hit_points), sizeof(unsigned int)));
+
+                // Allocate spatial hash grid
+                const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
+                                         RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
+                                         RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_caustics_grid), grid_size * sizeof(unsigned int)));
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_caustics_grid_counts), grid_size * sizeof(unsigned int)));
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_caustics_grid_offsets), grid_size * sizeof(unsigned int)));
+
+                impl->cached_hit_points_size = hit_points_size;
+            }
+
+            // Zero out hit point counter
+            unsigned int zero = 0;
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void*>(impl->d_num_hit_points),
+                &zero,
+                sizeof(unsigned int),
+                cudaMemcpyHostToDevice
+            ));
+        }
+
         // Set up launch parameters (use cached buffer)
         Params params;
         params.image = reinterpret_cast<unsigned char*>(impl->d_image);
@@ -728,6 +790,26 @@ void OptiXWrapper::dispose() {
             if (impl->hitgroup_prog_group) {
                 impl->optix_context.destroyProgramGroup(impl->hitgroup_prog_group);
                 impl->hitgroup_prog_group = nullptr;
+            }
+
+            if (impl->shadow_miss_prog_group) {
+                impl->optix_context.destroyProgramGroup(impl->shadow_miss_prog_group);
+                impl->shadow_miss_prog_group = nullptr;
+            }
+
+            if (impl->shadow_hitgroup_prog_group) {
+                impl->optix_context.destroyProgramGroup(impl->shadow_hitgroup_prog_group);
+                impl->shadow_hitgroup_prog_group = nullptr;
+            }
+
+            if (impl->caustics_hitpoints_raygen) {
+                impl->optix_context.destroyProgramGroup(impl->caustics_hitpoints_raygen);
+                impl->caustics_hitpoints_raygen = nullptr;
+            }
+
+            if (impl->caustics_photons_raygen) {
+                impl->optix_context.destroyProgramGroup(impl->caustics_photons_raygen);
+                impl->caustics_photons_raygen = nullptr;
             }
 
             if (impl->module) {

@@ -969,6 +969,51 @@ extern "C" __global__ void __closesthit__shadow() {
 //==============================================================================
 
 /**
+ * Create orthonormal basis from a single vector.
+ * Used to generate tangent space for sampling around a direction.
+ *
+ * @param n Input normal vector (must be normalized)
+ * @param t Output tangent vector
+ * @param b Output bitangent vector
+ */
+__device__ void createONB(const float3& n, float3& t, float3& b) {
+    if (fabsf(n.x) > fabsf(n.z)) {
+        t = make_float3(-n.y, n.x, 0.0f);
+    } else {
+        t = make_float3(0.0f, -n.z, n.y);
+    }
+    t = normalize(t);
+    b = cross(n, t);
+}
+
+/**
+ * Sample a point on a unit disk using concentric mapping.
+ *
+ * @param u1 Random value [0, 1)
+ * @param u2 Random value [0, 1)
+ * @return 2D point on unit disk
+ */
+__device__ float2 sampleDisk(float u1, float u2) {
+    const float r = sqrtf(u1);
+    const float theta = 2.0f * M_PI * u2;
+    return make_float2(r * cosf(theta), r * sinf(theta));
+}
+
+/**
+ * Sample a direction on a unit sphere uniformly.
+ *
+ * @param u1 Random value [0, 1)
+ * @param u2 Random value [0, 1)
+ * @return Unit direction vector
+ */
+__device__ float3 sampleSphere(float u1, float u2) {
+    const float z = 1.0f - 2.0f * u1;  // z in [-1, 1]
+    const float r = sqrtf(fmaxf(0.0f, 1.0f - z * z));
+    const float phi = 2.0f * M_PI * u2;
+    return make_float3(r * cosf(phi), r * sinf(phi), z);
+}
+
+/**
  * Compute grid cell index for a given position in the caustics spatial hash grid.
  *
  * @param pos World position to hash
@@ -1171,4 +1216,439 @@ extern "C" __global__ void __caustics_count_grid_cells() {
     const unsigned int cell_idx = getCausticsGridIndex(cell);
 
     atomicAdd(&params.caustics.grid_counts[cell_idx], 1);
+}
+
+//==============================================================================
+// Progressive Photon Mapping - Photon Deposition (Phase 3)
+//==============================================================================
+
+/**
+ * Deposit photon energy at nearby hit points using the spatial hash grid.
+ *
+ * For each hit point within the photon's influence radius:
+ * - Accumulate flux weighted by cosine of angle between photon direction and surface normal
+ * - Increment photon counter for radius reduction
+ *
+ * @param photon_pos Position where photon hit diffuse surface
+ * @param photon_dir Incoming direction of photon (normalized)
+ * @param flux RGB energy carried by photon
+ */
+__device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir, const float3& flux) {
+    // Get grid cell for photon position
+    const uint3 center_cell = getCausticsGridCell(photon_pos);
+    const unsigned int grid_res = params.caustics.grid_resolution;
+
+    // Search 27 neighboring cells (3x3x3) for nearby hit points
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                // Compute neighbor cell with clamping
+                const int nx = static_cast<int>(center_cell.x) + dx;
+                const int ny = static_cast<int>(center_cell.y) + dy;
+                const int nz = static_cast<int>(center_cell.z) + dz;
+
+                // Skip cells outside grid
+                if (nx < 0 || nx >= static_cast<int>(grid_res) ||
+                    ny < 0 || ny >= static_cast<int>(grid_res) ||
+                    nz < 0 || nz >= static_cast<int>(grid_res)) {
+                    continue;
+                }
+
+                const uint3 neighbor = make_uint3(
+                    static_cast<unsigned int>(nx),
+                    static_cast<unsigned int>(ny),
+                    static_cast<unsigned int>(nz)
+                );
+                const unsigned int cell_idx = getCausticsGridIndex(neighbor);
+
+                // Get hit points in this cell
+                const unsigned int start = params.caustics.grid_offsets[cell_idx];
+                const unsigned int count = params.caustics.grid_counts[cell_idx];
+
+                // Check each hit point in the cell
+                for (unsigned int i = 0; i < count; ++i) {
+                    const unsigned int hp_idx = start + i;
+                    if (hp_idx >= *params.caustics.num_hit_points) continue;
+
+                    HitPoint& hp = params.caustics.hit_points[hp_idx];
+
+                    // Compute distance from photon to hit point
+                    const float3 hp_pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
+                    const float3 diff = photon_pos - hp_pos;
+                    const float dist_sq = dot(diff, diff);
+                    const float radius_sq = hp.radius * hp.radius;
+
+                    // Check if photon is within hit point's gather radius
+                    if (dist_sq < radius_sq) {
+                        // Weight by cosine of angle (Lambertian BRDF)
+                        const float3 hp_normal = make_float3(hp.normal[0], hp.normal[1], hp.normal[2]);
+                        const float cos_theta = fmaxf(0.0f, dot(make_float3(-photon_dir.x, -photon_dir.y, -photon_dir.z), hp_normal));
+
+                        if (cos_theta > 0.0f) {
+                            // Atomic accumulation of flux
+                            atomicAdd(&hp.flux[0], flux.x * cos_theta);
+                            atomicAdd(&hp.flux[1], flux.y * cos_theta);
+                            atomicAdd(&hp.flux[2], flux.z * cos_theta);
+
+                            // Count photons for this hit point (this iteration)
+                            atomicAdd(&hp.new_photons, 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+//==============================================================================
+// Progressive Photon Mapping - Photon Tracing (Phase 3)
+//==============================================================================
+
+/**
+ * Trace a single photon through the scene.
+ *
+ * - If photon hits the sphere, apply refraction (Snell's law) and Beer-Lambert absorption
+ * - If photon hits the diffuse plane, deposit its energy at nearby hit points
+ * - Continues tracing until max bounces or photon escapes/is absorbed
+ *
+ * @param origin Starting position of photon
+ * @param dir Initial direction of photon (normalized)
+ * @param flux RGB energy carried by photon
+ * @param seed RNG seed (modified in place)
+ * @param max_bounces Maximum number of surface interactions
+ */
+__device__ void tracePhoton(
+    float3 origin,
+    float3 dir,
+    float3 flux,
+    unsigned int& seed,
+    int max_bounces
+) {
+    // Get sphere geometry for intersection testing
+    // Note: We trace against the same acceleration structure, reusing existing intersection
+
+    for (int bounce = 0; bounce < max_bounces; ++bounce) {
+        // Trace photon ray to find next intersection
+        // We'll use a simplified approach: check for sphere intersection first,
+        // then plane intersection if sphere missed
+
+        // For this implementation, we trace the photon and check what it hits
+        // We reuse the primary ray closest hit shader, but interpret results differently
+
+        // Check intersection with sphere analytically
+        // Sphere center is at origin (0, 0, 0) by default, radius is configurable
+        const float3 sphere_center = make_float3(0.0f, 0.0f, 0.0f);  // Default sphere center
+        const float sphere_radius = 1.5f;  // Default radius (from HitGroupData in render)
+
+        const float3 oc = origin - sphere_center;
+        const float a = dot(dir, dir);
+        const float half_b = dot(oc, dir);
+        const float c = dot(oc, oc) - sphere_radius * sphere_radius;
+        const float discriminant = half_b * half_b - a * c;
+
+        if (discriminant > 0.0f) {
+            // Photon hits sphere - compute intersection point
+            const float sqrt_d = sqrtf(discriminant);
+            float t = (-half_b - sqrt_d) / a;  // Near intersection
+
+            // Check if intersection is in front
+            if (t < 0.001f) {
+                t = (-half_b + sqrt_d) / a;  // Try far intersection
+            }
+
+            if (t > 0.001f) {
+                // Valid sphere intersection
+                const float3 hit_point = origin + dir * t;
+                const float3 outward_normal = normalize(hit_point - sphere_center);
+
+                // Determine if entering or exiting
+                const bool entering = dot(dir, outward_normal) < 0.0f;
+                const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
+
+                // Get material properties
+                const float n1 = entering ? 1.0f : params.sphere_ior;
+                const float n2 = entering ? params.sphere_ior : 1.0f;
+                const float eta = n1 / n2;
+
+                const float cos_theta_i = fabsf(dot(dir, normal));
+                const float sin_theta_i_sq = 1.0f - cos_theta_i * cos_theta_i;
+                const float sin_theta_t_sq = eta * eta * sin_theta_i_sq;
+
+                // Apply Beer-Lambert absorption when exiting
+                if (!entering) {
+                    const float3 glass_color = make_float3(
+                        params.sphere_color[0],
+                        params.sphere_color[1],
+                        params.sphere_color[2]
+                    );
+                    const float glass_alpha = params.sphere_color[3];
+
+                    // Calculate extinction from color and alpha
+                    const float absorption_scale = BEER_LAMBERT_ABSORPTION_SCALE;
+                    const float3 extinction = make_float3(
+                        -logf(fmaxf(glass_color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+                        -logf(fmaxf(glass_color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+                        -logf(fmaxf(glass_color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale
+                    );
+
+                    // Beer-Lambert attenuation
+                    const float3 attenuation = make_float3(
+                        expf(-extinction.x * t * params.sphere_scale),
+                        expf(-extinction.y * t * params.sphere_scale),
+                        expf(-extinction.z * t * params.sphere_scale)
+                    );
+
+                    flux = make_float3(flux.x * attenuation.x, flux.y * attenuation.y, flux.z * attenuation.z);
+                }
+
+                // Check for total internal reflection
+                if (sin_theta_t_sq > 1.0f) {
+                    // Total internal reflection
+                    const float3 reflect_dir = make_float3(
+                        dir.x - 2.0f * cos_theta_i * normal.x,
+                        dir.y - 2.0f * cos_theta_i * normal.y,
+                        dir.z - 2.0f * cos_theta_i * normal.z
+                    );
+                    origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
+                    dir = normalize(reflect_dir);
+                } else {
+                    // Refraction using Snell's law
+                    const float cos_theta_t = sqrtf(1.0f - sin_theta_t_sq);
+                    const float3 refract_dir = make_float3(
+                        eta * dir.x + (eta * cos_theta_i - cos_theta_t) * normal.x,
+                        eta * dir.y + (eta * cos_theta_i - cos_theta_t) * normal.y,
+                        eta * dir.z + (eta * cos_theta_i - cos_theta_t) * normal.z
+                    );
+                    origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
+                    dir = normalize(refract_dir);
+                }
+
+                continue;  // Continue tracing refracted/reflected photon
+            }
+        }
+
+        // Photon missed sphere - check plane intersection
+        const int plane_axis = params.plane_axis;
+        const float plane_value = params.plane_value;
+
+        float ray_orig_comp, ray_dir_comp;
+        if (plane_axis == 0) {
+            ray_orig_comp = origin.x;
+            ray_dir_comp = dir.x;
+        } else if (plane_axis == 1) {
+            ray_orig_comp = origin.y;
+            ray_dir_comp = dir.y;
+        } else {
+            ray_orig_comp = origin.z;
+            ray_dir_comp = dir.z;
+        }
+
+        if (fabsf(ray_dir_comp) > 1e-6f) {
+            const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
+
+            if (t_plane > 0.001f) {
+                // Photon hits the diffuse plane - deposit energy
+                const float3 plane_hit = origin + dir * t_plane;
+                depositPhoton(plane_hit, dir, flux);
+                return;  // Photon absorbed by diffuse surface
+            }
+        }
+
+        // Photon escaped scene
+        return;
+    }
+}
+
+//==============================================================================
+// Progressive Photon Mapping - Photon Emission Raygen (Phase 3)
+//==============================================================================
+
+/**
+ * Ray generation program for emitting photons from light sources.
+ *
+ * This is the photon tracing phase of Progressive Photon Mapping:
+ * - Each thread emits one photon from a light source
+ * - Photons are traced through the scene, refracting through the sphere
+ * - When photons hit the diffuse plane, they deposit energy at nearby hit points
+ *
+ * Note: Launch dimensions should be sqrt(photons_per_iteration) x sqrt(photons_per_iteration)
+ */
+extern "C" __global__ void __raygen__photons() {
+    const uint3 idx = optixGetLaunchIndex();
+    const uint3 dim = optixGetLaunchDimensions();
+
+    // Each thread traces one photon
+    const unsigned int photon_idx = idx.x + idx.y * dim.x;
+
+    // Initialize RNG with photon index + iteration for different patterns each iteration
+    unsigned int seed = tea(photon_idx, params.caustics.current_iteration);
+
+    // Select light source (for now, use first light)
+    // TODO: Weight by intensity for multiple lights
+    if (params.num_lights == 0) return;
+
+    const Light& light = params.lights[0];
+
+    // Generate photon origin and direction based on light type
+    float3 photon_origin;
+    float3 photon_dir;
+    float3 photon_flux;
+
+    if (light.type == LightType::DIRECTIONAL) {
+        // Directional light: emit parallel rays targeting the sphere
+        // Sample a disk perpendicular to light direction, centered on sphere
+        const float3 light_dir = normalize(make_float3(
+            light.direction[0],
+            light.direction[1],
+            light.direction[2]
+        ));
+
+        // Create tangent space around light direction
+        float3 tangent, bitangent;
+        createONB(light_dir, tangent, bitangent);
+
+        // Sample disk with radius large enough to cover sphere (radius ~1.5)
+        const float disk_radius = 3.0f;  // Cover sphere + margin
+        const float2 disk_sample = sampleDisk(rnd(seed), rnd(seed));
+
+        // Photon starts from disk behind the sphere
+        const float3 sphere_center = make_float3(0.0f, 0.0f, 0.0f);
+        photon_origin = sphere_center
+                       + tangent * (disk_sample.x * disk_radius)
+                       + bitangent * (disk_sample.y * disk_radius)
+                       - light_dir * 20.0f;  // Start well behind sphere
+
+        photon_dir = light_dir;
+
+    } else {
+        // Point light: emit in random direction from light position
+        photon_origin = make_float3(
+            light.position[0],
+            light.position[1],
+            light.position[2]
+        );
+        photon_dir = sampleSphere(rnd(seed), rnd(seed));
+    }
+
+    // Calculate photon flux
+    // Total flux from light is distributed among all photons
+    const float total_photons = static_cast<float>(dim.x * dim.y);
+    photon_flux = make_float3(
+        light.color[0] * light.intensity / total_photons,
+        light.color[1] * light.intensity / total_photons,
+        light.color[2] * light.intensity / total_photons
+    );
+
+    // Trace photon through scene
+    tracePhoton(photon_origin, photon_dir, photon_flux, seed, MAX_PHOTON_BOUNCES);
+}
+
+//==============================================================================
+// Progressive Photon Mapping - Radius Update Kernel (Phase 4)
+//==============================================================================
+
+/**
+ * CUDA kernel to update hit point search radii using PPM progressive refinement.
+ *
+ * PPM radius reduction formula:
+ *   R_new = R_old * sqrt((N + α*M) / (N + M))
+ *
+ * Where:
+ *   N = accumulated photon count from previous iterations
+ *   M = new photons this iteration
+ *   α = radius reduction factor (typically 0.7)
+ *
+ * This causes the radius to shrink over iterations, improving estimate quality.
+ */
+extern "C" __global__ void __caustics_update_radii() {
+    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= *params.caustics.num_hit_points) return;
+
+    HitPoint& hp = params.caustics.hit_points[idx];
+
+    // Only update if we received photons this iteration
+    if (hp.new_photons > 0) {
+        const float alpha = params.caustics.alpha;
+        const float N = static_cast<float>(hp.n);
+        const float M = static_cast<float>(hp.new_photons);
+
+        // PPM radius reduction
+        const float new_N = N + alpha * M;
+        const float ratio = new_N / (N + M);
+
+        // Update radius
+        hp.radius *= sqrtf(ratio);
+
+        // Update photon count
+        hp.n = static_cast<unsigned int>(new_N);
+
+        // Scale flux to account for reduced radius
+        // (maintains energy conservation)
+        hp.flux[0] *= ratio;
+        hp.flux[1] *= ratio;
+        hp.flux[2] *= ratio;
+    }
+
+    // Reset new photon counter for next iteration
+    hp.new_photons = 0;
+}
+
+//==============================================================================
+// Progressive Photon Mapping - Final Radiance Computation (Phase 4)
+//==============================================================================
+
+/**
+ * CUDA kernel to compute final caustic radiance and write to image buffer.
+ *
+ * Converts accumulated photon flux to radiance estimate:
+ *   L = Φ / (π * R² * N_total)
+ *
+ * Where:
+ *   Φ = accumulated flux
+ *   R = final search radius
+ *   N_total = total photons traced across all iterations
+ */
+extern "C" __global__ void __caustics_compute_radiance() {
+    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= *params.caustics.num_hit_points) return;
+
+    const HitPoint& hp = params.caustics.hit_points[idx];
+
+    // Skip hit points with no accumulated photons
+    if (hp.n == 0) return;
+
+    // Compute radiance estimate
+    const float area = M_PI * hp.radius * hp.radius;
+    const float total_photons = static_cast<float>(params.caustics.total_photons_traced);
+
+    // Avoid division by zero
+    if (area < 1e-10f || total_photons < 1.0f) return;
+
+    // Radiance = flux / (π * R² * N)
+    const float3 radiance = make_float3(
+        hp.flux[0] / (area * total_photons),
+        hp.flux[1] / (area * total_photons),
+        hp.flux[2] / (area * total_photons)
+    );
+
+    // Scale caustic contribution (can be adjusted for artistic effect)
+    const float caustic_scale = 10000.0f;  // Boost caustic visibility
+
+    // Add caustic radiance to the pixel (additive blending)
+    const unsigned int pixel_idx = (hp.pixel_y * params.image_width + hp.pixel_x) * 4;
+
+    // Read current pixel color
+    const float cur_r = static_cast<float>(params.image[pixel_idx + 0]) / COLOR_BYTE_MAX;
+    const float cur_g = static_cast<float>(params.image[pixel_idx + 1]) / COLOR_BYTE_MAX;
+    const float cur_b = static_cast<float>(params.image[pixel_idx + 2]) / COLOR_BYTE_MAX;
+
+    // Add caustic contribution (with clamping)
+    const float new_r = fminf(cur_r + radiance.x * caustic_scale, 1.0f);
+    const float new_g = fminf(cur_g + radiance.y * caustic_scale, 1.0f);
+    const float new_b = fminf(cur_b + radiance.z * caustic_scale, 1.0f);
+
+    // Write back to image buffer
+    params.image[pixel_idx + 0] = static_cast<unsigned char>(new_r * COLOR_BYTE_MAX);
+    params.image[pixel_idx + 1] = static_cast<unsigned char>(new_g * COLOR_BYTE_MAX);
+    params.image[pixel_idx + 2] = static_cast<unsigned char>(new_b * COLOR_BYTE_MAX);
 }
