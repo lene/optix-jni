@@ -606,14 +606,17 @@ extern "C" __global__ void __miss__ms() {
                 checker_v = hit_point.y;
             }
 
-            // Plane coloring: solid or checkerboard
+            // Plane coloring: solid or checkerboard using custom colors (0.0-1.0 floats)
+            float3 plane_rgb;
             if (params.plane_solid_color) {
-                // Solid light gray for shadow visibility
-                r = PLANE_SOLID_LIGHT_GRAY;
-                g = PLANE_SOLID_LIGHT_GRAY;
-                b = PLANE_SOLID_LIGHT_GRAY;
+                // Solid color from params
+                plane_rgb = make_float3(
+                    params.plane_color1[0],
+                    params.plane_color1[1],
+                    params.plane_color1[2]
+                );
             } else {
-                // Checkered pattern
+                // Checkered pattern with two custom colors
                 const float checker_size = PLANE_CHECKER_SIZE;
                 const int check_u = static_cast<int>(floorf(checker_u / checker_size));
                 const int check_v = static_cast<int>(floorf(checker_v / checker_size));
@@ -621,17 +624,24 @@ extern "C" __global__ void __miss__ms() {
                 // XOR to create checkerboard pattern
                 const bool is_light = ((check_u + check_v) & 1) == 0;
 
-                // Medium gray and very dark gray checker colors
                 if (is_light) {
-                    r = PLANE_CHECKER_LIGHT_GRAY;
-                    g = PLANE_CHECKER_LIGHT_GRAY;
-                    b = PLANE_CHECKER_LIGHT_GRAY;
+                    plane_rgb = make_float3(
+                        params.plane_color1[0],
+                        params.plane_color1[1],
+                        params.plane_color1[2]
+                    );
                 } else {
-                    r = PLANE_CHECKER_DARK_GRAY;
-                    g = PLANE_CHECKER_DARK_GRAY;
-                    b = PLANE_CHECKER_DARK_GRAY;
+                    plane_rgb = make_float3(
+                        params.plane_color2[0],
+                        params.plane_color2[1],
+                        params.plane_color2[2]
+                    );
                 }
             }
+            // Convert 0.0-1.0 to 0-255
+            r = static_cast<unsigned int>(plane_rgb.x * COLOR_BYTE_MAX);
+            g = static_cast<unsigned int>(plane_rgb.y * COLOR_BYTE_MAX);
+            b = static_cast<unsigned int>(plane_rgb.z * COLOR_BYTE_MAX);
 
             // Apply lighting from multiple light sources to plane
             // Compute plane normal based on axis

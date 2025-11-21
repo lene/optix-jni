@@ -116,7 +116,9 @@ struct Params {
     int   plane_axis;           // 0=X, 1=Y, 2=Z
     bool  plane_positive;       // true=positive normal, false=negative normal
     float plane_value;          // Plane position along axis
-    bool  plane_solid_color;    // true=solid light gray, false=checkerboard pattern
+    bool  plane_solid_color;    // true=solid color, false=checkerboard pattern
+    float plane_color1[3];      // RGB for solid color or light checker (0.0-1.0)
+    float plane_color2[3];      // RGB for dark checker (0.0-1.0, only used when !plane_solid_color)
     bool  shadows_enabled;      // Enable shadow ray tracing
 
     // Ray statistics (GPU buffer)

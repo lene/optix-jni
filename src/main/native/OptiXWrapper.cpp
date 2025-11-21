@@ -85,6 +85,14 @@ struct OptiXWrapper::Impl {
 
     bool shadows_enabled = false;      // Enable shadow ray tracing
     bool plane_solid_color = false;    // true=solid color, false=checkerboard
+    // Plane colors (RGB 0.0-1.0)
+    // Default: checker mode with 120/20 for high contrast pattern
+    float plane_color1[3] = {RayTracingConstants::PLANE_CHECKER_LIGHT_GRAY / 255.0f,
+                             RayTracingConstants::PLANE_CHECKER_LIGHT_GRAY / 255.0f,
+                             RayTracingConstants::PLANE_CHECKER_LIGHT_GRAY / 255.0f};
+    float plane_color2[3] = {RayTracingConstants::PLANE_CHECKER_DARK_GRAY / 255.0f,
+                             RayTracingConstants::PLANE_CHECKER_DARK_GRAY / 255.0f,
+                             RayTracingConstants::PLANE_CHECKER_DARK_GRAY / 255.0f};
 
     // Adaptive antialiasing parameters
     bool aa_enabled = false;           // Enable adaptive antialiasing
@@ -496,8 +504,21 @@ void OptiXWrapper::setShadows(bool enabled) {
     // Synchronized to GPU params before render
 }
 
-void OptiXWrapper::setPlaneSolidColor(bool solid) {
-    impl->plane_solid_color = solid;
+void OptiXWrapper::setPlaneSolidColor(float r, float g, float b) {
+    impl->plane_solid_color = true;
+    impl->plane_color1[0] = r;
+    impl->plane_color1[1] = g;
+    impl->plane_color1[2] = b;
+    // Synchronized to GPU params before render
+}
+
+void OptiXWrapper::setPlaneCheckerColors(float r1, float g1, float b1, float r2, float g2, float b2) {
+    impl->plane_color1[0] = r1;
+    impl->plane_color1[1] = g1;
+    impl->plane_color1[2] = b1;
+    impl->plane_color2[0] = r2;
+    impl->plane_color2[1] = g2;
+    impl->plane_color2[2] = b2;
     // Synchronized to GPU params before render
 }
 
@@ -586,6 +607,10 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.plane_positive = impl->plane.positive;
         params.plane_value = impl->plane.value;
         params.plane_solid_color = impl->plane_solid_color;
+        for (int i = 0; i < 3; ++i) {
+            params.plane_color1[i] = impl->plane_color1[i];
+            params.plane_color2[i] = impl->plane_color2[i];
+        }
 
         // Adaptive antialiasing parameters
         params.aa_enabled = impl->aa_enabled;

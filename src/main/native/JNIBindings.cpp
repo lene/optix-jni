@@ -87,7 +87,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphere(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphereColor(
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphereColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b, jfloat a) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -286,12 +286,12 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneSolidColor(
-    JNIEnv* env, jobject obj, jboolean solid) {
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneSolidColorNative(
+    JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
-            wrapper->setPlaneSolidColor(solid == JNI_TRUE);
+            wrapper->setPlaneSolidColor(r, g, b);
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setPlaneSolidColor: " << e.what() << std::endl;
@@ -308,6 +308,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlane(
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setPlane: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneCheckerColorsNative(
+    JNIEnv* env, jobject obj, jfloat r1, jfloat g1, jfloat b1, jfloat r2, jfloat g2, jfloat b2) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setPlaneCheckerColors(r1, g1, b1, r2, g2, b2);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setPlaneCheckerColors: " << e.what() << std::endl;
     }
 }
 
