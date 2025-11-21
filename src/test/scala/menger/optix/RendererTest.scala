@@ -513,3 +513,76 @@ class RendererTest extends AnyFlatSpec
 
     val imageData = renderer.render(size).get
     imageData.length shouldBe ImageValidation.imageByteSize(size)
+
+  // Caustics (Progressive Photon Mapping) tests
+
+  "Caustics" should "allow setCaustics to be called without crashing" in new OptiXRenderer:
+    initialize()
+    noException should be thrownBy:
+      setCaustics(enabled = true, photonsPerIter = 10000, iterations = 5, initialRadius = 0.1f, alpha = 0.7f)
+
+  it should "allow enableCaustics convenience method" in new OptiXRenderer:
+    initialize()
+    noException should be thrownBy:
+      enableCaustics()
+
+  it should "allow disableCaustics convenience method" in new OptiXRenderer:
+    initialize()
+    noException should be thrownBy:
+      disableCaustics()
+
+  it should "render with caustics enabled (basic smoke test)" in:
+    TestScenario.default()
+      .withSphereRadius(0.5f)
+      .withIOR(1.5f)
+      .withCameraEye(Vector[3](0.0f, 0.5f, 3.0f))
+      .applyTo(renderer)
+
+    // Enable caustics with minimal parameters for faster test
+    renderer.setCaustics(enabled = true, photonsPerIter = 1000, iterations = 2, initialRadius = 0.1f, alpha = 0.7f)
+
+    // Small render to keep test fast
+    val size = QUICK_TEST_SIZE
+    val imageData = renderer.render(size).get
+
+    // Verify valid image output
+    imageData.length shouldBe ImageValidation.imageByteSize(size)
+    imageData should haveBrightnessStdDevGreaterThan(MIN_BRIGHTNESS_VARIATION, size)
+
+  it should "produce valid image with caustics and shadows" in:
+    TestScenario.default()
+      .withSphereRadius(0.5f)
+      .withIOR(1.5f)
+      .withCameraEye(Vector[3](0.0f, 0.5f, 3.0f))
+      .applyTo(renderer)
+
+    renderer.setShadows(true)
+    renderer.setCaustics(enabled = true, photonsPerIter = 1000, iterations = 2, initialRadius = 0.1f, alpha = 0.7f)
+
+    val size = QUICK_TEST_SIZE
+    val imageData = renderer.render(size).get
+
+    imageData.length shouldBe ImageValidation.imageByteSize(size)
+
+  it should "allow toggling caustics on and off" in:
+    TestScenario.default()
+      .withSphereRadius(0.5f)
+      .withIOR(1.5f)
+      .applyTo(renderer)
+
+    val size = QUICK_TEST_SIZE
+
+    // Render without caustics
+    renderer.setCaustics(enabled = false, photonsPerIter = 0, iterations = 0, initialRadius = 0.0f, alpha = 0.0f)
+    val imageNoCaustics = renderer.render(size).get
+    imageNoCaustics.length shouldBe ImageValidation.imageByteSize(size)
+
+    // Render with caustics
+    renderer.setCaustics(enabled = true, photonsPerIter = 1000, iterations = 2, initialRadius = 0.1f, alpha = 0.7f)
+    val imageWithCaustics = renderer.render(size).get
+    imageWithCaustics.length shouldBe ImageValidation.imageByteSize(size)
+
+    // Disable again
+    renderer.disableCaustics()
+    val imageDisabled = renderer.render(size).get
+    imageDisabled.length shouldBe ImageValidation.imageByteSize(size)

@@ -402,6 +402,60 @@ TEST_F(OptiXContextTest, OperationBeforeInitializeThrows) {
     );
 }
 
+//=============================================================================
+// Caustics Data Structure Tests
+//=============================================================================
+
+TEST(CausticsDataTest, HitPointStructSize) {
+    // Verify HitPoint struct has expected size for GPU alignment
+    // Should be a multiple of 16 bytes for optimal GPU access
+    size_t size = sizeof(HitPoint);
+    EXPECT_GT(size, 0);
+    // HitPoint contains: 3 floats position, 3 floats normal, 3 floats flux,
+    // 1 float radius, 2 uints (n, pixel_x), 1 uint pixel_y, 3 floats weight,
+    // 1 uint new_photons, 1 float pad
+    EXPECT_GE(size, 64);  // At minimum, expect 64 bytes
+}
+
+TEST(CausticsDataTest, PhotonStructSize) {
+    // Verify Photon struct has expected size
+    size_t size = sizeof(Photon);
+    EXPECT_GT(size, 0);
+    // Photon contains: 3 floats position, 3 floats direction, 3 floats flux, 1 float pad
+    EXPECT_EQ(size, 40);  // 10 floats * 4 bytes
+}
+
+TEST(CausticsDataTest, CausticsParamsContainsExpectedFields) {
+    CausticsParams params;
+    params.enabled = true;
+    params.photons_per_iteration = 100000;
+    params.iterations = 10;
+    params.initial_radius = 0.1f;
+    params.alpha = 0.7f;
+    params.current_iteration = 0;
+    params.grid_resolution = 128;
+    params.total_photons_traced = 0;
+
+    EXPECT_TRUE(params.enabled);
+    EXPECT_EQ(params.photons_per_iteration, 100000);
+    EXPECT_EQ(params.iterations, 10);
+    EXPECT_FLOAT_EQ(params.initial_radius, 0.1f);
+    EXPECT_FLOAT_EQ(params.alpha, 0.7f);
+    EXPECT_EQ(params.grid_resolution, 128u);
+}
+
+TEST(CausticsDataTest, DefaultConstantsAreReasonable) {
+    // Verify default constants from RayTracingConstants
+    EXPECT_GT(RayTracingConstants::MAX_HIT_POINTS, 0);
+    EXPECT_GT(RayTracingConstants::DEFAULT_PHOTONS_PER_ITER, 0);
+    EXPECT_GT(RayTracingConstants::DEFAULT_CAUSTICS_ITERATIONS, 0);
+    EXPECT_GT(RayTracingConstants::DEFAULT_INITIAL_RADIUS, 0.0f);
+    EXPECT_GT(RayTracingConstants::DEFAULT_PPM_ALPHA, 0.0f);
+    EXPECT_LT(RayTracingConstants::DEFAULT_PPM_ALPHA, 1.0f);
+    EXPECT_GT(RayTracingConstants::CAUSTICS_GRID_RESOLUTION, 0);
+    EXPECT_GT(RayTracingConstants::MAX_PHOTON_BOUNCES, 0);
+}
+
 // Minimal main - suppress verbose output, show only summary
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
