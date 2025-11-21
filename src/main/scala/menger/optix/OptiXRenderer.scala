@@ -54,6 +54,7 @@ case class RayStats(
   reflectedRays: Long,
   refractedRays: Long,
   shadowRays: Long,
+  aaRays: Long,
   maxDepthReached: Int,
   minDepthReached: Int
 )
@@ -66,6 +67,7 @@ case class RenderResult(
   reflectedRays: Long,
   refractedRays: Long,
   shadowRays: Long,
+  aaRays: Long,
   maxDepthReached: Int,
   minDepthReached: Int
 ):
@@ -75,6 +77,7 @@ case class RenderResult(
     reflectedRays,
     refractedRays,
     shadowRays,
+    aaRays,
     maxDepthReached,
     minDepthReached
   )
@@ -143,7 +146,10 @@ class OptiXRenderer extends LazyLogging:
   
   @native def setShadows(enabled: Boolean): Unit
 
-  
+
+  @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
+
+
   @native def setPlaneSolidColor(solid: Boolean): Unit
 
   

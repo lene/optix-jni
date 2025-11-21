@@ -177,6 +177,211 @@ __device__ float3 calculateLighting(
 }
 
 //==============================================================================
+// Adaptive Antialiasing Helpers
+//==============================================================================
+
+/**
+ * Calculate Euclidean color distance between two RGB colors.
+ *
+ * Computes the L2 norm in RGB color space for edge detection.
+ * Higher values indicate greater color difference.
+ *
+ * @param c1 First color (RGB, 0-255)
+ * @param c2 Second color (RGB, 0-255)
+ * @return Euclidean distance normalized to [0, 1] range (max distance √3 ≈ 1.732)
+ */
+__device__ float colorDistance(
+    const unsigned int r1, const unsigned int g1, const unsigned int b1,
+    const unsigned int r2, const unsigned int g2, const unsigned int b2
+) {
+    // Normalize to [0, 1] range
+    const float fr1 = static_cast<float>(r1) / COLOR_BYTE_MAX;
+    const float fg1 = static_cast<float>(g1) / COLOR_BYTE_MAX;
+    const float fb1 = static_cast<float>(b1) / COLOR_BYTE_MAX;
+
+    const float fr2 = static_cast<float>(r2) / COLOR_BYTE_MAX;
+    const float fg2 = static_cast<float>(g2) / COLOR_BYTE_MAX;
+    const float fb2 = static_cast<float>(b2) / COLOR_BYTE_MAX;
+
+    // Compute Euclidean distance
+    const float dr = fr1 - fr2;
+    const float dg = fg1 - fg2;
+    const float db = fb1 - fb2;
+
+    // Return normalized distance (max distance in RGB cube is √3)
+    return sqrtf(dr * dr + dg * dg + db * db) / 1.732050808f;
+}
+
+/**
+ * Trace a single ray and return the RGB color.
+ *
+ * Helper function to trace a ray through the scene and get back the color.
+ *
+ * @param ray_origin Ray origin point
+ * @param ray_direction Ray direction (normalized)
+ * @param r Output: red channel (0-255)
+ * @param g Output: green channel (0-255)
+ * @param b Output: blue channel (0-255)
+ */
+__device__ void traceRay(
+    const float3& ray_origin,
+    const float3& ray_direction,
+    unsigned int& r,
+    unsigned int& g,
+    unsigned int& b
+) {
+    unsigned int depth = 0;
+    optixTrace(
+        params.handle,
+        ray_origin,
+        ray_direction,
+        0.0f,
+        MAX_RAY_DISTANCE,
+        0.0f,
+        OptixVisibilityMask(255),
+        OPTIX_RAY_FLAG_NONE,
+        0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+        r, g, b, depth
+    );
+
+    // Track AA ray statistics (this function is only called from AA subdivision)
+    if (params.stats) {
+        atomicAdd(&params.stats->aa_rays, 1ULL);
+        atomicAdd(&params.stats->total_rays, 1ULL);
+    }
+}
+
+/**
+ * Stack entry for iterative adaptive antialiasing.
+ * OptiX doesn't support recursive device functions, so we use an explicit stack.
+ */
+struct AAStackEntry {
+    float center_u;
+    float center_v;
+    float half_size;
+    int depth;
+};
+
+// Maximum stack size: at max depth 4 with 3×3 subdivision, we'd need at most 9^4 entries
+// but we process breadth-first so max stack size is 9 * max_depth = 36
+constexpr int AA_STACK_SIZE = 64;
+
+/**
+ * Iteratively subdivide pixel into 3×3 grid with adaptive sampling.
+ * Uses explicit stack instead of recursion (required for OptiX).
+ *
+ * @param center_u Center U coordinate in normalized device coordinates
+ * @param center_v Center V coordinate in normalized device coordinates
+ * @param half_size Half-width of current pixel/sub-pixel in NDC
+ * @param depth Current recursion depth (0 = top level)
+ * @param camera_u Camera right vector
+ * @param camera_v Camera up vector
+ * @param camera_w Camera forward vector
+ * @param ray_origin Camera position
+ * @param sum_r Output: accumulated red (will be divided by sample count)
+ * @param sum_g Output: accumulated green
+ * @param sum_b Output: accumulated blue
+ * @param sample_count Output: number of samples accumulated
+ */
+__device__ void subdividePixel(
+    float init_center_u,
+    float init_center_v,
+    float init_half_size,
+    int init_depth,
+    const float3& camera_u,
+    const float3& camera_v,
+    const float3& camera_w,
+    const float3& ray_origin,
+    unsigned long long& sum_r,
+    unsigned long long& sum_g,
+    unsigned long long& sum_b,
+    unsigned int& sample_count
+) {
+    // Explicit stack for iterative processing
+    AAStackEntry stack[AA_STACK_SIZE];
+    int stack_top = 0;
+
+    // Push initial entry
+    stack[stack_top++] = {init_center_u, init_center_v, init_half_size, init_depth};
+
+    while (stack_top > 0) {
+        // Pop entry from stack
+        const AAStackEntry entry = stack[--stack_top];
+        const float center_u = entry.center_u;
+        const float center_v = entry.center_v;
+        const float half_size = entry.half_size;
+        const int depth = entry.depth;
+
+        // Sample 3×3 grid within current region
+        unsigned int samples[9][3];  // RGB for each of 9 samples
+        float max_diff = 0.0f;
+
+        // Grid positions: -1, 0, +1 (in units of half_size/1.5 for 3×3 subdivision)
+        const float step = half_size / 1.5f;
+
+        for (int iy = 0; iy < 3; ++iy) {
+            for (int ix = 0; ix < 3; ++ix) {
+                const int idx = iy * 3 + ix;
+
+                // Calculate sample position
+                const float u = center_u + (ix - 1) * step;
+                const float v = center_v + (iy - 1) * step;
+
+                // Construct ray direction
+                const float3 ray_dir = normalize(camera_u * u + camera_v * v + camera_w);
+
+                // Trace ray
+                traceRay(ray_origin, ray_dir, samples[idx][0], samples[idx][1], samples[idx][2]);
+
+                // Check color difference with neighbors for edge detection
+                if (ix > 0) {
+                    const int left_idx = iy * 3 + (ix - 1);
+                    const float diff = colorDistance(
+                        samples[idx][0], samples[idx][1], samples[idx][2],
+                        samples[left_idx][0], samples[left_idx][1], samples[left_idx][2]
+                    );
+                    max_diff = fmaxf(max_diff, diff);
+                }
+
+                if (iy > 0) {
+                    const int top_idx = (iy - 1) * 3 + ix;
+                    const float diff = colorDistance(
+                        samples[idx][0], samples[idx][1], samples[idx][2],
+                        samples[top_idx][0], samples[top_idx][1], samples[top_idx][2]
+                    );
+                    max_diff = fmaxf(max_diff, diff);
+                }
+            }
+        }
+
+        // Edge detected and can recurse further?
+        const bool should_subdivide = (max_diff > params.aa_threshold) && (depth < params.aa_max_depth);
+
+        if (should_subdivide && stack_top + 9 <= AA_STACK_SIZE) {
+            // Push 9 sub-pixel tasks onto stack
+            const float new_half_size = half_size / 3.0f;
+
+            for (int iy = 0; iy < 3; ++iy) {
+                for (int ix = 0; ix < 3; ++ix) {
+                    const float sub_u = center_u + (ix - 1) * step;
+                    const float sub_v = center_v + (iy - 1) * step;
+
+                    stack[stack_top++] = {sub_u, sub_v, new_half_size, depth + 1};
+                }
+            }
+        } else {
+            // No edge, max depth reached, or stack full - accumulate these 9 samples
+            for (int i = 0; i < 9; ++i) {
+                sum_r += samples[i][0];
+                sum_g += samples[i][1];
+                sum_b += samples[i][2];
+                sample_count++;
+            }
+        }
+    }
+}
+
+//==============================================================================
 // Custom Sphere Intersection Program
 // From NVIDIA OptiX SDK 9.0 sphere.cu
 // Uses normalized direction + length correction for numerical stability
@@ -290,36 +495,55 @@ extern "C" __global__ void __raygen__rg() {
     const float3 camera_v = make_float3(raygen_data->camera_v[0], raygen_data->camera_v[1], raygen_data->camera_v[2]);
     const float3 camera_w = make_float3(raygen_data->camera_w[0], raygen_data->camera_w[1], raygen_data->camera_w[2]);
 
-    const float3 ray_direction = normalize(camera_u * u + camera_v * v + camera_w);
+    unsigned int r, g, b;
 
-    // Track primary ray in statistics
-    if (params.stats) {
-        atomicAdd(&params.stats->primary_rays, 1ULL);
-        atomicAdd(&params.stats->total_rays, 1ULL);
+    if (params.aa_enabled) {
+        // Adaptive antialiasing: recursively subdivide pixel if edge detected
+        unsigned long long sum_r = 0, sum_g = 0, sum_b = 0;
+        unsigned int sample_count = 0;
+
+        // Calculate pixel half-size in NDC (for initial subdivision)
+        const float pixel_half_width = 1.0f / static_cast<float>(dim.x);
+        const float pixel_half_height = 1.0f / static_cast<float>(dim.y);
+        const float pixel_half_size = fmaxf(pixel_half_width, pixel_half_height);
+
+        // Start recursive subdivision at depth 0
+        subdividePixel(
+            u, v, pixel_half_size, 0,
+            camera_u, camera_v, camera_w, ray_origin,
+            sum_r, sum_g, sum_b, sample_count
+        );
+
+        // Average the accumulated samples
+        r = static_cast<unsigned int>(sum_r / sample_count);
+        g = static_cast<unsigned int>(sum_g / sample_count);
+        b = static_cast<unsigned int>(sum_b / sample_count);
+
+    } else {
+        // Standard rendering: single ray per pixel
+        const float3 ray_direction = normalize(camera_u * u + camera_v * v + camera_w);
+
+        // Track primary ray in statistics
+        if (params.stats) {
+            atomicAdd(&params.stats->primary_rays, 1ULL);
+            atomicAdd(&params.stats->total_rays, 1ULL);
+        }
+
+        // Trace ray
+        unsigned int p3 = 0;  // Initial depth = 0
+        optixTrace(
+            params.handle,
+            ray_origin,
+            ray_direction,
+            0.0f,
+            MAX_RAY_DISTANCE,
+            0.0f,
+            OptixVisibilityMask(255),
+            OPTIX_RAY_FLAG_NONE,
+            0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+            r, g, b, p3
+        );
     }
-
-    // Trace ray
-    unsigned int p0, p1, p2, p3;  // Payload for RGB color + depth
-    p3 = 0;  // Initial depth = 0
-    optixTrace(
-        params.handle,                     // Acceleration structure
-        ray_origin,                        // Ray origin
-        ray_direction,                     // Ray direction
-        0.0f,                              // tmin
-        MAX_RAY_DISTANCE,       // tmax
-        0.0f,                              // rayTime
-        OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_NONE,
-        0,                       // SBT ray type offset (0 = primary ray)
-        2,                       // SBT stride (2 ray types: primary + shadow)
-        0,                       // missSBTIndex (0 = plane miss)
-        p0, p1, p2, p3           // Payload (RGB + depth)
-    );
-
-    // Convert payload to RGBA
-    const unsigned int r = p0;
-    const unsigned int g = p1;
-    const unsigned int b = p2;
 
     // Write to output buffer
     const unsigned int pixel_index = idx.y * params.image_width + idx.x;

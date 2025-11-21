@@ -40,6 +40,9 @@ public:
     // Shadow configuration
     void setShadows(bool enabled);
 
+    // Antialiasing configuration
+    void setAntialiasing(bool enabled, int maxDepth, float threshold);
+
     // Plane configuration
     void setPlane(int axis, bool positive, float value);
     void setPlaneSolidColor(bool solid);  // true=solid gray, false=checkerboard

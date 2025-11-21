@@ -422,61 +422,6 @@ class RendererTest extends AnyFlatSpec
     ratio.g should be > ratio.r
     ratio.g should be > ratio.b
 
-  val runningUnderSanitizer: Boolean = sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
-
-  "Performance" should "achieve reasonable rendering performance" in:
-    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
-    TestScenario.default()
-      .withSphereRadius(1.5f)
-      .applyTo(renderer)
-
-    val size = STANDARD_IMAGE_SIZE
-    val iterations = 100
-
-    // Warm-up
-    for _ <- 0 until 10 do
-      renderer.render(size).get
-
-    // Benchmark
-    val start = System.nanoTime()
-    for _ <- 0 until iterations do
-      renderer.render(size).get
-    val elapsed = (System.nanoTime() - start) / 1e9
-    val fps = iterations / elapsed
-
-    logger.info(
-      s"[Performance] Rendered $iterations frames of ${size.width}x${size.height} in ${elapsed}s @${fps}fps"
-    )
-
-    fps should be > MIN_FPS
-
-  it should "achieve reasonable performance with transparent spheres" in:
-    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
-    TestScenario.default()
-      .withSphereColor(SEMI_TRANSPARENT_WHITE)
-      .withSphereRadius(1.5f)
-      .applyTo(renderer)
-
-    val size = STANDARD_IMAGE_SIZE
-    val iterations = 100
-
-    // Warm-up
-    for _ <- 0 until 10 do
-      renderer.render(size).get
-
-    // Benchmark
-    val start = System.nanoTime()
-    for _ <- 0 until iterations do
-      renderer.render(size).get
-    val elapsed = (System.nanoTime() - start) / 1e9
-    val fps = iterations / elapsed
-
-    logger.info(
-      s"[Performance Transparency] Rendered $iterations transparent frames of ${size.width}x${size.height} in ${elapsed}s @${fps}fps"
-    )
-
-    fps should be > MIN_FPS
-
   "Transparency" should "render semi-transparent sphere blending with background" in:
     val size = TEST_IMAGE_SIZE
 

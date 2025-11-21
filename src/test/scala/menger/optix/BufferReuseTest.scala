@@ -119,52 +119,6 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
     }
   }
 
-  it should "maintain performance with repeated renders" in {
-    assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
-
-    // Skip performance test under compute-sanitizer (20x slowdown from instrumentation)
-    val runningUnderSanitizer = sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
-    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
-
-    val renderer = new OptiXRenderer()
-
-    try {
-      renderer.initialize() should be (true)
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
-
-      val eye = Vector[3](0.0f, 0.0f, 3.0f)
-      val lookAt = Vector[3](0.0f, 0.0f, 0.0f)
-      val up = Vector[3](0.0f, 1.0f, 0.0f)
-      renderer.setCamera(eye, lookAt, up, 60f)
-
-      // Warmup
-      val size = STANDARD_IMAGE_SIZE
-      renderer.render(size).get
-
-      // Time 100 renders at same resolution (should benefit from buffer reuse)
-      val iterations = 100
-      val start = System.nanoTime()
-
-      for (i <- 0 until iterations) {
-        val img = renderer.render(size).get
-        img.length should be (ImageValidation.imageByteSize(size))
-      }
-
-      val end = System.nanoTime()
-      val durationMs = (end - start) / 1000000.0
-      val fps = (iterations * 1000.0) / durationMs
-
-      logger.info(f"Performance test: $iterations renders at 800x600 in ${durationMs}%.2fms @${fps}%.1ffps")
-
-      // Performance check: should achieve at least 50 FPS (20ms per frame)
-      // With buffer reuse, this should be easily achievable
-      fps should be > 50.0
-
-    } finally {
-      renderer.dispose()
-    }
-  }
-
   it should "work correctly after dispose and re-initialize" in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 

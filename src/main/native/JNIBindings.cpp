@@ -274,6 +274,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setShadows(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
+    JNIEnv* env, jobject obj, jboolean enabled, jint maxDepth, jfloat threshold) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setAntialiasing(enabled == JNI_TRUE, maxDepth, threshold);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setAntialiasing: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneSolidColor(
     JNIEnv* env, jobject obj, jboolean solid) {
     try {
@@ -333,7 +345,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
             return nullptr;
         }
 
-        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJII)V");
+        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJJII)V");
         if (constructor == nullptr) {
             std::cerr << "[JNI] Failed to find RenderResult constructor" << std::endl;
             return nullptr;
@@ -346,6 +358,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
             static_cast<jlong>(stats.reflected_rays),
             static_cast<jlong>(stats.refracted_rays),
             static_cast<jlong>(stats.shadow_rays),
+            static_cast<jlong>(stats.aa_rays),
             static_cast<jint>(stats.max_depth_reached),
             static_cast<jint>(stats.min_depth_reached)
         );

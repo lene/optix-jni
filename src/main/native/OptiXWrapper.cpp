@@ -86,6 +86,11 @@ struct OptiXWrapper::Impl {
     bool shadows_enabled = false;      // Enable shadow ray tracing
     bool plane_solid_color = false;    // true=solid color, false=checkerboard
 
+    // Adaptive antialiasing parameters
+    bool aa_enabled = false;           // Enable adaptive antialiasing
+    int aa_max_depth = 2;              // Maximum recursion depth (default: 2)
+    float aa_threshold = RayTracingConstants::AA_DEFAULT_THRESHOLD;  // Color difference threshold
+
     int image_width = -1;
     int image_height = -1;
 
@@ -496,6 +501,13 @@ void OptiXWrapper::setPlaneSolidColor(bool solid) {
     // Synchronized to GPU params before render
 }
 
+void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) {
+    impl->aa_enabled = enabled;
+    impl->aa_max_depth = maxDepth;
+    impl->aa_threshold = threshold;
+    // Synchronized to GPU params before render
+}
+
 void OptiXWrapper::setPlane(int axis, bool positive, float value) {
     impl->plane.axis = axis;
     impl->plane.positive = positive;
@@ -574,6 +586,12 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.plane_positive = impl->plane.positive;
         params.plane_value = impl->plane.value;
         params.plane_solid_color = impl->plane_solid_color;
+
+        // Adaptive antialiasing parameters
+        params.aa_enabled = impl->aa_enabled;
+        params.aa_max_depth = impl->aa_max_depth;
+        params.aa_threshold = impl->aa_threshold;
+
         params.stats = reinterpret_cast<RayStats*>(impl->d_stats);
 
         // Copy params to GPU

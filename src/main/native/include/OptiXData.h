@@ -56,6 +56,11 @@ namespace RayTracingConstants {
     // Angle conversion
     constexpr float DEG_TO_RAD = M_PI / 180.0f;        // Degrees to radians multiplier
     constexpr float RAD_TO_DEG = 180.0f / M_PI;        // Radians to degrees multiplier
+
+    // Adaptive antialiasing
+    constexpr int AA_MAX_DEPTH_LIMIT = 4;           // Maximum recursion depth for AA
+    constexpr int AA_SUBDIVISION_FACTOR = 3;        // 3x3 subdivision per level
+    constexpr float AA_DEFAULT_THRESHOLD = 0.1f;    // Default color difference threshold
 }
 
 // Material constants (Index of Refraction)
@@ -88,6 +93,7 @@ struct RayStats {
     unsigned long long reflected_rays;  // Rays from Fresnel reflection
     unsigned long long refracted_rays;  // Rays transmitted through sphere
     unsigned long long shadow_rays;     // Rays cast to check light occlusion
+    unsigned long long aa_rays;         // Additional rays from adaptive antialiasing
     unsigned int max_depth_reached;     // Deepest ray recursion
     unsigned int min_depth_reached;     // Shallowest ray recursion (should be 1)
 };
@@ -115,6 +121,11 @@ struct Params {
 
     // Ray statistics (GPU buffer)
     RayStats* stats;            // Pointer to GPU stats buffer
+
+    // Adaptive antialiasing
+    bool  aa_enabled;           // Enable adaptive antialiasing
+    int   aa_max_depth;         // Maximum recursion depth (1-4)
+    float aa_threshold;         // Color difference threshold for edge detection (0.0-1.0)
 };
 
 // Ray generation shader data (camera)
