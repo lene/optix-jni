@@ -155,6 +155,19 @@ class OptiXRenderer extends LazyLogging:
 
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 
+  @native def setCaustics(enabled: Boolean, photonsPerIter: Int, iterations: Int, initialRadius: Float, alpha: Float): Unit
+
+  // Convenience method with default PPM parameters
+  def enableCaustics(
+    photonsPerIter: Int = 100000,
+    iterations: Int = 10,
+    initialRadius: Float = 0.1f,
+    alpha: Float = 0.7f
+  ): Unit =
+    setCaustics(true, photonsPerIter, iterations, initialRadius, alpha)
+
+  def disableCaustics(): Unit =
+    setCaustics(false, 0, 0, 0.0f, 0.0f)
 
   // Set plane to solid color mode with RGB 0.0-1.0
   @native private def setPlaneSolidColorNative(r: Float, g: Float, b: Float): Unit

@@ -286,6 +286,19 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCaustics(
+    JNIEnv* env, jobject obj, jboolean enabled, jint photonsPerIter, jint iterations,
+    jfloat initialRadius, jfloat alpha) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setCaustics(enabled == JNI_TRUE, photonsPerIter, iterations, initialRadius, alpha);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setCaustics: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneSolidColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
     try {

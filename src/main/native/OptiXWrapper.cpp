@@ -726,14 +726,20 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             cudaMemcpyHostToDevice
         ));
 
-        // Launch OptiX using OptiXContext
-        impl->optix_context.launch(
-            impl->pipeline,
-            impl->sbt,
-            impl->d_params,
-            width,
-            height
-        );
+        // Launch OptiX rendering
+        if (impl->caustics_enabled) {
+            // Multi-pass Progressive Photon Mapping rendering
+            renderWithCaustics(width, height, params);
+        } else {
+            // Standard single-pass rendering
+            impl->optix_context.launch(
+                impl->pipeline,
+                impl->sbt,
+                impl->d_params,
+                width,
+                height
+            );
+        }
 
         // Synchronize to flush printf output
         CUDA_CHECK(cudaDeviceSynchronize());
@@ -766,6 +772,116 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             output[i * 4 + 3] = 255;  // A
         }
     }
+}
+
+void OptiXWrapper::launchCausticsPass(int width, int height, OptixProgramGroup raygen_group, int launch_width, int launch_height) {
+    // Create a temporary SBT with the specified raygen program
+    // This is more efficient than rebuilding the entire SBT for each pass
+    OptixShaderBindingTable temp_sbt = impl->sbt;
+
+    // Create new raygen record for this program group
+    RayGenData rg_data;
+    std::memcpy(rg_data.cam_eye, impl->camera.eye, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_u, impl->camera.u, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_v, impl->camera.v, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_w, impl->camera.w, sizeof(float) * 3);
+
+    CUdeviceptr temp_raygen_record = impl->optix_context.createRaygenSBTRecord(
+        raygen_group,
+        rg_data
+    );
+    temp_sbt.raygenRecord = temp_raygen_record;
+
+    // Launch with temporary SBT
+    impl->optix_context.launch(
+        impl->pipeline,
+        temp_sbt,
+        impl->d_params,
+        launch_width,
+        launch_height
+    );
+
+    // Clean up temporary raygen record
+    impl->optix_context.freeSBTRecord(temp_raygen_record);
+}
+
+void OptiXWrapper::renderWithCaustics(int width, int height, Params& params) {
+    // Progressive Photon Mapping multi-pass rendering:
+    // 1. Hit Point Generation: Trace camera rays, store hit points on diffuse surfaces
+    // 2. Photon Tracing Iterations: Emit photons from lights, deposit at hit points
+    // 3. Final Render: Standard ray trace with caustics contribution
+
+    // =====================================
+    // Pass 1: Hit Point Generation
+    // =====================================
+    // Zero out hit point counter
+    unsigned int zero = 0;
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(impl->d_num_hit_points),
+        &zero,
+        sizeof(unsigned int),
+        cudaMemcpyHostToDevice
+    ));
+
+    // Launch hit point generation (one thread per pixel)
+    launchCausticsPass(width, height, impl->caustics_hitpoints_raygen, width, height);
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    // Read back number of hit points for debugging
+    unsigned int num_hit_points = 0;
+    CUDA_CHECK(cudaMemcpy(
+        &num_hit_points,
+        reinterpret_cast<void*>(impl->d_num_hit_points),
+        sizeof(unsigned int),
+        cudaMemcpyDeviceToHost
+    ));
+
+    // =====================================
+    // Pass 2-N: Photon Tracing Iterations
+    // =====================================
+    for (int iter = 0; iter < impl->caustics_iterations; ++iter) {
+        // Update iteration counter in params
+        params.caustics.current_iteration = iter;
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(impl->d_params),
+            &params,
+            sizeof(Params),
+            cudaMemcpyHostToDevice
+        ));
+
+        // Calculate launch dimensions for photon tracing
+        // Use a 2D grid that covers photons_per_iteration threads
+        int photons = impl->caustics_photons_per_iter;
+        int photon_grid_width = std::min(photons, 1024);  // Max 1024 threads per row
+        int photon_grid_height = (photons + photon_grid_width - 1) / photon_grid_width;
+
+        // Launch photon tracing
+        launchCausticsPass(width, height, impl->caustics_photons_raygen, photon_grid_width, photon_grid_height);
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+    // =====================================
+    // Final Pass: Standard Render with Caustics
+    // =====================================
+    // Update total photons traced
+    params.caustics.total_photons_traced =
+        static_cast<unsigned long long>(impl->caustics_photons_per_iter) *
+        static_cast<unsigned long long>(impl->caustics_iterations);
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(impl->d_params),
+        &params,
+        sizeof(Params),
+        cudaMemcpyHostToDevice
+    ));
+
+    // Launch standard render (uses accumulated caustics data)
+    impl->optix_context.launch(
+        impl->pipeline,
+        impl->sbt,
+        impl->d_params,
+        width,
+        height
+    );
 }
 
 void OptiXWrapper::dispose() {
