@@ -96,6 +96,17 @@ public:
         unsigned int height
     );
 
+    // Cache management utilities
+    // Get the default OptiX cache directory path for current user
+    static std::string getDefaultCachePath();
+
+    // Clear the OptiX cache directory (removes all cached data)
+    // Returns true if cache was cleared or didn't exist, false on error
+    static bool clearCache();
+
+    // Clear cache at a specific path
+    static bool clearCache(const std::string& cache_path);
+
 private:
     OptixDeviceContext context_;
     bool initialized_;

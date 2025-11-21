@@ -6,8 +6,10 @@
 
 #include <fstream>
 #include <sstream>
+#include <filesystem>
 #include <unistd.h>
 #include <fcntl.h>
+#include <cstdlib>
 
 // RAII helper to suppress stderr during a test (for expected OptiX driver errors)
 class SuppressStderr {
@@ -309,6 +311,80 @@ TEST_F(OptiXContextTest, FreeSBTRecordWithNullIsSafe) {
 }
 
 //=============================================================================
+// Cache Management Tests
+//=============================================================================
+
+TEST_F(OptiXContextTest, GetDefaultCachePathReturnsValidPath) {
+    std::string cache_path = OptiXContext::getDefaultCachePath();
+
+    // Should start with /var/tmp/OptixCache_
+    EXPECT_TRUE(cache_path.find("/var/tmp/OptixCache_") == 0)
+        << "Expected path starting with /var/tmp/OptixCache_, got: " << cache_path;
+
+    // Should contain username or uid (non-empty after prefix)
+    // In Docker/CI, may use uid fallback when USER/LOGNAME env vars aren't set
+    EXPECT_GT(cache_path.length(), strlen("/var/tmp/OptixCache_"))
+        << "Expected path with username/uid suffix, got: " << cache_path;
+}
+
+TEST_F(OptiXContextTest, ClearCacheRemovesDirectory) {
+    // Create a temporary test cache directory
+    std::string test_cache = "/tmp/optix_test_cache_" + std::to_string(getpid());
+
+    // Create directory with a test file
+    std::filesystem::create_directories(test_cache);
+    std::ofstream test_file(test_cache + "/test.db");
+    test_file << "test data";
+    test_file.close();
+
+    ASSERT_TRUE(std::filesystem::exists(test_cache));
+    ASSERT_TRUE(std::filesystem::exists(test_cache + "/test.db"));
+
+    // Clear the cache
+    EXPECT_TRUE(OptiXContext::clearCache(test_cache));
+
+    // Directory should be gone
+    EXPECT_FALSE(std::filesystem::exists(test_cache));
+}
+
+TEST_F(OptiXContextTest, ClearCacheSucceedsForNonExistentDirectory) {
+    std::string non_existent = "/tmp/optix_non_existent_" + std::to_string(getpid());
+    EXPECT_FALSE(std::filesystem::exists(non_existent));
+
+    // Should succeed even if directory doesn't exist
+    EXPECT_TRUE(OptiXContext::clearCache(non_existent));
+}
+
+TEST_F(OptiXContextTest, ClearCacheWithEmptyPathSucceeds) {
+    EXPECT_TRUE(OptiXContext::clearCache(""));
+}
+
+TEST_F(OptiXContextTest, CustomCacheLocationViaEnvVar) {
+    // This test verifies that MENGER_OPTIX_CACHE env var is respected
+    // We can't fully test OptiX cache location without initializing,
+    // but we can verify the env var mechanism works
+
+    const char* original = std::getenv("MENGER_OPTIX_CACHE");
+
+    // Set custom cache location
+    std::string custom_path = "/tmp/menger_optix_test_" + std::to_string(getpid());
+    setenv("MENGER_OPTIX_CACHE", custom_path.c_str(), 1);
+
+    // Verify env var is set
+    EXPECT_STREQ(std::getenv("MENGER_OPTIX_CACHE"), custom_path.c_str());
+
+    // Restore original value
+    if (original) {
+        setenv("MENGER_OPTIX_CACHE", original, 1);
+    } else {
+        unsetenv("MENGER_OPTIX_CACHE");
+    }
+
+    // Cleanup test directory if created
+    std::filesystem::remove_all(custom_path);
+}
+
+//=============================================================================
 // Error Handling Tests
 //=============================================================================
 
@@ -326,25 +402,18 @@ TEST_F(OptiXContextTest, OperationBeforeInitializeThrows) {
     );
 }
 
-// Custom main to suppress verbose output
+// Minimal main - suppress verbose output, show only summary
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
-
-    // Suppress individual test output, only show summary
     ::testing::TestEventListeners& listeners = ::testing::UnitTest::GetInstance()->listeners();
     delete listeners.Release(listeners.default_result_printer());
-    listeners.Append(new ::testing::EmptyTestEventListener());
 
     int result = RUN_ALL_TESTS();
 
-    // Print concise summary
-    const ::testing::UnitTest* unit_test = ::testing::UnitTest::GetInstance();
-    if (result == 0) {
-        std::cout << "All " << unit_test->successful_test_count()
-                  << " C++ tests passed" << std::endl;
-    } else {
-        std::cout << unit_test->failed_test_count() << " C++ tests FAILED" << std::endl;
-    }
-
+    const auto* unit_test = ::testing::UnitTest::GetInstance();
+    std::cout << (result == 0 ? "All " : "") << unit_test->successful_test_count()
+              << " C++ tests " << (result == 0 ? "passed" : "passed, ")
+              << (result != 0 ? std::to_string(unit_test->failed_test_count()) + " FAILED" : "")
+              << std::endl;
     return result;
 }

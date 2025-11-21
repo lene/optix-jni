@@ -158,3 +158,28 @@ target/native/x86_64-linux/
 ## Local Development
 
 For local development with OptiX support, see the main project's `GPU_DEVELOPMENT.md`.
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MENGER_OPTIX_CACHE` | Custom OptiX cache directory path | `/var/tmp/OptixCache_<username>` |
+
+### Cache Management
+
+OptiX uses a disk cache to speed up pipeline compilation. The cache is stored in `/var/tmp/OptixCache_<username>/` by default.
+
+**Cache Corruption Recovery:**
+The renderer automatically detects cache corruption (SQLite database errors) and clears the corrupted cache. A fresh cache is rebuilt on the next render.
+
+**Custom Cache Location:**
+Set `MENGER_OPTIX_CACHE` to use a different cache directory:
+```bash
+export MENGER_OPTIX_CACHE=/path/to/cache
+```
+
+**Manual Cache Clearing:**
+If you encounter persistent issues, manually clear the cache:
+```bash
+rm -rf /var/tmp/OptixCache_$(whoami)
+```

@@ -8,13 +8,77 @@
 #include <fstream>
 #include <cerrno>
 #include <cstring>
+#include <atomic>
+#include <filesystem>
+#include <unistd.h>
+#include <pwd.h>
 
 #include <optix_stubs.h>
 #include <optix_stack_size.h>
 
-// OptiX log callback
+// Track cache corruption - when detected, clear and rebuild cache
+static std::atomic<bool> g_cache_corruption_detected{false};
+
+std::string OptiXContext::getDefaultCachePath() {
+    const char* user = std::getenv("USER");
+    if (user == nullptr) user = std::getenv("LOGNAME");
+
+    // Fallback to getpwuid for Docker/CI environments where env vars aren't set
+    if (user == nullptr) {
+        struct passwd* pw = getpwuid(getuid());
+        if (pw != nullptr) {
+            user = pw->pw_name;
+        }
+    }
+
+    // Last resort: use uid as identifier
+    if (user == nullptr) {
+        return std::string("/var/tmp/OptixCache_") + std::to_string(getuid());
+    }
+
+    return std::string("/var/tmp/OptixCache_") + user;
+}
+
+bool OptiXContext::clearCache(const std::string& cache_path) {
+    if (cache_path.empty()) return true;
+
+    try {
+        if (std::filesystem::exists(cache_path)) {
+            std::filesystem::remove_all(cache_path);
+            std::cerr << "[OptiXContext] Cleared cache: " << cache_path << std::endl;
+        }
+        return true;
+    } catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "[OptiXContext] Failed to clear cache: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool OptiXContext::clearCache() {
+    return clearCache(getDefaultCachePath());
+}
+
+// OptiX log callback - detects cache corruption for auto-recovery
 static void optixLogCallback(unsigned int level, const char* tag, const char* message, void* /*cbdata*/) {
     std::cerr << "[OptiX][" << level << "][" << tag << "]: " << message << std::endl;
+
+    // Detect cache corruption: tag is "DISKCACHE" and message contains corruption indicators
+    // Common error messages:
+    //   "disk I/O error"
+    //   "database disk image is malformed"
+    //   "corruption detected"
+    //   "Error when configuring the database"
+    if (tag != nullptr && std::strcmp(tag, "DISKCACHE") == 0 && message != nullptr) {
+        if (std::strstr(message, "corruption") != nullptr ||
+            std::strstr(message, "malformed") != nullptr ||
+            std::strstr(message, "I/O error") != nullptr ||
+            std::strstr(message, "Error when configuring") != nullptr) {
+            if (!g_cache_corruption_detected.exchange(true)) {
+                // First detection - clear the cache
+                OptiXContext::clearCache();
+            }
+        }
+    }
 }
 
 OptiXContext::OptiXContext() : context_(nullptr), initialized_(false) {
@@ -39,6 +103,16 @@ bool OptiXContext::initialize() {
         options.logCallbackLevel = OptiXConstants::OPTIX_LOG_LEVEL_INFO;
 
         OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &context_));
+
+        // Configure OptiX disk cache
+        // Allow custom cache location via MENGER_OPTIX_CACHE environment variable
+        const char* cache_path = std::getenv("MENGER_OPTIX_CACHE");
+        if (cache_path != nullptr) {
+            OPTIX_CHECK(optixDeviceContextSetCacheLocation(context_, cache_path));
+        }
+
+        // Reset corruption flag - cache was cleared, fresh one will be created
+        g_cache_corruption_detected.store(false);
 
         initialized_ = true;
         return true;
