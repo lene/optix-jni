@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.Color
 import menger.common.Light
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
@@ -20,7 +21,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     light.direction(0) shouldBe 0.5f
     light.direction(1) shouldBe 0.5f
     light.direction(2) shouldBe -0.5f
-    light.color shouldBe Vector[3](1.0f, 1.0f, 1.0f)
+    light.color shouldBe Color(1.0f, 1.0f, 1.0f)
     light.intensity shouldBe 1.0f
 
   "Light.Point" should "create point light with correct defaults" in:
@@ -32,7 +33,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     light.position(0) shouldBe 0.0f
     light.position(1) shouldBe 5.0f
     light.position(2) shouldBe 0.0f
-    light.color shouldBe Vector[3](1.0f, 1.0f, 1.0f)
+    light.color shouldBe Color(1.0f, 1.0f, 1.0f)
     light.intensity shouldBe 1.0f
 
   "setLights" should "accept empty array without error" in:
@@ -70,7 +71,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(true)
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
 
     // Single light from above
     val singleLight = Light.Directional(
@@ -105,7 +106,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(true)
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
     renderer.setShadows(true)
 
     // Light from right only
@@ -144,7 +145,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(true)
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
 
     // Point light close to sphere (at position 0, 3, 0, sphere is at 0, 0, 0)
     val closeLight = Light.Point(
@@ -180,12 +181,12 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
     val lights = Seq(
       Light.Directional(
         direction = Vector[3](-1.0f, -0.5f, 0.0f),
-        color = Vector[3](1.0f, 0.0f, 0.0f),  // Red
+        color = Color(1.0f, 0.0f, 0.0f),  // Red
         intensity = 0.5f
       ),
       Light.Directional(
         direction = Vector[3](1.0f, -0.5f, 0.0f),
-        color = Vector[3](0.0f, 0.0f, 1.0f),  // Blue
+        color = Color(0.0f, 0.0f, 1.0f),  // Blue
         intensity = 0.5f
       )
     )
@@ -227,7 +228,7 @@ class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(true)
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
     renderer.setShadows(true)
 
     // Two lights from different angles

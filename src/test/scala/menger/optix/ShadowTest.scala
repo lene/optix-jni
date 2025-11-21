@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.Color
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -21,11 +22,11 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     planeY: Float = -0.6f
   ): Unit =
     renderer.setSphere(Vector[3](0.0f, sphereY, 0.0f), sphereRadius)
-    renderer.setSphereColor(0.75f, 0.75f, 0.75f, sphereAlpha)
+    renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, sphereAlpha))
     renderer.setIOR(1.5f)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, planeY)
-    renderer.setPlaneSolidColor(true)  // Use solid color for shadow visibility
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
     renderer.setCamera(
       Vector[3](0.0f, 0.0f, 5.0f),
       Vector[3](0.0f, -0.3f, 0.0f),
@@ -37,11 +38,11 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   "Shadow rays" should "create darker shadows when enabled" in:
     // Setup basic scene
     renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
-    renderer.setSphereColor(0.75f, 0.75f, 0.75f, 1.0f)  // Opaque sphere
+    renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, 1.0f))  // Opaque sphere
     renderer.setIOR(1.5f)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, -0.6f)  // Y-axis plane below sphere
-    renderer.setPlaneSolidColor(true)  // Use solid color for shadow visibility
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
 
     val eye = Vector[3](0.0f, 0.0f, 5.0f)
     val lookAt = Vector[3](0.0f, -0.3f, 0.0f)
@@ -68,7 +69,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setIOR(1.5f)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, -0.6f)
-    renderer.setPlaneSolidColor(true)  // Use solid color for shadow visibility
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
 
     val eye = Vector[3](0.0f, 0.0f, 5.0f)
     val lookAt = Vector[3](0.0f, -0.3f, 0.0f)
@@ -80,11 +81,11 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setShadows(true)
 
     // Render with fully transparent sphere (alpha=0.0)
-    renderer.setSphereColor(0.75f, 0.75f, 0.75f, 0.0f)
+    renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, 0.0f))
     val transparentImage = renderer.render(imageSize).get
 
     // Render with opaque sphere (alpha=1.0)
-    renderer.setSphereColor(0.75f, 0.75f, 0.75f, 1.0f)
+    renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, 1.0f))
     val opaqueImage = renderer.render(imageSize).get
 
     // Images should be different (opaque sphere casts darker shadow)

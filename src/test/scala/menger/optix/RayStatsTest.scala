@@ -1,7 +1,7 @@
 package menger.optix
-import menger.common.Vector
-
+import menger.common.Color
 import menger.common.ImageSize
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import ColorConstants.*
@@ -39,7 +39,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   it should "have no refracted rays for opaque sphere" in:
     TestScenario.default()
-      .withSphereColor(1f, 0f, 0f, 1.0f)  // Fully opaque
+      .withSphereColor(Color(1f, 0f, 0f, 1.0f))  // Fully opaque
       .withSphereRadius(0.5f)
       .withIOR(1.5f)
       .withCameraEye(Vector[3](0f, 0f, 3f))
@@ -53,7 +53,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
 
   it should "have no refracted rays for fully transparent sphere" in:
     TestScenario.default()
-      .withSphereColor(1f, 1f, 1f, 0.0f)  // Fully transparent
+      .withSphereColor(Color(1f, 1f, 1f, 0.0f))  // Fully transparent
       .withSphereRadius(0.5f)
       .withIOR(1.0f)  // No refraction
       .withCameraEye(Vector[3](0f, 0f, 3f))
@@ -96,7 +96,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     // Semi-transparent sphere
     TestScenario.default()
       .withSphereRadius(0.5f)
-      .withSphereColor(1f, 1f, 1f, 0.5f)
+      .withSphereColor(Color(1f, 1f, 1f, 0.5f))
       .withIOR(1.5f)
       .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
@@ -106,7 +106,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     // More transparent sphere
     TestScenario.default()
       .withSphereRadius(0.5f)
-      .withSphereColor(1f, 1f, 1f, 0.2f)
+      .withSphereColor(Color(1f, 1f, 1f, 0.2f))
       .withIOR(1.5f)
       .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
@@ -183,7 +183,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     // Opaque sphere with light behind the camera (opposite direction)
     TestScenario.default()
       .withSphereRadius(0.5f)
-      .withSphereColor(1f, 0f, 0f, 1.0f)  // Opaque red
+      .withSphereColor(Color(1f, 0f, 0f, 1.0f))  // Opaque red
       .withCameraEye(Vector[3](0f, 0f, 3f))  // Camera in front
       .withHorizontalFOV(60f)
       .applyTo(renderer)

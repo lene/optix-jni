@@ -1,7 +1,7 @@
 package menger.optix
-import menger.common.Vector
-
+import menger.common.Color
 import menger.common.ImageSize
+import menger.common.Vector
 import java.nio.file.{Files, Paths}
 
 object LightComparisonVisualization:
@@ -39,7 +39,7 @@ object LightComparisonVisualization:
 
     // Set up scene WITHOUT calling setLight - use C++ default
     renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
-    renderer1.setSphereColor(0.784f, 0.784f, 0.784f, 1.0f)  // OPAQUE_LIGHT_GRAY
+    renderer1.setSphereColor(Color(0.784f, 0.784f, 0.784f, 1.0f))  // OPAQUE_LIGHT_GRAY
     renderer1.setIOR(1.0f)
     renderer1.setCamera(
       Vector[3](0.0f, 0.5f, 3.0f),
@@ -60,7 +60,7 @@ object LightComparisonVisualization:
     renderer2.initialize()
 
     renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
-    renderer2.setSphereColor(0.784f, 0.784f, 0.784f, 1.0f)
+    renderer2.setSphereColor(Color(0.784f, 0.784f, 0.784f, 1.0f))
     renderer2.setIOR(1.0f)
     renderer2.setCamera(
       Vector[3](0.0f, 0.5f, 3.0f),
@@ -81,7 +81,7 @@ object LightComparisonVisualization:
     renderer3.initialize()
 
     renderer3.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
-    renderer3.setSphereColor(0.784f, 0.784f, 0.784f, 1.0f)
+    renderer3.setSphereColor(Color(0.784f, 0.784f, 0.784f, 1.0f))
     renderer3.setIOR(1.0f)
     renderer3.setCamera(
       Vector[3](0.0f, 0.5f, 3.0f),

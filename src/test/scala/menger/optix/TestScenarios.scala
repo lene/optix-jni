@@ -1,13 +1,13 @@
 package menger.optix
 
-import menger.common.{ImageSize, Vector}
+import menger.common.{Color, ImageSize, Vector}
 import ColorConstants.*
 import ThresholdConstants.*
 
 case class SphereConfig(
   position: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),
   radius: Float = 0.5f,
-  color: (Float, Float, Float, Float) = OPAQUE_GREEN,
+  color: Color = OPAQUE_GREEN,
   ior: Float = 1.0f
 )
 
@@ -45,11 +45,8 @@ case class TestScenario(
   def withSphereRadius(radius: Float): TestScenario =
     copy(sphere = sphere.copy(radius = radius))
 
-  def withSphereColor(color: (Float, Float, Float, Float)): TestScenario =
+  def withSphereColor(color: Color): TestScenario =
     copy(sphere = sphere.copy(color = color))
-
-  def withSphereColor(r: Float, g: Float, b: Float, a: Float): TestScenario =
-    copy(sphere = sphere.copy(color = (r, g, b, a)))
 
   def withIOR(ior: Float): TestScenario =
     copy(sphere = sphere.copy(ior = ior))
@@ -129,9 +126,7 @@ case class TestScenario(
       sphere.position,
       sphere.radius
     )
-    renderer.setSphereColor(
-      sphere.color._1, sphere.color._2, sphere.color._3, sphere.color._4
-    )
+    renderer.setSphereColor(sphere.color)
     renderer.setIOR(sphere.ior)
 
     // Plane (optional)

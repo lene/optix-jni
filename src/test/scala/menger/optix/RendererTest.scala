@@ -1,4 +1,5 @@
 package menger.optix
+import menger.common.Color
 import menger.common.Vector
 
 import com.typesafe.scalalogging.LazyLogging
@@ -363,7 +364,7 @@ class RendererTest extends AnyFlatSpec
     val imageSize = QUICK_TEST_SIZE
 
     TestScenario.default()
-      .withSphereColor(0.0f, 1.0f, 0.5f, 1.0f)
+      .withSphereColor(Color(0.0f, 1.0f, 0.5f, 1.0f))
       .withSphereRadius(1.5f)
       .withIOR(1.0f)
       .applyTo(renderer)
@@ -406,8 +407,8 @@ class RendererTest extends AnyFlatSpec
     renderer.updateImageDimensions(TEST_IMAGE_SIZE)
     renderer.setCamera(Vector[3](0.0f, 0.5f, 3.0f), Vector[3](0.0f, 0.0f, 0.0f), Vector[3](0.0f, 1.0f, 0.0f), 60.0f)
     renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
-    renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
-    renderer.setSphereColor(0, 255, 0, 128)  // Integer version: green, 50% opacity
+    renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)  // Larger sphere to fill more of the image
+    renderer.setSphereColor(Color.fromRGBA(0, 255, 0, 255))  // Integer version: green, fully opaque
     renderer.setIOR(1.0f)
     renderer.setScale(1.0f)
 
@@ -477,7 +478,7 @@ class RendererTest extends AnyFlatSpec
     val size = ThresholdConstants.STANDARD_IMAGE_SIZE
 
     TestScenario.default()
-      .withSphereColor(0.5f, 1.0f, 0.5f, 0.8f)  // Green-tinted glass
+      .withSphereColor(Color(0.5f, 1.0f, 0.5f, 0.8f))  // Green-tinted glass
       .withSphereRadius(1.5f)
       .withIOR(1.5f)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))

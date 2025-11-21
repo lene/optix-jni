@@ -1,6 +1,7 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
+import menger.common.Color
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -98,7 +99,7 @@ class TransparencyTest extends AnyFlatSpec
     // Measure green pixel count at different alpha values
     val alphas = Seq(0, 64, 128, 191, 255)  // 0.0, 0.25, 0.5, 0.75, 1.0
     val greenAreas = alphas.map { alpha =>
-      setSphereColor(0.0f, 1.0f, 0.0f, alpha / 255.0f)
+      renderer.setSphereColor(Color(0.0f, 1.0f, 0.0f, alpha / 255.0f))
       val imageData = renderer.render(TEST_IMAGE_SIZE).get
       ImageValidation.spherePixelArea(
         imageData,

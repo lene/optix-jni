@@ -1,7 +1,7 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.{ImageSize, Vector, x, y, z}
+import menger.common.{Color, ImageSize, Vector, x, y, z}
 import menger.common.toArray
 
 import java.io.{FileOutputStream, InputStream}
@@ -35,7 +35,7 @@ private def toJNILight(light: CommonLight): Light =
         lightType = LightTypeJNI.DIRECTIONAL,
         direction = dir.toArray,
         position = Array(0f, 0f, 0f),  // Unused for directional
-        color = color.toArray,
+        color = color.toRGBArray,
         intensity = intensity
       )
     case CommonLight.Point(pos, color, intensity) =>
@@ -43,7 +43,7 @@ private def toJNILight(light: CommonLight): Light =
         lightType = LightTypeJNI.POINT,
         direction = Array(0f, 0f, 0f),  // Unused for point
         position = pos.toArray,
-        color = color.toArray,
+        color = color.toRGBArray,
         intensity = intensity
       )
 
@@ -107,7 +107,13 @@ class OptiXRenderer extends LazyLogging:
     setSphere(center.x, center.y, center.z, radius)
 
   
-  @native def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit
+  @native private def setSphereColorNative(r: Float, g: Float, b: Float, a: Float): Unit
+
+  def setSphereColor(color: Color): Unit =
+    setSphereColorNative(color.r, color.g, color.b, color.a)
+
+  private def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit =
+    setSphereColorNative(r, g, b, a)
 
   
   @native def setIOR(ior: Float): Unit
@@ -150,11 +156,22 @@ class OptiXRenderer extends LazyLogging:
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 
 
-  @native def setPlaneSolidColor(solid: Boolean): Unit
+  // Set plane to solid color mode with RGB 0.0-1.0
+  @native private def setPlaneSolidColorNative(r: Float, g: Float, b: Float): Unit
 
-  
+  def setPlaneSolidColor(color: Color): Unit =
+    setPlaneSolidColorNative(color.r, color.g, color.b)
+
+
   @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
 
+  // Set plane checker colors - RGB values 0.0-1.0
+  // For solid color: both colors are the same
+  // For checkered: color1 is light squares, color2 is dark squares
+  @native private def setPlaneCheckerColorsNative(r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Unit
+
+  def setPlaneCheckerColors(color1: Color, color2: Color): Unit =
+    setPlaneCheckerColorsNative(color1.r, color1.g, color1.b, color2.r, color2.g, color2.b)
 
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
@@ -186,8 +203,7 @@ class OptiXRenderer extends LazyLogging:
       disposeNative()
       initialized = false
 
-  // Convenience method with default alpha parameter for backward compatibility
-  def setSphereColor(r: Float, g: Float, b: Float): Unit =
+  private def setSphereColor(r: Float, g: Float, b: Float): Unit =
     setSphereColor(r, g, b, 1.0f)
 
   def isAvailable: Boolean =

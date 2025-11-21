@@ -1,7 +1,7 @@
 package menger.optix
-import menger.common.Vector
-
+import menger.common.Color
 import menger.common.ImageSize
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
@@ -47,10 +47,10 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Set different spheres in each renderer - same position, different colors
       renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
-      renderer1.setSphereColor(1.0f, 0.0f, 0.0f, 1.0f) // Red sphere
+      renderer1.setSphereColor(Color(1.0f, 0.0f, 0.0f, 1.0f)) // Red sphere
 
       renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
-      renderer2.setSphereColor(0.0f, 0.0f, 1.0f, 1.0f) // Blue sphere (same position)
+      renderer2.setSphereColor(Color(0.0f, 0.0f, 1.0f, 1.0f)) // Blue sphere (same position)
 
       // Set same camera for both
       val eye = Vector[3](0.0f, 0.0f, 3.0f)
@@ -262,7 +262,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
     // Operations on uninitialized instance should fail gracefully
     noException should be thrownBy renderer.setSphere(Vector[3](0, 0, 0), 1)
-    noException should be thrownBy renderer.setSphereColor(1, 0, 0, 1)
+    noException should be thrownBy renderer.setSphereColor(Color(1, 0, 0, 1))
 
     // render should return None on uninitialized instance
     val img = renderer.render(TEST_IMAGE_SIZE)

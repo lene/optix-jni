@@ -1,5 +1,6 @@
 package menger.optix
 
+import menger.common.Color
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -48,7 +49,7 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
       try {
         // Set up a simple sphere at origin
         renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
-        renderer.setSphereColor(1f, 0f, 0f, 1f)
+        renderer.setSphereColor(Color(1f, 0f, 0f, 1f))
 
         val eye = Vector[3](0f, 0f, 5f)
         val lookAt = Vector[3](0f, 0f, 0f)
@@ -81,7 +82,7 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
     try {
       // Set up a simple sphere at origin
       renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
-      renderer.setSphereColor(1f, 0f, 0f, 1f)
+      renderer.setSphereColor(Color(1f, 0f, 0f, 1f))
 
       val eye = Vector[3](0f, 0f, 5f)
       val lookAt = Vector[3](0f, 0f, 0f)
@@ -114,7 +115,7 @@ class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLoggin
     try {
       // Set up a simple sphere at origin
       renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
-      renderer.setSphereColor(1f, 0f, 0f, 1f)
+      renderer.setSphereColor(Color(1f, 0f, 0f, 1f))
 
       val eye = Vector[3](0f, 0f, 5f)
       val lookAt = Vector[3](0f, 0f, 0f)

@@ -1,6 +1,7 @@
 package menger.optix
-import menger.common.Vector
 
+import menger.common.Color
+import menger.common.Vector
 import org.scalatest.Ignore
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -17,11 +18,11 @@ class ShadowDiagnosticTest extends AnyFlatSpec with Matchers with RendererFixtur
     lightDir: Vector[3] = Vector[3](0.5f, 0.5f, -0.5f)
   ): Unit =
     renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
-    renderer.setSphereColor(0.75f, 0.75f, 0.75f, sphereAlpha)
+    renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, sphereAlpha))
     renderer.setIOR(1.5f)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, -0.6f)
-    renderer.setPlaneSolidColor(true)  // Use solid color for shadow visibility
+    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
     renderer.setCamera(
       Vector[3](0.0f, 0.0f, 5.0f),
       Vector[3](0.0f, -0.3f, 0.0f),

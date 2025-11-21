@@ -1,7 +1,7 @@
 package menger.optix
-import menger.common.Vector
-
+import menger.common.Color
 import menger.common.ImageSize
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
@@ -17,7 +17,7 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
     try {
       // Set up a simple sphere
       renderer.setSphere(Vector[3](0f, 0f, 0f), 1.0f)
-      renderer.setSphereColor(1f, 0f, 0f, 1f)
+      renderer.setSphereColor(Color(1f, 0f, 0f, 1f))
 
       // Initial camera setup - square aspect ratio (800x800)
       val eye = Vector[3](0f, 0f, 5f)
@@ -87,7 +87,7 @@ class WindowResizeTest extends AnyFlatSpec with Matchers with LazyLogging {
     try {
       // Set up a sphere off-center
       renderer.setSphere(Vector[3](1f, 0f, 0f), 0.5f)
-      renderer.setSphereColor(0f, 1f, 0f, 1f) // Green
+      renderer.setSphereColor(Color(0f, 1f, 0f, 1f)) // Green
 
       // Camera looking at (1, 0, 0) where the sphere is
       val eye = Vector[3](1f, 0f, 5f)

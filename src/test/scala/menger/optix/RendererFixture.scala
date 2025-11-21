@@ -1,7 +1,7 @@
 package menger.optix
-import menger.common.Vector
-
+import menger.common.Color
 import menger.common.ImageSize
+import menger.common.Vector
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.flatspec.AnyFlatSpec
 
@@ -68,8 +68,8 @@ trait RendererFixture extends BeforeAndAfterEach:
     )
 
   
-  protected def setSphereColor(red: Float, green: Float, blue: Float, alpha: Float): Unit =
-    renderer.setSphereColor(red, green, blue, alpha)
+  protected def setSphereColor(color: Color): Unit =
+    renderer.setSphereColor(color)
 
 
   protected def renderImage(size: ImageSize): Array[Byte] =
