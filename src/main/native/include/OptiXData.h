@@ -61,6 +61,15 @@ namespace RayTracingConstants {
     constexpr int AA_MAX_DEPTH_LIMIT = 4;           // Maximum recursion depth for AA
     constexpr int AA_SUBDIVISION_FACTOR = 3;        // 3x3 subdivision per level
     constexpr float AA_DEFAULT_THRESHOLD = 0.1f;    // Default color difference threshold
+
+    // Progressive Photon Mapping (Caustics)
+    constexpr int MAX_HIT_POINTS = 2000000;         // Maximum stored hit points for caustics
+    constexpr int DEFAULT_PHOTONS_PER_ITER = 100000; // Photons emitted per PPM iteration
+    constexpr int DEFAULT_CAUSTICS_ITERATIONS = 10;  // Number of PPM iterations
+    constexpr float DEFAULT_INITIAL_RADIUS = 0.1f;   // Initial photon gather radius
+    constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
+    constexpr int CAUSTICS_GRID_RESOLUTION = 128;    // Spatial hash grid resolution (128^3 cells)
+    constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
 }
 
 // Material constants (Index of Refraction)
@@ -84,6 +93,56 @@ struct Light {
     float position[3];    // Light position for point lights
     float color[3];       // RGB color (0.0-1.0)
     float intensity;      // Brightness multiplier
+};
+
+// Photon for Progressive Photon Mapping (caustics)
+// Represents a single photon emitted from a light source
+struct Photon {
+    float position[3];    // World position where photon landed
+    float direction[3];   // Incoming direction (normalized)
+    float flux[3];        // RGB energy/power carried by photon
+    float pad;            // Alignment padding
+};
+
+// Hit point for Progressive Photon Mapping (caustics)
+// Represents a diffuse surface point that can receive caustics
+struct HitPoint {
+    float position[3];    // World position on diffuse surface
+    float normal[3];      // Surface normal at hit point
+    float flux[3];        // Accumulated photon flux (RGB)
+    float radius;         // Current search radius (shrinks over iterations)
+    unsigned int n;       // Number of photons accumulated so far
+    unsigned int pixel_x; // Pixel X coordinate for final write
+    unsigned int pixel_y; // Pixel Y coordinate for final write
+    float weight[3];      // BRDF weight for this view direction
+    unsigned int new_photons; // Photons accumulated this iteration (for radius update)
+    float pad;            // Alignment padding
+};
+
+// Parameters for Progressive Photon Mapping (caustics)
+struct CausticsParams {
+    bool enabled;                    // Enable caustics rendering
+    int photons_per_iteration;       // Photons to emit each PPM iteration
+    int iterations;                  // Number of PPM iterations to run
+    float initial_radius;            // Starting search radius
+    float alpha;                     // Radius reduction factor (0.7 typical)
+    int current_iteration;           // Current iteration (for RNG seeding)
+
+    // GPU buffers (set by host before launch)
+    HitPoint* hit_points;            // Array of hit points on diffuse surfaces
+    unsigned int* num_hit_points;    // Pointer to GPU counter (for atomicAdd)
+    unsigned int* grid;              // Spatial hash grid (cell -> first hit point index)
+    unsigned int* grid_counts;       // Number of hit points per cell
+    unsigned int* grid_offsets;      // Prefix sum for sorted hit point indices
+
+    // Grid bounding box and parameters
+    float grid_min[3];               // Bounding box minimum
+    float grid_max[3];               // Bounding box maximum
+    float cell_size;                 // Size of each grid cell
+    unsigned int grid_resolution;    // Number of cells per dimension
+
+    // Statistics
+    unsigned long long total_photons_traced;  // Total photons traced across all iterations
 };
 
 // Ray statistics tracking
@@ -128,6 +187,9 @@ struct Params {
     bool  aa_enabled;           // Enable adaptive antialiasing
     int   aa_max_depth;         // Maximum recursion depth (1-4)
     float aa_threshold;         // Color difference threshold for edge detection (0.0-1.0)
+
+    // Progressive Photon Mapping (Caustics)
+    CausticsParams caustics;    // Caustics rendering parameters and GPU buffers
 };
 
 // Ray generation shader data (camera)

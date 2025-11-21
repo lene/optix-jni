@@ -117,6 +117,19 @@ struct OptiXWrapper::Impl {
     CUdeviceptr d_image = 0;
     size_t cached_image_size = 0;
     CUdeviceptr d_stats = 0;  // Ray statistics buffer
+
+    // Caustics (Progressive Photon Mapping) GPU buffers
+    CUdeviceptr d_hit_points = 0;        // Array of HitPoint structs
+    CUdeviceptr d_num_hit_points = 0;    // GPU counter for atomicAdd
+    CUdeviceptr d_caustics_grid = 0;     // Spatial hash grid (cell -> first hit point)
+    CUdeviceptr d_caustics_grid_counts = 0;  // Hit points per cell
+    CUdeviceptr d_caustics_grid_offsets = 0; // Prefix sum for sorting
+    size_t cached_hit_points_size = 0;
+    bool caustics_enabled = false;
+    int caustics_photons_per_iter = RayTracingConstants::DEFAULT_PHOTONS_PER_ITER;
+    int caustics_iterations = RayTracingConstants::DEFAULT_CAUSTICS_ITERATIONS;
+    float caustics_initial_radius = RayTracingConstants::DEFAULT_INITIAL_RADIUS;
+    float caustics_alpha = RayTracingConstants::DEFAULT_PPM_ALPHA;
     OptixShaderBindingTable sbt = {};
     OptixTraversableHandle gas_handle = 0;
 
@@ -529,6 +542,15 @@ void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) 
     // Synchronized to GPU params before render
 }
 
+void OptiXWrapper::setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha) {
+    impl->caustics_enabled = enabled;
+    impl->caustics_photons_per_iter = photonsPerIter;
+    impl->caustics_iterations = iterations;
+    impl->caustics_initial_radius = initialRadius;
+    impl->caustics_alpha = alpha;
+    // GPU buffers allocated lazily when caustics rendering is requested
+}
+
 void OptiXWrapper::setPlane(int axis, bool positive, float value) {
     impl->plane.axis = axis;
     impl->plane.positive = positive;
@@ -616,6 +638,21 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.aa_enabled = impl->aa_enabled;
         params.aa_max_depth = impl->aa_max_depth;
         params.aa_threshold = impl->aa_threshold;
+
+        // Caustics (Progressive Photon Mapping) parameters
+        params.caustics.enabled = impl->caustics_enabled;
+        params.caustics.photons_per_iteration = impl->caustics_photons_per_iter;
+        params.caustics.iterations = impl->caustics_iterations;
+        params.caustics.initial_radius = impl->caustics_initial_radius;
+        params.caustics.alpha = impl->caustics_alpha;
+        params.caustics.current_iteration = 0;
+        params.caustics.hit_points = reinterpret_cast<HitPoint*>(impl->d_hit_points);
+        params.caustics.num_hit_points = reinterpret_cast<unsigned int*>(impl->d_num_hit_points);
+        params.caustics.grid = reinterpret_cast<unsigned int*>(impl->d_caustics_grid);
+        params.caustics.grid_counts = reinterpret_cast<unsigned int*>(impl->d_caustics_grid_counts);
+        params.caustics.grid_offsets = reinterpret_cast<unsigned int*>(impl->d_caustics_grid_offsets);
+        params.caustics.grid_resolution = RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
+        params.caustics.total_photons_traced = 0;
 
         params.stats = reinterpret_cast<RayStats*>(impl->d_stats);
 
@@ -720,6 +757,29 @@ void OptiXWrapper::dispose() {
                 impl->d_image = 0;
                 impl->cached_image_size = 0;
             }
+
+            // Clean up caustics (PPM) buffers
+            if (impl->d_hit_points) {
+                cudaFree(reinterpret_cast<void*>(impl->d_hit_points));
+                impl->d_hit_points = 0;
+            }
+            if (impl->d_num_hit_points) {
+                cudaFree(reinterpret_cast<void*>(impl->d_num_hit_points));
+                impl->d_num_hit_points = 0;
+            }
+            if (impl->d_caustics_grid) {
+                cudaFree(reinterpret_cast<void*>(impl->d_caustics_grid));
+                impl->d_caustics_grid = 0;
+            }
+            if (impl->d_caustics_grid_counts) {
+                cudaFree(reinterpret_cast<void*>(impl->d_caustics_grid_counts));
+                impl->d_caustics_grid_counts = 0;
+            }
+            if (impl->d_caustics_grid_offsets) {
+                cudaFree(reinterpret_cast<void*>(impl->d_caustics_grid_offsets));
+                impl->d_caustics_grid_offsets = 0;
+            }
+            impl->cached_hit_points_size = 0;
 
             // Clean up SBT buffers using OptiXContext
             if (impl->sbt.raygenRecord) {
