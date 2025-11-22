@@ -25,6 +25,48 @@ Render scenes with multiple objects (sphere, cube, sponge) positioned independen
 
 ---
 
+## Quality Requirements & Validation
+
+**Reference:** [arc42 Section 10 - Quality Requirements](../docs/arc42/10-quality-requirements.md)
+
+### Metrics to Establish Baselines
+
+Sprint 6 introduces multi-object scenes and sponge mesh export - critical for performance baselines:
+
+| Metric | Arc42 Ref | Sprint 6 Goal |
+|--------|-----------|---------------|
+| Sponge level 3 generation time | P1 | **Establish baseline** - target < 5 seconds |
+| Sponge GAS build time (level 0-3) | New | **Establish baseline** - document per-level |
+| IAS build time (multi-object) | New | **Establish baseline** - measure for 4-8 objects |
+| Render time with sponge | P2 | **Establish baseline** - 800×600 with level 2 sponge |
+| GPU memory (sponge level 3) | Memory | **Validate** - should be < 50 MB per arc42 |
+
+### Quality Scenarios to Validate
+
+| ID | Scenario | Validation |
+|----|----------|------------|
+| P1 | Sponge level 3 generation | Measure and document actual time |
+| TR-2 | GPU memory exhaustion | Monitor memory; graceful failure if exceeded |
+| TR-4 | Large BVH build time | Document actual times; add caching if >10s |
+| R1 | Test count | Sprint adds ~20-30 new tests |
+| M1-M2 | Code quality | Zero Scalafix/Wartremover violations |
+
+### Risks Addressed (from arc42 Section 11)
+
+| Risk | Mitigation in Sprint 6 |
+|------|------------------------|
+| TR-2: GPU memory exhaustion | Add memory monitoring; limit sponge level |
+| TR-4: Large sponge BVH build | Implement geometry caching (AD-5) |
+
+### Sprint 6 Quality Deliverables
+
+1. **Sponge performance table**: Document generation + GAS build times for levels 0-3
+2. **Memory usage report**: GPU memory for sponge at each level
+3. **Update arc42 Section 10** with actual baseline values established
+4. **Update arc42 Section 11** if new risks identified during implementation
+
+---
+
 ## Architectural Decisions
 
 These decisions affect future sprints. Document rationale to avoid regret later.

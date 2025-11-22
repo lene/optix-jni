@@ -33,6 +33,39 @@ Render an opaque and glass cube via `--object cube`, proving the triangle mesh p
 
 ---
 
+## Quality Requirements & Validation
+
+**Reference:** [arc42 Section 10 - Quality Requirements](../docs/arc42/10-quality-requirements.md)
+
+### Metrics to Establish Baselines
+
+This sprint introduces new geometry type, requiring establishment of baseline metrics:
+
+| Metric | Arc42 Ref | Sprint 5 Goal |
+|--------|-----------|---------------|
+| Cube render time (800×600) | P2 | **Establish baseline** - measure and document |
+| New geometry type implementation time | M4 | **Validate** - target < 1 day (sprint proves architecture) |
+| Triangle GAS build time | New | **Establish baseline** - measure for 12 triangles |
+| Triangle shader performance | P2 | Should not exceed sphere render time by >50% |
+
+### Quality Scenarios to Validate
+
+| ID | Scenario | Validation |
+|----|----------|------------|
+| V4 | Shadow edges (no acne) | Visual test: cube shadows should be clean |
+| V1-V3 | Physics accuracy | Glass cube refraction should match sphere behavior |
+| R1 | Test count | Sprint adds ~15-20 new tests, total remains 897+ |
+| M1-M2 | Code quality | Zero Scalafix/Wartremover violations |
+
+### Sprint 5 Quality Deliverables
+
+1. **Document baseline render time** for cube at 800×600 in Definition of Done
+2. **Document GAS build time** for 12-triangle cube mesh
+3. **Visual regression test** - screenshot comparison with expected output
+4. **Performance regression** - ensure existing sphere render time unchanged
+
+---
+
 ## Architectural Decisions
 
 These decisions affect future sprints. Document rationale to avoid regret later.

@@ -28,6 +28,48 @@ Enable textured materials with UV coordinates, material presets, and CLI-based m
 
 ---
 
+## Quality Requirements & Validation
+
+**Reference:** [arc42 Section 10 - Quality Requirements](../docs/arc42/10-quality-requirements.md)
+
+### Metrics to Establish Baselines
+
+Sprint 7 extends vertex format and adds textures - verify no performance regression:
+
+| Metric | Arc42 Ref | Sprint 7 Goal |
+|--------|-----------|---------------|
+| Vertex buffer memory | Memory | **Measure impact** - 8 vs 6 floats per vertex |
+| Render time with textures | P2 | **Establish baseline** - texture sampling overhead |
+| Texture upload time | New | **Establish baseline** - document for common sizes |
+| Material preset accuracy | V1-V3 | **Validate** - glass/water/diamond presets match physics |
+
+### Quality Scenarios to Validate
+
+| ID | Scenario | Validation |
+|----|----------|------------|
+| V1 | Glass refraction | Material preset IOR matches Snell's law |
+| V2 | Fresnel reflection | Material presets show correct angular falloff |
+| V3 | Beer-Lambert absorption | Colored glass shows physically plausible tinting |
+| P2 | Render time | No regression >10% from adding UV coordinates |
+| M1-M2 | Code quality | Zero Scalafix/Wartremover violations |
+
+### Material Preset Validation
+
+| Preset | IOR | Roughness | Expected Behavior |
+|--------|-----|-----------|-------------------|
+| Glass | 1.5 | 0.0 | Clear refraction, 4% perpendicular reflection |
+| Water | 1.33 | 0.0 | 2% perpendicular reflection, slight caustics |
+| Diamond | 2.42 | 0.0 | 17% perpendicular reflection, sparkle |
+
+### Sprint 7 Quality Deliverables
+
+1. **Material preset reference renders** - screenshot each preset for documentation
+2. **Performance comparison table** - render times before/after UV extension
+3. **Texture memory report** - GPU memory for sample textures
+4. **v0.5 milestone validation** - comprehensive test of all Sprint 5-7 features together
+
+---
+
 ## Architectural Decisions
 
 These decisions affect future sprints. Document rationale to avoid regret later.
