@@ -1,8 +1,8 @@
 # OptiX Renderer Enhancement Plan
 
 **Created:** 2025-11-09
-**Updated:** 2025-11-21
-**Status:** Sprints 1, 2, and 3 Complete
+**Updated:** 2025-11-22
+**Status:** Sprints 1-3 Complete, Sprint 4 Deferred, Planning Sprints 5-11
 
 ## Overview
 
@@ -16,6 +16,14 @@ This document outlines the comprehensive plan for enhancing the OptiX ray tracin
 2. **Performance:** Ray statistics for optimization insights
 3. **Interactivity:** Mouse camera control
 4. **Flexibility:** Multiple configurable light sources
+5. **Feature Breadth:** Support more object types (cubes, meshes, sponges in OptiX)
+6. **Animation:** Object animation and frame sequence rendering
+7. **Usability:** Scene description language for declarative scene files
+
+## Milestone: v0.5 - Full Mesh Support
+
+**Target:** After Sprint 8
+**Goal:** OptiX renders spheres, cubes, planes, and Menger sponges with full material support
 
 ---
 
@@ -72,7 +80,12 @@ This document outlines the comprehensive plan for enhancing the OptiX ray tracin
   - Time spent: ~2 hours
 
 ### In Progress
-- 🔄 None - Sprints 1, 2, and 3 complete!
+- 🔄 Planning Sprints 5-11 (Feature Breadth Roadmap)
+
+### Deferred
+- ⏸️ **Sprint 4 (Caustics)** - Algorithm issues encountered, deferred to backlog
+  - Branch `feature/caustics` preserved for future revisit
+  - PPM approach hit algorithm issues producing incorrect/invisible results
 
 ### Investigation Completed (Deferred)
 - ⏸️ **Dynamic Window Resizing (5.1)** - Investigated 2025-11-09 to 2025-11-14
@@ -109,16 +122,115 @@ Implement sophisticated antialiasing and API improvements.
 - ✅ Feature 3.2: Unified Color API (COMPLETE - 3 hours)
 - ✅ Feature 3.3: OptiX Cache Management (COMPLETE - 2 hours)
 
-### Sprint 4: Advanced Lighting (15-25 hours) - PLANNED
-Add photon mapping for physically accurate caustics.
+### Sprint 4: Advanced Lighting (15-25 hours) - ⏸️ DEFERRED
+Caustics via Progressive Photon Mapping - deferred due to algorithm issues.
+- Branch `feature/caustics` preserved for future revisit
 
-### Sprint 5: Complex Features (Status: Deferred) - DEFERRED
-Features requiring further investigation and prototyping.
-- ⏸️ Feature 5.1: Dynamic Window Resizing (10+ hours spent, no resolution)
+### Sprint 5: Triangle Mesh Foundation + Cube (12-18 hours) - 📋 PLANNED
+Establishes infrastructure for triangle mesh rendering with a basic cube primitive.
 
-**Total estimated effort (Sprints 1-4):** 39-59 hours
-**Deferred (Sprint 5):** 10-20 hours additional
-**Actual time spent:** 35 hours (as of 2025-11-19) - Sprints 1 & 2 complete
+**Detailed Plan:** [SPRINT_5_PLAN.md](SPRINT_5_PLAN.md)
+
+- Add `OptixBuildInputTriangleArray` support to OptiXWrapper
+- Create JNI interface for passing vertex/index buffers
+- Implement triangle closest-hit shader with per-face normals
+- Scala `Cube` → vertex/index export to OptiX (12 triangles, 6 faces)
+- Basic solid color rendering (no materials yet)
+- CLI: `--object cube` option
+- Tests for cube rendering
+
+### Sprint 6: Full Geometry Support (20-30 hours) - 📋 PLANNED
+Complete geometry pipeline with multiple objects and sponge mesh.
+
+**Detailed Plan:** [SPRINT_6_PLAN.md](SPRINT_6_PLAN.md)
+
+- Scene graph / object list in OptiX (IAS architecture)
+- Per-object transforms (position, rotation, scale)
+- CLI: Multiple `--object` flags with position/size
+- Export `Seq[Face]` from `SpongeBySurface` to triangle buffer
+- Handle large face counts efficiently (sponge levels 0-3+)
+- Performance optimization for BVH build
+- Tests for multi-object and sponge rendering
+
+### Sprint 7: Materials (10-15 hours) - 📋 PLANNED
+Add material support to all geometry types.
+
+**Detailed Plan:** [SPRINT_7_PLAN.md](SPRINT_7_PLAN.md)
+
+- Extended material properties (roughness, metallic, specular)
+- UV coordinates in vertex format (8 floats: pos + normal + UV)
+- Texture upload and sampling infrastructure
+- Material presets (glass, metal, plastic, matte, water, diamond)
+- CLI: `--material`, `--roughness`, `--ior` flags
+- Apply materials to cube, sphere, sponge
+- Tests for material and texture rendering
+
+**🎯 MILESTONE: v0.5 - Full 3D Support** (after Sprint 7)
+
+### Sprint 8: 4D Projection Foundation (12-18 hours) - 📋 PLANNED
+Infrastructure for 4D→3D projection with tesseract proof-of-concept.
+- 4D→3D projection mathematics (perspective, orthographic, cross-section)
+- 4D vertex/edge data structures
+- Tesseract (4D hypercube) geometry generation
+- Project tesseract to 3D triangle mesh
+- CLI: `--object tesseract` option
+- Tests for 4D projection
+
+### Sprint 9: TesseractSponge (15-20 hours) - 📋 PLANNED
+Full 4D Menger sponge rendering.
+- TesseractSponge → 4D mesh export
+- Apply 4D projection pipeline
+- Handle large 4D face counts efficiently
+- Progressive level support (levels 0-2+)
+- CLI: `--object tesseract-sponge --level N`
+- Tests for TesseractSponge rendering
+
+### Sprint 10: 4D Framework (10-15 hours) - 📋 PLANNED
+Generalized framework for arbitrary 4D mesh objects.
+- Abstract 4D mesh interface
+- 4D rotation/transformation controls
+- Interactive 4D manipulation (w-axis rotation)
+- CLI: 4D view parameters
+- Documentation for 4D object creation
+
+**🎯 MILESTONE: v0.6 - Full 4D Support** (after Sprint 10)
+
+### Sprint 11: Scene Description Language (15-20 hours) - 📋 PLANNED
+Declarative scene files - foundation for complex scene and animation specification.
+- Design simple scene file format (YAML/JSON/custom)
+- Parse scene files with object definitions
+- Material and light definitions in scene file
+- Per-object transforms in scene file
+- CLI: `--scene <file>`
+
+### Sprint 12: Object Animation Foundation (10-15 hours) - 📋 PLANNED
+Infrastructure for animated scenes (builds on scene files).
+- Animation timeline/keyframe data structure in scene format
+- Object transform interpolation
+- Frame sequence rendering
+- Output to image sequence (PNG)
+- CLI: `--animate`, `--frames`, `--fps`
+
+### Sprint 13: Animation Enhancements (8-12 hours) - 📋 PLANNED
+Richer animation capabilities.
+- Easing functions (linear, ease-in-out, etc.)
+- Multi-object animation
+- Camera animation (path following)
+- Animation preview mode
+
+### Backlog (Future)
+- **Caustics Revisited:** Return to PPM with simpler approach
+- **More primitives:** Cylinders, cones, torus
+- **Advanced materials:** Subsurface scattering, PBR
+- **Real-time preview:** Interactive rendering mode
+- **GPU instancing:** Efficient repeated geometry
+- **Dynamic Window Resizing:** Complex, 15+ hours spent with no resolution
+
+**Total estimated effort (Sprints 1-3):** ~34 hours (COMPLETE)
+**Sprints 5-7 (v0.5):** ~42-63 hours estimated
+**Sprints 8-10 (v0.6):** ~37-53 hours estimated
+**Sprints 11-13:** ~33-47 hours estimated
+**Deferred:** Sprint 4 (Caustics), Dynamic Window Resizing
 
 ---
 
@@ -1596,11 +1708,11 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 
 ---
 
-**Document Status:** ✅ **Sprints 1, 2 & 3 Complete**
+**Document Status:** ✅ **Sprints 1-3 Complete, Sprint 4 Deferred, Sprints 5-13 Planned**
 
-**Last Updated:** 2025-11-21 - Adaptive Antialiasing and Color API complete (Sprint 3)
+**Last Updated:** 2025-11-22 - Scene Description before Animation (Sprint 11→12→13 reorder)
 
-**Next Step:** Begin Sprint 4 - Advanced Lighting (Caustics via Photon Mapping)
+**Next Step:** Begin Sprint 5 - Triangle Mesh Foundation + Cube
 
 **Completed:**
 - Feature 1.1 - Ray Statistics ✅
@@ -1610,3 +1722,17 @@ menger --level 2 --sponge-type cube --shadows --antialiasing --aa-max-depth 2
 - Feature 3.1 - Adaptive Antialiasing ✅
 - Feature 3.2 - Unified Color API ✅
 - Feature 3.3 - OptiX Cache Management ✅
+
+**Deferred:**
+- Sprint 4 - Caustics (algorithm issues, branch preserved)
+
+**Planned (Sprints 5-13):**
+- Sprint 5 - Triangle Mesh Foundation + Cube (basic)
+- Sprint 6 - Full Geometry (multi-object + 3D sponge)
+- Sprint 7 - Materials → **v0.5 Milestone**
+- Sprint 8 - 4D Projection Foundation + Tesseract
+- Sprint 9 - TesseractSponge
+- Sprint 10 - 4D Framework → **v0.6 Milestone**
+- Sprint 11 - Scene Description Language
+- Sprint 12 - Object Animation Foundation
+- Sprint 13 - Animation Enhancements
