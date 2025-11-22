@@ -59,6 +59,52 @@ case class RayStats(
   minDepthReached: Int
 )
 
+// Caustics statistics for validation (C1-C8 test ladder)
+// Matches CausticsStats struct in OptiXData.h
+case class CausticsStats(
+  // C1: Photon emission
+  photonsEmitted: Long,
+  photonsTowardSphere: Long,
+  // C2: Sphere hit rate
+  sphereHits: Long,
+  sphereMisses: Long,
+  // C3: Refraction events
+  refractionEvents: Long,
+  tirEvents: Long,
+  // C4: Deposition
+  photonsDeposited: Long,
+  hitPointsWithFlux: Long,
+  // C5: Energy conservation
+  totalFluxEmitted: Double,
+  totalFluxDeposited: Double,
+  totalFluxAbsorbed: Double,
+  totalFluxReflected: Double,
+  // C6: Convergence metrics
+  avgRadius: Float,
+  minRadius: Float,
+  maxRadius: Float,
+  fluxVariance: Float,
+  // C7: Brightness metrics
+  maxCausticBrightness: Float,
+  avgFloorBrightness: Float,
+  // Timing
+  hitPointGenerationMs: Float,
+  photonTracingMs: Float,
+  radianceComputationMs: Float
+):
+  // Derived metrics for validation
+  def sphereHitRate: Double =
+    if photonsTowardSphere > 0 then sphereHits.toDouble / photonsTowardSphere else 0.0
+
+  def energyConservationError: Double =
+    if totalFluxEmitted > 0 then
+      val totalOutput = totalFluxDeposited + totalFluxAbsorbed + totalFluxReflected
+      math.abs(totalOutput - totalFluxEmitted) / totalFluxEmitted
+    else 0.0
+
+  def fresnelTransmission: Double =
+    if totalFluxEmitted > 0 then totalFluxDeposited / totalFluxEmitted else 0.0
+
 // Combined result from rendering with statistics
 case class RenderResult(
   image: Array[Byte],
@@ -168,6 +214,13 @@ class OptiXRenderer extends LazyLogging:
 
   def disableCaustics(): Unit =
     setCaustics(false, 0, 0, 0.0f, 0.0f)
+
+  // Get caustics statistics for validation (C1-C8 test ladder)
+  // Returns None if caustics are disabled or stats not available
+  @native private def getCausticsStatsNative(): CausticsStats
+
+  def getCausticsStats: Option[CausticsStats] =
+    Try(getCausticsStatsNative()).toOption.filter(_.photonsEmitted > 0)
 
   // Set plane to solid color mode with RGB 0.0-1.0
   @native private def setPlaneSolidColorNative(r: Float, g: Float, b: Float): Unit

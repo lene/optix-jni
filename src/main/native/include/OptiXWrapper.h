@@ -54,6 +54,9 @@ public:
     // Rendering
     void render(int width, int height, unsigned char* output, RayStats* stats = nullptr);
 
+    // Statistics
+    bool getCausticsStats(CausticsStats* stats);  // Get PPM validation statistics
+
     // Cleanup
     void dispose();
 

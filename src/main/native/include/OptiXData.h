@@ -119,6 +119,47 @@ struct HitPoint {
     float pad;            // Alignment padding
 };
 
+// Caustics statistics for validation (C1-C8 test ladder)
+// Tracks energy flow and convergence metrics for PPM implementation
+struct CausticsStats {
+    // C1: Photon emission
+    unsigned long long photons_emitted;       // Total photons emitted this render
+    unsigned long long photons_toward_sphere; // Photons directed toward sphere
+
+    // C2: Sphere hit rate
+    unsigned long long sphere_hits;           // Photons that hit the sphere
+    unsigned long long sphere_misses;         // Photons that missed the sphere
+
+    // C3: Refraction (tracked per-photon is expensive, so aggregate)
+    unsigned long long refraction_events;     // Total refraction events
+    unsigned long long tir_events;            // Total internal reflection events
+
+    // C4: Deposition
+    unsigned long long photons_deposited;     // Photons that deposited energy on hit points
+    unsigned long long hit_points_with_flux;  // Hit points that received any flux
+
+    // C5: Energy conservation
+    double total_flux_emitted;                // Sum of emitted photon flux (RGB summed)
+    double total_flux_deposited;              // Sum of deposited flux on hit points
+    double total_flux_absorbed;               // Sum of Beer-Lambert absorption losses
+    double total_flux_reflected;              // Sum of Fresnel reflection losses
+
+    // C6: Convergence metrics (per-iteration tracking)
+    float avg_radius;                         // Average hit point radius
+    float min_radius;                         // Minimum hit point radius
+    float max_radius;                         // Maximum hit point radius
+    float flux_variance;                      // Variance in flux across hit points
+
+    // C7: Brightness metrics
+    float max_caustic_brightness;             // Peak brightness in caustic region
+    float avg_floor_brightness;               // Average brightness on floor (ambient)
+
+    // Timing
+    float hit_point_generation_ms;            // Time for Phase 1
+    float photon_tracing_ms;                  // Time for Phase 2 (all iterations)
+    float radiance_computation_ms;            // Time for Phase 3
+};
+
 // Parameters for Progressive Photon Mapping (caustics)
 struct CausticsParams {
     bool enabled;                    // Enable caustics rendering
@@ -143,6 +184,9 @@ struct CausticsParams {
 
     // Statistics
     unsigned long long total_photons_traced;  // Total photons traced across all iterations
+
+    // Validation statistics (pointer to GPU buffer)
+    CausticsStats* stats;            // Detailed caustics statistics for validation
 };
 
 // Ray statistics tracking

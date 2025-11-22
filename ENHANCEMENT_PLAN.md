@@ -219,7 +219,43 @@ Richer animation capabilities.
 - Animation preview mode
 
 ### Backlog (Future)
-- **Caustics Revisited:** Return to PPM with simpler approach
+
+#### Caustics Rendering (Progressive Photon Mapping)
+
+**Status:** Deferred (investigation complete, root cause identified)
+**Branch:** `feature/caustics` (preserved at commit 4fac5b2)
+**Risk:** VERY HIGH - Multiple failed approaches, fundamental algorithm issues
+**Documentation:** [docs/caustics/CAUSTICS_ANALYSIS.md](../docs/caustics/CAUSTICS_ANALYSIS.md)
+
+**Problem Summary:**
+PPM implementation shows caustics but at ~35% of PBRT reference brightness. Investigation revealed critical bug: the CUDA radius update kernel (`__caustics_update_radii()`) never executes from host code, causing brightness to be invariant across all parameter changes.
+
+**Root Cause:**
+Missing kernel launch in host code - the radius update kernel is defined but never called via `optixLaunch()` after photon tracing iterations.
+
+**Risk Factors:**
+- Kernel launch fix may not solve brightness issue (unknown additional problems)
+- PPM algorithm complexity high, subtle bugs likely
+- Sample count disparity (PBRT 491M vs our 1M) may be fundamental limitation
+- Multiple parameter changes (10× photons, 3× radius) all had zero effect
+- Uncertain if algorithm can achieve reference quality without complete rewrite
+
+**Estimated Effort:** 20-40+ hours (kernel fix + debugging + validation)
+- 2-4 hours: Add kernel launch, verify radius updates
+- 8-16 hours: Debug remaining brightness issues
+- 10-20 hours: Parameter tuning and validation against reference
+
+**Recommendation:** Only attempt if caustics become critical feature requirement. Consider alternative approaches (screen-space caustics, analytic approximations).
+
+**See also:**
+- [Investigation findings](../docs/caustics/CAUSTICS_ANALYSIS.md) - Complete analysis with all failed approaches
+- [Test specifications](../docs/caustics/CAUSTICS_TEST_LADDER.md) - Validation test ladder (C1-C8)
+- [Reference comparison](../docs/caustics/CAUSTICS_REFERENCES.md) - PBRT reference setup
+
+---
+
+#### Other Backlog Items
+
 - **More primitives:** Cylinders, cones, torus
 - **Advanced materials:** Subsurface scattering, PBR
 - **Real-time preview:** Interactive rendering mode

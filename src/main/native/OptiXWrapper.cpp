@@ -129,7 +129,9 @@ struct OptiXWrapper::Impl {
     CUdeviceptr d_caustics_grid = 0;     // Spatial hash grid (cell -> first hit point)
     CUdeviceptr d_caustics_grid_counts = 0;  // Hit points per cell
     CUdeviceptr d_caustics_grid_offsets = 0; // Prefix sum for sorting
+    CUdeviceptr d_caustics_stats = 0;    // Caustics statistics for validation
     size_t cached_hit_points_size = 0;
+    CausticsStats last_caustics_stats;   // CPU copy of last render stats
     bool caustics_enabled = false;
     int caustics_photons_per_iter = RayTracingConstants::DEFAULT_PHOTONS_PER_ITER;
     int caustics_iterations = RayTracingConstants::DEFAULT_CAUSTICS_ITERATIONS;
@@ -660,6 +662,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_caustics_grid_counts), grid_size * sizeof(unsigned int)));
                 CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_caustics_grid_offsets), grid_size * sizeof(unsigned int)));
 
+                // Allocate caustics stats buffer for validation
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_caustics_stats), sizeof(CausticsStats)));
+
                 impl->cached_hit_points_size = hit_points_size;
             }
 
@@ -669,6 +674,15 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 reinterpret_cast<void*>(impl->d_num_hit_points),
                 &zero,
                 sizeof(unsigned int),
+                cudaMemcpyHostToDevice
+            ));
+
+            // Zero out caustics stats for this render
+            CausticsStats zero_stats = {};
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void*>(impl->d_caustics_stats),
+                &zero_stats,
+                sizeof(CausticsStats),
                 cudaMemcpyHostToDevice
             ));
         }
@@ -720,6 +734,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.caustics.grid_offsets = reinterpret_cast<unsigned int*>(impl->d_caustics_grid_offsets);
         params.caustics.grid_resolution = RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
         params.caustics.total_photons_traced = 0;
+        params.caustics.stats = reinterpret_cast<CausticsStats*>(impl->d_caustics_stats);
 
         params.stats = reinterpret_cast<RayStats*>(impl->d_stats);
 
@@ -763,6 +778,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 stats,
                 reinterpret_cast<void*>(impl->d_stats),
                 sizeof(RayStats),
+                cudaMemcpyDeviceToHost
+            ));
+        }
+
+        // Copy caustics stats back for validation
+        if (impl->caustics_enabled && impl->d_caustics_stats) {
+            CUDA_CHECK(cudaMemcpy(
+                &impl->last_caustics_stats,
+                reinterpret_cast<void*>(impl->d_caustics_stats),
+                sizeof(CausticsStats),
                 cudaMemcpyDeviceToHost
             ));
         }
@@ -912,6 +937,16 @@ void OptiXWrapper::renderWithCaustics(int width, int height, Params& params) {
     std::cout << "[Caustics] Complete: " << params.caustics.total_photons_traced << " total photons traced" << std::endl;
 }
 
+bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
+    if (!impl->initialized || !impl->caustics_enabled || !stats) {
+        return false;
+    }
+
+    // Return the cached stats from the last render
+    *stats = impl->last_caustics_stats;
+    return true;
+}
+
 void OptiXWrapper::dispose() {
     if (impl->initialized) {
         try {
@@ -1009,6 +1044,10 @@ void OptiXWrapper::dispose() {
             if (impl->d_caustics_grid_offsets) {
                 cudaFree(reinterpret_cast<void*>(impl->d_caustics_grid_offsets));
                 impl->d_caustics_grid_offsets = 0;
+            }
+            if (impl->d_caustics_stats) {
+                cudaFree(reinterpret_cast<void*>(impl->d_caustics_stats));
+                impl->d_caustics_stats = 0;
             }
             impl->cached_hit_points_size = 0;
 

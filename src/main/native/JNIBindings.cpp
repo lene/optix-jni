@@ -395,6 +395,78 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
     }
 }
 
+/**
+ * Get caustics statistics for PPM validation (C1-C8 test ladder).
+ * Returns a CausticsStats object with all tracked metrics.
+ */
+JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_getCausticsStatsNative(JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return nullptr;
+        }
+
+        // Get caustics stats from wrapper
+        CausticsStats stats;
+        if (!wrapper->getCausticsStats(&stats)) {
+            return nullptr;  // Caustics not enabled or no stats available
+        }
+
+        // Find CausticsStats Scala class
+        jclass statsClass = env->FindClass("menger/optix/OptiXRenderer$CausticsStats");
+        if (statsClass == nullptr) {
+            std::cerr << "[JNI] Failed to find CausticsStats class" << std::endl;
+            return nullptr;
+        }
+
+        // Constructor signature: (JJJJJJJJDDDDFFFFFFFFF)V
+        // 8 longs + 4 doubles + 9 floats
+        jmethodID constructor = env->GetMethodID(statsClass, "<init>",
+            "(JJJJJJJJDDDDFFFFFFFFF)V");
+        if (constructor == nullptr) {
+            std::cerr << "[JNI] Failed to find CausticsStats constructor" << std::endl;
+            return nullptr;
+        }
+
+        jobject result = env->NewObject(statsClass, constructor,
+            // C1: Emission
+            static_cast<jlong>(stats.photons_emitted),
+            static_cast<jlong>(stats.photons_toward_sphere),
+            // C2: Sphere hits
+            static_cast<jlong>(stats.sphere_hits),
+            static_cast<jlong>(stats.sphere_misses),
+            // C3: Refraction
+            static_cast<jlong>(stats.refraction_events),
+            static_cast<jlong>(stats.tir_events),
+            // C4: Deposition
+            static_cast<jlong>(stats.photons_deposited),
+            static_cast<jlong>(stats.hit_points_with_flux),
+            // C5: Energy
+            static_cast<jdouble>(stats.total_flux_emitted),
+            static_cast<jdouble>(stats.total_flux_deposited),
+            static_cast<jdouble>(stats.total_flux_absorbed),
+            static_cast<jdouble>(stats.total_flux_reflected),
+            // C6: Convergence
+            static_cast<jfloat>(stats.avg_radius),
+            static_cast<jfloat>(stats.min_radius),
+            static_cast<jfloat>(stats.max_radius),
+            static_cast<jfloat>(stats.flux_variance),
+            // C7: Brightness
+            static_cast<jfloat>(stats.max_caustic_brightness),
+            static_cast<jfloat>(stats.avg_floor_brightness),
+            // Timing
+            static_cast<jfloat>(stats.hit_point_generation_ms),
+            static_cast<jfloat>(stats.photon_tracing_ms),
+            static_cast<jfloat>(stats.radiance_computation_ms)
+        );
+
+        return result;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in getCausticsStats: " << e.what() << std::endl;
+        return nullptr;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_disposeNative(JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
