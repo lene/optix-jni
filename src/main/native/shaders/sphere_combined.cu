@@ -1687,8 +1687,11 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     // C7: Track brightness metrics
     if (params.caustics.stats) {
         const float caustic_brightness = (radiance.x + radiance.y + radiance.z) * caustic_scale / 3.0f;
-        // Use atomicMax for peak brightness (requires casting to int for atomic compare)
-        // Simple approach: just track using atomic operations
+        // Atomic max for non-negative floats: This is a standard CUDA idiom.
+        // IEEE 754 guarantees that for non-negative floats, the bit representation
+        // preserves ordering (larger float = larger unsigned int when interpreted as bits).
+        // CUDA's __float_as_int/__int_as_float intrinsics are designed for this pattern,
+        // and NVCC does not enforce strict aliasing like host C++ compilers.
         atomicMax(reinterpret_cast<int*>(&params.caustics.stats->max_caustic_brightness),
                   __float_as_int(caustic_brightness));
     }

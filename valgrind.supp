@@ -1,0 +1,34 @@
+# Valgrind suppressions for OptiX/CUDA libraries
+# These are expected memory allocations from NVIDIA drivers that persist for the lifetime of the process
+
+{
+   CUDA driver global state
+   Memcheck:Leak
+   match-leak-kinds: possible,reachable
+   ...
+   obj:*/libcuda.so*
+}
+
+{
+   CUDA runtime global state
+   Memcheck:Leak
+   match-leak-kinds: possible,reachable
+   ...
+   obj:*/libcudart.so*
+}
+
+{
+   OptiX library global state
+   Memcheck:Leak
+   match-leak-kinds: definite,possible,reachable
+   ...
+   obj:*/libnvoptix.so*
+}
+
+{
+   NVIDIA RTX core library global state
+   Memcheck:Leak
+   match-leak-kinds: possible,reachable
+   ...
+   obj:*/libnvidia-rtcore.so*
+}
