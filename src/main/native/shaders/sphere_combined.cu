@@ -1315,9 +1315,13 @@ __device__ void tracePhoton(
         // We reuse the primary ray closest hit shader, but interpret results differently
 
         // Check intersection with sphere analytically
-        // Sphere center is at origin (0, 0, 0) by default, radius is configurable
-        const float3 sphere_center = make_float3(0.0f, 0.0f, 0.0f);  // Default sphere center
-        const float sphere_radius = 1.5f;  // Default radius (from HitGroupData in render)
+        // Use sphere parameters from caustics config (synced from HitGroupData)
+        const float3 sphere_center = make_float3(
+            params.caustics.sphere_center[0],
+            params.caustics.sphere_center[1],
+            params.caustics.sphere_center[2]
+        );
+        const float sphere_radius = params.caustics.sphere_radius;
 
         const float3 oc = origin - sphere_center;
         const float a = dot(dir, dir);
@@ -1515,12 +1519,16 @@ extern "C" __global__ void __raygen__photons() {
         float3 tangent, bitangent;
         createONB(light_dir, tangent, bitangent);
 
-        // Sample disk with radius large enough to cover sphere (radius ~1.5)
-        const float disk_radius = 3.0f;  // Cover sphere + margin
+        // Sample disk with radius large enough to cover sphere
+        const float disk_radius = 2.0f * params.caustics.sphere_radius;  // Cover sphere + margin
         const float2 disk_sample = sampleDisk(rnd(seed), rnd(seed));
 
         // Photon starts from disk behind the sphere
-        const float3 sphere_center = make_float3(0.0f, 0.0f, 0.0f);
+        const float3 sphere_center = make_float3(
+            params.caustics.sphere_center[0],
+            params.caustics.sphere_center[1],
+            params.caustics.sphere_center[2]
+        );
         photon_origin = sphere_center
                        + tangent * (disk_sample.x * disk_radius)
                        + bitangent * (disk_sample.y * disk_radius)

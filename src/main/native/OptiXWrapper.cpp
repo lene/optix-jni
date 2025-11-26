@@ -727,6 +727,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.caustics.initial_radius = impl->caustics_initial_radius;
         params.caustics.alpha = impl->caustics_alpha;
         params.caustics.current_iteration = 0;
+        std::memcpy(params.caustics.sphere_center, impl->sphere.center, sizeof(float) * 3);
+        params.caustics.sphere_radius = impl->sphere.radius;
         params.caustics.hit_points = reinterpret_cast<HitPoint*>(impl->d_hit_points);
         params.caustics.num_hit_points = reinterpret_cast<unsigned int*>(impl->d_num_hit_points);
         params.caustics.grid = reinterpret_cast<unsigned int*>(impl->d_caustics_grid);

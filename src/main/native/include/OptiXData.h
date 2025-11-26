@@ -169,6 +169,10 @@ struct CausticsParams {
     float alpha;                     // Radius reduction factor (0.7 typical)
     int current_iteration;           // Current iteration (for RNG seeding)
 
+    // Sphere geometry for photon tracing (must match HitGroupData)
+    float sphere_center[3];          // Sphere center position
+    float sphere_radius;             // Sphere radius
+
     // GPU buffers (set by host before launch)
     HitPoint* hit_points;            // Array of hit points on diffuse surfaces
     unsigned int* num_hit_points;    // Pointer to GPU counter (for atomicAdd)
