@@ -443,37 +443,43 @@ void OptiXWrapper::setupShaderBindingTable() {
     impl->sbt.hitgroupRecordCount = 2;
 }
 
-// Build OptiX pipeline (orchestrates all pipeline build steps)
-void OptiXWrapper::buildPipeline() {
-    // Clean up old pipeline resources if they exist (for pipeline rebuild)
+// Helper to destroy a program group if it exists and null the pointer
+void OptiXWrapper::destroyProgramGroupIfExists(OptixProgramGroup& prog_group) {
+    if (prog_group) {
+        impl->optix_context.destroyProgramGroup(prog_group);
+        prog_group = nullptr;
+    }
+}
+
+// Clean up pipeline resources (used by both buildPipeline and dispose)
+void OptiXWrapper::cleanupPipelineResources(bool include_caustics) {
     if (impl->pipeline) {
         impl->optix_context.destroyPipeline(impl->pipeline);
         impl->pipeline = nullptr;
     }
-    if (impl->raygen_prog_group) {
-        impl->optix_context.destroyProgramGroup(impl->raygen_prog_group);
-        impl->raygen_prog_group = nullptr;
+
+    destroyProgramGroupIfExists(impl->raygen_prog_group);
+    destroyProgramGroupIfExists(impl->miss_prog_group);
+    destroyProgramGroupIfExists(impl->shadow_miss_prog_group);
+    destroyProgramGroupIfExists(impl->hitgroup_prog_group);
+    destroyProgramGroupIfExists(impl->shadow_hitgroup_prog_group);
+
+    if (include_caustics) {
+        destroyProgramGroupIfExists(impl->caustics_hitpoints_raygen);
+        destroyProgramGroupIfExists(impl->caustics_photons_raygen);
+        destroyProgramGroupIfExists(impl->caustics_radiance_raygen);
     }
-    if (impl->miss_prog_group) {
-        impl->optix_context.destroyProgramGroup(impl->miss_prog_group);
-        impl->miss_prog_group = nullptr;
-    }
-    if (impl->shadow_miss_prog_group) {
-        impl->optix_context.destroyProgramGroup(impl->shadow_miss_prog_group);
-        impl->shadow_miss_prog_group = nullptr;
-    }
-    if (impl->hitgroup_prog_group) {
-        impl->optix_context.destroyProgramGroup(impl->hitgroup_prog_group);
-        impl->hitgroup_prog_group = nullptr;
-    }
-    if (impl->shadow_hitgroup_prog_group) {
-        impl->optix_context.destroyProgramGroup(impl->shadow_hitgroup_prog_group);
-        impl->shadow_hitgroup_prog_group = nullptr;
-    }
+
     if (impl->module) {
         impl->optix_context.destroyModule(impl->module);
         impl->module = nullptr;
     }
+}
+
+// Build OptiX pipeline (orchestrates all pipeline build steps)
+void OptiXWrapper::buildPipeline() {
+    // Clean up old pipeline resources if they exist (for pipeline rebuild)
+    cleanupPipelineResources(false);
 
     buildGeometryAccelerationStructure();
     OptixModule sphere_module = loadPTXModules();
@@ -952,56 +958,8 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
 void OptiXWrapper::dispose() {
     if (impl->initialized) {
         try {
-            // Clean up OptiX pipeline resources using OptiXContext
-            if (impl->pipeline) {
-                impl->optix_context.destroyPipeline(impl->pipeline);
-                impl->pipeline = nullptr;
-            }
-
-            if (impl->raygen_prog_group) {
-                impl->optix_context.destroyProgramGroup(impl->raygen_prog_group);
-                impl->raygen_prog_group = nullptr;
-            }
-
-            if (impl->miss_prog_group) {
-                impl->optix_context.destroyProgramGroup(impl->miss_prog_group);
-                impl->miss_prog_group = nullptr;
-            }
-
-            if (impl->hitgroup_prog_group) {
-                impl->optix_context.destroyProgramGroup(impl->hitgroup_prog_group);
-                impl->hitgroup_prog_group = nullptr;
-            }
-
-            if (impl->shadow_miss_prog_group) {
-                impl->optix_context.destroyProgramGroup(impl->shadow_miss_prog_group);
-                impl->shadow_miss_prog_group = nullptr;
-            }
-
-            if (impl->shadow_hitgroup_prog_group) {
-                impl->optix_context.destroyProgramGroup(impl->shadow_hitgroup_prog_group);
-                impl->shadow_hitgroup_prog_group = nullptr;
-            }
-
-            if (impl->caustics_hitpoints_raygen) {
-                impl->optix_context.destroyProgramGroup(impl->caustics_hitpoints_raygen);
-                impl->caustics_hitpoints_raygen = nullptr;
-            }
-
-            if (impl->caustics_photons_raygen) {
-                impl->optix_context.destroyProgramGroup(impl->caustics_photons_raygen);
-                impl->caustics_photons_raygen = nullptr;
-            }
-
-            if (impl->caustics_radiance_raygen) {
-                impl->optix_context.destroyProgramGroup(impl->caustics_radiance_raygen);
-                impl->caustics_radiance_raygen = nullptr;
-            }
-
-            if (impl->module) {
-                impl->optix_context.destroyModule(impl->module);
-                impl->module = nullptr;
-            }
+            // Clean up OptiX pipeline resources
+            cleanupPipelineResources(true);
 
             // Clean up GPU buffers
             if (impl->d_gas_output_buffer) {
