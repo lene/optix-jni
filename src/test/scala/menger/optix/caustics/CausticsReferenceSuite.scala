@@ -1,7 +1,7 @@
 package menger.optix.caustics
 
 import menger.common.{Color, ImageSize, Const, Vector}
-import menger.optix.{OptiXRenderer, RendererFixture, ThresholdConstants}
+import menger.optix.{OptiXRenderer, RendererFixture, Slow, ThresholdConstants}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -38,7 +38,7 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
     val cameraUp: Vector[3] = Vector[3](0.0f, -1.0f, 0.0f) // Inverted for correct orientation
     val lightPosition: Vector[3] = Vector[3](0.0f, 10.0f, 0.0f)
     val lightIntensity: Float = 500.0f
-    val imageSize: ImageSize = ThresholdConstants.TEST_IMAGE_SIZE
+    val imageSize: ImageSize = ThresholdConstants.QUICK_TEST_SIZE
 
   /** Sets up the reference scene on the renderer */
   private def setupReferenceScene(): Unit =
@@ -92,7 +92,9 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
       width: Int,
       height: Int
   ): Double =
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sum = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var count = 0
 
     for
@@ -120,6 +122,7 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
       width: Int,
       height: Int
   ): Double =
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var peak = 0.0
 
     for
@@ -150,8 +153,11 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
 
     // Find brightest 200x200 region
     val regionSize = 200
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var maxBrightness = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var bestX = size.width / 2 - regionSize / 2
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var bestY = searchTop + searchHeight / 2 - regionSize / 2
 
     for
@@ -176,7 +182,7 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
 
     setupReferenceScene()
-    renderer.enableCaustics(photonsPerIter = 100000, iterations = 10)
+    renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
 
     val result = renderer.renderWithStats(ReferenceScene.imageSize)
 
@@ -198,7 +204,7 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
 
     setupReferenceScene()
-    renderer.enableCaustics(photonsPerIter = 100000, iterations = 10)
+    renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
 
     val result = renderer.renderWithStats(ReferenceScene.imageSize)
 

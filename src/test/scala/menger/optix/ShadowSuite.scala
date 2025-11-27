@@ -1,6 +1,7 @@
 package menger.optix
 
 import menger.common.{Color, Const, Vector}
+import menger.optix.Slow
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import ImageMatchers.*
@@ -469,7 +470,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     // Should be identical
     bright1 shouldBe bright2 +- BRIGHTNESS_TOLERANCE  // Allow 1 unit variation due to floating point
 
-  it should "have acceptable rendering performance with shadows enabled" in:
+  it should "have acceptable rendering performance with shadows enabled" taggedAs (Slow) in:
     setupShadowScene()
 
     // Measure without shadows

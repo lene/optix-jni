@@ -137,9 +137,11 @@ class OptiXRenderer extends LazyLogging:
 
   // Native handle to the C++ OptiXWrapper instance (0 = not initialized)
   // Note: Must be accessible to JNI (not private)
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   @volatile var nativeHandle: Long = 0L
 
   // Track initialization state to ensure idempotence
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var initialized: Boolean = false
 
   // Native method declarations (private - use public wrappers)
@@ -306,14 +308,14 @@ object OptiXRenderer extends LazyLogging:
       System.loadLibrary(libraryName)
       logger.info(s"Loaded $libraryName from java.library.path")
 
-  private def detectPlatform(): Try[String] = Try:
+  private def detectPlatform(): Try[String] =
     val os = System.getProperty("os.name").toLowerCase
     val arch = System.getProperty("os.arch").toLowerCase
     (os, arch) match
       case (o, a) if o.contains("linux") && (a.contains("amd64") || a.contains("x86_64")) =>
-        "x86_64-linux"
+        Success("x86_64-linux")
       case _ =>
-        throw new UnsupportedOperationException(s"Unsupported platform: $os/$arch")
+        Failure(new UnsupportedOperationException(s"Unsupported platform: $os/$arch"))
 
   private def copyStreamToFile(stream: InputStream, out: FileOutputStream): Try[Unit] = Try:
     val buffer = new Array[Byte](8192)

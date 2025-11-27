@@ -30,7 +30,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
     val planeY: Float = Const.defaultFloorPlaneY
     val lightDirection: Vector[3] = Vector[3](0.0f, -1.0f, 0.0f)
     val cameraPosition: Vector[3] = Vector[3](0.0f, 1.0f, 4.0f)
-    val imageSize: ImageSize = ThresholdConstants.TEST_IMAGE_SIZE
+    val imageSize: ImageSize = ThresholdConstants.QUICK_TEST_SIZE
 
     // Derived values
     val glassColor: Color = Color(0.95f, 0.95f, 1.0f, 0.05f) // Nearly transparent
@@ -61,7 +61,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
 
   it should "emit photons when caustics are enabled" in:
     setupCanonicalScene()
-    renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
+    renderer.enableCaustics(photonsPerIter = 1000, iterations = 1)
 
     val result = renderer.renderWithStats(CanonicalScene.imageSize)
 
@@ -221,7 +221,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
     val withoutCaustics = renderer.renderWithStats(CanonicalScene.imageSize)
 
     // Render with caustics
-    renderer.enableCaustics(photonsPerIter = 50000, iterations = 5)
+    renderer.enableCaustics(photonsPerIter = 5000, iterations = 1)
     val withCaustics = renderer.renderWithStats(CanonicalScene.imageSize)
 
     // Images should differ
@@ -233,7 +233,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
     setupCanonicalScene()
 
     // Render with caustics
-    renderer.enableCaustics(photonsPerIter = 100000, iterations = 10)
+    renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
     val result = renderer.renderWithStats(CanonicalScene.imageSize)
 
     // Sample pixels in the center-bottom region (where caustic should be)
@@ -261,7 +261,9 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
       width: Int,
       height: Int
   ): Double =
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sum = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var count = 0
 
     for

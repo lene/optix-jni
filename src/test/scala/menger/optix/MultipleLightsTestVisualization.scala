@@ -8,17 +8,7 @@ object MultipleLightsTestVisualization:
 
   def savePPM(filename: String, pixels: Array[Byte], width: Int, height: Int): Unit =
     val header = s"P6\n$width $height\n255\n".getBytes
-    val rgb = new Array[Byte](width * height * 3)
-
-    // Convert RGBA to RGB
-    var i = 0
-    var j = 0
-    while i < pixels.length do
-      rgb(j) = pixels(i)       // R
-      rgb(j + 1) = pixels(i + 1) // G
-      rgb(j + 2) = pixels(i + 2) // B
-      i += 4
-      j += 3
+    val rgb = ImageUtils.rgbaToRgb(pixels)
 
     Files.write(Paths.get(filename), header ++ rgb)
     println(s"Saved: $filename")

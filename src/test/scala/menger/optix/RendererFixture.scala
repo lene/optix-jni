@@ -9,10 +9,12 @@ import org.scalatest.flatspec.AnyFlatSpec
 trait RendererFixture extends BeforeAndAfterEach:
   this: AnyFlatSpec =>
 
-  
+
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var rendererOpt: Option[OptiXRenderer] = None
 
-  
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   protected def renderer: OptiXRenderer = rendererOpt.getOrElse(
     throw new IllegalStateException("Renderer not initialized - test fixture may not have run beforeEach")
   )

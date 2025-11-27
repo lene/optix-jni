@@ -88,8 +88,11 @@ class AntialiasingSuite extends AnyFlatSpec
   private def measureEdgeVariance(image: Array[Byte], width: Int, height: Int): Float =
     // Measure variance in pixel-to-pixel differences
     // Lower variance = smoother edges
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sumDiff = 0L
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sumDiffSq = 0L
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var count = 0L
 
     for y <- 0 until height - 1 do

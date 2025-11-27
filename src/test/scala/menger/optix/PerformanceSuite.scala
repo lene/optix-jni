@@ -2,6 +2,7 @@ package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
 import menger.common.{ImageSize, Const, Vector}
+import menger.optix.Slow
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -42,7 +43,7 @@ class PerformanceSuite extends AnyFlatSpec
 
     fps
 
-  "Performance" should "achieve >10 FPS for opaque spheres" in:
+  "Performance" should "achieve >10 FPS for opaque spheres" taggedAs (Slow) in:
     val fps = measureAndLog("Opaque sphere"):
       TestScenario.performanceBaseline()
         .withPlane(1, false, -2.0f)
@@ -50,7 +51,7 @@ class PerformanceSuite extends AnyFlatSpec
 
     fps should be > MIN_FPS
 
-  it should "achieve >10 FPS for transparent spheres" in:
+  it should "achieve >10 FPS for transparent spheres" taggedAs (Slow) in:
     val fps = measureAndLog("Transparent sphere"):
       TestScenario.performanceTransparent()
         .withIOR(Const.iorGlass)
@@ -59,7 +60,7 @@ class PerformanceSuite extends AnyFlatSpec
 
     fps should be > MIN_FPS
 
-  it should "achieve >10 FPS for high-IOR materials" in:
+  it should "achieve >10 FPS for high-IOR materials" taggedAs (Slow) in:
     val fps = measureAndLog("Diamond material"):
       TestScenario.diamondSphere()
         .withSphereColor(HIGHLY_TRANSPARENT_WHITE)
@@ -68,7 +69,7 @@ class PerformanceSuite extends AnyFlatSpec
 
     fps should be > MIN_FPS
 
-  it should "achieve >10 FPS for large spheres" in:
+  it should "achieve >10 FPS for large spheres" taggedAs (Slow) in:
     val fps = measureAndLog("Large sphere"):
       TestScenario.largeSphere()
         .withSphereColor(PERFORMANCE_TEST_GREEN_CYAN)
@@ -91,7 +92,7 @@ class PerformanceSuite extends AnyFlatSpec
 
     fps should be > 50.0
 
-  it should "achieve >10 FPS with antialiasing enabled" in:
+  it should "achieve >10 FPS with antialiasing enabled" taggedAs (Slow) in:
     val fps = measureAndLog("Antialiasing"):
       TestScenario.default()
         .withSphereRadius(0.5f)

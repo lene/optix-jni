@@ -8,16 +8,7 @@ object LightComparisonVisualization:
 
   def savePPM(filename: String, pixels: Array[Byte], width: Int, height: Int): Unit =
     val header = s"P6\n$width $height\n255\n".getBytes
-    val rgb = new Array[Byte](width * height * 3)
-
-    var i = 0
-    var j = 0
-    while i < pixels.length do
-      rgb(j) = pixels(i)
-      rgb(j + 1) = pixels(i + 1)
-      rgb(j + 2) = pixels(i + 2)
-      i += 4
-      j += 3
+    val rgb = ImageUtils.rgbaToRgb(pixels)
 
     Files.write(Paths.get(filename), header ++ rgb)
     println(s"Saved: $filename")

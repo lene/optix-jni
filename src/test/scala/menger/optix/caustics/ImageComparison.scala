@@ -52,7 +52,9 @@ object ImageComparison:
     val testGray = toGrayscale(test)
 
     // Compute SSIM over sliding windows
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var ssimSum = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var count = 0
 
     val halfWindow = WindowSize / 2
@@ -100,6 +102,7 @@ object ImageComparison:
 
     val width = reference.getWidth
     val height = reference.getHeight
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sum = 0.0
 
     for
@@ -177,11 +180,17 @@ object ImageComparison:
       cy: Int,
       halfWindow: Int
   ): Double =
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sumRef = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sumTest = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sumRefSq = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sumTestSq = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var sumRefTest = 0.0
+    @SuppressWarnings(Array("org.wartremover.warts.Var"))
     var count = 0
 
     for

@@ -1,5 +1,6 @@
 package menger.optix
 import menger.common.{Color, Const, Vector}
+import menger.optix.Slow
 
 import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec

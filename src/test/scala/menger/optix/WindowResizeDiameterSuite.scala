@@ -10,10 +10,12 @@ import org.scalatest.BeforeAndAfterAll
 class WindowResizeDiameterSuite extends AnyFlatSpec with Matchers with LazyLogging with BeforeAndAfterAll {
 
   // Baseline measurements shared between tests
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var baselineVDiam: Int = 0
+  @SuppressWarnings(Array("org.wartremover.warts.Var"))
   private var baselineHDiam: Int = 0
 
-  
+
   private def isRedPixel(r: Int, g: Int, b: Int): Boolean = {
     r > 2 * g && r > 2 * b
   }

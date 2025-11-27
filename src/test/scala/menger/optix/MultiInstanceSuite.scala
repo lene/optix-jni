@@ -1,5 +1,6 @@
 package menger.optix
 import menger.common.{Color, ImageSize, Const, Vector}
+import menger.optix.Slow
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
@@ -9,7 +10,7 @@ import ThresholdConstants.*
 
 class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
 
-  "Multiple OptiXRenderer instances" should "initialize independently" in {
+  "Multiple OptiXRenderer instances" should "initialize independently" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
     val renderer1 = new OptiXRenderer()
@@ -33,7 +34,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     }
   }
 
-  it should "maintain independent sphere state" in {
+  it should "maintain independent sphere state" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
     val renderer1 = new OptiXRenderer()
@@ -106,7 +107,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     }
   }
 
-  it should "render different resolutions independently" in {
+  it should "render different resolutions independently" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
     val renderer1 = new OptiXRenderer()
@@ -148,7 +149,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     }
   }
 
-  it should "allow interleaved rendering" in {
+  it should "allow interleaved rendering" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
     val renderer1 = new OptiXRenderer()
@@ -194,7 +195,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     }
   }
 
-  it should "dispose independently" in {
+  it should "dispose independently" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
     val renderer1 = new OptiXRenderer()
@@ -221,7 +222,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     renderer2.nativeHandle should be (0L)
   }
 
-  it should "support creating many instances sequentially" in {
+  it should "support creating many instances sequentially" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
     val instanceCount = 10
