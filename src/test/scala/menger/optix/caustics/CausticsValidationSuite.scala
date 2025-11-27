@@ -41,17 +41,19 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
 
   /** Sets up the canonical test scene on the renderer */
   private def setupCanonicalScene(): Unit =
-    renderer.setSphere(CanonicalScene.sphereCenter, CanonicalScene.sphereRadius)
-    renderer.setSphereColor(CanonicalScene.glassColor)
-    renderer.setIOR(CanonicalScene.sphereIOR)
-    renderer.setPlane(1, true, CanonicalScene.planeY) // Y-axis, positive normal, at Y=-2
-    renderer.setLight(CanonicalScene.lightDirection, 1.0f)
-    renderer.setCamera(
-      CanonicalScene.cameraPosition,
-      CanonicalScene.sphereCenter,
-      Vector[3](0.0f, 1.0f, 0.0f),
-      45.0f
-    )
+    TestScenario.default()
+      .withSpherePosition(CanonicalScene.sphereCenter)
+      .withSphereRadius(CanonicalScene.sphereRadius)
+      .withSphereColor(CanonicalScene.glassColor)
+      .withIOR(CanonicalScene.sphereIOR)
+      .withPlane(1, true, CanonicalScene.planeY)
+      .withLightDirection(CanonicalScene.lightDirection)
+      .withLightIntensity(1.0f)
+      .withCameraEye(CanonicalScene.cameraPosition)
+      .withCameraLookAt(CanonicalScene.sphereCenter)
+      .withCameraUp(Vector[3](0.0f, 1.0f, 0.0f))
+      .withHorizontalFOV(45.0f)
+      .applyTo(renderer)
 
   // ===========================================================================
   // C1: Photon Emission Validation

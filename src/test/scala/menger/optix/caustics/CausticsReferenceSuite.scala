@@ -1,7 +1,7 @@
 package menger.optix.caustics
 
 import menger.common.{Color, ImageSize, Const, Vector}
-import menger.optix.{OptiXRenderer, RendererFixture, Slow, ThresholdConstants}
+import menger.optix.{OptiXRenderer, RendererFixture, Slow, TestScenario, ThresholdConstants}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -42,19 +42,19 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   /** Sets up the reference scene on the renderer */
   private def setupReferenceScene(): Unit =
-    renderer.setSphere(ReferenceScene.sphereCenter, ReferenceScene.sphereRadius)
-    renderer.setSphereColor(ReferenceScene.sphereColor)
-    renderer.setIOR(ReferenceScene.sphereIOR)
-    renderer.setPlane(1, true, ReferenceScene.planeY) // Y-axis plane at Y=-2
-    // Note: setLight uses direction, so we normalize (0, 10, 0) → (0, 1, 0)
-    // and pass intensity separately
-    renderer.setLight(Vector[3](0.0f, -1.0f, 0.0f), ReferenceScene.lightIntensity)
-    renderer.setCamera(
-      ReferenceScene.cameraPosition,
-      ReferenceScene.cameraLookAt,
-      ReferenceScene.cameraUp,
-      45.0f
-    )
+    TestScenario.default()
+      .withSpherePosition(ReferenceScene.sphereCenter)
+      .withSphereRadius(ReferenceScene.sphereRadius)
+      .withSphereColor(ReferenceScene.sphereColor)
+      .withIOR(ReferenceScene.sphereIOR)
+      .withPlane(1, true, ReferenceScene.planeY)
+      .withLightDirection(Vector[3](0.0f, -1.0f, 0.0f))
+      .withLightIntensity(ReferenceScene.lightIntensity)
+      .withCameraEye(ReferenceScene.cameraPosition)
+      .withCameraLookAt(ReferenceScene.cameraLookAt)
+      .withCameraUp(ReferenceScene.cameraUp)
+      .withHorizontalFOV(45.0f)
+      .applyTo(renderer)
 
   /** Load PNG image from test resources */
   private def loadReferenceImage(filename: String): BufferedImage =
