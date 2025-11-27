@@ -1,6 +1,5 @@
 package menger.optix
-import menger.common.Color
-import menger.common.Vector
+import menger.common.{Color, Const, Vector}
 
 import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
@@ -144,21 +143,21 @@ class RendererTest extends AnyFlatSpec
 
     // Render from default position (front)
     TestScenario.default()
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
     val image1 = renderer.render(size).get
 
     // Render from side
     TestScenario.default()
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](3.0f, 0.0f, 0.0f))
       .applyTo(renderer)
     val image2 = renderer.render(size).get
 
     // Render from top
     TestScenario.default()
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](0.0f, 3.0f, 0.0f))
       .withCameraUp(Vector[3](0.0f, 0.0f, -1.0f))
       .applyTo(renderer)
@@ -180,7 +179,7 @@ class RendererTest extends AnyFlatSpec
     // Light from top-right
     TestScenario.default()
       .withSphereColor(OPAQUE_LIGHT_GRAY)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .withLightDirection(Vector[3](0.5f, 0.5f, -0.5f))
       .applyTo(renderer)
@@ -189,7 +188,7 @@ class RendererTest extends AnyFlatSpec
     // Light from left
     TestScenario.default()
       .withSphereColor(OPAQUE_LIGHT_GRAY)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .withLightDirection(Vector[3](-1.0f, 0.0f, 0.0f))
       .applyTo(renderer)
@@ -198,7 +197,7 @@ class RendererTest extends AnyFlatSpec
     // Light from behind camera
     TestScenario.default()
       .withSphereColor(OPAQUE_LIGHT_GRAY)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .withLightDirection(Vector[3](0.0f, 0.0f, 1.0f))
       .applyTo(renderer)
@@ -215,7 +214,7 @@ class RendererTest extends AnyFlatSpec
     TestScenario.default().withSphereRadius(0.5f).applyTo(renderer)
     val image1 = renderer.render(size).get
 
-    TestScenario.default().withSphereRadius(1.5f).applyTo(renderer)
+    TestScenario.default().withSphereRadius(Const.defaultSphereRadius).applyTo(renderer)
     val image2 = renderer.render(size).get
 
     TestScenario.default().withSphereRadius(2.5f).applyTo(renderer)
@@ -284,7 +283,7 @@ class RendererTest extends AnyFlatSpec
   it should "handle sphere far from origin" in:
     TestScenario.default()
       .withSpherePosition(Vector[3](100.0f, 100.0f, 100.0f))
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](100.0f, 100.0f, 103.0f))
       .withCameraLookAt(Vector[3](100.0f, 100.0f, 100.0f))
       .applyTo(renderer)
@@ -293,7 +292,7 @@ class RendererTest extends AnyFlatSpec
 
   it should "handle camera very close to sphere" in:
     TestScenario.default()
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](0.0f, 0.0f, 0.01f))
       .applyTo(renderer)
     val image = renderer.render(100, 100).get
@@ -331,7 +330,7 @@ class RendererTest extends AnyFlatSpec
     // Pure red sphere
     TestScenario.default()
       .withSphereColor(OPAQUE_RED)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
     val imageRed = renderer.render(imageSize).get
@@ -340,7 +339,7 @@ class RendererTest extends AnyFlatSpec
     // Pure green sphere
     TestScenario.default()
       .withSphereColor(OPAQUE_GREEN)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
     val imageGreen = renderer.render(imageSize).get
@@ -349,7 +348,7 @@ class RendererTest extends AnyFlatSpec
     // Pure blue sphere
     TestScenario.default()
       .withSphereColor(OPAQUE_BLUE)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
     val imageBlue = renderer.render(imageSize).get
@@ -365,7 +364,7 @@ class RendererTest extends AnyFlatSpec
 
     TestScenario.default()
       .withSphereColor(Color(0.0f, 1.0f, 0.5f, 1.0f))
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
     val image = renderer.render(imageSize).get
@@ -389,7 +388,7 @@ class RendererTest extends AnyFlatSpec
 
     TestScenario.default()
       .withSphereColor(OPAQUE_MEDIUM_GRAY)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .applyTo(renderer)
     val imageGray = renderer.render(imageSize).get
 
@@ -429,7 +428,7 @@ class RendererTest extends AnyFlatSpec
     // Opaque white sphere
     TestScenario.default()
       .withSphereColor(OPAQUE_WHITE)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
@@ -438,7 +437,7 @@ class RendererTest extends AnyFlatSpec
     // Semi-transparent white sphere
     TestScenario.default()
       .withSphereColor(SEMI_TRANSPARENT_WHITE)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
@@ -458,7 +457,7 @@ class RendererTest extends AnyFlatSpec
 
     TestScenario.default()
       .withSphereColor(FULLY_TRANSPARENT_WHITE)
-      .withSphereRadius(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
@@ -479,8 +478,8 @@ class RendererTest extends AnyFlatSpec
 
     TestScenario.default()
       .withSphereColor(Color(0.5f, 1.0f, 0.5f, 0.8f))  // Green-tinted glass
-      .withSphereRadius(1.5f)
-      .withIOR(1.5f)
+      .withSphereRadius(Const.defaultSphereRadius)
+      .withIOR(Const.iorGlass)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
 
@@ -505,7 +504,7 @@ class RendererTest extends AnyFlatSpec
 
     TestScenario.default()
       .withSphereRadius(0.5f)
-      .withIOR(1.5f)
+      .withIOR(Const.iorGlass)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
 
@@ -534,7 +533,7 @@ class RendererTest extends AnyFlatSpec
   it should "render with caustics enabled (basic smoke test)" in:
     TestScenario.default()
       .withSphereRadius(0.5f)
-      .withIOR(1.5f)
+      .withIOR(Const.iorGlass)
       .withCameraEye(Vector[3](0.0f, 0.5f, 3.0f))
       .applyTo(renderer)
 
@@ -552,7 +551,7 @@ class RendererTest extends AnyFlatSpec
   it should "produce valid image with caustics and shadows" in:
     TestScenario.default()
       .withSphereRadius(0.5f)
-      .withIOR(1.5f)
+      .withIOR(Const.iorGlass)
       .withCameraEye(Vector[3](0.0f, 0.5f, 3.0f))
       .applyTo(renderer)
 
@@ -567,7 +566,7 @@ class RendererTest extends AnyFlatSpec
   it should "allow toggling caustics on and off" in:
     TestScenario.default()
       .withSphereRadius(0.5f)
-      .withIOR(1.5f)
+      .withIOR(Const.iorGlass)
       .applyTo(renderer)
 
     val size = QUICK_TEST_SIZE

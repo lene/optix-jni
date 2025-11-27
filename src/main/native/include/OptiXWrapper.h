@@ -64,21 +64,9 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl;
 
-    // Pipeline build steps (called in sequence by buildPipeline)
+    // Internal pipeline build helpers
     void buildPipeline();
     void buildGeometryAccelerationStructure();
-    OptixModule loadPTXModules();
-    void createProgramGroups(OptixModule sphere_module);
-    void createPipeline();
-    void setupShaderBindingTable();
-
-    // Multi-pass Progressive Photon Mapping (caustics) rendering
-    void renderWithCaustics(int width, int height, Params& params);
-    void launchCausticsPass(int width, int height, OptixProgramGroup raygen_group, int launch_width, int launch_height);
-
-    // Resource cleanup helpers
-    void cleanupPipelineResources(bool include_caustics);
-    void destroyProgramGroupIfExists(OptixProgramGroup& prog_group);
 };
 
 #endif // OPTIX_WRAPPER_H

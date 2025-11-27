@@ -11,7 +11,7 @@ import ThresholdConstants.*
 import ImageMatchers.*
 
 
-class TransparencyTest extends AnyFlatSpec
+class TransparencySuite extends AnyFlatSpec
     with Matchers
     with LazyLogging
     with RendererFixture:

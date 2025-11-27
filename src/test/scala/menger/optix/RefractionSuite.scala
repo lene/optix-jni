@@ -9,7 +9,7 @@ import ThresholdConstants.*
 import ImageMatchers.*
 
 
-class RefractionTest extends AnyFlatSpec
+class RefractionSuite extends AnyFlatSpec
     with Matchers
     with LazyLogging
     with RendererFixture:

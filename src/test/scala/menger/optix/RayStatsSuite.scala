@@ -1,13 +1,11 @@
 package menger.optix
-import menger.common.Color
-import menger.common.ImageSize
-import menger.common.Vector
+import menger.common.{Color, ImageSize, Const, Vector}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import ColorConstants.*
 import ThresholdConstants.*
 
-class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
+class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   "Ray statistics" should "have primary rays equal to pixel count" in:
     TestScenario.default().applyTo(renderer)
@@ -41,7 +39,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default()
       .withSphereColor(Color(1f, 0f, 0f, 1.0f))  // Fully opaque
       .withSphereRadius(0.5f)
-      .withIOR(1.5f)
+      .withIOR(Const.iorGlass)
       .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
@@ -97,7 +95,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default()
       .withSphereRadius(0.5f)
       .withSphereColor(Color(1f, 1f, 1f, 0.5f))
-      .withIOR(1.5f)
+      .withIOR(Const.iorGlass)
       .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
@@ -107,7 +105,7 @@ class RayStatsTest extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default()
       .withSphereRadius(0.5f)
       .withSphereColor(Color(1f, 1f, 1f, 0.2f))
-      .withIOR(1.5f)
+      .withIOR(Const.iorGlass)
       .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)

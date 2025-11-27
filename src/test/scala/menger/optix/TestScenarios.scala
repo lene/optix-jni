@@ -1,6 +1,6 @@
 package menger.optix
 
-import menger.common.{Color, ImageSize, Vector}
+import menger.common.{Color, ImageSize, Const, Vector}
 import ColorConstants.*
 import ThresholdConstants.*
 
@@ -8,14 +8,14 @@ case class SphereConfig(
   position: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),
   radius: Float = 0.5f,
   color: Color = OPAQUE_GREEN,
-  ior: Float = 1.0f
+  ior: Float = Const.iorVacuum
 )
 
 case class CameraConfig(
-  eye: Vector[3] = Vector[3](0.0f, 0.5f, 3.0f),
+  eye: Vector[3] = Vector[3](0.0f, 0.5f, Const.defaultCameraZDistance),
   lookAt: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),
   up: Vector[3] = Vector[3](0.0f, 1.0f, 0.0f),
-  horizontalFov: Float = 60.0f
+  horizontalFov: Float = Const.defaultFovDegrees
 )
 
 case class LightConfig(
@@ -156,31 +156,31 @@ object TestScenario:
   def glassSphere(): TestScenario = TestScenario(
     sphere = SphereConfig(
       color = GLASS_LIGHT_CYAN,
-      ior = 1.5f
+      ior = Const.iorGlass
     )
   )
 
-  
+
   def waterSphere(): TestScenario = TestScenario(
     sphere = SphereConfig(
       color = CLEAR_GLASS_WHITE,
-      ior = 1.33f
+      ior = Const.iorWater
     )
   )
 
-  
+
   def diamondSphere(): TestScenario = TestScenario(
     sphere = SphereConfig(
       color = OPAQUE_WHITE,
-      ior = 2.42f
+      ior = Const.iorDiamond
     )
   )
 
-  
+
   def coloredGlassSphere(): TestScenario = TestScenario(
     sphere = SphereConfig(
       color = TRANSLUCENT_GREEN_CYAN,
-      ior = 1.5f
+      ior = Const.iorGlass
     )
   )
 
@@ -248,7 +248,7 @@ object TestScenario:
       position = Vector[3](0.0f, 0.0f, 0.0f),
       radius = 0.5f,
       color = ColorConstants.withAlpha(OPAQUE_SHADOW_TEST_GRAY, alpha),
-      ior = 1.5f
+      ior = Const.iorGlass
     ),
     camera = CameraConfig(
       eye = Vector[3](0.0f, 0.0f, 5.0f),

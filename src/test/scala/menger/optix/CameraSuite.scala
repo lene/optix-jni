@@ -8,7 +8,7 @@ import ImageMatchers.*
 import ThresholdConstants.*
 
 
-class CameraTest extends AnyFlatSpec with Matchers with RendererFixture:
+class CameraSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   // Ensure library is loaded before running tests
   OptiXRenderer.isLibraryLoaded shouldBe true

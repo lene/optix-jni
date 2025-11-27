@@ -1,7 +1,5 @@
 package menger.optix
-import menger.common.Color
-import menger.common.ImageSize
-import menger.common.Vector
+import menger.common.{Color, ImageSize, Const, Vector}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
@@ -9,7 +7,7 @@ import com.typesafe.scalalogging.LazyLogging
 import ThresholdConstants.*
 
 
-class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
+class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
 
   "Multiple OptiXRenderer instances" should "initialize independently" in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
@@ -46,10 +44,10 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.initialize() should be (true)
 
       // Set different spheres in each renderer - same position, different colors
-      renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       renderer1.setSphereColor(Color(1.0f, 0.0f, 0.0f, 1.0f)) // Red sphere
 
-      renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       renderer2.setSphereColor(Color(0.0f, 0.0f, 1.0f, 1.0f)) // Blue sphere (same position)
 
       // Set same camera for both
@@ -119,8 +117,8 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.initialize() should be (true)
 
       // Setup same scene
-      renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
-      renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
+      renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
 
       val eye = Vector[3](0.0f, 0.0f, 3.0f)
       val lookAt = Vector[3](0.0f, 0.0f, 0.0f)
@@ -161,7 +159,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
       renderer2.initialize() should be (true)
 
       // Setup
-      renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer1.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       renderer2.setSphere(Vector[3](1.0f, 1.0f, 1.0f), 2.0f)
 
       val eye = Vector[3](0.0f, 0.0f, 3.0f)
@@ -214,7 +212,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
     // Second renderer should still work
     val size = TEST_IMAGE_SIZE
-    renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+    renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
     val img = renderer2.render(size)
     img.get.length should be (ImageValidation.imageByteSize(size))
 
@@ -241,7 +239,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
         // Verify it works
         val size = ImageSize(200, 200)
-        renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+        renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
         val img = renderer.render(size).get
         img.length should be (ImageValidation.imageByteSize(size))
 
@@ -306,7 +304,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Renderer should still work normally
       val size = ImageSize(200, 200)
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       val img = renderer.render(size).get
       img.length should be (ImageValidation.imageByteSize(size))
 
@@ -330,7 +328,7 @@ class MultiInstanceTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Renderer should work
       val size = ImageSize(200, 200)
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       val img = renderer.render(size).get
       img.length should be (ImageValidation.imageByteSize(size))
 

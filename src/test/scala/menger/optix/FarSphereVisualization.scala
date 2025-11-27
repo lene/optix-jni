@@ -1,7 +1,6 @@
 package menger.optix
 
-import menger.common.Color
-import menger.common.Vector
+import menger.common.{Color, Const, Vector}
 import java.nio.file.{Files, Paths}
 
 object FarSphereVisualization:
@@ -34,7 +33,7 @@ object FarSphereVisualization:
     // sphereY = 1.0f, planeY = -1.0f (2 units apart)
     renderer.setSphere(Vector[3](0.0f, 1.0f, 0.0f), 0.5f)
     renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, 1.0f))  // Opaque gray
-    renderer.setIOR(1.5f)
+    renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, -1.0f)  // Y-axis plane at -1.0
     renderer.setPlaneSolidColor(Color.LIGHT_GRAY)

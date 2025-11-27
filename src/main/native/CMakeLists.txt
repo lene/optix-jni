@@ -172,6 +172,11 @@ set_target_properties(optix_shaders PROPERTIES
 add_library(optixjni SHARED
     OptiXContext.cpp
     OptiXWrapper.cpp
+    SceneParameters.cpp
+    RenderConfig.cpp
+    PipelineManager.cpp
+    BufferManager.cpp
+    CausticsRenderer.cpp
     JNIBindings.cpp
 )
 

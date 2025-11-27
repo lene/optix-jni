@@ -1,8 +1,7 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.ImageSize
-import menger.common.Vector
+import menger.common.{ImageSize, Const, Vector}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -10,7 +9,7 @@ import ColorConstants.*
 import ThresholdConstants.*
 
 
-class PerformanceTest extends AnyFlatSpec
+class PerformanceSuite extends AnyFlatSpec
     with Matchers
     with LazyLogging
     with RendererFixture:
@@ -54,7 +53,7 @@ class PerformanceTest extends AnyFlatSpec
   it should "achieve >10 FPS for transparent spheres" in:
     val fps = measureAndLog("Transparent sphere"):
       TestScenario.performanceTransparent()
-        .withIOR(1.5f)
+        .withIOR(Const.iorGlass)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
 
@@ -73,7 +72,7 @@ class PerformanceTest extends AnyFlatSpec
     val fps = measureAndLog("Large sphere"):
       TestScenario.largeSphere()
         .withSphereColor(PERFORMANCE_TEST_GREEN_CYAN)
-        .withIOR(1.5f)
+        .withIOR(Const.iorGlass)
         .withSphereRadius(2.0f)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)

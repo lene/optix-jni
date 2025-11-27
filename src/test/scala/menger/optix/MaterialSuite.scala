@@ -9,7 +9,7 @@ import ThresholdConstants.*
 import ImageMatchers.*
 
 
-class MaterialTest extends AnyFlatSpec
+class MaterialSuite extends AnyFlatSpec
     with Matchers
     with LazyLogging
     with RendererFixture:

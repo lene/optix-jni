@@ -484,7 +484,7 @@ bool shadows_enabled;
 - `optix-jni/src/main/native/include/OptiXData.h`
   - Add `bool shadows_enabled` to `Params`
 
-- `optix-jni/src/main/native/include/OptiXConstants.h`
+- `optix-jni/src/main/native/include/Const.h`
   - Add `SHADOW_RAY_OFFSET` constant (e.g., 0.001f)
 
 - `optix-jni/src/main/native/shaders/sphere_combined.cu`
@@ -921,7 +921,7 @@ renderer.setLights(lights: Array[Light])
   - Add `Light` struct and `LightType` enum
   - Add `lights` array and `num_lights` to `Params`
 
-- `optix-jni/src/main/native/include/OptiXConstants.h`
+- `optix-jni/src/main/native/include/Const.h`
   - Add `MAX_LIGHTS` constant
 
 - `optix-jni/src/main/native/shaders/sphere_combined.cu`

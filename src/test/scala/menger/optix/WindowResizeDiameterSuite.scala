@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.BeforeAndAfterAll
 
-class WindowResizeDiameterTest extends AnyFlatSpec with Matchers with LazyLogging with BeforeAndAfterAll {
+class WindowResizeDiameterSuite extends AnyFlatSpec with Matchers with LazyLogging with BeforeAndAfterAll {
 
   // Baseline measurements shared between tests
   private var baselineVDiam: Int = 0

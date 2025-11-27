@@ -11,7 +11,7 @@ import ImageValidation.*
 import ThresholdConstants.*
 
 
-class OpaqueSphereTest extends AnyFlatSpec
+class OpaqueSphereSuite extends AnyFlatSpec
     with Matchers
     with LazyLogging
     with RendererFixture:

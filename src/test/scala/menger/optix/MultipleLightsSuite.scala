@@ -8,7 +8,7 @@ import org.scalatest.matchers.should.Matchers
 import ThresholdConstants.*
 import ImageValidation.*
 
-class MultipleLightsTest extends AnyFlatSpec with Matchers with RendererFixture:
+class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   // Category 1: Basic API Tests
 

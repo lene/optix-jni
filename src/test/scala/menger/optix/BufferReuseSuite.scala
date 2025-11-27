@@ -1,7 +1,6 @@
 package menger.optix
-import menger.common.Vector
+import menger.common.{ImageSize, Const, Vector}
 
-import menger.common.ImageSize
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
@@ -9,7 +8,7 @@ import com.typesafe.scalalogging.LazyLogging
 import ThresholdConstants.*
 
 
-class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
+class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {
 
   "GPU buffer reuse" should "work correctly with same dimensions" in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
@@ -18,7 +17,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
 
     try {
       renderer.initialize() should be (true)
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
 
       val eye = Vector[3](0.0f, 0.0f, 3.0f)
       val lookAt = Vector[3](0.0f, 0.0f, 0.0f)
@@ -51,7 +50,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
 
     try {
       renderer.initialize() should be (true)
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
 
       val eye = Vector[3](0.0f, 0.0f, 3.0f)
       val lookAt = Vector[3](0.0f, 0.0f, 0.0f)
@@ -95,13 +94,13 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Render with different sphere positions (same dimensions)
       val size = TEST_IMAGE_SIZE
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       val img1 = renderer.render(size).get
 
-      renderer.setSphere(Vector[3](1.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](1.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       val img2 = renderer.render(size).get
 
-      renderer.setSphere(Vector[3](0.0f, 1.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 1.0f, 0.0f), Const.defaultSphereRadius)
       val img3 = renderer.render(size).get
 
       // All renders should succeed
@@ -128,7 +127,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
       // First session
       val size = TEST_IMAGE_SIZE
       renderer.initialize() should be (true)
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       val img1 = renderer.render(size).get
       img1.length should be (ImageValidation.imageByteSize(size))
 
@@ -137,7 +136,7 @@ class BufferReuseTest extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Second session (buffer should be reallocated)
       renderer.initialize() should be (true)
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
+      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
       val img2 = renderer.render(size).get
       img2.length should be (ImageValidation.imageByteSize(size))
 

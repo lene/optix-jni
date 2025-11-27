@@ -1,6 +1,6 @@
 package menger.optix.caustics
 
-import menger.common.{Color, ImageSize, Vector}
+import menger.common.{Color, ImageSize, Const, Vector}
 import menger.optix.{OptiXRenderer, RendererFixture, TestScenario, ThresholdConstants}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -17,7 +17,7 @@ import scala.math.{Pi, abs, asin, cos, sin, sqrt}
   * @see
   *   arc42 Section 10 for quality requirements C1-C8
   */
-class CausticsValidationSpec extends AnyFlatSpec with Matchers with RendererFixture:
+class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   private val runningUnderSanitizer: Boolean =
     sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
@@ -26,8 +26,8 @@ class CausticsValidationSpec extends AnyFlatSpec with Matchers with RendererFixt
   object CanonicalScene:
     val sphereCenter: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f)
     val sphereRadius: Float = 1.0f
-    val sphereIOR: Float = 1.5f
-    val planeY: Float = -2.0f
+    val sphereIOR: Float = Const.iorGlass
+    val planeY: Float = Const.defaultFloorPlaneY
     val lightDirection: Vector[3] = Vector[3](0.0f, -1.0f, 0.0f)
     val cameraPosition: Vector[3] = Vector[3](0.0f, 1.0f, 4.0f)
     val imageSize: ImageSize = ThresholdConstants.TEST_IMAGE_SIZE
@@ -280,4 +280,4 @@ class CausticsValidationSpec extends AnyFlatSpec with Matchers with RendererFixt
 
     if count > 0 then sum / count else 0.0
 
-end CausticsValidationSpec
+end CausticsValidationSuite

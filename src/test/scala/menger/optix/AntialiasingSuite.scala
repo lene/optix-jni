@@ -12,7 +12,7 @@ import ThresholdConstants.*
 import ImageMatchers.*
 
 
-class AntialiasingTest extends AnyFlatSpec
+class AntialiasingSuite extends AnyFlatSpec
     with Matchers
     with LazyLogging
     with RendererFixture:

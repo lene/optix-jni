@@ -14,7 +14,7 @@ import java.io.File
   * @see
   *   CAUSTICS_REFERENCES.md for reference image sources
   */
-class ReferenceMatchSpec extends AnyFlatSpec with Matchers:
+class ReferenceMatchSuite extends AnyFlatSpec with Matchers:
 
   /** Minimum SSIM threshold for validation */
   val SsimThreshold = 0.90
@@ -71,7 +71,7 @@ class ReferenceMatchSpec extends AnyFlatSpec with Matchers:
         ssim should be >= 0.0
         ssim should be <= 1.0
 
-end ReferenceMatchSpec
+end ReferenceMatchSuite
 
 /** Utility for comparing images from command line.
   *

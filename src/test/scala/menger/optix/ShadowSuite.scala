@@ -1,7 +1,6 @@
 package menger.optix
 
-import menger.common.Color
-import menger.common.Vector
+import menger.common.{Color, Const, Vector}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import ImageMatchers.*
@@ -9,7 +8,7 @@ import ShadowValidation.*
 import ThresholdConstants.*
 import scala.math.abs
 
-class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
+class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   private val imageSize = STANDARD_IMAGE_SIZE
 
@@ -23,7 +22,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   ): Unit =
     renderer.setSphere(Vector[3](0.0f, sphereY, 0.0f), sphereRadius)
     renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, sphereAlpha))
-    renderer.setIOR(1.5f)
+    renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, planeY)
     renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
@@ -39,7 +38,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     // Setup basic scene
     renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
     renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, 1.0f))  // Opaque sphere
-    renderer.setIOR(1.5f)
+    renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, -0.6f)  // Y-axis plane below sphere
     renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
@@ -66,7 +65,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
   it should "respect material transparency" in:
     // Setup scene
     renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
-    renderer.setIOR(1.5f)
+    renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
     renderer.setPlane(1, true, -0.6f)
     renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
@@ -415,7 +414,7 @@ class ShadowTest extends AnyFlatSpec with Matchers with RendererFixture:
     }
 
   it should "handle very large sphere" in:
-    setupShadowScene(sphereRadius = 1.5f, sphereY = 0.5f)
+    setupShadowScene(sphereRadius = Const.defaultSphereRadius, sphereY = 0.5f)
     renderer.setShadows(true)
 
     noException should be thrownBy {
