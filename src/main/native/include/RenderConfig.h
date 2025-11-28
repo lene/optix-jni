@@ -3,7 +3,7 @@
 
 // This header is only included by .cpp files, so it's safe to include OptiXData.h
 // (OptiXData.h has CUDA-specific syntax that won't work if transitively included in other headers)
-#ifndef __CUDACC__
+#if !defined(__CUDACC__) && !defined(__align__)
 #define __align__(n)  alignas(n)
 #endif
 
