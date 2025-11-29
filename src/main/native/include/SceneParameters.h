@@ -47,6 +47,15 @@ public:
         bool dirty = false;
     };
 
+    struct TriangleMeshParams {
+        float color[4] = {0.8f, 0.8f, 0.8f, 1.0f};  // Default gray, opaque
+        float ior = MaterialConstants::IOR_VACUUM;   // No refraction by default
+        unsigned int num_vertices = 0;
+        unsigned int num_triangles = 0;
+        bool has_mesh = false;                       // True if mesh data is set
+        bool dirty = false;
+    };
+
     SceneParameters();
 
     // Camera configuration
@@ -67,6 +76,15 @@ public:
     const PlaneParams& getPlane() const { return plane; }
     PlaneParams& getPlaneMutable() { return plane; }
 
+    // Triangle mesh configuration
+    void setTriangleMeshMeta(unsigned int numVertices, unsigned int numTriangles);
+    void setTriangleMeshColor(float r, float g, float b, float a);
+    void setTriangleMeshIOR(float ior);
+    void clearTriangleMesh();
+    const TriangleMeshParams& getTriangleMesh() const { return triangle_mesh; }
+    TriangleMeshParams& getTriangleMeshMutable() { return triangle_mesh; }
+    bool hasTriangleMesh() const { return triangle_mesh.has_mesh; }
+
     // Light configuration
     void setLights(const Light* lights, int count);
     const Light* getLights() const { return lights; }
@@ -80,6 +98,7 @@ private:
     CameraParams camera;
     SphereParams sphere;
     PlaneParams plane;
+    TriangleMeshParams triangle_mesh;
     Light lights[RayTracingConstants::MAX_LIGHTS];
     int num_lights = 1;  // Start with one default directional light
 

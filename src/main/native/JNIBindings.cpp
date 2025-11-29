@@ -336,6 +336,143 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneCheckerColorsNati
     }
 }
 
+/**
+ * Set triangle mesh geometry data.
+ * @param vertices Interleaved float array: [px, py, pz, nx, ny, nz, ...] (6 floats per vertex)
+ * @param numVertices Number of vertices
+ * @param indices Triangle indices array (3 per triangle, as unsigned ints)
+ * @param numTriangles Number of triangles
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
+    JNIEnv* env, jobject obj,
+    jfloatArray vertices, jint numVertices,
+    jintArray indices, jint numTriangles) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return;
+        }
+
+        // Validate input parameters
+        if (numVertices <= 0 || numTriangles <= 0) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(exception_class, "numVertices and numTriangles must be positive");
+            return;
+        }
+
+        jsize vertexArrayLen = env->GetArrayLength(vertices);
+        jsize indexArrayLen = env->GetArrayLength(indices);
+
+        // Validate array sizes
+        if (vertexArrayLen != numVertices * 6) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "vertices array length (" + std::to_string(vertexArrayLen) +
+                ") must equal numVertices * 6 (" + std::to_string(numVertices * 6) + ")";
+            env->ThrowNew(exception_class, msg.c_str());
+            return;
+        }
+
+        if (indexArrayLen != numTriangles * 3) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "indices array length (" + std::to_string(indexArrayLen) +
+                ") must equal numTriangles * 3 (" + std::to_string(numTriangles * 3) + ")";
+            env->ThrowNew(exception_class, msg.c_str());
+            return;
+        }
+
+        // Get arrays from JNI
+        jfloat* vertexArr = env->GetFloatArrayElements(vertices, nullptr);
+        jint* indexArr = env->GetIntArrayElements(indices, nullptr);
+
+        if (vertexArr == nullptr || indexArr == nullptr) {
+            if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, 0);
+            if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, 0);
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get array elements");
+            return;
+        }
+
+        // Convert jint indices to unsigned int (OptiX uses 32-bit unsigned indices)
+        // Note: Java has no unsigned int, so we need to interpret jint as unsigned
+        wrapper->setTriangleMesh(
+            vertexArr,
+            static_cast<unsigned int>(numVertices),
+            reinterpret_cast<const unsigned int*>(indexArr),
+            static_cast<unsigned int>(numTriangles)
+        );
+
+        env->ReleaseFloatArrayElements(vertices, vertexArr, 0);
+        env->ReleaseIntArrayElements(indices, indexArr, 0);
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setTriangleMesh: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+    }
+}
+
+/**
+ * Set triangle mesh material color.
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshColorNative(
+    JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b, jfloat a) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setTriangleMeshColor(r, g, b, a);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setTriangleMeshColor: " << e.what() << std::endl;
+    }
+}
+
+/**
+ * Set triangle mesh index of refraction.
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshIOR(
+    JNIEnv* env, jobject obj, jfloat ior) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setTriangleMeshIOR(ior);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setTriangleMeshIOR: " << e.what() << std::endl;
+    }
+}
+
+/**
+ * Clear triangle mesh (removes mesh data, falls back to sphere rendering).
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearTriangleMesh(
+    JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->clearTriangleMesh();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in clearTriangleMesh: " << e.what() << std::endl;
+    }
+}
+
+/**
+ * Check if triangle mesh is set.
+ */
+JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_hasTriangleMesh(
+    JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            return wrapper->hasTriangleMesh() ? JNI_TRUE : JNI_FALSE;
+        }
+        return JNI_FALSE;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in hasTriangleMesh: " << e.what() << std::endl;
+        return JNI_FALSE;
+    }
+}
+
 JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {

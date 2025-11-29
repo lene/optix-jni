@@ -29,6 +29,18 @@ public:
     void setIOR(float ior);
     void setScale(float scale);
 
+    // Triangle mesh support
+    void setTriangleMesh(
+        const float* vertices,        // Interleaved pos+normal, 6 floats per vertex
+        unsigned int num_vertices,
+        const unsigned int* indices,  // 3 indices per triangle
+        unsigned int num_triangles
+    );
+    void setTriangleMeshColor(float r, float g, float b, float a);
+    void setTriangleMeshIOR(float ior);
+    void clearTriangleMesh();         // Remove mesh (render sphere instead)
+    bool hasTriangleMesh() const;     // Check if mesh is set
+
     // Camera configuration
     void setCamera(const float* eye, const float* lookAt, const float* up, float fov);
     void updateImageDimensions(int width, int height);
@@ -67,6 +79,7 @@ private:
     // Internal pipeline build helpers
     void buildPipeline();
     void buildGeometryAccelerationStructure();
+    void buildTriangleMeshGAS();  // Build GAS for triangle mesh
 };
 
 #endif // OPTIX_WRAPPER_H

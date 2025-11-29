@@ -33,6 +33,15 @@ struct OptiXWrapper::Impl {
     bool pipeline_built = false;
     bool initialized = false;
 
+    // Triangle mesh GPU state
+    struct TriangleMeshGPU {
+        CUdeviceptr d_vertices = 0;           // GPU vertex buffer
+        CUdeviceptr d_indices = 0;            // GPU index buffer
+        OptixTraversableHandle gas_handle = 0; // Triangle GAS
+        CUdeviceptr d_gas_output_buffer = 0;  // GAS memory
+        bool gas_built = false;               // True if GAS is ready
+    } triangle_mesh_gpu;
+
     Impl()
         : pipeline_manager(optix_context)
         , buffer_manager(optix_context)
@@ -155,6 +164,80 @@ void OptiXWrapper::setPlane(int axis, bool positive, float value) {
     impl->scene.setPlane(axis, positive, value);
 }
 
+void OptiXWrapper::setTriangleMesh(
+    const float* vertices,
+    unsigned int num_vertices,
+    const unsigned int* indices,
+    unsigned int num_triangles
+) {
+    // Free existing GPU buffers if any
+    if (impl->triangle_mesh_gpu.d_vertices) {
+        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_vertices));
+        impl->triangle_mesh_gpu.d_vertices = 0;
+    }
+    if (impl->triangle_mesh_gpu.d_indices) {
+        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_indices));
+        impl->triangle_mesh_gpu.d_indices = 0;
+    }
+
+    // Allocate and copy vertex buffer (6 floats per vertex: pos + normal)
+    size_t vertex_size = num_vertices * 6 * sizeof(float);
+    cudaMalloc(reinterpret_cast<void**>(&impl->triangle_mesh_gpu.d_vertices), vertex_size);
+    cudaMemcpy(
+        reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_vertices),
+        vertices,
+        vertex_size,
+        cudaMemcpyHostToDevice
+    );
+
+    // Allocate and copy index buffer (3 indices per triangle)
+    size_t index_size = num_triangles * 3 * sizeof(unsigned int);
+    cudaMalloc(reinterpret_cast<void**>(&impl->triangle_mesh_gpu.d_indices), index_size);
+    cudaMemcpy(
+        reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_indices),
+        indices,
+        index_size,
+        cudaMemcpyHostToDevice
+    );
+
+    // Update scene parameters
+    impl->scene.setTriangleMeshMeta(num_vertices, num_triangles);
+    impl->triangle_mesh_gpu.gas_built = false;  // Need to rebuild GAS
+}
+
+void OptiXWrapper::setTriangleMeshColor(float r, float g, float b, float a) {
+    impl->scene.setTriangleMeshColor(r, g, b, a);
+}
+
+void OptiXWrapper::setTriangleMeshIOR(float ior) {
+    impl->scene.setTriangleMeshIOR(ior);
+}
+
+void OptiXWrapper::clearTriangleMesh() {
+    // Free GPU buffers
+    if (impl->triangle_mesh_gpu.d_vertices) {
+        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_vertices));
+        impl->triangle_mesh_gpu.d_vertices = 0;
+    }
+    if (impl->triangle_mesh_gpu.d_indices) {
+        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_indices));
+        impl->triangle_mesh_gpu.d_indices = 0;
+    }
+    if (impl->triangle_mesh_gpu.d_gas_output_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_gas_output_buffer));
+        impl->triangle_mesh_gpu.d_gas_output_buffer = 0;
+    }
+
+    impl->triangle_mesh_gpu.gas_handle = 0;
+    impl->triangle_mesh_gpu.gas_built = false;
+
+    impl->scene.clearTriangleMesh();
+}
+
+bool OptiXWrapper::hasTriangleMesh() const {
+    return impl->scene.hasTriangleMesh();
+}
+
 void OptiXWrapper::buildGeometryAccelerationStructure() {
     const auto& sphere = impl->scene.getSphere();
 
@@ -182,8 +265,48 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
     impl->gas_handle = result.handle;
 }
 
+void OptiXWrapper::buildTriangleMeshGAS() {
+    // Free existing GAS if any
+    if (impl->triangle_mesh_gpu.d_gas_output_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_gas_output_buffer));
+        impl->triangle_mesh_gpu.d_gas_output_buffer = 0;
+    }
+
+    if (!impl->scene.hasTriangleMesh()) {
+        impl->triangle_mesh_gpu.gas_handle = 0;
+        impl->triangle_mesh_gpu.gas_built = false;
+        return;
+    }
+
+    const auto& mesh_params = impl->scene.getTriangleMesh();
+
+    // Configure acceleration structure build
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    // Use OptiXContext to build triangle GAS
+    OptiXContext::GASBuildResult result = impl->optix_context.buildTriangleGAS(
+        impl->triangle_mesh_gpu.d_vertices,
+        mesh_params.num_vertices,
+        impl->triangle_mesh_gpu.d_indices,
+        mesh_params.num_triangles,
+        accel_options
+    );
+
+    impl->triangle_mesh_gpu.d_gas_output_buffer = result.gas_buffer;
+    impl->triangle_mesh_gpu.gas_handle = result.handle;
+    impl->triangle_mesh_gpu.gas_built = true;
+}
+
 void OptiXWrapper::buildPipeline() {
-    buildGeometryAccelerationStructure();
+    // Build GAS for whichever geometry type is active
+    if (impl->scene.hasTriangleMesh()) {
+        buildTriangleMeshGAS();
+        impl->gas_handle = impl->triangle_mesh_gpu.gas_handle;
+    } else {
+        buildGeometryAccelerationStructure();
+    }
     impl->pipeline_manager.buildPipeline(impl->scene, impl->gas_handle);
 }
 

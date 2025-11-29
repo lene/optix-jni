@@ -251,6 +251,38 @@ OptixProgramGroup OptiXContext::createHitgroupProgramGroup(
     return program_group;
 }
 
+OptixProgramGroup OptiXContext::createTriangleHitgroupProgramGroup(
+    OptixModule module_ch,
+    const char* entry_ch)
+{
+    OptixProgramGroupOptions program_group_options = {};
+    OptixProgramGroupDesc hitgroup_desc = {};
+    hitgroup_desc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+    hitgroup_desc.hitgroup.moduleCH = module_ch;
+    hitgroup_desc.hitgroup.entryFunctionNameCH = entry_ch;
+    hitgroup_desc.hitgroup.moduleAH = nullptr;
+    hitgroup_desc.hitgroup.entryFunctionNameAH = nullptr;
+    // No intersection shader - OptiX uses built-in triangle intersection
+    hitgroup_desc.hitgroup.moduleIS = nullptr;
+    hitgroup_desc.hitgroup.entryFunctionNameIS = nullptr;
+
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
+    size_t log_size = sizeof(log);
+
+    OptixProgramGroup program_group = nullptr;
+    OPTIX_CHECK(optixProgramGroupCreate(
+        context_,
+        &hitgroup_desc,
+        1,
+        &program_group_options,
+        log,
+        &log_size,
+        &program_group
+    ));
+
+    return program_group;
+}
+
 void OptiXContext::destroyProgramGroup(OptixProgramGroup program_group) {
     if (program_group) {
         optixProgramGroupDestroy(program_group);
@@ -397,6 +429,89 @@ OptiXContext::GASBuildResult OptiXContext::buildCustomPrimitiveGAS(
     return result;
 }
 
+OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
+    CUdeviceptr d_vertices,
+    unsigned int num_vertices,
+    CUdeviceptr d_indices,
+    unsigned int num_triangles,
+    const OptixAccelBuildOptions& build_options)
+{
+    // Set up triangle build input
+    OptixBuildInput triangle_input = {};
+    triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+
+    // Vertex buffer: positions only (OptiX needs just xyz for GAS)
+    // Our vertex format is [px, py, pz, nx, ny, nz] = 6 floats = 24 bytes stride
+    // OptiX will read xyz at offset 0, then skip to next vertex at offset 24
+    triangle_input.triangleArray.vertexBuffers = &d_vertices;
+    triangle_input.triangleArray.numVertices = num_vertices;
+    triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
+    triangle_input.triangleArray.vertexStrideInBytes = 6 * sizeof(float);  // 24 bytes stride
+
+    // Index buffer: 3 unsigned ints per triangle
+    triangle_input.triangleArray.indexBuffer = d_indices;
+    triangle_input.triangleArray.numIndexTriplets = num_triangles;
+    triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+    triangle_input.triangleArray.indexStrideInBytes = 3 * sizeof(unsigned int);
+
+    // Geometry flags
+    uint32_t triangle_flags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+    triangle_input.triangleArray.flags = triangle_flags;
+    triangle_input.triangleArray.numSbtRecords = 1;
+    triangle_input.triangleArray.sbtIndexOffsetBuffer = 0;
+    triangle_input.triangleArray.sbtIndexOffsetSizeInBytes = 0;
+    triangle_input.triangleArray.sbtIndexOffsetStrideInBytes = 0;
+
+    // Query memory requirements
+    OptixAccelBufferSizes gas_buffer_sizes;
+    OPTIX_CHECK(optixAccelComputeMemoryUsage(
+        context_,
+        &build_options,
+        &triangle_input,
+        1,
+        &gas_buffer_sizes
+    ));
+
+    // Allocate temporary buffer
+    CUdeviceptr d_temp_buffer;
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&d_temp_buffer),
+        gas_buffer_sizes.tempSizeInBytes
+    ));
+
+    // Allocate output buffer
+    CUdeviceptr d_gas_output_buffer;
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&d_gas_output_buffer),
+        gas_buffer_sizes.outputSizeInBytes
+    ));
+
+    // Build acceleration structure
+    OptixTraversableHandle gas_handle;
+    OPTIX_CHECK(optixAccelBuild(
+        context_,
+        0, // CUDA stream
+        &build_options,
+        &triangle_input,
+        1,
+        d_temp_buffer,
+        gas_buffer_sizes.tempSizeInBytes,
+        d_gas_output_buffer,
+        gas_buffer_sizes.outputSizeInBytes,
+        &gas_handle,
+        nullptr, // emitted property list
+        0        // num emitted properties
+    ));
+
+    // Clean up temporary buffer
+    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
+
+    GASBuildResult result;
+    result.gas_buffer = d_gas_output_buffer;
+    result.handle = gas_handle;
+    return result;
+}
+
 void OptiXContext::destroyGAS(CUdeviceptr gas_buffer) {
     if (gas_buffer) {
         cudaFree(reinterpret_cast<void*>(gas_buffer));
@@ -433,6 +548,10 @@ CUdeviceptr OptiXContext::createMissSBTRecord(OptixProgramGroup program_group, c
 }
 
 CUdeviceptr OptiXContext::createHitgroupSBTRecord(OptixProgramGroup program_group, const HitGroupData& data) {
+    return createSBTRecordHelper(program_group, data);
+}
+
+CUdeviceptr OptiXContext::createTriangleHitgroupSBTRecord(OptixProgramGroup program_group, const TriangleHitGroupData& data) {
     return createSBTRecordHelper(program_group, data);
 }
 

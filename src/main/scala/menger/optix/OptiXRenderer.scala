@@ -1,7 +1,7 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.{Color, ImageSize, Vector, x, y, z}
+import menger.common.{Color, ImageSize, TriangleMeshData, Vector, x, y, z}
 import menger.common.toArray
 
 import java.io.{FileOutputStream, InputStream}
@@ -240,6 +240,33 @@ class OptiXRenderer extends LazyLogging:
 
   def setPlaneCheckerColors(color1: Color, color2: Color): Unit =
     setPlaneCheckerColorsNative(color1.r, color1.g, color1.b, color2.r, color2.g, color2.b)
+
+  // Triangle mesh methods
+  @native private def setTriangleMeshNative(
+    vertices: Array[Float],
+    numVertices: Int,
+    indices: Array[Int],
+    numTriangles: Int
+  ): Unit
+
+  @native private def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
+
+  @native def setTriangleMeshIOR(ior: Float): Unit
+
+  @native def clearTriangleMesh(): Unit
+
+  @native def hasTriangleMesh(): Boolean
+
+  def setTriangleMesh(mesh: TriangleMeshData): Unit =
+    setTriangleMeshNative(
+      mesh.vertices,
+      mesh.numVertices,
+      mesh.indices,
+      mesh.numTriangles
+    )
+
+  def setTriangleMeshColor(color: Color): Unit =
+    setTriangleMeshColorNative(color.r, color.g, color.b, color.a)
 
   @native def renderWithStats(width: Int, height: Int): RenderResult
 

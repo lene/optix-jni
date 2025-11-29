@@ -58,6 +58,13 @@ public:
         OptixModule module_is,
         const char* entry_is
     );
+
+    // Create hitgroup for triangles (uses built-in intersection, no IS shader needed)
+    OptixProgramGroup createTriangleHitgroupProgramGroup(
+        OptixModule module_ch,
+        const char* entry_ch
+    );
+
     void destroyProgramGroup(OptixProgramGroup program_group);
 
     // Pipeline management
@@ -79,12 +86,25 @@ public:
         const OptixAabb& aabb,
         const OptixAccelBuildOptions& build_options
     );
+
+    // Build GAS for triangle mesh
+    // Vertices: device pointer to interleaved pos+normal (6 floats per vertex, stride 24 bytes)
+    // Indices: device pointer to triangle indices (3 unsigned ints per triangle)
+    GASBuildResult buildTriangleGAS(
+        CUdeviceptr d_vertices,
+        unsigned int num_vertices,
+        CUdeviceptr d_indices,
+        unsigned int num_triangles,
+        const OptixAccelBuildOptions& build_options
+    );
+
     void destroyGAS(CUdeviceptr gas_buffer);
 
     // Shader binding table (SBT) helpers
     CUdeviceptr createRaygenSBTRecord(OptixProgramGroup program_group, const RayGenData& data);
     CUdeviceptr createMissSBTRecord(OptixProgramGroup program_group, const MissData& data);
     CUdeviceptr createHitgroupSBTRecord(OptixProgramGroup program_group, const HitGroupData& data);
+    CUdeviceptr createTriangleHitgroupSBTRecord(OptixProgramGroup program_group, const TriangleHitGroupData& data);
     void freeSBTRecord(CUdeviceptr record);
 
     // Launch

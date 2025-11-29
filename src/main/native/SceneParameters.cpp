@@ -103,12 +103,40 @@ void SceneParameters::setLights(const Light* lightsArray, int count) {
     }
 }
 
+void SceneParameters::setTriangleMeshMeta(unsigned int numVertices, unsigned int numTriangles) {
+    triangle_mesh.num_vertices = numVertices;
+    triangle_mesh.num_triangles = numTriangles;
+    triangle_mesh.has_mesh = (numVertices > 0 && numTriangles > 0);
+    triangle_mesh.dirty = true;
+}
+
+void SceneParameters::setTriangleMeshColor(float r, float g, float b, float a) {
+    triangle_mesh.color[0] = r;
+    triangle_mesh.color[1] = g;
+    triangle_mesh.color[2] = b;
+    triangle_mesh.color[3] = a;
+    triangle_mesh.dirty = true;
+}
+
+void SceneParameters::setTriangleMeshIOR(float ior) {
+    triangle_mesh.ior = ior;
+    triangle_mesh.dirty = true;
+}
+
+void SceneParameters::clearTriangleMesh() {
+    triangle_mesh.num_vertices = 0;
+    triangle_mesh.num_triangles = 0;
+    triangle_mesh.has_mesh = false;
+    triangle_mesh.dirty = true;
+}
+
 bool SceneParameters::isAnyDirty() const {
-    return camera.dirty || sphere.dirty || plane.dirty;
+    return camera.dirty || sphere.dirty || plane.dirty || triangle_mesh.dirty;
 }
 
 void SceneParameters::clearDirtyFlags() {
     camera.dirty = false;
     sphere.dirty = false;
     plane.dirty = false;
+    triangle_mesh.dirty = false;
 }

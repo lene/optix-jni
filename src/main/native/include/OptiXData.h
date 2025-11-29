@@ -95,6 +95,28 @@ struct Light {
     float intensity;      // Brightness multiplier
 };
 
+// Triangle mesh data for rendering arbitrary geometry (host-side)
+// Used to pass mesh data from Scala through JNI to C++
+struct TriangleMeshData {
+    float* vertices;              // Interleaved position (x,y,z) + normal (nx,ny,nz)
+    unsigned int* indices;        // Triangle indices (3 per triangle)
+    unsigned int num_vertices;    // Number of vertices
+    unsigned int num_triangles;   // Number of triangles
+
+    // Material properties (same as sphere for consistency)
+    float color[4];               // RGBA (alpha: 0=transparent, 1=opaque)
+    float ior;                    // Index of refraction (1.0 = no refraction)
+};
+
+// Hit group data for triangle mesh (stored in SBT, used by shaders)
+// Contains device pointers to GPU buffers
+struct TriangleHitGroupData {
+    float* vertices;              // Device pointer to vertex data
+    unsigned int* indices;        // Device pointer to index data
+    float color[4];               // Material color (RGBA)
+    float ior;                    // Index of refraction
+};
+
 // Photon for Progressive Photon Mapping (caustics)
 // Represents a single photon emitted from a light source
 struct Photon {
@@ -270,5 +292,6 @@ struct SbtRecord {
 typedef SbtRecord<RayGenData>   RayGenSbtRecord;
 typedef SbtRecord<MissData>     MissSbtRecord;
 typedef SbtRecord<HitGroupData> HitGroupSbtRecord;
+typedef SbtRecord<TriangleHitGroupData> TriangleHitGroupSbtRecord;
 
 #endif // OPTIX_DATA_H
