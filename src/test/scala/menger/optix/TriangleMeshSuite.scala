@@ -34,6 +34,39 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val indices = Array[Int](0, 1, 2, 0, 2, 3) // Two triangles
     TriangleMeshData(vertices, indices)
 
+  // Cube mesh: 6 faces × 4 vertices = 24 vertices, 12 triangles
+  private def cubeMesh(scale: Float = 1.5f): TriangleMeshData =
+    val half = scale / 2.0f
+
+    // Face definitions: (corners as offsets from center, normal)
+    val faces = Seq(
+      // +Z face (front)
+      (Seq((-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)), (0.0f, 0.0f, 1.0f)),
+      // -Z face (back)
+      (Seq((1, -1, -1), (-1, -1, -1), (-1, 1, -1), (1, 1, -1)), (0.0f, 0.0f, -1.0f)),
+      // +X face (right)
+      (Seq((1, -1, 1), (1, -1, -1), (1, 1, -1), (1, 1, 1)), (1.0f, 0.0f, 0.0f)),
+      // -X face (left)
+      (Seq((-1, -1, -1), (-1, -1, 1), (-1, 1, 1), (-1, 1, -1)), (-1.0f, 0.0f, 0.0f)),
+      // +Y face (top)
+      (Seq((-1, 1, 1), (1, 1, 1), (1, 1, -1), (-1, 1, -1)), (0.0f, 1.0f, 0.0f)),
+      // -Y face (bottom)
+      (Seq((-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1)), (0.0f, -1.0f, 0.0f))
+    )
+
+    // Generate vertices and indices functionally
+    val (vertices, indices) = faces.zipWithIndex.foldLeft((Seq.empty[Float], Seq.empty[Int])) {
+      case ((verts, inds), ((corners, (nx, ny, nz)), faceIdx)) =>
+        val faceVerts = corners.flatMap { case (dx, dy, dz) =>
+          Seq(dx * half, dy * half, dz * half, nx, ny, nz)
+        }
+        val base = faceIdx * 4
+        val faceInds = Seq(base, base + 1, base + 2, base, base + 2, base + 3)
+        (verts ++ faceVerts, inds ++ faceInds)
+    }
+
+    TriangleMeshData(vertices.toArray, indices.toArray)
+
   "Triangle mesh API" should "report no mesh by default" in:
     renderer.hasTriangleMesh() shouldBe false
 
@@ -105,3 +138,93 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMeshIOR(1.5f)
     val result = renderer.render(TEST_IMAGE_SIZE)
     result.isDefined shouldBe true
+
+  // ========== Glass Cube Tests (Task 5.3) ==========
+
+  "Glass cube rendering" should "render with refraction" in:
+    renderer.setTriangleMesh(cubeMesh())
+    renderer.setTriangleMeshColor(Color(0.9f, 0.9f, 1.0f, 0.3f)) // Light blue glass
+    renderer.setTriangleMeshIOR(1.5f) // Glass IOR
+    renderer.setPlane(1, true, -2.0f)
+
+    val result = renderer.render(TEST_IMAGE_SIZE)
+    result.isDefined shouldBe true
+    result.get.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
+
+  it should "look different with different IOR values" in:
+    renderer.setTriangleMesh(cubeMesh())
+    renderer.setTriangleMeshColor(Color(1.0f, 1.0f, 1.0f, 0.2f))
+    renderer.setPlane(1, true, -2.0f)
+
+    renderer.setTriangleMeshIOR(1.0f) // No refraction
+    val ior1 = renderer.render(TEST_IMAGE_SIZE).get
+
+    renderer.setTriangleMeshIOR(1.5f) // Glass
+    val ior15 = renderer.render(TEST_IMAGE_SIZE).get
+
+    renderer.setTriangleMeshIOR(2.4f) // Diamond
+    val ior24 = renderer.render(TEST_IMAGE_SIZE).get
+
+    // All should be different
+    ior1 should not equal ior15
+    ior15 should not equal ior24
+
+  it should "show colored absorption for tinted glass cube" in:
+    renderer.setTriangleMesh(cubeMesh())
+    renderer.setTriangleMeshIOR(1.5f)
+    renderer.setPlane(1, true, -2.0f)
+
+    // Clear glass
+    renderer.setTriangleMeshColor(Color(1.0f, 1.0f, 1.0f, 0.3f))
+    val clear = renderer.render(TEST_IMAGE_SIZE).get
+
+    // Red tinted glass
+    renderer.setTriangleMeshColor(Color(1.0f, 0.3f, 0.3f, 0.5f))
+    val red = renderer.render(TEST_IMAGE_SIZE).get
+
+    // Blue tinted glass
+    renderer.setTriangleMeshColor(Color(0.3f, 0.3f, 1.0f, 0.5f))
+    val blue = renderer.render(TEST_IMAGE_SIZE).get
+
+    // All should be visually different
+    clear should not equal red
+    red should not equal blue
+
+  // Shadow support for triangle meshes requires IAS (Instance Acceleration Structure)
+  // to trace shadow rays against both sphere and triangle GAS. This is planned for Sprint 6
+  // (SPRINT_6_PLAN.md - Step 6.1: IAS Infrastructure). Currently shadow rays only trace
+  // against the sphere GAS, so triangle mesh shadows are not visible.
+  it should "cast shadows on the plane" ignore:
+    renderer.setTriangleMesh(cubeMesh(scale = 1.0f))
+    renderer.setTriangleMeshColor(Color(0.8f, 0.8f, 0.8f)) // Opaque gray
+    renderer.setTriangleMeshIOR(1.0f)
+    renderer.setPlane(1, true, -1.5f)
+
+    renderer.setShadows(true)
+    val withShadows = renderer.render(TEST_IMAGE_SIZE).get
+
+    renderer.setShadows(false)
+    val withoutShadows = renderer.render(TEST_IMAGE_SIZE).get
+
+    // Images should differ (shadow visible)
+    withShadows should not equal withoutShadows
+
+  it should "render opaque cube producing a valid image" in:
+    renderer.setTriangleMesh(cubeMesh())
+    renderer.setTriangleMeshColor(Color(0.8f, 0.2f, 0.2f)) // Red opaque
+    renderer.setTriangleMeshIOR(1.0f)
+
+    val result = renderer.render(TEST_IMAGE_SIZE).get
+
+    // Verify the image has non-background pixels (cube is visible)
+    val nonBackgroundPixels = (0 until (TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height)).count { i =>
+      val offset = i * 4
+      val r = result(offset) & 0xFF
+      val g = result(offset + 1) & 0xFF
+      val b = result(offset + 2) & 0xFF
+      // Background is usually dark blue/gray, cube should have visible red component
+      r > 50
+    }
+
+    // At least some portion of the image should show the cube (red pixels)
+    nonBackgroundPixels should be > 100

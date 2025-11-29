@@ -20,6 +20,7 @@ Render scenes with multiple objects (sphere, cube, sponge) positioned independen
 - [ ] Sponge mesh exports correctly from `SpongeBySurface`
 - [ ] Sponge levels 0-3 render without issues (up to ~62,000 triangles)
 - [ ] Per-object transforms work (position, rotation, scale)
+- [ ] **Shadow rays work for all geometry types** (sphere, cube, sponge)
 - [ ] All new code has tests
 - [ ] Existing 897+ tests still pass
 
@@ -712,6 +713,55 @@ class MultiObjectTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll:
 ```
 
 **Run:** `sbt "testOnly menger.optix.MultiObjectTest"`
+
+---
+
+### Task 6.1.9: Enable shadow rays for all geometry types
+
+**Context:** Currently shadow rays only trace against the sphere GAS (see Sprint 5 ignored test in `TriangleMeshSuite.scala`). With IAS, shadow rays must trace against the top-level IAS to detect occlusion from any geometry type.
+
+**File:** `optix-jni/src/main/native/shaders/sphere_combined.cu`
+
+**Location:** In shadow ray tracing code (around `traceOcclusion` or shadow ray launch)
+
+**Change the shadow ray trace call to use IAS:**
+
+```cuda
+// Shadow ray should trace against IAS (top-level) not individual GAS
+// The IAS handle is passed via params when use_ias is true
+OptixTraversableHandle shadow_traversable = params.use_ias
+    ? params.ias_handle
+    : params.handle;  // Legacy: single GAS
+
+optixTrace(
+    shadow_traversable,  // Use IAS for multi-object shadows
+    shadow_origin,
+    shadow_direction,
+    0.001f,             // tmin
+    light_distance,     // tmax
+    0.0f,               // rayTime
+    OptixVisibilityMask(255),
+    OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
+    1,                  // SBT offset for shadow ray
+    2,                  // SBT stride (2 ray types per geometry)
+    1,                  // missSBTIndex for shadow
+    p0, p1              // payload
+);
+```
+
+**Why this works:** The IAS contains instances of all GAS (sphere, triangle mesh). Shadow rays traced against IAS will find occlusion from any geometry type.
+
+**Test:** Enable the ignored test in `TriangleMeshSuite.scala`:
+
+```scala
+// Change from:
+it should "cast shadows on the plane" ignore:
+
+// To:
+it should "cast shadows on the plane" in:
+```
+
+**Run:** `sbt "testOnly menger.optix.TriangleMeshSuite -- -t \"cast shadows\""`
 
 ---
 
