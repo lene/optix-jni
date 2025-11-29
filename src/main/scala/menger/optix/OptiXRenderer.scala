@@ -203,7 +203,14 @@ class OptiXRenderer extends LazyLogging:
 
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 
+  def setRenderConfig(config: RenderConfig): Unit =
+    setShadows(config.shadows)
+    setAntialiasing(config.antialiasing, config.aaMaxDepth, config.aaThreshold)
+
   @native def setCaustics(enabled: Boolean, photonsPerIter: Int, iterations: Int, initialRadius: Float, alpha: Float): Unit
+
+  def setCausticsConfig(config: CausticsConfig): Unit =
+    setCaustics(config.enabled, config.photonsPerIteration, config.iterations, config.initialRadius, config.alpha)
 
   // Convenience method with default PPM parameters
   def enableCaustics(
