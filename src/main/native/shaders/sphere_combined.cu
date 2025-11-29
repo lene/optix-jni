@@ -13,5 +13,6 @@ using namespace RayTracingConstants;
 #include "raygen_primary.cu"
 #include "miss_plane.cu"
 #include "hit_sphere.cu"
+#include "hit_triangle.cu"
 #include "shadows.cu"
 #include "caustics_ppm.cu"

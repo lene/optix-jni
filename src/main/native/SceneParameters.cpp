@@ -126,6 +126,8 @@ void SceneParameters::setTriangleMeshIOR(float ior) {
 void SceneParameters::clearTriangleMesh() {
     triangle_mesh.num_vertices = 0;
     triangle_mesh.num_triangles = 0;
+    triangle_mesh.d_vertices = 0;
+    triangle_mesh.d_indices = 0;
     triangle_mesh.has_mesh = false;
     triangle_mesh.dirty = true;
 }

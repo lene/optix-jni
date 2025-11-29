@@ -53,6 +53,10 @@ private:
     OptixProgramGroup shadow_miss_prog_group = nullptr;
     OptixProgramGroup shadow_hitgroup_prog_group = nullptr;
 
+    // Triangle mesh program groups
+    OptixProgramGroup triangle_hitgroup_prog_group = nullptr;
+    OptixProgramGroup triangle_shadow_hitgroup_prog_group = nullptr;
+
     // Caustics program groups
     OptixProgramGroup caustics_hitpoints_raygen = nullptr;
     OptixProgramGroup caustics_photons_raygen = nullptr;

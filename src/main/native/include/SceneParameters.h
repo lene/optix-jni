@@ -9,6 +9,7 @@
 
 #include "OptiXData.h"
 #include "OptiXConstants.h"
+#include <cuda_runtime.h>
 #include <cstring>
 
 /**
@@ -52,6 +53,9 @@ public:
         float ior = MaterialConstants::IOR_VACUUM;   // No refraction by default
         unsigned int num_vertices = 0;
         unsigned int num_triangles = 0;
+        // GPU buffer device pointers (set by OptiXWrapper when uploading data)
+        CUdeviceptr d_vertices = 0;
+        CUdeviceptr d_indices = 0;
         bool has_mesh = false;                       // True if mesh data is set
         bool dirty = false;
     };

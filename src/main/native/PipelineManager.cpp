@@ -8,6 +8,7 @@
 #include <optix_stubs.h>
 
 // Helper to create default pipeline compile options
+// Supports both custom primitives (sphere) and built-in triangles
 static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     OptixPipelineCompileOptions options = {};
     options.usesMotionBlur = false;
@@ -16,7 +17,8 @@ static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     options.numAttributeValues = 4;  // Normal x, y, z + radius from SDK intersection
     options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     options.pipelineLaunchParamsVariableName = "params";
-    options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
+    // Support both custom primitives (sphere) and built-in triangles
+    options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM | OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
     return options;
 }
 
@@ -85,6 +87,15 @@ void PipelineManager::createProgramGroups() {
         module, "__intersection__sphere"
     );
 
+    // Triangle mesh hit groups (use built-in triangle intersection)
+    triangle_hitgroup_prog_group = optix_context.createTriangleHitgroupProgramGroup(
+        module, "__closesthit__triangle"
+    );
+
+    triangle_shadow_hitgroup_prog_group = optix_context.createTriangleHitgroupProgramGroup(
+        module, "__closesthit__triangle_shadow"
+    );
+
     // Caustics raygen programs (for Progressive Photon Mapping)
     caustics_hitpoints_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__hitpoints"
@@ -104,6 +115,8 @@ void PipelineManager::createPipeline() {
         hitgroup_prog_group,
         shadow_miss_prog_group,
         shadow_hitgroup_prog_group,
+        triangle_hitgroup_prog_group,
+        triangle_shadow_hitgroup_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
         caustics_radiance_raygen
@@ -119,7 +132,7 @@ void PipelineManager::createPipeline() {
         pipeline_compile_options,
         pipeline_link_options,
         program_groups,
-        8  // Updated to include caustics raygen programs
+        10  // Updated to include triangle and caustics program groups
     );
 }
 
@@ -179,31 +192,64 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     sbt.missRecordCount = 2;
 
     // Hit group records: [0] = primary ray hitgroup, [1] = shadow ray hitgroup
-    const auto& sphere = scene.getSphere();
-    HitGroupData hg_data;
-    std::memcpy(hg_data.sphere_center, sphere.center, sizeof(float) * 3);
-    hg_data.sphere_radius = sphere.radius;
+    // Use either sphere or triangle hit groups depending on scene configuration
+    if (scene.hasTriangleMesh()) {
+        // Triangle mesh hit groups
+        const auto& mesh = scene.getTriangleMesh();
+        TriangleHitGroupData tri_data;
+        tri_data.vertices = reinterpret_cast<float*>(mesh.d_vertices);
+        tri_data.indices = reinterpret_cast<unsigned int*>(mesh.d_indices);
+        std::memcpy(tri_data.color, mesh.color, sizeof(float) * 4);
+        tri_data.ior = mesh.ior;
 
-    // Allocate array for 2 hitgroup records
-    HitGroupSbtRecord hitgroup_records[2];
-    optixSbtRecordPackHeader(hitgroup_prog_group, &hitgroup_records[0]);
-    hitgroup_records[0].data = hg_data;
+        // Allocate array for 2 triangle hitgroup records
+        TriangleHitGroupSbtRecord hitgroup_records[2];
+        optixSbtRecordPackHeader(triangle_hitgroup_prog_group, &hitgroup_records[0]);
+        hitgroup_records[0].data = tri_data;
 
-    // Shadow hitgroup uses same geometry data
-    optixSbtRecordPackHeader(shadow_hitgroup_prog_group, &hitgroup_records[1]);
-    hitgroup_records[1].data = hg_data;
+        // Shadow hitgroup uses same geometry data
+        optixSbtRecordPackHeader(triangle_shadow_hitgroup_prog_group, &hitgroup_records[1]);
+        hitgroup_records[1].data = tri_data;
 
-    CUdeviceptr d_hitgroup_records;
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(d_hitgroup_records),
-        hitgroup_records,
-        sizeof(hitgroup_records),
-        cudaMemcpyHostToDevice
-    ));
-    sbt.hitgroupRecordBase = d_hitgroup_records;
-    sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
-    sbt.hitgroupRecordCount = 2;
+        CUdeviceptr d_hitgroup_records;
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(d_hitgroup_records),
+            hitgroup_records,
+            sizeof(hitgroup_records),
+            cudaMemcpyHostToDevice
+        ));
+        sbt.hitgroupRecordBase = d_hitgroup_records;
+        sbt.hitgroupRecordStrideInBytes = sizeof(TriangleHitGroupSbtRecord);
+        sbt.hitgroupRecordCount = 2;
+    } else {
+        // Sphere hit groups (default)
+        const auto& sphere = scene.getSphere();
+        HitGroupData hg_data;
+        std::memcpy(hg_data.sphere_center, sphere.center, sizeof(float) * 3);
+        hg_data.sphere_radius = sphere.radius;
+
+        // Allocate array for 2 hitgroup records
+        HitGroupSbtRecord hitgroup_records[2];
+        optixSbtRecordPackHeader(hitgroup_prog_group, &hitgroup_records[0]);
+        hitgroup_records[0].data = hg_data;
+
+        // Shadow hitgroup uses same geometry data
+        optixSbtRecordPackHeader(shadow_hitgroup_prog_group, &hitgroup_records[1]);
+        hitgroup_records[1].data = hg_data;
+
+        CUdeviceptr d_hitgroup_records;
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(d_hitgroup_records),
+            hitgroup_records,
+            sizeof(hitgroup_records),
+            cudaMemcpyHostToDevice
+        ));
+        sbt.hitgroupRecordBase = d_hitgroup_records;
+        sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
+        sbt.hitgroupRecordCount = 2;
+    }
 }
 
 void PipelineManager::destroyProgramGroupIfExists(OptixProgramGroup& prog_group) {
@@ -224,6 +270,8 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(shadow_miss_prog_group);
     destroyProgramGroupIfExists(hitgroup_prog_group);
     destroyProgramGroupIfExists(shadow_hitgroup_prog_group);
+    destroyProgramGroupIfExists(triangle_hitgroup_prog_group);
+    destroyProgramGroupIfExists(triangle_shadow_hitgroup_prog_group);
 
     if (includeCaustics) {
         destroyProgramGroupIfExists(caustics_hitpoints_raygen);

@@ -202,6 +202,10 @@ void OptiXWrapper::setTriangleMesh(
 
     // Update scene parameters
     impl->scene.setTriangleMeshMeta(num_vertices, num_triangles);
+    // Store device pointers in scene for SBT setup
+    auto& mesh_params = impl->scene.getTriangleMeshMutable();
+    mesh_params.d_vertices = impl->triangle_mesh_gpu.d_vertices;
+    mesh_params.d_indices = impl->triangle_mesh_gpu.d_indices;
     impl->triangle_mesh_gpu.gas_built = false;  // Need to rebuild GAS
 }
 
