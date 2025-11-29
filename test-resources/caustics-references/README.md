@@ -45,7 +45,7 @@ To generate matching test images with our OptiX implementation:
 cd /home/lene/workspace/menger
 
 # Render with matching parameters
-xvfb-run -a sbt "run --optix --sponge-type sphere --caustics \
+xvfb-run -a sbt "run --optix --object sphere --caustics \
   --color ffffff7f \
   --ior 1.5 \
   --radius 1.0 \
