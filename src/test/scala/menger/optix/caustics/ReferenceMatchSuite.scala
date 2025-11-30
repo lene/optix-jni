@@ -61,7 +61,7 @@ class ReferenceMatchSuite extends AnyFlatSpec with Matchers:
       do
         val ssim = ImageComparison.ssim(reference, test)
         val mse = ImageComparison.mse(reference, test)
-        val psnr = ImageComparison.psnr(reference, test)
+        val psnr = ImageComparison.psnrDecibels(reference, test)
 
         info(s"SSIM: $ssim")
         info(s"MSE: $mse")

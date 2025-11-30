@@ -28,15 +28,6 @@ object ImageComparison:
   /** Window size for local SSIM computation */
   private val WindowSize = 11
 
-  /** Computes the Structural Similarity Index (SSIM) between two images.
-    *
-    * @param reference
-    *   The reference (ground truth) image
-    * @param test
-    *   The test image to compare
-    * @return
-    *   SSIM value in range [0, 1], where 1 = identical
-    */
   def ssim(reference: BufferedImage, test: BufferedImage): Double =
     require(
       reference.getWidth == test.getWidth && reference.getHeight == test.getHeight,
@@ -61,30 +52,12 @@ object ImageComparison:
 
     if ssimValues.nonEmpty then ssimValues.sum / ssimValues.length else 0.0
 
-  /** Computes SSIM between two image files.
-    *
-    * @param referencePath
-    *   Path to reference image
-    * @param testPath
-    *   Path to test image
-    * @return
-    *   SSIM value or error message
-    */
   def ssimFromFiles(referencePath: String, testPath: String): Either[String, Double] =
     for
       reference <- loadImage(referencePath)
       test <- loadImage(testPath)
     yield ssim(reference, test)
 
-  /** Computes Mean Squared Error between two images.
-    *
-    * @param reference
-    *   The reference image
-    * @param test
-    *   The test image
-    * @return
-    *   MSE value (0 = identical)
-    */
   def mse(reference: BufferedImage, test: BufferedImage): Double =
     require(
       reference.getWidth == test.getWidth && reference.getHeight == test.getHeight,
@@ -110,27 +83,11 @@ object ImageComparison:
 
     sum / (width * height)
 
-  /** Computes Peak Signal-to-Noise Ratio.
-    *
-    * @param reference
-    *   The reference image
-    * @param test
-    *   The test image
-    * @return
-    *   PSNR in decibels (higher = more similar)
-    */
-  def psnr(reference: BufferedImage, test: BufferedImage): Double =
+  def psnrDecibels(reference: BufferedImage, test: BufferedImage): Double =
     val mseValue = mse(reference, test)
     if mseValue == 0.0 then Double.PositiveInfinity
     else 10.0 * math.log10((255.0 * 255.0) / mseValue)
 
-  /** Loads an image from file.
-    *
-    * @param path
-    *   Path to image file
-    * @return
-    *   Loaded image or error message
-    */
   def loadImage(path: String): Either[String, BufferedImage] =
     Try(ImageIO.read(new File(path))).toEither.left
       .map(e => s"Failed to load image $path: ${e.getMessage}")
@@ -139,10 +96,7 @@ object ImageComparison:
         else Right(img)
       }
 
-  /** Converts an image to grayscale luminance values.
-    *
-    * Uses standard luminance formula: Y = 0.299*R + 0.587*G + 0.114*B
-    */
+  // Luminance formula: Y = 0.299*R + 0.587*G + 0.114*B
   private def toGrayscale(image: BufferedImage): Array[Array[Double]] =
     val width = image.getWidth
     val height = image.getHeight
@@ -160,7 +114,6 @@ object ImageComparison:
 
     result
 
-  /** Statistics accumulator for SSIM computation */
   private case class SsimStats(
       sumRef: Double,
       sumTest: Double,
@@ -184,7 +137,6 @@ object ImageComparison:
       numerator / denominator
 
 
-  /** Computes local SSIM for a window centered at (cx, cy). */
   private def computeLocalSsim(
       ref: Array[Array[Double]],
       test: Array[Array[Double]],
