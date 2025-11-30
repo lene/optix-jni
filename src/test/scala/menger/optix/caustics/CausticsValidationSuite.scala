@@ -1,7 +1,7 @@
 package menger.optix.caustics
 
 import menger.common.{Color, ImageSize, Const, Vector}
-import menger.optix.{OptiXRenderer, RendererFixture, TestScenario, ThresholdConstants}
+import menger.optix.{OptiXRenderer, RendererFixture, TestScenario, TestUtilities, ThresholdConstants}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -242,46 +242,10 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
     val centerX = CanonicalScene.imageSize.width / 2
     val bottomY = (CanonicalScene.imageSize.height * 0.7).toInt // Lower portion
 
-    val brightness = sampleRegionBrightness(
-      result.image,
-      CanonicalScene.imageSize,
-      centerX - 50,
-      bottomY - 50,
-      100,
-      100
-    )
+    val region = TestUtilities.Region(centerX - 50, bottomY - 50, centerX + 50, bottomY + 50)
+    val brightness = TestUtilities.regionBrightness(result.image, CanonicalScene.imageSize, region) / 255.0
 
     // Should have some brightness (caustic contribution)
     brightness should be > 0.0
-
-  /** Sample average brightness in a rectangular region */
-  private def sampleRegionBrightness(
-      image: Array[Byte],
-      size: ImageSize,
-      x: Int,
-      y: Int,
-      width: Int,
-      height: Int
-  ): Double =
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sum = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var count = 0
-
-    for
-      dy <- 0 until height
-      dx <- 0 until width
-    do
-      val px = x + dx
-      val py = y + dy
-      if px >= 0 && px < size.width && py >= 0 && py < size.height then
-        val idx = (py * size.width + px) * 4
-        val r = (image(idx) & 0xff) / 255.0
-        val g = (image(idx + 1) & 0xff) / 255.0
-        val b = (image(idx + 2) & 0xff) / 255.0
-        sum += (r + g + b) / 3.0
-        count += 1
-
-    if count > 0 then sum / count else 0.0
 
 end CausticsValidationSuite

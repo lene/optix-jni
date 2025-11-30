@@ -51,24 +51,15 @@ object ImageComparison:
     val refGray = toGrayscale(reference)
     val testGray = toGrayscale(test)
 
-    // Compute SSIM over sliding windows
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var ssimSum = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var count = 0
-
     val halfWindow = WindowSize / 2
 
-    for
+    // Compute SSIM over sliding windows
+    val ssimValues = for
       y <- halfWindow until (height - halfWindow)
       x <- halfWindow until (width - halfWindow)
-    do
-      val localSsim = computeLocalSsim(refGray, testGray, x, y, halfWindow)
-      ssimSum += localSsim
-      count += 1
+    yield computeLocalSsim(refGray, testGray, x, y, halfWindow)
 
-    if count > 0 then ssimSum / count else 0.0
-  end ssim
+    if ssimValues.nonEmpty then ssimValues.sum / ssimValues.length else 0.0
 
   /** Computes SSIM between two image files.
     *
@@ -102,13 +93,11 @@ object ImageComparison:
 
     val width = reference.getWidth
     val height = reference.getHeight
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sum = 0.0
 
-    for
+    val sum = (for
       y <- 0 until height
       x <- 0 until width
-    do
+    yield
       val refPixel = reference.getRGB(x, y)
       val testPixel = test.getRGB(x, y)
 
@@ -116,10 +105,10 @@ object ImageComparison:
       val dg = ((refPixel >> 8) & 0xff) - ((testPixel >> 8) & 0xff)
       val db = (refPixel & 0xff) - (testPixel & 0xff)
 
-      sum += (dr * dr + dg * dg + db * db) / 3.0
+      (dr * dr + dg * dg + db * db) / 3.0
+    ).sum
 
     sum / (width * height)
-  end mse
 
   /** Computes Peak Signal-to-Noise Ratio.
     *
@@ -170,7 +159,30 @@ object ImageComparison:
       result(y)(x) = 0.299 * r + 0.587 * g + 0.114 * b
 
     result
-  end toGrayscale
+
+  /** Statistics accumulator for SSIM computation */
+  private case class SsimStats(
+      sumRef: Double,
+      sumTest: Double,
+      sumRefSq: Double,
+      sumTestSq: Double,
+      sumRefTest: Double,
+      count: Int
+  ):
+    def ssim: Double =
+      val n = count.toDouble
+      val muRef = sumRef / n
+      val muTest = sumTest / n
+
+      val sigmaRefSq = sumRefSq / n - muRef * muRef
+      val sigmaTestSq = sumTestSq / n - muTest * muTest
+      val sigmaRefTest = sumRefTest / n - muRef * muTest
+
+      val numerator = (2.0 * muRef * muTest + C1) * (2.0 * sigmaRefTest + C2)
+      val denominator = (muRef * muRef + muTest * muTest + C1) * (sigmaRefSq + sigmaTestSq + C2)
+
+      numerator / denominator
+
 
   /** Computes local SSIM for a window centered at (cx, cy). */
   private def computeLocalSsim(
@@ -180,45 +192,18 @@ object ImageComparison:
       cy: Int,
       halfWindow: Int
   ): Double =
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sumRef = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sumTest = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sumRefSq = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sumTestSq = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sumRefTest = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var count = 0
-
-    for
+    val stats = (for
       dy <- -halfWindow to halfWindow
       dx <- -halfWindow to halfWindow
-    do
-      val refVal = ref(cy + dy)(cx + dx)
-      val testVal = test(cy + dy)(cx + dx)
-
-      sumRef += refVal
-      sumTest += testVal
-      sumRefSq += refVal * refVal
-      sumTestSq += testVal * testVal
-      sumRefTest += refVal * testVal
-      count += 1
-
-    val n = count.toDouble
-    val muRef = sumRef / n
-    val muTest = sumTest / n
-
-    val sigmaRefSq = (sumRefSq / n) - (muRef * muRef)
-    val sigmaTestSq = (sumTestSq / n) - (muTest * muTest)
-    val sigmaRefTest = (sumRefTest / n) - (muRef * muTest)
-
-    val numerator = (2.0 * muRef * muTest + C1) * (2.0 * sigmaRefTest + C2)
-    val denominator = (muRef * muRef + muTest * muTest + C1) * (sigmaRefSq + sigmaTestSq + C2)
-
-    numerator / denominator
-  end computeLocalSsim
-
-end ImageComparison
+    yield (ref(cy + dy)(cx + dx), test(cy + dy)(cx + dx))
+    ).foldLeft(SsimStats(0.0, 0.0, 0.0, 0.0, 0.0, 0)) { case (acc, (refVal, testVal)) =>
+      SsimStats(
+        acc.sumRef + refVal,
+        acc.sumTest + testVal,
+        acc.sumRefSq + refVal * refVal,
+        acc.sumTestSq + testVal * testVal,
+        acc.sumRefTest + refVal * testVal,
+        acc.count + 1
+      )
+    }
+    stats.ssim

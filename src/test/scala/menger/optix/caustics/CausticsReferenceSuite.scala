@@ -104,24 +104,20 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
       width: Int,
       height: Int
   ): Double =
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var peak = 0.0
-
-    for
+    val samples = for
       dy <- 0 until height
       dx <- 0 until width
-    do
-      val px = x + dx
-      val py = y + dy
-      if px >= 0 && px < size.width && py >= 0 && py < size.height then
-        val idx = (py * size.width + px) * 4
-        val r = (image(idx) & 0xff) / 255.0
-        val g = (image(idx + 1) & 0xff) / 255.0
-        val b = (image(idx + 2) & 0xff) / 255.0
-        val brightness = (r + g + b) / 3.0
-        peak = max(peak, brightness)
+      px = x + dx
+      py = y + dy
+      if px >= 0 && px < size.width && py >= 0 && py < size.height
+    yield
+      val idx = (py * size.width + px) * 4
+      val r = (image(idx) & 0xff) / 255.0
+      val g = (image(idx + 1) & 0xff) / 255.0
+      val b = (image(idx + 2) & 0xff) / 255.0
+      (r + g + b) / 3.0
 
-    peak
+    samples.maxOption.getOrElse(0.0)
 
   /** Detect caustic region by finding brightest area on floor */
   private def detectCausticRegion(
