@@ -1,7 +1,7 @@
 package menger.optix.caustics
 
 import menger.common.{Color, ImageSize, Const, Vector}
-import menger.optix.{OptiXRenderer, RendererFixture, Slow, TestScenario, ThresholdConstants}
+import menger.optix.{OptiXRenderer, RendererFixture, Slow, TestScenario, TestUtilities, ThresholdConstants}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -92,26 +92,8 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
       width: Int,
       height: Int
   ): Double =
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var sum = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var count = 0
-
-    for
-      dy <- 0 until height
-      dx <- 0 until width
-    do
-      val px = x + dx
-      val py = y + dy
-      if px >= 0 && px < size.width && py >= 0 && py < size.height then
-        val idx = (py * size.width + px) * 4
-        val r = (image(idx) & 0xff) / 255.0
-        val g = (image(idx + 1) & 0xff) / 255.0
-        val b = (image(idx + 2) & 0xff) / 255.0
-        sum += (r + g + b) / 3.0
-        count += 1
-
-    if count > 0 then sum / count else 0.0
+    val region = TestUtilities.Region(x, y, x + width, y + height)
+    TestUtilities.regionBrightness(image, size, region) / 255.0
 
   /** Calculate peak brightness in a region */
   private def regionPeakBrightness(

@@ -1,61 +1,11 @@
 package menger.optix
 
-import java.nio.file.{Files, Paths}
-
 object GreenGlassVisualization:
 
-  def savePPM(filename: String, pixels: Array[Byte], width: Int, height: Int): Unit =
-    val header = s"P6\n$width $height\n255\n".getBytes
-    val rgb = ImageUtils.rgbaToRgb(pixels)
-
-    Files.write(Paths.get(filename), header ++ rgb)
-    println(s"Saved: $filename")
-
   def analyzeDominantColor(pixels: Array[Byte], width: Int, height: Int): Unit =
-    // Same logic as ImageValidation.dominantColorChannel
-    val startX = width / 4
-    val endX = 3 * width / 4
-    val startY = height / 4
-    val endY = 3 * height / 4
-
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var totalR = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var totalG = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var totalB = 0.0
-    @SuppressWarnings(Array("org.wartremover.warts.Var"))
-    var count = 0
-
-    for
-      y <- startY until endY
-      x <- startX until endX
-    do
-      val idx = (y * width + x) * 4
-      totalR += (pixels(idx) & 0xFF)
-      totalG += (pixels(idx + 1) & 0xFF)
-      totalB += (pixels(idx + 2) & 0xFF)
-      count += 1
-
-    val avgR = totalR / count
-    val avgG = totalG / count
-    val avgB = totalB / count
-
-    val maxChannel = math.max(avgR, math.max(avgG, avgB))
-    val minChannel = math.min(avgR, math.min(avgG, avgB))
-    val diff = maxChannel - minChannel
+    val dominant = ImageValidation.dominantColorChannel(pixels, width, height)
 
     println(f"\nCenter region analysis (50%% of image):")
-    println(f"  Average R: $avgR%.2f")
-    println(f"  Average G: $avgG%.2f")
-    println(f"  Average B: $avgB%.2f")
-    println(f"  Max - Min: $diff%.2f (threshold: 10.0)")
-
-    val dominant = if diff < 10.0 then "gray"
-                  else if avgR == maxChannel then "r"
-                  else if avgG == maxChannel then "g"
-                  else "b"
-
     println(f"  Dominant channel: $dominant")
     println(f"  Expected: g")
     println(f"  Test status: ${if dominant == "g" then "PASS" else "FAIL"}")
@@ -77,8 +27,5 @@ object GreenGlassVisualization:
       .applyTo(renderer)
 
     val pixels = renderer.render(width, height).get
-    savePPM("green_glass_test.ppm", pixels, width, height)
+    TestUtilities.savePNG("green_glass_test.png", pixels, width, height)
     analyzeDominantColor(pixels, width, height)
-
-    println("\nConvert to PNG with:")
-    println("  convert green_glass_test.ppm green_glass_test.png")

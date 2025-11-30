@@ -1,68 +1,15 @@
 package menger.optix
 
 import menger.common.ImageSize
-import ImageValidation.*
-import scala.math.{abs, sqrt}
+import scala.math.abs
+import TestUtilities.Region
+import TestUtilities.regionBrightness
 
 
 object ShadowValidation:
 
-  
-  case class Region(x0: Int, y0: Int, x1: Int, y1: Int):
-    def width: Int = x1 - x0
-    def height: Int = y1 - y0
-    def area: Int = width * height
-    def contains(x: Int, y: Int): Boolean =
-      x >= x0 && x < x1 && y >= y0 && y < y1
-
-  object Region:
-    
-    def centered(cx: Int, cy: Int, radius: Int): Region =
-      Region(cx - radius, cy - radius, cx + radius, cy + radius)
-
-    
-    def bottomCenter(size: ImageSize, fraction: Double = 0.25): Region =
-      val regionWidth = (size.width * fraction).toInt
-      val regionHeight = (size.height * fraction).toInt
-      val x0 = (size.width - regionWidth) / 2
-      val y0 = size.height - regionHeight
-      Region(x0, y0, x0 + regionWidth, y0 + regionHeight)
-
-
-    def topCenter(size: ImageSize, fraction: Double = 0.25): Region =
-      val regionWidth = (size.width * fraction).toInt
-      val regionHeight = (size.height * fraction).toInt
-      val x0 = (size.width - regionWidth) / 2
-      Region(x0, 0, x0 + regionWidth, regionHeight)
-
-
-    def leftSide(size: ImageSize, fraction: Double = 0.25): Region =
-      val regionWidth = (size.width * fraction).toInt
-      val y0 = size.height / 4
-      val y1 = 3 * size.height / 4
-      Region(0, y0, regionWidth, y1)
-
-
-    def rightSide(size: ImageSize, fraction: Double = 0.25): Region =
-      val regionWidth = (size.width * fraction).toInt
-      val y0 = size.height / 4
-      val y1 = 3 * size.height / 4
-      Region(size.width - regionWidth, y0, size.width, y1)
-
-
-  def regionBrightness(
-    imageData: Array[Byte],
-    size: ImageSize,
-    region: Region
-  ): Double =
-    val samples = for
-      y <- region.y0 until region.y1 if y >= 0 && y < size.height
-      x <- region.x0 until region.x1 if x >= 0 && x < size.width
-    yield getRGBAt(imageData, size, x, y).brightness
-
-    if samples.isEmpty then 0.0
-    else samples.sum.toDouble / samples.length
-
+  export TestUtilities.Region
+  export TestUtilities.regionBrightness
 
   def brightnessContrast(
     imageData: Array[Byte],

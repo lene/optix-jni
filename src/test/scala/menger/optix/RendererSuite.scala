@@ -131,13 +131,11 @@ class RendererTest extends AnyFlatSpec
     val imageData = renderer.render(STANDARD_IMAGE_SIZE).get
     imageData.length shouldBe ImageValidation.imageByteSize(STANDARD_IMAGE_SIZE)
 
-    val savedFile = TestUtilities.savePPM("optix_test_output.ppm", imageData,
+    val savedFile = TestUtilities.savePNG("optix_test_output.png", imageData,
       STANDARD_IMAGE_SIZE.width, STANDARD_IMAGE_SIZE.height).get
 
     savedFile.exists() shouldBe true
-    val expectedSize = s"P6\n${STANDARD_IMAGE_SIZE.width} ${STANDARD_IMAGE_SIZE.height}\n255\n".length +
-      STANDARD_IMAGE_SIZE.width * STANDARD_IMAGE_SIZE.height * 3
-    savedFile.length() shouldBe expectedSize
+    savedFile.length() should be > 0L
 
   "Camera position" should "produce different images" in:
     val size = QUICK_TEST_SIZE

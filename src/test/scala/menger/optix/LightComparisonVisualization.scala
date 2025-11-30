@@ -1,17 +1,10 @@
 package menger.optix
+
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
-import java.nio.file.{Files, Paths}
 
 object LightComparisonVisualization:
-
-  def savePPM(filename: String, pixels: Array[Byte], width: Int, height: Int): Unit =
-    val header = s"P6\n$width $height\n255\n".getBytes
-    val rgb = ImageUtils.rgbaToRgb(pixels)
-
-    Files.write(Paths.get(filename), header ++ rgb)
-    println(s"Saved: $filename")
 
   def measureBrightness(pixels: Array[Byte], width: Int, height: Int): Double =
     val centerRegion = ShadowValidation.Region.centered(400, 300, 50)
@@ -41,7 +34,7 @@ object LightComparisonVisualization:
     // NO setLight() call - uses C++ default: (0.577350f, 0.577350f, -0.577350f)
 
     val pixels1 = renderer1.render(width, height).get
-    savePPM("light_default_cpp.ppm", pixels1, width, height)
+    TestUtilities.savePNG("light_default_cpp.png", pixels1, width, height)
     val brightness1 = measureBrightness(pixels1, width, height)
     println(s"Brightness: $brightness1")
 
@@ -62,7 +55,7 @@ object LightComparisonVisualization:
     renderer2.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val pixels2 = renderer2.render(width, height).get
-    savePPM("light_setlight_unnormalized.ppm", pixels2, width, height)
+    TestUtilities.savePNG("light_setlight_unnormalized.png", pixels2, width, height)
     val brightness2 = measureBrightness(pixels2, width, height)
     println(s"Brightness: $brightness2")
 
@@ -83,7 +76,7 @@ object LightComparisonVisualization:
     renderer3.setLight(Vector[3](0.577350f, 0.577350f, -0.577350f), 1.0f)
 
     val pixels3 = renderer3.render(width, height).get
-    savePPM("light_setlight_normalized.ppm", pixels3, width, height)
+    TestUtilities.savePNG("light_setlight_normalized.png", pixels3, width, height)
     val brightness3 = measureBrightness(pixels3, width, height)
     println(s"Brightness: $brightness3")
 
@@ -99,7 +92,7 @@ object LightComparisonVisualization:
     renderer4.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val pixels4 = renderer4.render(width, height).get
-    savePPM("light_exact_test.ppm", pixels4, width, height)
+    TestUtilities.savePNG("light_exact_test.png", pixels4, width, height)
     val brightness4 = measureBrightness(pixels4, width, height)
     println(s"Brightness: $brightness4")
 
@@ -110,9 +103,3 @@ object LightComparisonVisualization:
     println(f"EXACT test setup: $brightness4%.4f")
     println(f"Expected (pure ambient): 60.0")
     println(f"Test threshold: > 60.0")
-
-    println("\nConvert to PNG:")
-    println("  convert light_default_cpp.ppm light_default_cpp.png")
-    println("  convert light_setlight_unnormalized.ppm light_setlight_unnormalized.png")
-    println("  convert light_setlight_normalized.ppm light_setlight_normalized.png")
-    println("  convert light_exact_test.ppm light_exact_test.png")

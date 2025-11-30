@@ -2,41 +2,63 @@ package menger.optix
 
 import menger.common.ImageSize
 import com.typesafe.scalalogging.LazyLogging
-import java.io.{File, FileOutputStream}
-import scala.util.{Try, Using}
+import java.io.File
+import scala.util.Try
 
 
 object TestUtilities extends LazyLogging:
 
-  
-  def savePPM(
-    filename: String,
-    data: Array[Byte],
-    width: Int,
-    height: Int
-  ): Try[File] =
-    val file = new File(filename)
+  case class Region(x0: Int, y0: Int, x1: Int, y1: Int):
+    def width: Int = x1 - x0
+    def height: Int = y1 - y0
+    def area: Int = width * height
+    def contains(x: Int, y: Int): Boolean =
+      x >= x0 && x < x1 && y >= y0 && y < y1
 
-    Using(new FileOutputStream(file)) { out =>
-      // PPM header
-      val header = s"P6\n$width $height\n255\n"
-      out.write(header.getBytes("ASCII"))
+  object Region:
 
-      // Write RGB data (skip alpha channel)
-      // Functional style using foreach instead of imperative for loop
-      (0 until width * height).foreach { i =>
-        val offset = i * 4
-        // Convert signed bytes to unsigned
-        out.write(data(offset) & 0xFF)     // R
-        out.write(data(offset + 1) & 0xFF) // G
-        out.write(data(offset + 2) & 0xFF) // B
-        // Skip alpha (data(offset + 3))
-      }
+    def centered(cx: Int, cy: Int, radius: Int): Region =
+      Region(cx - radius, cy - radius, cx + radius, cy + radius)
 
-      file
-    }
+    def bottomCenter(size: ImageSize, fraction: Double = 0.25): Region =
+      val regionWidth = (size.width * fraction).toInt
+      val regionHeight = (size.height * fraction).toInt
+      val x0 = (size.width - regionWidth) / 2
+      val y0 = size.height - regionHeight
+      Region(x0, y0, x0 + regionWidth, y0 + regionHeight)
 
-  
+    def topCenter(size: ImageSize, fraction: Double = 0.25): Region =
+      val regionWidth = (size.width * fraction).toInt
+      val regionHeight = (size.height * fraction).toInt
+      val x0 = (size.width - regionWidth) / 2
+      Region(x0, 0, x0 + regionWidth, regionHeight)
+
+    def leftSide(size: ImageSize, fraction: Double = 0.25): Region =
+      val regionWidth = (size.width * fraction).toInt
+      val y0 = size.height / 4
+      val y1 = 3 * size.height / 4
+      Region(0, y0, regionWidth, y1)
+
+    def rightSide(size: ImageSize, fraction: Double = 0.25): Region =
+      val regionWidth = (size.width * fraction).toInt
+      val y0 = size.height / 4
+      val y1 = 3 * size.height / 4
+      Region(size.width - regionWidth, y0, size.width, y1)
+
+  def regionBrightness(
+      imageData: Array[Byte],
+      size: ImageSize,
+      region: Region
+  ): Double =
+    import ImageValidation.getRGBAt
+    val samples = for
+      y <- region.y0 until region.y1 if y >= 0 && y < size.height
+      x <- region.x0 until region.x1 if x >= 0 && x < size.width
+    yield getRGBAt(imageData, size, x, y).brightness
+
+    if samples.isEmpty then 0.0
+    else samples.sum.toDouble / samples.length
+
   def savePNG(
     filename: String,
     data: Array[Byte],

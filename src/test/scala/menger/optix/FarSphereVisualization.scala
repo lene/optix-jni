@@ -1,16 +1,8 @@
 package menger.optix
 
 import menger.common.{Color, Const, Vector}
-import java.nio.file.{Files, Paths}
 
 object FarSphereVisualization:
-
-  def savePPM(filename: String, pixels: Array[Byte], width: Int, height: Int): Unit =
-    val header = s"P6\n$width $height\n255\n".getBytes
-    val rgb = ImageUtils.rgbaToRgb(pixels)
-
-    Files.write(Paths.get(filename), header ++ rgb)
-    println(s"Saved: $filename")
 
   def main(args: Array[String]): Unit =
     // Ensure library is loaded by accessing companion object
@@ -45,13 +37,11 @@ object FarSphereVisualization:
     // Render with shadows OFF
     renderer.setShadows(false)
     val pixelsOff = renderer.render(width, height).get
-    savePPM("half_distance_shadows_off.ppm", pixelsOff, width, height)
+    TestUtilities.savePNG("half_distance_shadows_off.png", pixelsOff, width, height)
 
     // Render with shadows ON
     renderer.setShadows(true)
     val pixelsOn = renderer.render(width, height).get
-    savePPM("half_distance_shadows_on.ppm", pixelsOn, width, height)
+    TestUtilities.savePNG("half_distance_shadows_on.png", pixelsOn, width, height)
 
-    println("Done! Convert to PNG with:")
-    println("  convert half_distance_shadows_off.ppm half_distance_shadows_off.png")
-    println("  convert half_distance_shadows_on.ppm half_distance_shadows_on.png")
+    println("Done!")
