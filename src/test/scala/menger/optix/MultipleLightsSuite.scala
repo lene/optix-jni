@@ -167,8 +167,11 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
     imageClose.length shouldBe ImageValidation.imageByteSize(STANDARD_IMAGE_SIZE)
     imageFar.length shouldBe ImageValidation.imageByteSize(STANDARD_IMAGE_SIZE)
 
-    // TODO: Improve test to verify actual falloff behavior
-    // Current shader may need tuning for point light distance attenuation
+    // Verify distance falloff: closer light should produce brighter image
+    val centerRegion = ShadowValidation.Region.centered(STANDARD_IMAGE_SIZE.width / 2, STANDARD_IMAGE_SIZE.height / 2, 100)
+    val closeBrightness = ShadowValidation.regionBrightness(imageClose, STANDARD_IMAGE_SIZE, centerRegion)
+    val farBrightness = ShadowValidation.regionBrightness(imageFar, STANDARD_IMAGE_SIZE, centerRegion)
+    closeBrightness should be > farBrightness
 
   // Category 4: Colored Lights
 

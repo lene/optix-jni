@@ -56,9 +56,9 @@ For current documentation, see:
 | 3.2 | Unified Color API | ✅ Complete | (no dedicated docs) |
 | 3.3 | OptiX Cache Management | ✅ Complete | (no dedicated docs) |
 | 4 | Caustics | ⏸️ Deferred | See `/docs/caustics/` |
-| 5 | Triangle Mesh Foundation | 📋 Planned | Active planning |
-| 6 | Cube Primitive | 📋 Planned | Active planning |
-| 7 | Multiple Objects | 📋 Planned | Active planning |
+| 5 | Triangle Mesh + Cube | ✅ Complete | Active docs in parent |
+| 6 | Full Geometry Support | 📋 Planned | Active planning |
+| 7 | Materials | 📋 Planned | Active planning |
 
 ## Using Archive Documents
 

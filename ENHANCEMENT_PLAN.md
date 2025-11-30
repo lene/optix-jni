@@ -79,8 +79,10 @@ This document outlines the comprehensive plan for enhancing the OptiX ray tracin
   - Cache management API for testing
   - Time spent: ~2 hours
 
-### In Progress
-- 🔄 Planning Sprints 5-11 (Feature Breadth Roadmap)
+### Completed
+- ✅ **Sprint 5** (Triangle Mesh + Cube) - ALL COMPLETE
+  - ✅ Steps 5.1-5.4: All core features implemented
+  - ✅ Step 5.5: All polish tasks complete
 
 ### Deferred
 - ⏸️ **Sprint 4 (Caustics)** - Algorithm issues encountered, deferred to backlog
@@ -126,18 +128,25 @@ Implement sophisticated antialiasing and API improvements.
 Caustics via Progressive Photon Mapping - deferred due to algorithm issues.
 - Branch `feature/caustics` preserved for future revisit
 
-### Sprint 5: Triangle Mesh Foundation + Cube (12-18 hours) - 📋 PLANNED
+### Sprint 5: Triangle Mesh Foundation + Cube (12-18 hours) - ✅ COMPLETE
 Establishes infrastructure for triangle mesh rendering with a basic cube primitive.
 
 **Detailed Plan:** [SPRINT_5_PLAN.md](SPRINT_5_PLAN.md)
 
-- Add `OptixBuildInputTriangleArray` support to OptiXWrapper
-- Create JNI interface for passing vertex/index buffers
-- Implement triangle closest-hit shader with per-face normals
-- Scala `Cube` → vertex/index export to OptiX (12 triangles, 6 faces)
-- Basic solid color rendering (no materials yet)
-- CLI: `--object cube` option
-- Tests for cube rendering
+**All Features Complete:**
+- ✅ `OptixBuildInputTriangleArray` support in OptiXWrapper
+- ✅ JNI interface for passing vertex/index buffers
+- ✅ Triangle closest-hit shader with per-face normals (`hit_triangle.cu`)
+- ✅ `menger.common.TriangleMeshData` - Renderer-agnostic mesh data class
+- ✅ `menger.objects.Cube.toTriangleMesh` - Cube → 12 triangles, 6 faces
+- ✅ Glass cube with Fresnel reflections, refraction, Beer-Lambert absorption
+- ✅ CLI: `--object cube` and `--object sphere` options
+- ✅ Tests: `TriangleMeshSuite`, `CLIObjectOptionSuite`, `CubeSuite`
+- ✅ PTX packaging (`extractPTX()` in OptiXRenderer.scala)
+- ✅ CLI options organized by category (10 groups in MengerCLIOptions.scala)
+- ✅ Render options encapsulation (`RenderConfig`, `CausticsConfig`)
+- ✅ Window resize disabled for OptiX (`setResizable(false)`)
+- ✅ CLI errors show usage hints (custom `onError()` handler)
 
 ### Sprint 6: Full Geometry Support (20-30 hours) - 📋 PLANNED
 Complete geometry pipeline with multiple objects and sponge mesh.

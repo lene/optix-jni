@@ -1,9 +1,10 @@
 # Sprint 5: Triangle Mesh Foundation + Cube
 
 **Created:** 2025-11-22
-**Status:** 📋 PLANNED
+**Updated:** 2025-11-30
+**Status:** ✅ COMPLETE
 **Estimated Effort:** 12-18 hours
-**Branch:** TBD (create from `main` when starting)
+**Branch:** `feature/caustics` (reusing branch)
 
 ## Overview
 
@@ -16,20 +17,20 @@ Render an opaque and glass cube via `--object cube`, proving the triangle mesh p
 ### Success Criteria
 
 **Core Features:**
-- [ ] `--object cube` renders a solid colored cube
-- [ ] `--object cube` with transparency/IOR renders a glass cube with refraction
-- [ ] Triangle mesh infrastructure is reusable for future geometry types
+- [x] `--object cube` renders a solid colored cube ✅
+- [x] `--object cube` with transparency/IOR renders a glass cube with refraction ✅
+- [x] Triangle mesh infrastructure is reusable for future geometry types ✅
 
 **Polish (Step 5.5):**
-- [ ] PTX packaging works for distribution
-- [ ] CLI options organized by category in help output
-- [ ] Render options encapsulated in config objects
-- [ ] Window resize doesn't change render resolution
-- [ ] CLI errors show usage hints
+- [x] PTX packaging works for distribution ✅ (`extractPTX()` in OptiXRenderer.scala)
+- [x] CLI options organized by category in help output ✅ (10 option groups in MengerCLIOptions.scala)
+- [x] Render options encapsulated in config objects ✅ (`RenderConfig`, `CausticsConfig`)
+- [x] Window resize doesn't change render resolution ✅ (`setResizable(false)` for OptiX mode)
+- [x] CLI errors show usage hints ✅ (custom `onError()` handler)
 
 **Quality:**
-- [ ] All new code has tests
-- [ ] Existing 897+ tests still pass
+- [x] All new code has tests ✅
+- [x] Existing 897+ tests still pass ✅
 
 ---
 
@@ -150,14 +151,21 @@ These decisions affect future sprints. Document rationale to avoid regret later.
 
 ---
 
-## Step 5.1: Triangle Mesh Infrastructure (4-6 hours)
+## Step 5.1: Triangle Mesh Infrastructure (4-6 hours) - ✅ COMPLETE
 
 ### Goal
 OptiX can receive vertex/index buffers from Scala and build acceleration structure.
 
+**Status:** All tasks complete. Infrastructure implemented in:
+- `menger.common.TriangleMeshData` - Renderer-agnostic mesh data class
+- `menger.common.TriangleMeshSource` - Trait for mesh-providing objects
+- `optix-jni/src/main/native/include/OptiXData.h` - C++ structs
+- `optix-jni/src/main/scala/menger/optix/OptiXRenderer.scala` - JNI bindings
+- `optix-jni/src/test/scala/menger/optix/TriangleMeshSuite.scala` - Tests
+
 ---
 
-### Task 5.1.1: Add TriangleMeshData struct to OptiXData.h
+### Task 5.1.1: Add TriangleMeshData struct to OptiXData.h - ✅ COMPLETE
 
 **File:** `optix-jni/src/main/native/include/OptiXData.h`
 
@@ -781,7 +789,10 @@ class TriangleMeshTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll:
 
 ---
 
-## Step 5.2: Basic Opaque Cube Rendering (3-4 hours)
+## Step 5.2: Basic Opaque Cube Rendering (3-4 hours) - ✅ COMPLETE
+
+**Status:** Complete. Cube geometry implemented in `menger.objects.Cube` with `TriangleMeshSource` trait.
+Shader implemented in `optix-jni/src/main/native/shaders/hit_triangle.cu`.
 
 ### Goal
 Render a solid-colored cube using the triangle mesh infrastructure.
@@ -1156,7 +1167,10 @@ class CubeRenderTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll:
 
 ---
 
-## Step 5.3: Glass Cube Support (3-5 hours)
+## Step 5.3: Glass Cube Support (3-5 hours) - ✅ COMPLETE
+
+**Status:** Complete. Glass cube rendering with Fresnel reflections, Snell's law refraction,
+Beer-Lambert absorption implemented in `hit_triangle.cu`. Tests in `TriangleMeshSuite`.
 
 ### Goal
 Render a transparent cube with refraction, reusing existing Fresnel/Beer-Lambert code.
@@ -1364,7 +1378,10 @@ class GlassCubeTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll:
 
 ---
 
-## Step 5.4: CLI Integration (2-3 hours)
+## Step 5.4: CLI Integration (2-3 hours) - ✅ COMPLETE
+
+**Status:** Complete. `--object cube` and `--object sphere` CLI options implemented.
+Tests in `CLIObjectOptionSuite.scala`. Scene configuration in `SceneConfigurator.scala`.
 
 ### Goal
 `--object cube` works from command line with proper validation and help.
@@ -1531,7 +1548,15 @@ class CLICubeTest extends AnyFlatSpec with Matchers:
 
 ---
 
-## Step 5.5: Polish & Maintenance (2-3 hours)
+## Step 5.5: Polish & Maintenance (2-3 hours) - ✅ COMPLETE
+
+**Status:** All tasks complete.
+- 5.5.1: PTX packaging - `extractPTX()` in OptiXRenderer.scala
+- 5.5.2: CLI categories - 10 groups in MengerCLIOptions.scala
+- 5.5.3: RenderConfig/CausticsConfig case classes with presets
+- 5.5.4: `setResizable(false)` disables window resize in OptiX mode
+- 5.5.5: Custom `onError()` handler shows usage hints
+- 5.5.7: Input controller refactoring complete
 
 ### Goal
 Address accumulated maintenance items after core features are complete.
