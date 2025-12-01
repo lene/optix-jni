@@ -39,14 +39,15 @@ __device__ void handleFullyTransparentSphere(
  */
 __device__ void handleFullyOpaqueSphere(
     const float3& hit_point,
-    const float3& normal
+    const float3& normal,
+    const float4& material_color
 ) {
     const float3 lighting = calculateLighting(hit_point, normal);
 
     const float3 sphere_color = make_float3(
-        params.sphere_color[0],
-        params.sphere_color[1],
-        params.sphere_color[2]
+        material_color.x,
+        material_color.y,
+        material_color.z
     );
 
     const float3 lit_color = make_float3(
@@ -108,10 +109,11 @@ __device__ void traceFinalNonRecursiveRay(
 __device__ float computeFresnelReflectance(
     const float3& ray_direction,
     const float3& normal,
-    bool entering
+    bool entering,
+    float material_ior
 ) {
-    const float n1 = entering ? 1.0f : params.sphere_ior;
-    const float n2 = entering ? params.sphere_ior : 1.0f;
+    const float n1 = entering ? 1.0f : material_ior;
+    const float n2 = entering ? material_ior : 1.0f;
     const float r0 = (n1 - n2) / (n1 + n2);
     const float R0 = r0 * r0;
     const float cos_theta = fabsf(dot(ray_direction, normal));
@@ -170,12 +172,13 @@ __device__ bool traceRefractedRay(
     const float3& normal,
     bool entering,
     unsigned int depth,
+    float material_ior,
     unsigned int& refract_r,
     unsigned int& refract_g,
     unsigned int& refract_b
 ) {
-    const float n1 = entering ? 1.0f : params.sphere_ior;
-    const float n2 = entering ? params.sphere_ior : 1.0f;
+    const float n1 = entering ? 1.0f : material_ior;
+    const float n2 = entering ? material_ior : 1.0f;
     const float eta = n1 / n2;
     const float cos_theta = fabsf(dot(ray_direction, normal));
     const float k = 1.0f - eta * eta * (1.0f - cos_theta * cos_theta);
@@ -221,18 +224,19 @@ __device__ bool traceRefractedRay(
 __device__ float3 applyBeerLambertAbsorption(
     const float3& refract_color,
     float distance,
-    bool entering
+    bool entering,
+    const float4& material_color
 ) {
     if (entering) {
         return refract_color;  // No absorption when entering
     }
 
     const float3 glass_color = make_float3(
-        params.sphere_color[0],
-        params.sphere_color[1],
-        params.sphere_color[2]
+        material_color.x,
+        material_color.y,
+        material_color.z
     );
-    const float glass_alpha = params.sphere_color[3];
+    const float glass_alpha = material_color.w;
 
     // STANDARD GRAPHICS ALPHA CONVENTION:
     // alpha=0.0 → fully transparent (no absorption)
@@ -289,8 +293,11 @@ extern "C" __global__ void __closesthit__ch() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get sphere alpha from params (moved from SBT for performance)
-    const float sphere_alpha = params.sphere_color[3];
+    // Get material properties (from IAS instance or global params)
+    float4 material_color;
+    float material_ior;
+    getInstanceMaterial(material_color, material_ior);
+    const float sphere_alpha = material_color.w;
 
     // Handle fully transparent spheres
     if (sphere_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
@@ -300,7 +307,7 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Handle fully opaque spheres
     if (sphere_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
-        handleFullyOpaqueSphere(hit_point, normal);
+        handleFullyOpaqueSphere(hit_point, normal, material_color);
         return;
     }
 
@@ -311,7 +318,7 @@ extern "C" __global__ void __closesthit__ch() {
     }
 
     // Compute Fresnel reflectance
-    const float fresnel = computeFresnelReflectance(ray_direction, normal, entering);
+    const float fresnel = computeFresnelReflectance(ray_direction, normal, entering, material_ior);
 
     // Trace reflected ray
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
@@ -320,7 +327,7 @@ extern "C" __global__ void __closesthit__ch() {
     // Trace refracted ray
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
     const bool refraction_occurred = traceRefractedRay(
-        hit_point, ray_direction, normal, entering, depth,
+        hit_point, ray_direction, normal, entering, depth, material_ior,
         refract_r, refract_g, refract_b
     );
 
@@ -339,7 +346,7 @@ extern "C" __global__ void __closesthit__ch() {
     );
 
     // Apply Beer-Lambert absorption when exiting
-    refract_color = applyBeerLambertAbsorption(refract_color, t, entering);
+    refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color);
 
     // Blend reflected and refracted rays using Fresnel coefficient
     const float3 reflect_color = make_float3(

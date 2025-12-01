@@ -284,6 +284,61 @@ class OptiXRenderer extends LazyLogging:
   def render(width: Int, height: Int): Option[Array[Byte]] =
     Option(renderWithStats(width, height)).map(_.image)
 
+  // Instance Acceleration Structure (IAS) API for multi-object scenes
+  @native private def addSphereInstanceNative(
+    transform: Array[Float],
+    r: Float,
+    g: Float,
+    b: Float,
+    a: Float,
+    ior: Float
+  ): Int
+
+  @native private def addTriangleMeshInstanceNative(
+    transform: Array[Float],
+    r: Float,
+    g: Float,
+    b: Float,
+    a: Float,
+    ior: Float
+  ): Int
+
+  @native def removeInstance(instanceId: Int): Unit
+
+  @native def clearAllInstances(): Unit
+
+  @native def getInstanceCount(): Int
+
+  @native def isIASMode(): Boolean
+
+  @native def setIASMode(enabled: Boolean): Unit
+
+  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
+    require(transform.length == 12, s"Transform must have 12 elements (4x3 matrix), got ${transform.length}")
+    val id = addSphereInstanceNative(transform, color.r, color.g, color.b, color.a, ior)
+    if id >= 0 then Some(id) else None
+
+  def addSphereInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+    val transform = Array(
+      1.0f, 0.0f, 0.0f, position.x,
+      0.0f, 1.0f, 0.0f, position.y,
+      0.0f, 0.0f, 1.0f, position.z
+    )
+    addSphereInstance(transform, color, ior)
+
+  def addTriangleMeshInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
+    require(transform.length == 12, s"Transform must have 12 elements (4x3 matrix), got ${transform.length}")
+    val id = addTriangleMeshInstanceNative(transform, color.r, color.g, color.b, color.a, ior)
+    if id >= 0 then Some(id) else None
+
+  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+    val transform = Array(
+      1.0f, 0.0f, 0.0f, position.x,
+      0.0f, 1.0f, 0.0f, position.y,
+      0.0f, 0.0f, 1.0f, position.z
+    )
+    addTriangleMeshInstance(transform, color, ior)
+
   def render(size: ImageSize): Option[Array[Byte]] =
     render(size.width, size.height)
 

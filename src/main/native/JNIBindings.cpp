@@ -617,4 +617,176 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_disposeNative(JNIEnv* env
     }
 }
 
+//==============================================================================
+// Instance Acceleration Structure (IAS) API - Multi-object scene support
+//==============================================================================
+
+/**
+ * Add a sphere instance to the scene with transform and material.
+ * Transform is 4x3 row-major matrix: [m00 m01 m02 m03; m10 m11 m12 m13; m20 m21 m22 m23]
+ * where m03, m13, m23 are translation components.
+ * Returns instance ID (>= 0) on success, -1 on failure.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSphereInstanceNative(
+    JNIEnv* env, jobject obj,
+    jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        jsize transformLen = env->GetArrayLength(transform);
+        if (transformLen != 12) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "Transform array must have 12 elements (4x3 matrix), got " +
+                std::to_string(transformLen);
+            env->ThrowNew(exception_class, msg.c_str());
+            return -1;
+        }
+
+        jfloat* transformArr = env->GetFloatArrayElements(transform, nullptr);
+        if (transformArr == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get transform array elements");
+            return -1;
+        }
+
+        int instanceId = wrapper->addSphereInstance(transformArr, r, g, b, a, ior);
+
+        env->ReleaseFloatArrayElements(transform, transformArr, 0);
+
+        return instanceId;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addSphereInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
+ * Add a triangle mesh instance to the scene with transform and material.
+ * The mesh must be set first with setTriangleMesh().
+ * Returns instance ID (>= 0) on success, -1 on failure.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNative(
+    JNIEnv* env, jobject obj,
+    jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        jsize transformLen = env->GetArrayLength(transform);
+        if (transformLen != 12) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "Transform array must have 12 elements (4x3 matrix), got " +
+                std::to_string(transformLen);
+            env->ThrowNew(exception_class, msg.c_str());
+            return -1;
+        }
+
+        jfloat* transformArr = env->GetFloatArrayElements(transform, nullptr);
+        if (transformArr == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get transform array elements");
+            return -1;
+        }
+
+        int instanceId = wrapper->addTriangleMeshInstance(transformArr, r, g, b, a, ior);
+
+        env->ReleaseFloatArrayElements(transform, transformArr, 0);
+
+        return instanceId;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addTriangleMeshInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
+ * Remove an instance by ID.
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(
+    JNIEnv* env, jobject obj, jint instanceId) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->removeInstance(instanceId);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in removeInstance: " << e.what() << std::endl;
+    }
+}
+
+/**
+ * Clear all instances from the scene.
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearAllInstances(
+    JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->clearAllInstances();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in clearAllInstances: " << e.what() << std::endl;
+    }
+}
+
+/**
+ * Get the number of active instances.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_getInstanceCount(
+    JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            return wrapper->getInstanceCount();
+        }
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in getInstanceCount: " << e.what() << std::endl;
+        return 0;
+    }
+}
+
+/**
+ * Check if IAS mode is enabled.
+ */
+JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_isIASMode(
+    JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            return wrapper->isIASMode() ? JNI_TRUE : JNI_FALSE;
+        }
+        return JNI_FALSE;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in isIASMode: " << e.what() << std::endl;
+        return JNI_FALSE;
+    }
+}
+
+/**
+ * Enable or disable IAS mode.
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIASMode(
+    JNIEnv* env, jobject obj, jboolean enabled) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setIASMode(enabled == JNI_TRUE);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setIASMode: " << e.what() << std::endl;
+    }
+}
+
 } // extern "C"

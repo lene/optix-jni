@@ -401,6 +401,38 @@ __device__ void subdividePixel(
 }
 
 //==============================================================================
+// Instance Material Helper (IAS Mode)
+//==============================================================================
+
+/**
+ * Get material properties for the current hit instance.
+ *
+ * In IAS mode, reads from per-instance material array using optixGetInstanceId().
+ * In single-object mode, falls back to global sphere parameters.
+ *
+ * @param color Output: RGBA color (0-1 range)
+ * @param ior Output: Index of refraction
+ */
+__device__ void getInstanceMaterial(float4& color, float& ior) {
+    if (params.use_ias && params.instance_materials) {
+        // IAS mode: read from per-instance materials array
+        const unsigned int instance_id = optixGetInstanceId();
+        const InstanceMaterial& mat = params.instance_materials[instance_id];
+        color = make_float4(mat.color[0], mat.color[1], mat.color[2], mat.color[3]);
+        ior = mat.ior;
+    } else {
+        // Single-object mode: use global sphere parameters
+        color = make_float4(
+            params.sphere_color[0],
+            params.sphere_color[1],
+            params.sphere_color[2],
+            params.sphere_color[3]
+        );
+        ior = params.sphere_ior;
+    }
+}
+
+//==============================================================================
 // Custom Sphere Intersection Program
 // From NVIDIA OptiX SDK 9.0 sphere.cu
 // Uses normalized direction + length correction for numerical stability
@@ -414,12 +446,21 @@ extern "C" __global__ void __intersection__sphere()
     const float  ray_tmin = optixGetRayTmin();
     const float  ray_tmax = optixGetRayTmax();
 
-    const float3 center = make_float3(
-        hit_data->sphere_center[0],
-        hit_data->sphere_center[1],
-        hit_data->sphere_center[2]
-    );
-    const float radius = hit_data->sphere_radius;
+    // For IAS mode, use unit sphere at origin (transform matrix handles position/scale)
+    // For single-object mode, use sphere parameters from SBT
+    float3 center;
+    float radius;
+    if (params.use_ias) {
+        center = make_float3(0.0f, 0.0f, 0.0f);
+        radius = 1.0f;
+    } else {
+        center = make_float3(
+            hit_data->sphere_center[0],
+            hit_data->sphere_center[1],
+            hit_data->sphere_center[2]
+        );
+        radius = hit_data->sphere_radius;
+    }
 
     // SDK approach: normalize ray direction and track length separately
     // This provides better numerical stability

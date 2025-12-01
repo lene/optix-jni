@@ -69,6 +69,17 @@ public:
     // Statistics
     bool getCausticsStats(CausticsStats* stats);  // Get PPM validation statistics
 
+    // Multi-object instance management (IAS mode)
+    // Transform is 4x3 row-major matrix: [m00 m01 m02 m03; m10 m11 m12 m13; m20 m21 m22 m23]
+    // where m03, m13, m23 are translation components
+    int addSphereInstance(const float* transform, float r, float g, float b, float a, float ior);
+    int addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior);
+    void removeInstance(int instanceId);
+    void clearAllInstances();
+    int getInstanceCount() const;
+    bool isIASMode() const;
+    void setIASMode(bool enabled);  // Switch between single-object and multi-object mode
+
     // Cleanup
     void dispose();
 
@@ -80,6 +91,7 @@ private:
     void buildPipeline();
     void buildGeometryAccelerationStructure();
     void buildTriangleMeshGAS();  // Build GAS for triangle mesh
+    void buildIAS();              // Build Instance Acceleration Structure for multi-object scenes
 };
 
 #endif // OPTIX_WRAPPER_H

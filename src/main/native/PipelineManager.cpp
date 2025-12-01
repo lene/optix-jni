@@ -12,7 +12,9 @@
 static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     OptixPipelineCompileOptions options = {};
     options.usesMotionBlur = false;
-    options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+    // Allow both single GAS (backward compatible) and single-level instancing (IAS)
+    options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS |
+                                    OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
     options.numPayloadValues = 4;  // RGB color + depth (optixSetPayload_0/1/2/3)
     options.numAttributeValues = 4;  // Normal x, y, z + radius from SDK intersection
     options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;

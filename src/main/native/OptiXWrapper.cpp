@@ -10,6 +10,8 @@
 #include "include/VectorMath.h"
 #include <iostream>
 #include <cstring>
+#include <vector>
+#include <map>
 #include <optix.h>
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
@@ -41,6 +43,28 @@ struct OptiXWrapper::Impl {
         CUdeviceptr d_gas_output_buffer = 0;  // GAS memory
         bool gas_built = false;               // True if GAS is ready
     } triangle_mesh_gpu;
+
+    // Instance Acceleration Structure (IAS) state for multi-object scenes
+    struct ObjectInstance {
+        GeometryType geometry_type;           // Sphere or Triangle mesh
+        OptixTraversableHandle gas_handle;    // GAS for this geometry type
+        float transform[12];                  // 4x3 row-major transform matrix
+        float color[4];                       // RGBA material color
+        float ior;                            // Index of refraction
+        bool active;                          // True if instance is enabled
+    };
+
+    std::vector<ObjectInstance> instances;    // All object instances
+    OptixTraversableHandle ias_handle = 0;    // Top-level IAS handle
+    CUdeviceptr d_ias_output_buffer = 0;      // IAS memory
+    CUdeviceptr d_instances_buffer = 0;       // OptixInstance array on GPU
+    CUdeviceptr d_instance_materials = 0;     // InstanceMaterial array on GPU
+    bool ias_dirty = false;                   // True if IAS needs rebuild
+    bool use_ias = false;                     // True = multi-object mode
+
+    // GAS registry: geometry type -> (GAS handle, GAS buffer)
+    // Allows sharing GAS between instances of the same type
+    std::map<GeometryType, std::pair<OptixTraversableHandle, CUdeviceptr>> gas_registry;
 
     Impl()
         : pipeline_manager(optix_context)
@@ -303,6 +327,133 @@ void OptiXWrapper::buildTriangleMeshGAS() {
     impl->triangle_mesh_gpu.gas_built = true;
 }
 
+void OptiXWrapper::buildIAS() {
+    // Skip if no instances
+    if (impl->instances.empty()) {
+        impl->use_ias = false;
+        return;
+    }
+
+    // Free existing IAS buffers
+    if (impl->d_ias_output_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
+        impl->d_ias_output_buffer = 0;
+    }
+    if (impl->d_instances_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->d_instances_buffer));
+        impl->d_instances_buffer = 0;
+    }
+    if (impl->d_instance_materials) {
+        cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
+        impl->d_instance_materials = 0;
+    }
+
+    // Build OptixInstance and InstanceMaterial arrays from active instances
+    std::vector<OptixInstance> optix_instances;
+    std::vector<InstanceMaterial> materials;
+
+    for (size_t i = 0; i < impl->instances.size(); ++i) {
+        const auto& inst = impl->instances[i];
+        if (!inst.active) continue;
+
+        OptixInstance oi = {};
+
+        // Copy 4x3 row-major transform
+        std::memcpy(oi.transform, inst.transform, 12 * sizeof(float));
+
+        // Instance ID = index into materials array
+        oi.instanceId = static_cast<unsigned int>(optix_instances.size());
+
+        // SBT offset: 2 ray types (primary + shadow) per geometry type
+        oi.sbtOffset = inst.geometry_type * 2;
+
+        oi.visibilityMask = 255;
+        oi.flags = OPTIX_INSTANCE_FLAG_NONE;
+        oi.traversableHandle = inst.gas_handle;
+
+        optix_instances.push_back(oi);
+
+        // Build material entry
+        InstanceMaterial mat = {};
+        std::memcpy(mat.color, inst.color, 4 * sizeof(float));
+        mat.ior = inst.ior;
+        mat.geometry_type = inst.geometry_type;
+        materials.push_back(mat);
+    }
+
+    if (optix_instances.empty()) {
+        impl->use_ias = false;
+        return;
+    }
+
+    // Upload instances to GPU
+    size_t instances_size = optix_instances.size() * sizeof(OptixInstance);
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_instances_buffer), instances_size));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(impl->d_instances_buffer),
+        optix_instances.data(),
+        instances_size,
+        cudaMemcpyHostToDevice
+    ));
+
+    // Upload materials to GPU
+    size_t materials_size = materials.size() * sizeof(InstanceMaterial);
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_instance_materials), materials_size));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(impl->d_instance_materials),
+        materials.data(),
+        materials_size,
+        cudaMemcpyHostToDevice
+    ));
+
+    // Build IAS input
+    OptixBuildInput ias_input = {};
+    ias_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+    ias_input.instanceArray.instances = impl->d_instances_buffer;
+    ias_input.instanceArray.numInstances = static_cast<unsigned int>(optix_instances.size());
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_UPDATE | OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    // Query memory requirements
+    OptixAccelBufferSizes ias_buffer_sizes;
+    OPTIX_CHECK(optixAccelComputeMemoryUsage(
+        impl->optix_context.getContext(),
+        &accel_options,
+        &ias_input,
+        1,
+        &ias_buffer_sizes
+    ));
+
+    // Allocate temp and output buffers
+    CUdeviceptr d_temp_buffer;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp_buffer), ias_buffer_sizes.tempSizeInBytes));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_ias_output_buffer), ias_buffer_sizes.outputSizeInBytes));
+
+    // Build IAS
+    OPTIX_CHECK(optixAccelBuild(
+        impl->optix_context.getContext(),
+        0,  // CUDA stream
+        &accel_options,
+        &ias_input,
+        1,
+        d_temp_buffer,
+        ias_buffer_sizes.tempSizeInBytes,
+        impl->d_ias_output_buffer,
+        ias_buffer_sizes.outputSizeInBytes,
+        &impl->ias_handle,
+        nullptr,
+        0
+    ));
+
+    // Free temp buffer
+    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
+
+    impl->use_ias = true;
+    impl->ias_dirty = false;
+}
+
 void OptiXWrapper::buildPipeline() {
     // Build GAS for whichever geometry type is active
     if (impl->scene.hasTriangleMesh()) {
@@ -325,6 +476,11 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             buildPipeline();
             impl->pipeline_built = true;
             impl->scene.clearDirtyFlags();
+        }
+
+        // Rebuild IAS if in IAS mode and dirty
+        if (impl->use_ias && impl->ias_dirty) {
+            buildIAS();
         }
 
         // Ensure buffers are allocated
@@ -350,7 +506,19 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.image = reinterpret_cast<unsigned char*>(impl->buffer_manager.getImageBuffer());
         params.image_width = width;
         params.image_height = height;
-        params.handle = impl->gas_handle;
+
+        // Use IAS handle in multi-object mode, GAS handle in single-object mode
+        if (impl->use_ias) {
+            params.handle = impl->ias_handle;
+            params.use_ias = true;
+            params.instance_materials = reinterpret_cast<InstanceMaterial*>(impl->d_instance_materials);
+            params.num_instances = getInstanceCount();
+        } else {
+            params.handle = impl->gas_handle;
+            params.use_ias = false;
+            params.instance_materials = nullptr;
+            params.num_instances = 0;
+        }
 
         // Dynamic scene data
         const auto& sphere = impl->scene.getSphere();
@@ -453,9 +621,164 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
     return true;
 }
 
+// Multi-object instance management (IAS mode)
+
+int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, float b, float a, float ior) {
+    if (impl->instances.size() >= RayTracingConstants::MAX_INSTANCES) {
+        std::cerr << "[OptiX] Maximum instances (" << RayTracingConstants::MAX_INSTANCES << ") reached" << std::endl;
+        return -1;
+    }
+
+    // Ensure sphere GAS exists in registry
+    // For IAS mode, we need a unit sphere at origin - transform matrix handles position/scale
+    if (impl->gas_registry.find(GEOMETRY_TYPE_SPHERE) == impl->gas_registry.end()) {
+        // Build unit sphere GAS at origin for instancing
+        OptixAabb aabb;
+        aabb.minX = -1.0f;
+        aabb.minY = -1.0f;
+        aabb.minZ = -1.0f;
+        aabb.maxX = 1.0f;
+        aabb.maxY = 1.0f;
+        aabb.maxZ = 1.0f;
+
+        OptixAccelBuildOptions accel_options = {};
+        accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+        accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+        OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(
+            aabb,
+            accel_options
+        );
+
+        // NOTE: Do NOT call ensureGASBuffer() here! That would store the buffer in BufferManager,
+        // which gets freed when buildPipeline() builds a new GAS. IAS sphere GAS is managed
+        // separately in gas_registry and freed in dispose() and clearAllInstances().
+        impl->gas_registry[GEOMETRY_TYPE_SPHERE] = std::make_pair(result.handle, result.gas_buffer);
+    }
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_SPHERE;
+    inst.gas_handle = impl->gas_registry[GEOMETRY_TYPE_SPHERE].first;
+    std::memcpy(inst.transform, transform, 12 * sizeof(float));
+    inst.color[0] = r;
+    inst.color[1] = g;
+    inst.color[2] = b;
+    inst.color[3] = a;
+    inst.ior = ior;
+    inst.active = true;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+    impl->ias_dirty = true;
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
+int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior) {
+    if (impl->instances.size() >= RayTracingConstants::MAX_INSTANCES) {
+        std::cerr << "[OptiX] Maximum instances (" << RayTracingConstants::MAX_INSTANCES << ") reached" << std::endl;
+        return -1;
+    }
+
+    // Triangle mesh GAS must already be built via setTriangleMesh()
+    if (!impl->triangle_mesh_gpu.gas_built) {
+        std::cerr << "[OptiX] Cannot add triangle mesh instance: no mesh set (call setTriangleMesh first)" << std::endl;
+        return -1;
+    }
+
+    // Register triangle GAS if not already in registry
+    if (impl->gas_registry.find(GEOMETRY_TYPE_TRIANGLE) == impl->gas_registry.end()) {
+        impl->gas_registry[GEOMETRY_TYPE_TRIANGLE] = std::make_pair(
+            impl->triangle_mesh_gpu.gas_handle,
+            impl->triangle_mesh_gpu.d_gas_output_buffer
+        );
+    }
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_TRIANGLE;
+    inst.gas_handle = impl->gas_registry[GEOMETRY_TYPE_TRIANGLE].first;
+    std::memcpy(inst.transform, transform, 12 * sizeof(float));
+    inst.color[0] = r;
+    inst.color[1] = g;
+    inst.color[2] = b;
+    inst.color[3] = a;
+    inst.ior = ior;
+    inst.active = true;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+    impl->ias_dirty = true;
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
+void OptiXWrapper::removeInstance(int instanceId) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) {
+        std::cerr << "[OptiX] Invalid instance ID: " << instanceId << std::endl;
+        return;
+    }
+
+    impl->instances[instanceId].active = false;
+    impl->ias_dirty = true;
+}
+
+void OptiXWrapper::clearAllInstances() {
+    impl->instances.clear();
+    impl->ias_dirty = true;
+    impl->use_ias = false;
+
+    // Free IAS buffers
+    if (impl->d_ias_output_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
+        impl->d_ias_output_buffer = 0;
+    }
+    if (impl->d_instances_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->d_instances_buffer));
+        impl->d_instances_buffer = 0;
+    }
+    if (impl->d_instance_materials) {
+        cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
+        impl->d_instance_materials = 0;
+    }
+    impl->ias_handle = 0;
+}
+
+int OptiXWrapper::getInstanceCount() const {
+    int count = 0;
+    for (const auto& inst : impl->instances) {
+        if (inst.active) ++count;
+    }
+    return count;
+}
+
+bool OptiXWrapper::isIASMode() const {
+    return impl->use_ias;
+}
+
+void OptiXWrapper::setIASMode(bool enabled) {
+    if (enabled != impl->use_ias) {
+        impl->use_ias = enabled;
+        impl->ias_dirty = enabled;  // Need to rebuild IAS if enabling
+        impl->pipeline_built = false;  // Need to rebuild pipeline
+    }
+}
+
 void OptiXWrapper::dispose() {
     if (impl->initialized) {
         try {
+            // Clean up IAS resources
+            clearAllInstances();
+
+            // Free GAS buffers in registry before clearing
+            for (auto& entry : impl->gas_registry) {
+                if (entry.second.second) {  // second.second is the CUdeviceptr
+                    cudaFree(reinterpret_cast<void*>(entry.second.second));
+                }
+            }
+            impl->gas_registry.clear();
+
             // Clean up pipeline resources (including caustics)
             impl->pipeline_manager.cleanup(true);
 

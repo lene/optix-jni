@@ -47,6 +47,9 @@ namespace RayTracingConstants {
     // Multiple light sources
     constexpr int MAX_LIGHTS = 8;  // Maximum number of simultaneous light sources
 
+    // Instance Acceleration Structure (IAS) limits
+    constexpr unsigned int MAX_INSTANCES = 64;  // Maximum object instances in scene
+
     // Default geometry values
     constexpr float DEFAULT_SPHERE_RADIUS = 1.5f;      // Default sphere size for demos and tests
     constexpr float DEFAULT_CAMERA_Z_DISTANCE = 3.0f;  // Default camera distance from origin
@@ -79,6 +82,22 @@ namespace MaterialConstants {
     constexpr float IOR_GLASS = 1.5f;      // Standard glass
     constexpr float IOR_DIAMOND = 2.42f;   // Diamond (high dispersion)
 }
+
+// Geometry types for IAS/SBT offset calculation
+enum GeometryType {
+    GEOMETRY_TYPE_SPHERE = 0,    // Custom sphere primitive (uses intersection program)
+    GEOMETRY_TYPE_TRIANGLE = 1,  // Built-in triangle mesh (cube, sponge)
+    GEOMETRY_TYPE_COUNT = 2      // Number of geometry types
+};
+
+// Per-instance material data for IAS (indexed by instance ID)
+// Stored in GPU array, accessed via optixGetInstanceId()
+struct InstanceMaterial {
+    float color[4];             // RGBA color (alpha: 0=transparent, 1=opaque)
+    float ior;                  // Index of refraction
+    unsigned int geometry_type; // GeometryType enum value
+    unsigned int padding[2];    // Align to 32 bytes for GPU efficiency
+};
 
 // Light source types
 enum class LightType {
@@ -234,7 +253,12 @@ struct Params {
     unsigned char* image;        // Output image buffer (RGBA)
     unsigned int   image_width;
     unsigned int   image_height;
-    OptixTraversableHandle handle; // Scene geometry handle
+    OptixTraversableHandle handle; // Scene geometry handle (GAS or IAS)
+
+    // Instance Acceleration Structure (IAS) support
+    bool use_ias;                           // true = multi-object mode (use IAS), false = single GAS
+    InstanceMaterial* instance_materials;   // Device pointer to per-instance material array
+    unsigned int num_instances;             // Number of active instances
 
     // Dynamic scene data (moved from SBT for performance)
     float sphere_color[4];      // Sphere color (RGBA, 0.0-1.0)
