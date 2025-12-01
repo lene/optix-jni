@@ -228,3 +228,67 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     // At least some portion of the image should show the cube (red pixels)
     nonBackgroundPixels should be > 100
+
+  // Regression test for stack overflow with complex transparent meshes
+  // This was fixed by increasing continuation_stack_size in OptiXContext.cpp
+  "Complex transparent mesh" should "render without CUDA errors" in:
+    // Create a mesh with many triangles (similar to sponge-surface level 1)
+    // 6 faces * 5*5 sub-faces = 150 quads = 300 triangles
+    val complexMesh = createComplexMesh(subdivisions = 5)
+    complexMesh.numTriangles should be >= 100
+
+    renderer.setTriangleMesh(complexMesh)
+    renderer.setTriangleMeshColor(Color(1.0f, 0.7f, 0.7f, 0.5f)) // Semi-transparent pink
+    renderer.setTriangleMeshIOR(1.5f)
+    renderer.setPlane(1, true, -2.0f)
+
+    val result = renderer.render(TEST_IMAGE_SIZE)
+    result.isDefined shouldBe true
+    result.get.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
+
+  // Helper to create a mesh with many triangles by subdividing a cube
+  private def createComplexMesh(subdivisions: Int): TriangleMeshData =
+    val half = 0.75f
+    val step = (half * 2) / subdivisions
+
+    val allFaces = for
+      faceIdx <- 0 until 6
+      i <- 0 until subdivisions
+      j <- 0 until subdivisions
+    yield
+      val (axis, sign, u, v) = faceIdx match
+        case 0 => (2, 1, 0, 1)   // +Z face
+        case 1 => (2, -1, 0, 1)  // -Z face
+        case 2 => (0, 1, 1, 2)   // +X face
+        case 3 => (0, -1, 1, 2)  // -X face
+        case 4 => (1, 1, 0, 2)   // +Y face
+        case 5 => (1, -1, 0, 2)  // -Y face
+
+      val uMin = -half + i * step
+      val vMin = -half + j * step
+      val uMax = uMin + step
+      val vMax = vMin + step
+
+      createQuadOnFace(axis, sign * half, u, v, uMin, uMax, vMin, vMax)
+
+    TriangleMeshData.merge(allFaces.toSeq)
+
+  private def createQuadOnFace(
+    axis: Int, axisVal: Float, uAxis: Int, vAxis: Int,
+    uMin: Float, uMax: Float, vMin: Float, vMax: Float
+  ): TriangleMeshData =
+    def makeVertex(uVal: Float, vVal: Float): Array[Float] =
+      val pos = Array(0f, 0f, 0f)
+      pos(axis) = axisVal
+      pos(uAxis) = uVal
+      pos(vAxis) = vVal
+      val normal = Array(0f, 0f, 0f)
+      normal(axis) = if axisVal > 0 then 1f else -1f
+      pos ++ normal
+
+    val v0 = makeVertex(uMin, vMin)
+    val v1 = makeVertex(uMax, vMin)
+    val v2 = makeVertex(uMax, vMax)
+    val v3 = makeVertex(uMin, vMax)
+
+    TriangleMeshData(v0 ++ v1 ++ v2 ++ v3, Array(0, 1, 2, 0, 2, 3))
