@@ -279,8 +279,10 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
     aabb.maxZ = sphere.center[2] + sphere.radius;
 
     // Configure acceleration structure build
+    // PREFER_FAST_TRACE: Optimizes BVH for ray traversal speed (better for interactive rendering)
+    // ALLOW_COMPACTION: Enables memory compaction for smaller footprint
     OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
     accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
     // Use OptiXContext to build GAS
@@ -309,8 +311,10 @@ void OptiXWrapper::buildTriangleMeshGAS() {
     const auto& mesh_params = impl->scene.getTriangleMesh();
 
     // Configure acceleration structure build
+    // PREFER_FAST_TRACE: Optimizes BVH for ray traversal speed (critical for complex sponge meshes)
+    // ALLOW_COMPACTION: Enables memory compaction for smaller footprint
     OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
     accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
     // Use OptiXContext to build triangle GAS
