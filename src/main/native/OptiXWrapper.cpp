@@ -681,10 +681,15 @@ int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float
         return -1;
     }
 
-    // Triangle mesh GAS must already be built via setTriangleMesh()
-    if (!impl->triangle_mesh_gpu.gas_built) {
+    // Check if mesh data exists
+    if (!impl->scene.hasTriangleMesh()) {
         std::cerr << "[OptiX] Cannot add triangle mesh instance: no mesh set (call setTriangleMesh first)" << std::endl;
         return -1;
+    }
+
+    // Auto-build triangle GAS if mesh data exists but GAS isn't built yet
+    if (!impl->triangle_mesh_gpu.gas_built) {
+        buildTriangleMeshGAS();
     }
 
     // Register triangle GAS if not already in registry
