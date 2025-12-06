@@ -15,6 +15,15 @@ Sprint 6 extends the OptiX renderer with Instance Acceleration Structure (IAS) s
 
 Render scenes with multiple objects (sphere, cube, sponge) positioned independently, demonstrating the Instance Acceleration Structure (IAS) pipeline.
 
+### Goals
+
+1. **Multiple Objects** - Render scenes with sphere, cube, and sponge at different positions
+2. **IAS Architecture** - Refactor from single GAS to Instance Acceleration Structure
+3. **Cube-Based Sponge** - Build sponge from multiple cube instances (instancing, efficient)
+4. **Surface-Based Sponge** - Export `SpongeBySurface.faces` as triangle mesh (higher detail)
+5. **Shadow Ray Fix** - Enable shadow rays for all geometry types (not just sphere)
+6. **CLI Integration** - Multiple `--object` flags with keyword=value format
+
 ### Success Criteria
 
 - [ ] Multiple `--object` flags place objects at specified positions
@@ -24,20 +33,10 @@ Render scenes with multiple objects (sphere, cube, sponge) positioned independen
 - [ ] Per-object transforms work (position, scale)
 - [ ] CLI keyword=value format works (e.g., `type=sphere:pos=0,0,0:size=1.0`)
 - [ ] Configurable limits work via CLI (`--max-instances`, `--max-sponge-cube-level`, etc.)
+- [ ] Sponge generators live in main project (`src/main/scala/menger/objects/`)
 - [ ] All new code has tests
 - [ ] Existing 897+ tests still pass
 - [ ] Backward compatible with single-object scenes
-
----
-
-## Goals
-
-1. **Multiple Objects** - Render scenes with sphere, cube, and sponge at different positions
-2. **IAS Architecture** - Refactor from single GAS to Instance Acceleration Structure
-3. **Cube-Based Sponge** - Build sponge from multiple cube instances (instancing, efficient)
-4. **Surface-Based Sponge** - Export `SpongeBySurface.faces` as triangle mesh (higher detail)
-5. **Shadow Ray Fix** - Enable shadow rays for all geometry types (not just sphere)
-6. **CLI Integration** - Multiple `--object` flags with keyword=value format
 
 ---
 
