@@ -61,6 +61,7 @@ struct OptiXWrapper::Impl {
     CUdeviceptr d_instance_materials = 0;     // InstanceMaterial array on GPU
     bool ias_dirty = false;                   // True if IAS needs rebuild
     bool use_ias = false;                     // True = multi-object mode
+    unsigned int max_instances = 64;          // Configurable instance limit
 
     // GAS registry: geometry type -> (GAS handle, GAS buffer)
     // Allows sharing GAS between instances of the same type
@@ -81,8 +82,12 @@ OptiXWrapper::~OptiXWrapper() {
     dispose();
 }
 
-bool OptiXWrapper::initialize() {
+bool OptiXWrapper::initialize(unsigned int maxInstances) {
     try {
+        // Store configurable limit
+        impl->max_instances = maxInstances;
+        impl->instances.reserve(maxInstances);
+
         bool success = impl->optix_context.initialize();
         if (!success) {
             std::cerr << "[OptiX] OptiXContext initialization failed" << std::endl;
@@ -628,8 +633,8 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
 // Multi-object instance management (IAS mode)
 
 int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, float b, float a, float ior) {
-    if (impl->instances.size() >= RayTracingConstants::MAX_INSTANCES) {
-        std::cerr << "[OptiX] Maximum instances (" << RayTracingConstants::MAX_INSTANCES << ") reached" << std::endl;
+    if (impl->instances.size() >= impl->max_instances) {
+        std::cerr << "[OptiX] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
         return -1;
     }
 
@@ -680,8 +685,8 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
 }
 
 int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior) {
-    if (impl->instances.size() >= RayTracingConstants::MAX_INSTANCES) {
-        std::cerr << "[OptiX] Maximum instances (" << RayTracingConstants::MAX_INSTANCES << ") reached" << std::endl;
+    if (impl->instances.size() >= impl->max_instances) {
+        std::cerr << "[OptiX] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
         return -1;
     }
 

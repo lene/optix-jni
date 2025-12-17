@@ -145,7 +145,7 @@ class OptiXRenderer extends LazyLogging:
   private var initialized: Boolean = false
 
   // Native method declarations (private - use public wrappers)
-  @native private def initializeNative(): Boolean
+  @native private def initializeNative(maxInstances: Int): Boolean
   @native private def disposeNative(): Unit
 
 
@@ -343,11 +343,11 @@ class OptiXRenderer extends LazyLogging:
     render(size.width, size.height)
 
   // Idempotent initialization - safe to call multiple times
-  def initialize(): Boolean =
+  def initialize(maxInstances: Int = 64): Boolean =
     if initialized then
       true  // Already initialized, return success
     else
-      val result = initializeNative()
+      val result = initializeNative(maxInstances)
       if result then
         initialized = true
       else

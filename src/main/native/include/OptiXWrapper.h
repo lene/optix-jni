@@ -21,7 +21,7 @@ public:
     ~OptiXWrapper();
 
     // Initialization
-    bool initialize();
+    bool initialize(unsigned int maxInstances = 64);
 
     // Geometry configuration
     void setSphere(float x, float y, float z, float radius);

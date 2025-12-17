@@ -46,7 +46,7 @@ static void setWrapper(JNIEnv* env, jobject obj, OptiXWrapper* wrapper) {
     env->SetLongField(obj, fid, reinterpret_cast<jlong>(wrapper));
 }
 
-JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj) {
+JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
     try {
         // Check if already initialized (defensive check - Scala layer should prevent this)
         OptiXWrapper* existing = getWrapper(env, obj);
@@ -58,7 +58,7 @@ JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIE
 
         // Create new wrapper instance for this Java object
         OptiXWrapper* wrapper = new OptiXWrapper();
-        bool success = wrapper->initialize();
+        bool success = wrapper->initialize(static_cast<unsigned int>(maxInstances));
 
         if (success) {
             setWrapper(env, obj, wrapper);
