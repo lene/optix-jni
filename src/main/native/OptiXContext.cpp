@@ -425,13 +425,13 @@ OptiXContext::GASBuildResult OptiXContext::buildCustomPrimitiveGAS(
         0        // num emitted properties
     ));
 
-    // Clean up temporary buffers
+    // Clean up temporary buffers (but keep AABB alive for IAS traversal)
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
-    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_aabb)));
 
     GASBuildResult result;
     result.gas_buffer = d_gas_output_buffer;
     result.handle = gas_handle;
+    result.aabb_buffer = d_aabb;  // Keep AABB alive - caller must free it
     return result;
 }
 
@@ -515,6 +515,7 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
     GASBuildResult result;
     result.gas_buffer = d_gas_output_buffer;
     result.handle = gas_handle;
+    result.aabb_buffer = 0;  // Triangle meshes don't use custom AABBs
     return result;
 }
 

@@ -5,6 +5,7 @@
 #include "include/OptiXFileUtils.h"
 #include <vector>
 #include <cstring>
+#include <iostream>
 #include <optix_stubs.h>
 
 // Helper to create default pipeline compile options
@@ -193,10 +194,37 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     sbt.missRecordStrideInBytes = sizeof(MissSbtRecord);
     sbt.missRecordCount = 2;
 
-    // Hit group records: [0] = primary ray hitgroup, [1] = shadow ray hitgroup
-    // Use either sphere or triangle hit groups depending on scene configuration
+    // Hit group records for IAS mode need to support both sphere and triangle geometry types
+    // SBT layout: [0]=sphere_primary, [1]=sphere_shadow, [2]=triangle_primary, [3]=triangle_shadow
+    // Offset calculation: geometry_type * 2 + ray_type (0=primary, 1=shadow)
+
+    // For IAS mode: always build unified 4-record SBT
+    // For single-object mode: build 2-record SBT (backward compatible)
+
+    // Maximum record size to ensure proper alignment
+    constexpr size_t record_size = std::max(sizeof(HitGroupSbtRecord), sizeof(TriangleHitGroupSbtRecord));
+
+    // Allocate 4 records for IAS mode (GEOMETRY_TYPE_COUNT * 2 ray types)
+    constexpr int num_records = 4;  // 2 geometry types * 2 ray types
+    char hitgroup_records[num_records * record_size];
+    std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
+
+    // Build sphere hitgroup records [0]=primary, [1]=shadow
+    const auto& sphere = scene.getSphere();
+    HitGroupData sphere_data;
+    std::memcpy(sphere_data.sphere_center, sphere.center, sizeof(float) * 3);
+    sphere_data.sphere_radius = sphere.radius;
+
+    HitGroupSbtRecord* sphere_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 0 * record_size);
+    optixSbtRecordPackHeader(hitgroup_prog_group, sphere_primary);
+    sphere_primary->data = sphere_data;
+
+    HitGroupSbtRecord* sphere_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 1 * record_size);
+    optixSbtRecordPackHeader(shadow_hitgroup_prog_group, sphere_shadow);
+    sphere_shadow->data = sphere_data;
+
+    // Build triangle hitgroup records [2]=primary, [3]=shadow
     if (scene.hasTriangleMesh()) {
-        // Triangle mesh hit groups
         const auto& mesh = scene.getTriangleMesh();
         TriangleHitGroupData tri_data;
         tri_data.vertices = reinterpret_cast<float*>(mesh.d_vertices);
@@ -204,54 +232,27 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
         std::memcpy(tri_data.color, mesh.color, sizeof(float) * 4);
         tri_data.ior = mesh.ior;
 
-        // Allocate array for 2 triangle hitgroup records
-        TriangleHitGroupSbtRecord hitgroup_records[2];
-        optixSbtRecordPackHeader(triangle_hitgroup_prog_group, &hitgroup_records[0]);
-        hitgroup_records[0].data = tri_data;
+        TriangleHitGroupSbtRecord* tri_primary = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 2 * record_size);
+        optixSbtRecordPackHeader(triangle_hitgroup_prog_group, tri_primary);
+        tri_primary->data = tri_data;
 
-        // Shadow hitgroup uses same geometry data
-        optixSbtRecordPackHeader(triangle_shadow_hitgroup_prog_group, &hitgroup_records[1]);
-        hitgroup_records[1].data = tri_data;
-
-        CUdeviceptr d_hitgroup_records;
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
-        CUDA_CHECK(cudaMemcpy(
-            reinterpret_cast<void*>(d_hitgroup_records),
-            hitgroup_records,
-            sizeof(hitgroup_records),
-            cudaMemcpyHostToDevice
-        ));
-        sbt.hitgroupRecordBase = d_hitgroup_records;
-        sbt.hitgroupRecordStrideInBytes = sizeof(TriangleHitGroupSbtRecord);
-        sbt.hitgroupRecordCount = 2;
-    } else {
-        // Sphere hit groups (default)
-        const auto& sphere = scene.getSphere();
-        HitGroupData hg_data;
-        std::memcpy(hg_data.sphere_center, sphere.center, sizeof(float) * 3);
-        hg_data.sphere_radius = sphere.radius;
-
-        // Allocate array for 2 hitgroup records
-        HitGroupSbtRecord hitgroup_records[2];
-        optixSbtRecordPackHeader(hitgroup_prog_group, &hitgroup_records[0]);
-        hitgroup_records[0].data = hg_data;
-
-        // Shadow hitgroup uses same geometry data
-        optixSbtRecordPackHeader(shadow_hitgroup_prog_group, &hitgroup_records[1]);
-        hitgroup_records[1].data = hg_data;
-
-        CUdeviceptr d_hitgroup_records;
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
-        CUDA_CHECK(cudaMemcpy(
-            reinterpret_cast<void*>(d_hitgroup_records),
-            hitgroup_records,
-            sizeof(hitgroup_records),
-            cudaMemcpyHostToDevice
-        ));
-        sbt.hitgroupRecordBase = d_hitgroup_records;
-        sbt.hitgroupRecordStrideInBytes = sizeof(HitGroupSbtRecord);
-        sbt.hitgroupRecordCount = 2;
+        TriangleHitGroupSbtRecord* tri_shadow = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 3 * record_size);
+        optixSbtRecordPackHeader(triangle_shadow_hitgroup_prog_group, tri_shadow);
+        tri_shadow->data = tri_data;
     }
+
+    // Upload unified SBT to GPU
+    CUdeviceptr d_hitgroup_records;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(d_hitgroup_records),
+        hitgroup_records,
+        sizeof(hitgroup_records),
+        cudaMemcpyHostToDevice
+    ));
+    sbt.hitgroupRecordBase = d_hitgroup_records;
+    sbt.hitgroupRecordStrideInBytes = record_size;
+    sbt.hitgroupRecordCount = num_records;
 }
 
 void PipelineManager::destroyProgramGroupIfExists(OptixProgramGroup& prog_group) {

@@ -63,9 +63,14 @@ struct OptiXWrapper::Impl {
     bool use_ias = false;                     // True = multi-object mode
     unsigned int max_instances = 64;          // Configurable instance limit
 
-    // GAS registry: geometry type -> (GAS handle, GAS buffer)
+    // GAS registry: geometry type -> GAS data
     // Allows sharing GAS between instances of the same type
-    std::map<GeometryType, std::pair<OptixTraversableHandle, CUdeviceptr>> gas_registry;
+    struct GASData {
+        OptixTraversableHandle handle;
+        CUdeviceptr gas_buffer;
+        CUdeviceptr aabb_buffer;  // For custom primitives (0 for triangles)
+    };
+    std::map<GeometryType, GASData> gas_registry;
 
     Impl()
         : pipeline_manager(optix_context)
@@ -464,12 +469,19 @@ void OptiXWrapper::buildIAS() {
 }
 
 void OptiXWrapper::buildPipeline() {
-    // Build GAS for whichever geometry type is active
-    if (impl->scene.hasTriangleMesh()) {
-        buildTriangleMeshGAS();
-        impl->gas_handle = impl->triangle_mesh_gpu.gas_handle;
+    // In IAS mode, skip single-object GAS building - instances have their own GAS handles
+    // SBT still needs scene data for default values (used when building unified SBT)
+    if (!impl->use_ias) {
+        // Single-object mode: build GAS for whichever geometry type is active
+        if (impl->scene.hasTriangleMesh()) {
+            buildTriangleMeshGAS();
+            impl->gas_handle = impl->triangle_mesh_gpu.gas_handle;
+        } else {
+            buildGeometryAccelerationStructure();
+        }
     } else {
-        buildGeometryAccelerationStructure();
+        // For IAS mode, we use the IAS handle (set later in render())
+        impl->gas_handle = 0;  // Not used in IAS mode
     }
     impl->pipeline_manager.buildPipeline(impl->scene, impl->gas_handle);
 }
@@ -662,12 +674,16 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
         // NOTE: Do NOT call ensureGASBuffer() here! That would store the buffer in BufferManager,
         // which gets freed when buildPipeline() builds a new GAS. IAS sphere GAS is managed
         // separately in gas_registry and freed in dispose() and clearAllInstances().
-        impl->gas_registry[GEOMETRY_TYPE_SPHERE] = std::make_pair(result.handle, result.gas_buffer);
+        Impl::GASData gas_data;
+        gas_data.handle = result.handle;
+        gas_data.gas_buffer = result.gas_buffer;
+        gas_data.aabb_buffer = result.aabb_buffer;
+        impl->gas_registry[GEOMETRY_TYPE_SPHERE] = gas_data;
     }
 
     Impl::ObjectInstance inst;
     inst.geometry_type = GEOMETRY_TYPE_SPHERE;
-    inst.gas_handle = impl->gas_registry[GEOMETRY_TYPE_SPHERE].first;
+    inst.gas_handle = impl->gas_registry[GEOMETRY_TYPE_SPHERE].handle;
     std::memcpy(inst.transform, transform, 12 * sizeof(float));
     inst.color[0] = r;
     inst.color[1] = g;
@@ -679,6 +695,12 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
     impl->ias_dirty = true;
+
+    // Force pipeline rebuild when entering IAS mode for first time
+    // Pipeline SBT needs to include both sphere and triangle hit programs for IAS
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
     impl->use_ias = true;
 
     return instanceId;
@@ -703,15 +725,16 @@ int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float
 
     // Register triangle GAS if not already in registry
     if (impl->gas_registry.find(GEOMETRY_TYPE_TRIANGLE) == impl->gas_registry.end()) {
-        impl->gas_registry[GEOMETRY_TYPE_TRIANGLE] = std::make_pair(
-            impl->triangle_mesh_gpu.gas_handle,
-            impl->triangle_mesh_gpu.d_gas_output_buffer
-        );
+        Impl::GASData gas_data;
+        gas_data.handle = impl->triangle_mesh_gpu.gas_handle;
+        gas_data.gas_buffer = impl->triangle_mesh_gpu.d_gas_output_buffer;
+        gas_data.aabb_buffer = 0;  // Triangle meshes don't use custom AABBs
+        impl->gas_registry[GEOMETRY_TYPE_TRIANGLE] = gas_data;
     }
 
     Impl::ObjectInstance inst;
     inst.geometry_type = GEOMETRY_TYPE_TRIANGLE;
-    inst.gas_handle = impl->gas_registry[GEOMETRY_TYPE_TRIANGLE].first;
+    inst.gas_handle = impl->gas_registry[GEOMETRY_TYPE_TRIANGLE].handle;
     std::memcpy(inst.transform, transform, 12 * sizeof(float));
     inst.color[0] = r;
     inst.color[1] = g;
@@ -723,6 +746,12 @@ int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
     impl->ias_dirty = true;
+
+    // Force pipeline rebuild when entering IAS mode for first time
+    // Pipeline SBT needs to include both sphere and triangle hit programs for IAS
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
     impl->use_ias = true;
 
     return instanceId;
@@ -787,8 +816,11 @@ void OptiXWrapper::dispose() {
 
             // Free GAS buffers in registry before clearing
             for (auto& entry : impl->gas_registry) {
-                if (entry.second.second) {  // second.second is the CUdeviceptr
-                    cudaFree(reinterpret_cast<void*>(entry.second.second));
+                if (entry.second.gas_buffer) {
+                    cudaFree(reinterpret_cast<void*>(entry.second.gas_buffer));
+                }
+                if (entry.second.aabb_buffer) {
+                    cudaFree(reinterpret_cast<void*>(entry.second.aabb_buffer));
                 }
             }
             impl->gas_registry.clear();

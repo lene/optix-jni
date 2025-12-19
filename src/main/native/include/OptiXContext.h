@@ -80,6 +80,7 @@ public:
     struct GASBuildResult {
         CUdeviceptr gas_buffer;
         OptixTraversableHandle handle;
+        CUdeviceptr aabb_buffer;  // Keep AABB alive for IAS (0 for triangle meshes)
     };
 
     GASBuildResult buildCustomPrimitiveGAS(

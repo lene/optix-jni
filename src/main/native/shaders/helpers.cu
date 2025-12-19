@@ -441,8 +441,10 @@ extern "C" __global__ void __intersection__sphere()
 {
     const HitGroupData* hit_data = reinterpret_cast<HitGroupData*>(optixGetSbtDataPointer());
 
-    const float3 ray_orig = optixGetWorldRayOrigin();
-    const float3 ray_dir  = optixGetWorldRayDirection();
+    // For IAS mode: Use object-space ray (OptiX transforms ray into object space)
+    // For single-object mode: Use world-space ray
+    const float3 ray_orig = params.use_ias ? optixGetObjectRayOrigin() : optixGetWorldRayOrigin();
+    const float3 ray_dir  = params.use_ias ? optixGetObjectRayDirection() : optixGetWorldRayDirection();
     const float  ray_tmin = optixGetRayTmin();
     const float  ray_tmax = optixGetRayTmax();
 
