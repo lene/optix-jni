@@ -3,6 +3,7 @@
 #include "../include/OptiXData.h"
 #include "../include/OptiXConstants.h"
 #include "../include/OptiXFileUtils.h"
+#include "../include/OptiXErrorChecking.h"
 
 #include <fstream>
 #include <sstream>
@@ -10,6 +11,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cstdlib>
+#include <cstring>
 
 // RAII helper to suppress stderr during a test (for expected OptiX driver errors)
 class SuppressStderr {
@@ -457,6 +459,71 @@ TEST(CausticsDataTest, DefaultConstantsAreReasonable) {
 }
 
 // Minimal main - suppress verbose output, show only summary
+//=============================================================================
+// IAS (Instance Acceleration Structure) Support Tests
+// Tests for GAS building and AABB buffer management used by IAS
+//=============================================================================
+
+TEST_F(OptiXContextTest, AABBBufferIsKeptAlive) {
+    ASSERT_TRUE(context.initialize());
+
+    OptixAabb aabb;
+    aabb.minX = -1.0f;
+    aabb.minY = -1.0f;
+    aabb.minZ = -1.0f;
+    aabb.maxX = 1.0f;
+    aabb.maxY = 1.0f;
+    aabb.maxZ = 1.0f;
+
+    OptixAccelBuildOptions build_options = {};
+    build_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    build_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    auto gas_result = context.buildCustomPrimitiveGAS(aabb, build_options);
+
+    // Verify AABB buffer is non-zero (kept alive)
+    EXPECT_NE(0, gas_result.aabb_buffer);
+
+    // Cleanup - caller is responsible for freeing AABB buffer
+    context.destroyGAS(gas_result.gas_buffer);
+    cudaFree(reinterpret_cast<void*>(gas_result.aabb_buffer));
+}
+
+TEST_F(OptiXContextTest, TriangleGASHasNoAABBBuffer) {
+    ASSERT_TRUE(context.initialize());
+
+    // Create simple triangle mesh (single triangle)
+    float vertices[] = {
+        0.0f, 0.0f, 0.0f,  0.0f, 0.0f, 1.0f,  // vertex 0: pos + normal
+        1.0f, 0.0f, 0.0f,  0.0f, 0.0f, 1.0f,  // vertex 1: pos + normal
+        0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f   // vertex 2: pos + normal
+    };
+    unsigned int indices[] = {0, 1, 2};
+
+    // Upload to GPU
+    CUdeviceptr d_vertices, d_indices;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_vertices), sizeof(vertices)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_indices), sizeof(indices)));
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_vertices), vertices, sizeof(vertices), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_indices), indices, sizeof(indices), cudaMemcpyHostToDevice));
+
+    OptixAccelBuildOptions build_options = {};
+    build_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    build_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    auto gas_result = context.buildTriangleGAS(d_vertices, 3, d_indices, 1, build_options);
+
+    // Triangle meshes should have aabb_buffer = 0
+    EXPECT_EQ(0, gas_result.aabb_buffer);
+    EXPECT_NE(0, gas_result.handle);
+    EXPECT_NE(0, gas_result.gas_buffer);
+
+    // Cleanup
+    context.destroyGAS(gas_result.gas_buffer);
+    cudaFree(reinterpret_cast<void*>(d_vertices));
+    cudaFree(reinterpret_cast<void*>(d_indices));
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     ::testing::TestEventListeners& listeners = ::testing::UnitTest::GetInstance()->listeners();

@@ -110,7 +110,7 @@ object TestUtilities extends LazyLogging:
         renderer.dispose()
     }
 
-  
+
   def measureFPS(
     renderer: OptiXRenderer,
     scenario: TestScenario,
@@ -125,3 +125,40 @@ object TestUtilities extends LazyLogging:
     }
     val duration = (System.nanoTime - start) / 1e9
     frames / duration
+
+  /** Create a simple unit cube mesh centered at origin for testing.
+    * Cube has vertices at ±0.5 on each axis.
+    */
+  def createUnitCubeMesh(): menger.common.TriangleMeshData =
+    import menger.common.TriangleMeshData
+
+    // 8 vertices of a cube centered at origin (position + normal, 6 floats each)
+    val vertexData = Array[Float](
+      // Position (x,y,z) + Normal (nx, ny, nz)
+      -0.5f, -0.5f, -0.5f,  0f, 0f, -1f, // 0: left-bottom-back
+       0.5f, -0.5f, -0.5f,  0f, 0f, -1f, // 1: right-bottom-back
+       0.5f,  0.5f, -0.5f,  0f, 0f, -1f, // 2: right-top-back
+      -0.5f,  0.5f, -0.5f,  0f, 0f, -1f, // 3: left-top-back
+      -0.5f, -0.5f,  0.5f,  0f, 0f,  1f, // 4: left-bottom-front
+       0.5f, -0.5f,  0.5f,  0f, 0f,  1f, // 5: right-bottom-front
+       0.5f,  0.5f,  0.5f,  0f, 0f,  1f, // 6: right-top-front
+      -0.5f,  0.5f,  0.5f,  0f, 0f,  1f  // 7: left-top-front
+    )
+
+    // 12 triangles (2 per face, 6 faces)
+    val indexData = Array[Int](
+      // Back face
+      0, 1, 2,  0, 2, 3,
+      // Front face
+      4, 6, 5,  4, 7, 6,
+      // Left face
+      0, 3, 7,  0, 7, 4,
+      // Right face
+      1, 5, 6,  1, 6, 2,
+      // Bottom face
+      0, 4, 5,  0, 5, 1,
+      // Top face
+      3, 2, 6,  3, 6, 7
+    )
+
+    TriangleMeshData(vertexData, indexData)

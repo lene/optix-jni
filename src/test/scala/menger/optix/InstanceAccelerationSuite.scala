@@ -142,3 +142,86 @@ class InstanceAccelerationSuite extends AnyFlatSpec
       val img = renderImage(TEST_IMAGE_SIZE)
       img.length shouldBe ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
       img.count(_ != 0) should be > 0
+
+  // ================================
+  // Triangle Mesh Instance Tests
+  // ================================
+
+  "addTriangleMeshInstance" should "return sequential IDs" in:
+    // First set up a base triangle mesh
+    val mesh = TestUtilities.createUnitCubeMesh()
+    renderer.setTriangleMesh(mesh)
+
+    val id0 = renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    val id1 = renderer.addTriangleMeshInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
+    val id2 = renderer.addTriangleMeshInstance(Vector[3](-1.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
+
+    id0 shouldBe Some(0)
+    id1 shouldBe Some(1)
+    id2 shouldBe Some(2)
+
+  it should "enable IAS mode automatically" in:
+    val mesh = TestUtilities.createUnitCubeMesh()
+    renderer.setTriangleMesh(mesh)
+
+    renderer.isIASMode() shouldBe false
+    renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    renderer.isIASMode() shouldBe true
+
+  it should "increase instance count" in:
+    val mesh = TestUtilities.createUnitCubeMesh()
+    renderer.setTriangleMesh(mesh)
+
+    renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    renderer.addTriangleMeshInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
+    renderer.getInstanceCount() shouldBe 2
+
+  it should "fail if no triangle mesh is set" in:
+    val result = renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    result shouldBe None
+
+  "Triangle mesh IAS rendering" should "render a single cube instance" taggedAs (Slow) in:
+    val mesh = TestUtilities.createUnitCubeMesh()
+    renderer.setTriangleMesh(mesh)
+    renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+
+    val img = renderImage(TEST_IMAGE_SIZE)
+    img.length shouldBe ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
+    img.count(_ != 0) should be > 0
+
+  it should "render multiple cube instances" taggedAs (Slow) in:
+    val mesh = TestUtilities.createUnitCubeMesh()
+    renderer.setTriangleMesh(mesh)
+    renderer.addTriangleMeshInstance(Vector[3](-1.5f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    renderer.addTriangleMeshInstance(Vector[3](1.5f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
+
+    val img = renderImage(TEST_IMAGE_SIZE)
+    img.length shouldBe ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
+    img.count(_ != 0) should be > 0
+
+  // ================================
+  // Mixed Instance Tests
+  // ================================
+
+  "Instance count" should "track both sphere and triangle mesh instances" in:
+    // Add sphere instances
+    renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    renderer.addSphereInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
+    renderer.getInstanceCount() shouldBe 2
+
+    // Add triangle mesh instances
+    val mesh = TestUtilities.createUnitCubeMesh()
+    renderer.setTriangleMesh(mesh)
+    renderer.addTriangleMeshInstance(Vector[3](2.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
+    renderer.getInstanceCount() shouldBe 3
+
+  "clearAllInstances" should "clear both sphere and triangle mesh instances" in:
+    renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+
+    val mesh = TestUtilities.createUnitCubeMesh()
+    renderer.setTriangleMesh(mesh)
+    renderer.addTriangleMeshInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
+
+    renderer.getInstanceCount() shouldBe 2
+    renderer.clearAllInstances()
+    renderer.getInstanceCount() shouldBe 0
