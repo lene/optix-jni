@@ -83,6 +83,12 @@ This document outlines the comprehensive plan for enhancing the OptiX ray tracin
 - ✅ **Sprint 5** (Triangle Mesh + Cube) - ALL COMPLETE
   - ✅ Steps 5.1-5.4: All core features implemented
   - ✅ Step 5.5: All polish tasks complete
+- ✅ **Sprint 6** (Full Geometry Support) - ALL COMPLETE
+  - ✅ Step 6.1: IAS Infrastructure
+  - ✅ Step 6.2: Cube-Based Sponge (GPU instancing)
+  - ✅ Step 6.2b: Surface-Based Sponge (triangle mesh)
+  - ✅ Step 6.3: CLI Integration with --objects
+  - ✅ Step 6.4: Performance Optimization
 
 ### Deferred
 - ⏸️ **Sprint 4 (Caustics)** - Algorithm issues encountered, deferred to backlog
@@ -148,18 +154,24 @@ Establishes infrastructure for triangle mesh rendering with a basic cube primiti
 - ✅ Window resize disabled for OptiX (`setResizable(false)`)
 - ✅ CLI errors show usage hints (custom `onError()` handler)
 
-### Sprint 6: Full Geometry Support (20-30 hours) - 📋 PLANNED
+### Sprint 6: Full Geometry Support (20-30 hours) - ✅ COMPLETE
 Complete geometry pipeline with multiple objects and sponge mesh.
 
 **Detailed Plan:** [SPRINT_6_PLAN.md](SPRINT_6_PLAN.md)
 
-- Scene graph / object list in OptiX (IAS architecture)
-- Per-object transforms (position, rotation, scale)
-- CLI: Multiple `--object` flags with position/size
-- Export `Seq[Face]` from `SpongeBySurface` to triangle buffer
-- Handle large face counts efficiently (sponge levels 0-3+)
-- Performance optimization for BVH build
-- Tests for multi-object and sponge rendering
+**Completed Features:**
+- ✅ Instance Acceleration Structure (IAS) for multi-object rendering
+- ✅ Per-object transforms (position, scale) via 4x3 matrices
+- ✅ CLI: `--objects` with keyword=value format (sphere, cube, sponge-volume, sponge-surface, cube-sponge)
+- ✅ `SpongeBySurface.toTriangleMesh()` - Export faces as triangle buffer
+- ✅ `SpongeByVolume.toTriangleMesh()` - Merged cube mesh approach
+- ✅ `CubeSpongeGenerator` - GPU instancing approach (40-80x memory efficiency)
+- ✅ BVH optimization and level validation (handles levels 0-5+)
+- ✅ Comprehensive tests: IAS, multi-object, sponge rendering, integration tests
+- ✅ `--max-instances` configurable limit (default: 64)
+
+**Known Limitations:**
+- Shadow rays for triangle meshes (test ignored - to be addressed in future sprint)
 
 ### Sprint 7: Materials (10-15 hours) - 📋 PLANNED
 Add material support to all geometry types.
