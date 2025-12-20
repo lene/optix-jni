@@ -169,9 +169,7 @@ Complete geometry pipeline with multiple objects and sponge mesh.
 - ✅ BVH optimization and level validation (handles levels 0-5+)
 - ✅ Comprehensive tests: IAS, multi-object, sponge rendering, integration tests
 - ✅ `--max-instances` configurable limit (default: 64)
-
-**Known Limitations:**
-- Shadow rays for triangle meshes (test ignored - to be addressed in future sprint)
+- ✅ Shadow rays for all geometry types (sphere, cube, triangle mesh)
 
 ### Sprint 7: Materials (10-15 hours) - 📋 PLANNED
 Add material support to all geometry types.

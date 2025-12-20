@@ -29,7 +29,7 @@ Render scenes with multiple objects (sphere, cube, sponge) positioned independen
 - [x] Multiple `--objects` flags place objects at specified positions ✅
 - [x] Cube-based sponge renders levels 0-5 without errors ✅
 - [x] Surface-based sponge renders levels 0-6 without errors ✅
-- [ ] Shadow rays work for all geometry types (fix ignored test in TriangleMeshSuite) - Known limitation, test ignored
+- [x] Shadow rays work for all geometry types (fix ignored test in TriangleMeshSuite) ✅
 - [x] Per-object transforms work (position, scale) ✅
 - [x] CLI keyword=value format works (e.g., `type=sphere:pos=0,0,0:size=1.0`) ✅
 - [x] Configurable limits work via CLI (`--max-instances`) ✅
@@ -93,7 +93,7 @@ Render scenes with multiple objects (sphere, cube, sponge) positioned independen
 | 6.1.6 | Update render() to use IAS | `OptiXWrapper.cpp` |
 | 6.1.7 | Update shaders for instance materials | `sphere_combined.cu` |
 | 6.1.8 | Unit tests for IAS | `MultiObjectTest.scala` |
-| 6.1.9 | Enable shadow rays for all geometry | `sphere_combined.cu` |
+| 6.1.9 | Enable shadow rays for all geometry | `sphere_combined.cu`, `shadows.cu` | ✅ |
 
 **Key Changes:**
 - Pipeline flags: Add `OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING`

@@ -190,11 +190,11 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     clear should not equal red
     red should not equal blue
 
-  // Shadow support for triangle meshes requires IAS (Instance Acceleration Structure)
-  // to trace shadow rays against both sphere and triangle GAS. This is planned for Sprint 6
-  // (SPRINT_6_PLAN.md - Step 6.1: IAS Infrastructure). Currently shadow rays only trace
-  // against the sphere GAS, so triangle mesh shadows are not visible.
-  it should "cast shadows on the plane" ignore:
+  // Shadow rays now work with triangle meshes via IAS (Sprint 6.1 - IAS Infrastructure)
+  // The shadow ray shader traces against params.handle, which is set to IAS handle in
+  // multi-object mode and GAS handle in single-object mode. Triangle meshes use the GAS
+  // handle in single-object mode, so shadows should work.
+  it should "cast shadows on the plane" in:
     renderer.setTriangleMesh(cubeMesh(scale = 1.0f))
     renderer.setTriangleMeshColor(Color(0.8f, 0.8f, 0.8f)) // Opaque gray
     renderer.setTriangleMeshIOR(1.0f)
