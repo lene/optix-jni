@@ -360,9 +360,6 @@ class OptiXRenderer extends LazyLogging:
       disposeNative()
       initialized = false
 
-  private def setSphereColor(r: Float, g: Float, b: Float): Unit =
-    setSphereColor(r, g, b, 1.0f)
-
   def isAvailable: Boolean =
     Try(initialize()).recover:
       case e: UnsatisfiedLinkError =>
