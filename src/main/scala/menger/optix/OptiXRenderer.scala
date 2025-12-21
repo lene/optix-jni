@@ -1,7 +1,7 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.{Color, ImageSize, TriangleMeshData, Vector, x, y, z}
+import menger.common.{Color, Const, ImageSize, TriangleMeshData, Vector, x, y, z}
 import menger.common.toArray
 
 import java.io.{FileOutputStream, InputStream}
@@ -314,7 +314,7 @@ class OptiXRenderer extends LazyLogging:
   @native def setIASMode(enabled: Boolean): Unit
 
   def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
-    require(transform.length == 12, s"Transform must have 12 elements (4x3 matrix), got ${transform.length}")
+    require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
     val id = addSphereInstanceNative(transform, color.r, color.g, color.b, color.a, ior)
     if id >= 0 then Some(id) else None
 
@@ -327,7 +327,7 @@ class OptiXRenderer extends LazyLogging:
     addSphereInstance(transform, color, ior)
 
   def addTriangleMeshInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
-    require(transform.length == 12, s"Transform must have 12 elements (4x3 matrix), got ${transform.length}")
+    require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
     val id = addTriangleMeshInstanceNative(transform, color.r, color.g, color.b, color.a, ior)
     if id >= 0 then Some(id) else None
 
