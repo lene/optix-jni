@@ -646,7 +646,7 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
 
 int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, float b, float a, float ior) {
     if (impl->instances.size() >= impl->max_instances) {
-        std::cerr << "[OptiX] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+        std::cerr << "[OptiX][Sphere] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
         return -1;
     }
 
@@ -708,7 +708,7 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
 
 int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior) {
     if (impl->instances.size() >= impl->max_instances) {
-        std::cerr << "[OptiX] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+        std::cerr << "[OptiX][TriangleMesh] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
         return -1;
     }
 
