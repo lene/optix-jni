@@ -3,9 +3,9 @@ package menger.optix
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ThresholdConstants.*
-import ImageMatchers.*
+import ColorConstants.OPAQUE_GREEN
+import ThresholdConstants.{MAX_ASPECT_RATIO_4_3, MIN_ASPECT_RATIO_4_3, TEST_IMAGE_SIZE}
+import ImageMatchers.haveSphereCenteredInImage
 
 
 class GeometrySuite extends AnyFlatSpec with Matchers with RendererFixture:

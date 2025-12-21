@@ -5,7 +5,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import com.typesafe.scalalogging.LazyLogging
 
-import ThresholdConstants.*
+import ThresholdConstants.{STANDARD_IMAGE_SIZE, TEST_IMAGE_SIZE}
 
 
 class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {

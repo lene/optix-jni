@@ -6,9 +6,9 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 // ImageValidation used for pixel brightness analysis
-import ColorConstants.*
-import ThresholdConstants.*
-import ImageMatchers.*
+import ColorConstants.{FULLY_TRANSPARENT_GREEN, MOSTLY_OPAQUE_GREEN, MOSTLY_TRANSPARENT_GREEN, NEARLY_TRANSPARENT_WHITE, SEMI_TRANSPARENT_GREEN, Red, Blue}
+import ThresholdConstants.{MAX_TRANSPARENT_COMPARISON_AREA, MIN_BASIC_REFRACTION_STDDEV, MIN_SEMI_TRANSPARENT_AREA, MIN_VISIBLE_SPHERE_AREA, TEST_IMAGE_SIZE, TRANSPARENT_SHADOW_MIN_BRIGHTNESS}
+import ImageMatchers.{haveBrightnessStdDevGreaterThan, showPlaneInRegion}
 
 
 class TransparencySuite extends AnyFlatSpec

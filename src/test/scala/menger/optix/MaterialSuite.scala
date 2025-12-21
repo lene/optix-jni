@@ -4,9 +4,9 @@ import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ThresholdConstants.*
-import ImageMatchers.*
+import ColorConstants.{CLEAR_GLASS_WHITE, GLASS_LIGHT_CYAN}
+import ThresholdConstants.TEST_IMAGE_SIZE
+import ImageMatchers.showGlassRefraction
 
 
 class MaterialSuite extends AnyFlatSpec

@@ -5,8 +5,18 @@ import menger.optix.Slow
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import ImageMatchers.*
-import ShadowValidation.*
-import ThresholdConstants.*
+import ShadowValidation.{
+  Region,
+  detectDarkestRegion,
+  regionBrightness
+}
+import ThresholdConstants.{TEST_IMAGE_SIZE, 
+  ALPHA_TOLERANCE_LOWER_RATIO, ALPHA_TOLERANCE_UPPER_RATIO, BOTTOM_REGION_FRACTION, BRIGHTNESS_TOLERANCE, CENTER_TOLERANCE_FRACTION,
+  DARK_SHADOW_THRESHOLD, DEFAULT_SHADOW_GRID, LARGE_SHADOW_GRID, MAX_SHADOW_DARKENING_RATIO, MAX_SHADOW_OVERHEAD,
+  MIN_SHADOW_CONTRAST_RATIO, MIN_SHADOW_SHIFT, MODERATE_SHADOW_RATIO, MODERATE_SHADOW_SHIFT, OPAQUE_SHADOW_MAX_BRIGHTNESS,
+  RADIUS_TOLERANCE_RATIO, RENDER_ITERATIONS, SMALL_SHADOW_SHIFT, STANDARD_IMAGE_SIZE, TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO,
+  TRANSPARENT_SHADOW_MIN_BRIGHTNESS, WIDE_CENTER_TOLERANCE_FRACTION
+}
 import scala.math.abs
 
 class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:

@@ -3,9 +3,9 @@ package menger.optix
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ImageMatchers.*
-import ThresholdConstants.*
+import ColorConstants.OPAQUE_LIGHT_GRAY
+import ImageMatchers.showPlaneInRegion
+import ThresholdConstants.TEST_IMAGE_SIZE
 
 
 class CameraSuite extends AnyFlatSpec with Matchers with RendererFixture:

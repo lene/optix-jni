@@ -5,7 +5,7 @@ import menger.common.TriangleMeshData
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ThresholdConstants.*
+import ThresholdConstants.{TEST_IMAGE_SIZE, MIN_FPS}
 
 class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
 

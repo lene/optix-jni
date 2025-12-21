@@ -2,7 +2,10 @@ package menger.optix
 
 import menger.common.ImageSize
 import org.scalatest.matchers.{BeMatcher, MatchResult, Matcher}
-import ThresholdConstants.*
+import ThresholdConstants.{
+  GRAYSCALE_CHANNEL_TOLERANCE, LARGE_SPHERE_MIN_AREA, MEDIUM_SPHERE_MAX_AREA, MEDIUM_SPHERE_MIN_AREA, MIN_DIAMOND_REFRACTION_STDDEV,
+  MIN_GLASS_REFRACTION_STDDEV, MIN_WATER_REFRACTION_STDDEV, SMALL_SPHERE_MAX_AREA, SPHERE_CENTER_TOLERANCE
+}
 
 
 object ImageMatchers:

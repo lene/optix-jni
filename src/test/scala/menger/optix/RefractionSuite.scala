@@ -4,9 +4,14 @@ import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ThresholdConstants.*
-import ImageMatchers.*
+import ColorConstants.{
+  BLUE_TINTED_GLASS, HIGHLY_TRANSPARENT_GRAY, HIGHLY_TRANSPARENT_WHITE, PERFORMANCE_TEST_GREEN_CYAN, RED_TINTED_GLASS,
+  REFRACTION_TEST_GRAY, SEMI_TRANSPARENT_WHITE
+}
+import ThresholdConstants.TEST_IMAGE_SIZE
+import ImageMatchers.{
+  beBlueDominant, beGreenDominant, beRedDominant, showDiamondRefraction, showGlassRefraction, showPlaneInRegion, showWaterRefraction
+}
 
 
 class RefractionSuite extends AnyFlatSpec

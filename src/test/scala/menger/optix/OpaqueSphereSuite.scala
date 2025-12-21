@@ -6,9 +6,12 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 // ImageValidation used for pixel analysis
-import ColorConstants.*
-import ImageValidation.*
-import ThresholdConstants.*
+import ColorConstants.{OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_RED, OPAQUE_WHITE}
+import ImageValidation.{detectSphereCenter, dominantColorChannel, spherePixelArea}
+import ThresholdConstants.{
+  LARGE_SPHERE_MIN_AREA, MEDIUM_SPHERE_MAX_AREA, MEDIUM_SPHERE_MIN_AREA, MIN_OFFSET_DETECTION, SMALL_SPHERE_MAX_AREA,
+  TEST_IMAGE_SIZE, VERY_LARGE_SPHERE_MIN_AREA
+}
 
 
 class OpaqueSphereSuite extends AnyFlatSpec

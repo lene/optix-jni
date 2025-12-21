@@ -9,8 +9,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.tagobjects.Slow
 
-import ColorConstants.*
-import ThresholdConstants.*
+import ColorConstants.{OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_RED, Red, Green}
+import ThresholdConstants.{TEST_IMAGE_SIZE, MIN_FPS}
 import ImageMatchers.*
 
 /** Tests for Instance Acceleration Structure (IAS) multi-object support.

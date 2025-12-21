@@ -6,9 +6,15 @@ import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ThresholdConstants.*
-import ImageMatchers.*
+import ColorConstants.{
+  FULLY_TRANSPARENT_WHITE, OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_LIGHT_GRAY, OPAQUE_MEDIUM_GRAY, OPAQUE_RED, OPAQUE_WHITE,
+  SEMI_TRANSPARENT_WHITE
+}
+import ThresholdConstants.{TEST_IMAGE_SIZE, 
+  BACKGROUND_GRAYSCALE_TOLERANCE, GRAYSCALE_TOLERANCE, MIN_BRIGHTNESS_VARIATION, MIN_COLOR_CHANNEL_DIFFERENCE, QUICK_TEST_SIZE,
+  STANDARD_IMAGE_SIZE
+}
+import ImageMatchers.{beBlueDominant, beGrayscale, beGreenDominant, beRedDominant, haveBrightnessStdDevGreaterThan}
 
 
 class RendererTest extends AnyFlatSpec
@@ -26,17 +32,17 @@ class RendererTest extends AnyFlatSpec
     noException should be thrownBy { new OptiXRenderer() }
 
   it should "have compatible OptiX SDK and driver versions" in:
-    import scala.sys.process.*
+    import scala.sys.process.Process
     import scala.util.control.NonFatal
 
     scala.util.Try {
-      val driverOutput = Seq("sh", "-c",
+      val driverOutput = Process(Seq("sh", "-c",
         "strings /usr/lib/x86_64-linux-gnu/libnvoptix.so.* 2>/dev/null | grep 'OptiX Version' || true"
-      ).!!.trim
+      )).!!.trim
 
-      val sdkPath = Seq("sh", "-c",
+      val sdkPath = Process(Seq("sh", "-c",
         "grep 'OptiX_INSTALL_DIR:PATH=' optix-jni/target/native/x86_64-linux/build/CMakeCache.txt 2>/dev/null | cut -d= -f2 || true"
-      ).!!.trim
+      )).!!.trim
 
       if driverOutput.nonEmpty then info(s"Driver OptiX version: $driverOutput")
       if sdkPath.nonEmpty then info(s"SDK path: $sdkPath")

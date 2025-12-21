@@ -7,12 +7,16 @@ object ColorConstants:
   // ========== Pure Primary Colors (Opaque) ==========
 
   val OPAQUE_RED = Color(1.0f, 0.0f, 0.0f, 1.0f)
+  val Red = OPAQUE_RED
   val OPAQUE_GREEN = Color(0.0f, 1.0f, 0.0f, 1.0f)
+  val Green = OPAQUE_GREEN
   val OPAQUE_BLUE = Color(0.0f, 0.0f, 1.0f, 1.0f)
+  val Blue = OPAQUE_BLUE
 
   // ========== Grayscale (Opaque) ==========
 
   val OPAQUE_WHITE = Color(1.0f, 1.0f, 1.0f, 1.0f)
+  val White = OPAQUE_WHITE
   val OPAQUE_LIGHT_GRAY = Color(0.784f, 0.784f, 0.784f, 1.0f)  // RGB(200, 200, 200)
   val OPAQUE_MEDIUM_GRAY = Color(0.5f, 0.5f, 0.5f, 1.0f)
   val OPAQUE_SHADOW_TEST_GRAY = Color(0.75f, 0.75f, 0.75f, 1.0f)  // Standard gray for shadow tests

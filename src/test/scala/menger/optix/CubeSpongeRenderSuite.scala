@@ -7,9 +7,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.tagobjects.Slow
 
-import ColorConstants.*
-import ThresholdConstants.*
-import ImageMatchers.*
+import ColorConstants.{BLUE_TINTED_GLASS, OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_RED, Red, Green, Blue, White}
+import ThresholdConstants.TEST_IMAGE_SIZE
 
 /**
  * Tests for cube-based sponge rendering using GPU instancing via IAS.

@@ -2,8 +2,7 @@ package menger.optix
 import menger.common.{Color, ImageSize, Const, Vector}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import ColorConstants.*
-import ThresholdConstants.*
+import ThresholdConstants.{STANDARD_IMAGE_SIZE, TEST_IMAGE_SIZE}
 
 class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
 

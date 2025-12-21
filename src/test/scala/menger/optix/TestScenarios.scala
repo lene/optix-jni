@@ -1,8 +1,12 @@
 package menger.optix
 
 import menger.common.{Color, ImageSize, Const, Vector}
-import ColorConstants.*
-import ThresholdConstants.*
+import ColorConstants.{Red, 
+  CLEAR_GLASS_WHITE, FULLY_TRANSPARENT_GREEN, GLASS_LIGHT_CYAN, HIGHLY_TRANSPARENT_WHITE, OPAQUE_GREEN, OPAQUE_LIGHT_GRAY,
+  OPAQUE_SHADOW_TEST_GRAY, OPAQUE_WHITE, PERFORMANCE_TEST_GREEN_CYAN, PERFORMANCE_TEST_WHITE, SEMI_TRANSPARENT_GREEN,
+  TRANSLUCENT_GREEN_CYAN, withAlpha
+}
+import ThresholdConstants.{STANDARD_IMAGE_SIZE, TEST_IMAGE_SIZE}
 
 case class SphereConfig(
   position: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),

@@ -1,7 +1,7 @@
 package menger.optix
 
 import menger.common.ImageSize
-import ThresholdConstants.*
+import ThresholdConstants.{CHECKERED_PATTERN_MIN_VARIANCE, GRAYSCALE_CHANNEL_TOLERANCE, PLANE_PATTERN_MIN_VARIANCE}
 import scala.math.{abs, sqrt}
 
 

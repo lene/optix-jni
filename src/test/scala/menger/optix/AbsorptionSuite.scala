@@ -5,8 +5,8 @@ import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ThresholdConstants.*
+import ColorConstants.SEMI_TRANSPARENT_GRAY
+import ThresholdConstants.{MIN_ABSORPTION_GRADIENT, TEST_IMAGE_SIZE}
 
 
 class AbsorptionSuite extends AnyFlatSpec

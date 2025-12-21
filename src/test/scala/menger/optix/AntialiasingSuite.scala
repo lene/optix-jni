@@ -7,9 +7,7 @@ import com.typesafe.scalalogging.LazyLogging
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ThresholdConstants.*
-import ImageMatchers.*
+import ThresholdConstants.TEST_IMAGE_SIZE
 
 
 class AntialiasingSuite extends AnyFlatSpec

@@ -6,8 +6,8 @@ import menger.optix.Slow
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ThresholdConstants.*
+import ColorConstants.{HIGHLY_TRANSPARENT_WHITE, PERFORMANCE_TEST_GREEN_CYAN}
+import ThresholdConstants.{MIN_FPS, STANDARD_IMAGE_SIZE, TEST_IMAGE_SIZE}
 
 
 class PerformanceSuite extends AnyFlatSpec

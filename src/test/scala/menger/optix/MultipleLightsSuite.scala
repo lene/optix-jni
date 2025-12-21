@@ -5,8 +5,8 @@ import menger.common.Light
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import ThresholdConstants.*
-import ImageValidation.*
+import ThresholdConstants.{STANDARD_IMAGE_SIZE, TEST_IMAGE_SIZE}
+import ImageValidation.imageByteSize
 
 class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture:
 

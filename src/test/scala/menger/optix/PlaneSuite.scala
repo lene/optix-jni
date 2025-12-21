@@ -4,9 +4,9 @@ import menger.common.Const
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-import ColorConstants.*
-import ImageMatchers.*
-import ThresholdConstants.*
+import ColorConstants.{OPAQUE_LIGHT_GRAY, VERY_TRANSPARENT_WHITE}
+import ImageMatchers.showPlaneInRegion
+import ThresholdConstants.TEST_IMAGE_SIZE
 
 
 class PlaneSuite extends AnyFlatSpec with Matchers with RendererFixture:
