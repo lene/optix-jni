@@ -4,7 +4,6 @@ import menger.common.{Color, Const, Vector}
 import menger.optix.Slow
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import ImageMatchers.*
 import ShadowValidation.{
   Region,
   detectDarkestRegion,
