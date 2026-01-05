@@ -62,6 +62,7 @@ struct OptiXWrapper::Impl {
     bool ias_dirty = false;                   // True if IAS needs rebuild
     bool use_ias = false;                     // True = multi-object mode
     unsigned int max_instances = 64;          // Configurable instance limit
+    bool max_instances_warning_shown = false; // Suppress repeated warnings
 
     // GAS registry: geometry type -> GAS data
     // Allows sharing GAS between instances of the same type
@@ -646,7 +647,10 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
 
 int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, float b, float a, float ior) {
     if (impl->instances.size() >= impl->max_instances) {
-        std::cerr << "[OptiX][Sphere] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Sphere] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
         return -1;
     }
 
@@ -708,7 +712,10 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
 
 int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior) {
     if (impl->instances.size() >= impl->max_instances) {
-        std::cerr << "[OptiX][TriangleMesh] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][TriangleMesh] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
         return -1;
     }
 
@@ -771,6 +778,7 @@ void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
     impl->ias_dirty = true;
     impl->use_ias = false;
+    impl->max_instances_warning_shown = false;
 
     // Free IAS buffers
     if (impl->d_ias_output_buffer) {
