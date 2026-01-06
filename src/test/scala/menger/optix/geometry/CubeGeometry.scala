@@ -71,4 +71,4 @@ object CubeGeometry:
       indices(iOffset + 4) = vOffset + 2
       indices(iOffset + 5) = vOffset + 3
 
-    TriangleMeshData(vertices, indices)
+    TriangleMeshData(vertices, indices, stride)

@@ -31,10 +31,11 @@ public:
 
     // Triangle mesh support
     void setTriangleMesh(
-        const float* vertices,        // Interleaved pos+normal, 6 floats per vertex
+        const float* vertices,        // Interleaved pos+normal+uv, stride floats per vertex
         unsigned int num_vertices,
         const unsigned int* indices,  // 3 indices per triangle
-        unsigned int num_triangles
+        unsigned int num_triangles,
+        unsigned int vertex_stride    // 6 (no UV) or 8 (with UV) floats per vertex
     );
     void setTriangleMeshColor(float r, float g, float b, float a);
     void setTriangleMeshIOR(float ior);

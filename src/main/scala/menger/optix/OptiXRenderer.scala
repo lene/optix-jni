@@ -253,7 +253,8 @@ class OptiXRenderer extends LazyLogging:
     vertices: Array[Float],
     numVertices: Int,
     indices: Array[Int],
-    numTriangles: Int
+    numTriangles: Int,
+    vertexStride: Int
   ): Unit
 
   @native private def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
@@ -269,7 +270,8 @@ class OptiXRenderer extends LazyLogging:
       mesh.vertices,
       mesh.numVertices,
       mesh.indices,
-      mesh.numTriangles
+      mesh.numTriangles,
+      mesh.vertexStride
     )
 
   def setTriangleMeshColor(color: Color): Unit =

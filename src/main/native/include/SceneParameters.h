@@ -53,6 +53,7 @@ public:
         float ior = MaterialConstants::IOR_VACUUM;   // No refraction by default
         unsigned int num_vertices = 0;
         unsigned int num_triangles = 0;
+        unsigned int vertex_stride = VERTEX_STRIDE_WITH_UV;  // 8 floats: pos + normal + uv (default)
         // GPU buffer device pointers (set by OptiXWrapper when uploading data)
         CUdeviceptr d_vertices = 0;
         CUdeviceptr d_indices = 0;

@@ -12,6 +12,7 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
   OptiXRenderer.isLibraryLoaded shouldBe true
 
   // Simple triangle mesh: a single triangle facing the camera
+  // Uses legacy 6-float format (no UVs) for basic API tests
   private def singleTriangle: TriangleMeshData =
     // Vertices: position (3 floats) + normal (3 floats) = 6 floats per vertex
     // Triangle in XY plane at z=0, normal pointing toward camera (+Z)
@@ -21,9 +22,9 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f // vertex 2: top-center
     )
     val indices = Array[Int](0, 1, 2)
-    TriangleMeshData(vertices, indices)
+    TriangleMeshData(vertices, indices, TriangleMeshData.LegacyVertexStride)
 
-  // Two triangles forming a quad
+  // Two triangles forming a quad (legacy format)
   private def quadMesh: TriangleMeshData =
     val vertices = Array[Float](
       -0.5f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, // vertex 0: bottom-left
@@ -32,7 +33,7 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
       -0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f // vertex 3: top-left
     )
     val indices = Array[Int](0, 1, 2, 0, 2, 3) // Two triangles
-    TriangleMeshData(vertices, indices)
+    TriangleMeshData(vertices, indices, TriangleMeshData.LegacyVertexStride)
 
   // Cube mesh: 6 faces × 4 vertices = 24 vertices, 12 triangles
   private def cubeMesh(scale: Float = 1.5f): TriangleMeshData =
@@ -65,7 +66,7 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
         (verts ++ faceVerts, inds ++ faceInds)
     }
 
-    TriangleMeshData(vertices.toArray, indices.toArray)
+    TriangleMeshData(vertices.toArray, indices.toArray, TriangleMeshData.LegacyVertexStride)
 
   "Triangle mesh API" should "report no mesh by default" in:
     renderer.hasTriangleMesh() shouldBe false

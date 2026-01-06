@@ -229,6 +229,7 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
         TriangleHitGroupData tri_data;
         tri_data.vertices = reinterpret_cast<float*>(mesh.d_vertices);
         tri_data.indices = reinterpret_cast<unsigned int*>(mesh.d_indices);
+        tri_data.vertex_stride = mesh.vertex_stride;
         std::memcpy(tri_data.color, mesh.color, sizeof(float) * 4);
         tri_data.ior = mesh.ior;
 

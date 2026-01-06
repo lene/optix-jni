@@ -128,37 +128,54 @@ object TestUtilities extends LazyLogging:
 
   /** Create a simple unit cube mesh centered at origin for testing.
     * Cube has vertices at ±0.5 on each axis.
+    * Uses 8-float vertex format: position(3) + normal(3) + uv(2)
     */
   def createUnitCubeMesh(): menger.common.TriangleMeshData =
     import menger.common.TriangleMeshData
 
-    // 8 vertices of a cube centered at origin (position + normal, 6 floats each)
+    // 24 vertices (4 per face) with position + normal + uv (8 floats each)
+    // This is the canonical cube with proper face normals and UV coordinates
     val vertexData = Array[Float](
-      // Position (x,y,z) + Normal (nx, ny, nz)
-      -0.5f, -0.5f, -0.5f,  0f, 0f, -1f, // 0: left-bottom-back
-       0.5f, -0.5f, -0.5f,  0f, 0f, -1f, // 1: right-bottom-back
-       0.5f,  0.5f, -0.5f,  0f, 0f, -1f, // 2: right-top-back
-      -0.5f,  0.5f, -0.5f,  0f, 0f, -1f, // 3: left-top-back
-      -0.5f, -0.5f,  0.5f,  0f, 0f,  1f, // 4: left-bottom-front
-       0.5f, -0.5f,  0.5f,  0f, 0f,  1f, // 5: right-bottom-front
-       0.5f,  0.5f,  0.5f,  0f, 0f,  1f, // 6: right-top-front
-      -0.5f,  0.5f,  0.5f,  0f, 0f,  1f  // 7: left-top-front
+      // Front face (z=0.5, normal +Z)
+      -0.5f, -0.5f, 0.5f,  0f, 0f, 1f,  0f, 0f,
+       0.5f, -0.5f, 0.5f,  0f, 0f, 1f,  1f, 0f,
+       0.5f,  0.5f, 0.5f,  0f, 0f, 1f,  1f, 1f,
+      -0.5f,  0.5f, 0.5f,  0f, 0f, 1f,  0f, 1f,
+      // Back face (z=-0.5, normal -Z)
+       0.5f, -0.5f, -0.5f,  0f, 0f, -1f,  0f, 0f,
+      -0.5f, -0.5f, -0.5f,  0f, 0f, -1f,  1f, 0f,
+      -0.5f,  0.5f, -0.5f,  0f, 0f, -1f,  1f, 1f,
+       0.5f,  0.5f, -0.5f,  0f, 0f, -1f,  0f, 1f,
+      // Top face (y=0.5, normal +Y)
+      -0.5f, 0.5f,  0.5f,  0f, 1f, 0f,  0f, 0f,
+       0.5f, 0.5f,  0.5f,  0f, 1f, 0f,  1f, 0f,
+       0.5f, 0.5f, -0.5f,  0f, 1f, 0f,  1f, 1f,
+      -0.5f, 0.5f, -0.5f,  0f, 1f, 0f,  0f, 1f,
+      // Bottom face (y=-0.5, normal -Y)
+      -0.5f, -0.5f, -0.5f,  0f, -1f, 0f,  0f, 0f,
+       0.5f, -0.5f, -0.5f,  0f, -1f, 0f,  1f, 0f,
+       0.5f, -0.5f,  0.5f,  0f, -1f, 0f,  1f, 1f,
+      -0.5f, -0.5f,  0.5f,  0f, -1f, 0f,  0f, 1f,
+      // Right face (x=0.5, normal +X)
+      0.5f, -0.5f,  0.5f,  1f, 0f, 0f,  0f, 0f,
+      0.5f, -0.5f, -0.5f,  1f, 0f, 0f,  1f, 0f,
+      0.5f,  0.5f, -0.5f,  1f, 0f, 0f,  1f, 1f,
+      0.5f,  0.5f,  0.5f,  1f, 0f, 0f,  0f, 1f,
+      // Left face (x=-0.5, normal -X)
+      -0.5f, -0.5f, -0.5f,  -1f, 0f, 0f,  0f, 0f,
+      -0.5f, -0.5f,  0.5f,  -1f, 0f, 0f,  1f, 0f,
+      -0.5f,  0.5f,  0.5f,  -1f, 0f, 0f,  1f, 1f,
+      -0.5f,  0.5f, -0.5f,  -1f, 0f, 0f,  0f, 1f
     )
 
     // 12 triangles (2 per face, 6 faces)
     val indexData = Array[Int](
-      // Back face
-      0, 1, 2,  0, 2, 3,
-      // Front face
-      4, 6, 5,  4, 7, 6,
-      // Left face
-      0, 3, 7,  0, 7, 4,
-      // Right face
-      1, 5, 6,  1, 6, 2,
-      // Bottom face
-      0, 4, 5,  0, 5, 1,
-      // Top face
-      3, 2, 6,  3, 6, 7
+      0, 1, 2,  0, 2, 3,     // Front
+      4, 5, 6,  4, 6, 7,     // Back
+      8, 9, 10, 8, 10, 11,   // Top
+      12, 13, 14, 12, 14, 15, // Bottom
+      16, 17, 18, 16, 18, 19, // Right
+      20, 21, 22, 20, 22, 23  // Left
     )
 
-    TriangleMeshData(vertexData, indexData)
+    TriangleMeshData(vertexData, indexData, 8)

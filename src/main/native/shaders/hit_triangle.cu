@@ -274,10 +274,13 @@ extern "C" __global__ void __closesthit__triangle() {
     const unsigned int idx1 = hit_data->indices[prim_idx * 3 + 1];
     const unsigned int idx2 = hit_data->indices[prim_idx * 3 + 2];
 
-    // Vertices are interleaved: [px, py, pz, nx, ny, nz] = 6 floats per vertex
-    const float* v0 = &hit_data->vertices[idx0 * 6];
-    const float* v1 = &hit_data->vertices[idx1 * 6];
-    const float* v2 = &hit_data->vertices[idx2 * 6];
+    // Get vertex stride (6 for pos+normal, 8 for pos+normal+uv)
+    const unsigned int stride = hit_data->vertex_stride;
+
+    // Vertices are interleaved: [px, py, pz, nx, ny, nz, (u, v)] = stride floats per vertex
+    const float* v0 = &hit_data->vertices[idx0 * stride];
+    const float* v1 = &hit_data->vertices[idx1 * stride];
+    const float* v2 = &hit_data->vertices[idx2 * stride];
 
     // Interpolate normal using barycentric coordinates
     // Normals are at offset 3 within each vertex

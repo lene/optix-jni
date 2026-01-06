@@ -203,7 +203,8 @@ void OptiXWrapper::setTriangleMesh(
     const float* vertices,
     unsigned int num_vertices,
     const unsigned int* indices,
-    unsigned int num_triangles
+    unsigned int num_triangles,
+    unsigned int vertex_stride
 ) {
     // Free existing GPU buffers if any
     if (impl->triangle_mesh_gpu.d_vertices) {
@@ -215,8 +216,8 @@ void OptiXWrapper::setTriangleMesh(
         impl->triangle_mesh_gpu.d_indices = 0;
     }
 
-    // Allocate and copy vertex buffer (6 floats per vertex: pos + normal)
-    size_t vertex_size = num_vertices * 6 * sizeof(float);
+    // Allocate and copy vertex buffer (vertex_stride floats per vertex)
+    size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
     cudaMalloc(reinterpret_cast<void**>(&impl->triangle_mesh_gpu.d_vertices), vertex_size);
     cudaMemcpy(
         reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_vertices),
@@ -237,10 +238,11 @@ void OptiXWrapper::setTriangleMesh(
 
     // Update scene parameters
     impl->scene.setTriangleMeshMeta(num_vertices, num_triangles);
-    // Store device pointers in scene for SBT setup
+    // Store device pointers and stride in scene for SBT setup
     auto& mesh_params = impl->scene.getTriangleMeshMutable();
     mesh_params.d_vertices = impl->triangle_mesh_gpu.d_vertices;
     mesh_params.d_indices = impl->triangle_mesh_gpu.d_indices;
+    mesh_params.vertex_stride = vertex_stride;
     impl->triangle_mesh_gpu.gas_built = false;  // Need to rebuild GAS
 }
 

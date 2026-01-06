@@ -137,6 +137,11 @@ enum MaterialType {
 // Maximum textures supported in a scene
 constexpr unsigned int MAX_TEXTURES = 32;
 
+// Vertex format constants (Sprint 7: UV coordinates)
+// Vertices can be either 6 floats (pos + normal) or 8 floats (pos + normal + uv)
+constexpr unsigned int VERTEX_STRIDE_NO_UV = 6;    // 6 floats: pos(3) + normal(3)
+constexpr unsigned int VERTEX_STRIDE_WITH_UV = 8;  // 8 floats: pos(3) + normal(3) + uv(2)
+
 // Light source types
 enum class LightType {
     DIRECTIONAL = 0,  // Parallel rays from infinity (sun-like), no distance attenuation
@@ -170,6 +175,7 @@ struct TriangleMeshData {
 struct TriangleHitGroupData {
     float* vertices;              // Device pointer to vertex data
     unsigned int* indices;        // Device pointer to index data
+    unsigned int vertex_stride;   // Floats per vertex (6 or 8)
     float color[4];               // Material color (RGBA)
     float ior;                    // Index of refraction
 };
