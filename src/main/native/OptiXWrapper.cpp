@@ -73,6 +73,10 @@ struct OptiXWrapper::Impl {
     };
     std::map<GeometryType, GASData> gas_registry;
 
+    // Texture management
+    std::vector<TextureData> textures;
+    std::map<std::string, int> texture_name_to_index;
+
     Impl()
         : pipeline_manager(optix_context)
         , buffer_manager(optix_context)
@@ -818,9 +822,86 @@ void OptiXWrapper::setIASMode(bool enabled) {
     }
 }
 
+int OptiXWrapper::uploadTexture(
+    const char* name,
+    const unsigned char* image_data,
+    unsigned int width,
+    unsigned int height
+) {
+    // Check if texture already exists
+    auto it = impl->texture_name_to_index.find(name);
+    if (it != impl->texture_name_to_index.end()) {
+        return it->second;  // Return existing index
+    }
+
+    if (impl->textures.size() >= MAX_TEXTURES) {
+        std::cerr << "[OptiX] Maximum textures (" << MAX_TEXTURES << ") reached" << std::endl;
+        return -1;
+    }
+
+    try {
+        // Create CUDA array for texture storage
+        cudaChannelFormatDesc channel_desc = cudaCreateChannelDesc<uchar4>();
+        cudaArray_t cuda_array;
+        CUDA_CHECK(cudaMallocArray(&cuda_array, &channel_desc, width, height));
+
+        // Copy image data to CUDA array
+        CUDA_CHECK(cudaMemcpy2DToArray(
+            cuda_array, 0, 0,
+            image_data,
+            width * 4,  // Source pitch (bytes per row)
+            width * 4,  // Width in bytes
+            height,
+            cudaMemcpyHostToDevice
+        ));
+
+        // Create texture object with linear filtering and wrap addressing
+        cudaResourceDesc res_desc = {};
+        res_desc.resType = cudaResourceTypeArray;
+        res_desc.res.array.array = cuda_array;
+
+        cudaTextureDesc tex_desc = {};
+        tex_desc.addressMode[0] = cudaAddressModeWrap;
+        tex_desc.addressMode[1] = cudaAddressModeWrap;
+        tex_desc.filterMode = cudaFilterModeLinear;
+        tex_desc.readMode = cudaReadModeNormalizedFloat;
+        tex_desc.normalizedCoords = 1;
+
+        cudaTextureObject_t texture_obj;
+        CUDA_CHECK(cudaCreateTextureObject(&texture_obj, &res_desc, &tex_desc, nullptr));
+
+        // Store texture data
+        int index = static_cast<int>(impl->textures.size());
+        impl->textures.push_back({cuda_array, texture_obj, width, height});
+        impl->texture_name_to_index[name] = index;
+
+        return index;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[OptiX] Texture upload failed: " << e.what() << std::endl;
+        return -1;
+    }
+}
+
+void OptiXWrapper::releaseTextures() {
+    for (auto& tex : impl->textures) {
+        if (tex.texture_obj) {
+            cudaDestroyTextureObject(tex.texture_obj);
+        }
+        if (tex.cuda_array) {
+            cudaFreeArray(tex.cuda_array);
+        }
+    }
+    impl->textures.clear();
+    impl->texture_name_to_index.clear();
+}
+
 void OptiXWrapper::dispose() {
     if (impl->initialized) {
         try {
+            // Release textures
+            releaseTextures();
+
             // Clean up IAS resources
             clearAllInstances();
 

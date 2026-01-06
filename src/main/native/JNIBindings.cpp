@@ -799,4 +799,95 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIASMode(
     }
 }
 
+//==============================================================================
+// Texture Support API
+//==============================================================================
+
+/**
+ * Upload a texture to the GPU.
+ * @param name Texture name for lookup
+ * @param imageData RGBA pixel data (4 bytes per pixel)
+ * @param width Texture width in pixels
+ * @param height Texture height in pixels
+ * @return Texture index (>= 0) on success, -1 on failure
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_uploadTextureNative(
+    JNIEnv* env, jobject obj,
+    jstring name, jbyteArray imageData, jint width, jint height) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        // Validate dimensions
+        if (width <= 0 || height <= 0) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(exception_class, "Texture dimensions must be positive");
+            return -1;
+        }
+
+        // Validate image data size
+        jsize dataLen = env->GetArrayLength(imageData);
+        jsize expectedLen = width * height * 4;
+        if (dataLen != expectedLen) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "Image data length (" + std::to_string(dataLen) +
+                ") must equal width * height * 4 (" + std::to_string(expectedLen) + ")";
+            env->ThrowNew(exception_class, msg.c_str());
+            return -1;
+        }
+
+        // Get texture name
+        const char* name_str = env->GetStringUTFChars(name, nullptr);
+        if (name_str == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get texture name");
+            return -1;
+        }
+
+        // Get image data
+        jbyte* data = env->GetByteArrayElements(imageData, nullptr);
+        if (data == nullptr) {
+            env->ReleaseStringUTFChars(name, name_str);
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get image data");
+            return -1;
+        }
+
+        int result = wrapper->uploadTexture(
+            name_str,
+            reinterpret_cast<unsigned char*>(data),
+            static_cast<unsigned int>(width),
+            static_cast<unsigned int>(height)
+        );
+
+        env->ReleaseByteArrayElements(imageData, data, 0);
+        env->ReleaseStringUTFChars(name, name_str);
+
+        return result;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in uploadTexture: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
+ * Release all uploaded textures.
+ */
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_releaseTexturesNative(
+    JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->releaseTextures();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in releaseTextures: " << e.what() << std::endl;
+    }
+}
+
 } // extern "C"

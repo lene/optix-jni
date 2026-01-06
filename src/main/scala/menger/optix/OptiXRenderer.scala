@@ -265,6 +265,35 @@ class OptiXRenderer extends LazyLogging:
 
   @native def hasTriangleMesh(): Boolean
 
+  // Texture methods
+  @native private def uploadTextureNative(
+    name: String,
+    imageData: Array[Byte],
+    width: Int,
+    height: Int
+  ): Int
+
+  @native private def releaseTexturesNative(): Unit
+
+  def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Try[Int] =
+    require(name != null && name.nonEmpty, "Texture name must not be null or empty")
+    require(imageData != null, "Image data must not be null")
+    require(width > 0, s"Width must be positive, got $width")
+    require(height > 0, s"Height must be positive, got $height")
+    val expectedSize = width * height * 4  // RGBA, 4 bytes per pixel
+    require(
+      imageData.length == expectedSize,
+      s"Image data size mismatch: expected $expectedSize bytes (${width}x${height}x4), got ${imageData.length}"
+    )
+    val index = uploadTextureNative(name, imageData, width, height)
+    if index < 0 then
+      Failure(TextureUploadException(s"Failed to upload texture '$name': error code $index"))
+    else
+      Success(index)
+
+  def releaseTextures(): Unit =
+    releaseTexturesNative()
+
   def setTriangleMesh(mesh: TriangleMeshData): Unit =
     setTriangleMeshNative(
       mesh.vertices,
@@ -469,3 +498,6 @@ object OptiXRenderer extends LazyLogging:
 
 // Exception thrown when OptiX is not available
 case class OptiXNotAvailableException(message: String) extends Exception(message)
+
+// Exception thrown when texture upload fails
+case class TextureUploadException(message: String) extends Exception(message)

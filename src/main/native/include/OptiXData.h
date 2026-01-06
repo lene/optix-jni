@@ -2,6 +2,7 @@
 #define OPTIX_DATA_H
 
 #include <optix.h>
+#include <cuda_runtime.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -178,6 +179,15 @@ struct TriangleHitGroupData {
     unsigned int vertex_stride;   // Floats per vertex (6 or 8)
     float color[4];               // Material color (RGBA)
     float ior;                    // Index of refraction
+    cudaTextureObject_t base_color_texture;  // 0 if no texture
+};
+
+// Texture data stored on host (for management)
+struct TextureData {
+    cudaArray_t cuda_array;           // CUDA array holding texture data
+    cudaTextureObject_t texture_obj;  // Texture object for shader access
+    unsigned int width;
+    unsigned int height;
 };
 
 // Photon for Progressive Photon Mapping (caustics)
