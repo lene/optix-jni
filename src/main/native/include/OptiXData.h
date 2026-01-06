@@ -99,6 +99,44 @@ struct InstanceMaterial {
     unsigned int padding[2];    // Align to 32 bytes for GPU efficiency
 };
 
+// Extended material properties for physically-based rendering (Sprint 7)
+// Builds on InstanceMaterial, adding PBR properties and texture references
+struct MaterialProperties {
+    // Base properties (compatible with InstanceMaterial)
+    float color[4];              // RGBA (alpha: 0=transparent, 1=opaque)
+    float ior;                   // Index of refraction (1.0 = no refraction)
+
+    // Extended PBR properties
+    float roughness;             // 0=mirror, 1=diffuse (default: 0.5)
+    float metallic;              // 0=dielectric, 1=metal (default: 0.0)
+    float specular;              // Specular intensity (default: 0.5)
+
+    // Texture indices (-1 = no texture)
+    int base_color_texture;      // Albedo/diffuse texture index
+    int normal_texture;          // Normal map texture index (future)
+    int roughness_texture;       // Roughness map texture index (future)
+
+    // Padding for 16-byte alignment (64 bytes total)
+    unsigned int padding[2];
+};
+
+// Material type for presets
+enum MaterialType {
+    MATERIAL_CUSTOM = 0,
+    MATERIAL_GLASS = 1,
+    MATERIAL_WATER = 2,
+    MATERIAL_DIAMOND = 3,
+    MATERIAL_CHROME = 4,
+    MATERIAL_GOLD = 5,
+    MATERIAL_COPPER = 6,
+    MATERIAL_METAL = 7,
+    MATERIAL_PLASTIC = 8,
+    MATERIAL_MATTE = 9
+};
+
+// Maximum textures supported in a scene
+constexpr unsigned int MAX_TEXTURES = 32;
+
 // Light source types
 enum class LightType {
     DIRECTIONAL = 0,  // Parallel rays from infinity (sun-like), no distance attenuation
