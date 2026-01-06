@@ -1,18 +1,22 @@
 # Sprint 7: Materials
 
 **Created:** 2025-11-22
-**Status:** 📋 PLANNED
+**Status:** 🚧 IN PROGRESS
 **Estimated Effort:** 10-15 hours
-**Branch:** TBD (create from `main` when starting)
+**Branch:** feature/sprint-7
 **Prerequisites:** Sprint 6 complete (Full Geometry Support with IAS)
 
 ## Overview
 
-Extend the material system with UV coordinates, texture support infrastructure, and richer material properties. Sprint 6 already provides per-instance color/IOR via `InstanceMaterial`. Sprint 7 adds UV coordinates, textures, and additional material properties for physically-based rendering.
+Extend the material system with UV coordinates, texture support infrastructure, and
+richer material properties. Sprint 6 already provides per-instance color/IOR via
+`InstanceMaterial`. Sprint 7 adds UV coordinates, textures, and additional material
+properties for physically-based rendering.
 
 ### Sprint Goal
 
-Enable textured materials with UV coordinates, material presets, and CLI-based material assignment. Complete the v0.5 milestone for full 3D mesh support.
+Enable textured materials with UV coordinates, material presets, and CLI-based
+material assignment. Complete the v0.5 milestone for full 3D mesh support.
 
 ### Success Criteria
 
@@ -23,6 +27,7 @@ Enable textured materials with UV coordinates, material presets, and CLI-based m
 - [ ] CLI flags for material assignment (`--material`)
 - [ ] All new code has tests
 - [ ] Existing 897+ tests still pass
+- [ ] Integration tests still pass
 
 **🎯 MILESTONE: v0.5 - Full 3D Support** (after this sprint)
 
@@ -55,11 +60,14 @@ Sprint 7 extends vertex format and adds textures - verify no performance regress
 
 ### Material Preset Validation
 
-| Preset | IOR | Roughness | Expected Behavior |
-|--------|-----|-----------|-------------------|
-| Glass | 1.5 | 0.0 | Clear refraction, 4% perpendicular reflection |
-| Water | 1.33 | 0.0 | 2% perpendicular reflection, slight caustics |
-| Diamond | 2.42 | 0.0 | 17% perpendicular reflection, sparkle |
+| Preset | IOR | Roughness | Metallic | Expected Behavior |
+|--------|-----|-----------|----------|-------------------|
+| Glass | 1.5 | 0.0 | 0.0 | Clear refraction, 4% perpendicular reflection |
+| Water | 1.33 | 0.0 | 0.0 | 2% perpendicular reflection, slight caustics |
+| Diamond | 2.42 | 0.0 | 0.0 | 17% perpendicular reflection, sparkle |
+| Metal | 1.0 | 0.1 | 1.0 | Colored specular, no refraction |
+| Plastic | 1.5 | 0.3 | 0.0 | White specular on colored diffuse |
+| Matte | 1.0 | 1.0 | 0.0 | Pure Lambertian diffuse, no specular |
 
 ### Sprint 7 Quality Deliverables
 
@@ -90,7 +98,8 @@ These decisions affect future sprints. Document rationale to avoid regret later.
 
 ### AD-2: Material struct extends InstanceMaterial from Sprint 6
 
-**Decision:** Build on `InstanceMaterial` from Sprint 6, adding optional texture references and PBR properties.
+**Decision:** Build on `InstanceMaterial` from Sprint 6, adding optional texture
+references and PBR properties.
 
 **Rationale:**
 - Sprint 6's `InstanceMaterial` has color[4] and ior
@@ -112,14 +121,17 @@ These decisions affect future sprints. Document rationale to avoid regret later.
 
 ### AD-4: Simple UV mapping for primitives
 
-**Decision:** Use per-face [0,1] UV mapping for cube and sponge.
+**Decision:** Use per-face [0,1] UV mapping for cube and sponge. UVs included by
+default (`includeUVs = true`).
 
 **Rationale:**
 - Each face maps to full [0,1]×[0,1] texture space
 - Simple to implement, correct for tiling textures
+- Simpler to standardize on 8-float vertices than maintain two code paths
 - Future: can add projection modes (spherical, cylindrical)
 
-**Impact:** All faces use same texture region; no atlas packing yet.
+**Impact:** All geometry uses 8-float vertices (pos + normal + UV). All faces use
+same texture region; no atlas packing yet.
 
 ### AD-5: Material presets for common materials
 
@@ -131,6 +143,45 @@ These decisions affect future sprints. Document rationale to avoid regret later.
 - CLI can reference by name
 
 **Impact:** Preset library to maintain; users expect accurate behavior.
+
+### AD-6: Per-object material via --objects format
+
+**Decision:** Materials are specified per-object in the `--objects` CLI format,
+not via global flags.
+
+**Format:**
+```
+--objects type=sphere:pos=0,0,0:material=glass
+--objects type=cube:pos=2,0,0:material=metal:color=#FFD700
+--objects type=sphere:material=glass:ior=1.7:roughness=0.1
+```
+
+**Rationale:**
+- Each object can have a different material
+- More flexible than global `--material` flag
+- Consistent with existing `--objects` syntax
+- Allows per-object customization (color, IOR, roughness)
+
+**Impact:** ObjectSpec gains material field; MaterialParser parses from keyword map.
+
+### AD-7: Material presets with property overrides
+
+**Decision:** Material presets can be customized with property overrides.
+
+**Format:**
+```
+material=glass              → Use glass preset as-is
+material=glass:ior=1.7      → Glass with custom IOR
+material=metal:color=#FFD700 → Metal with gold color
+material=plastic:roughness=0.3:color=#FF0000 → Custom plastic
+```
+
+**Rationale:**
+- Presets provide sensible defaults
+- Overrides allow fine-tuning without defining custom materials
+- Incremental customization (change only what you need)
+
+**Impact:** MaterialParser must merge preset with overrides.
 
 ---
 
@@ -328,7 +379,8 @@ inline MaterialProperties diamond() {
 }
 
 // Get preset by type
-inline MaterialProperties fromType(MaterialType type, float r = 1.0f, float g = 1.0f, float b = 1.0f) {
+inline MaterialProperties fromType(MaterialType type,
+                                   float r = 1.0f, float g = 1.0f, float b = 1.0f) {
     switch (type) {
         case MATERIAL_GLASS:   return glass();
         case MATERIAL_METAL:   return metal(r, g, b);
@@ -1115,122 +1167,110 @@ class TextureRenderTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll
 ## Step 7.4: CLI Integration (2-3 hours)
 
 ### Goal
-Material assignment via CLI flags.
+Material assignment via per-object `--objects` format (see AD-6 and AD-7).
 
 ---
 
-### Task 7.4.1: Add material CLI options
+### Task 7.4.1: Add material parsing to ObjectSpec
 
-**File:** `src/main/scala/menger/MengerCLIOptions.scala`
+**File:** `src/main/scala/menger/ObjectSpec.scala`
 
-**Add material options:**
+**Update ObjectSpec case class to include material:**
 
 ```scala
-// Material presets (applies to all objects or specific object)
-val material: ScallopOption[String] = opt[String](
-  name = "material",
-  required = false,
-  descr = "Material preset: glass, metal, plastic, matte, water, diamond, chrome, gold, copper"
+case class ObjectSpec(
+  objectType: String,
+  x: Float,
+  y: Float,
+  z: Float,
+  size: Float,
+  level: Option[Int],
+  color: Option[Color],
+  material: Option[Material]  // NEW: parsed material with overrides applied
 )
+```
 
-// Material color (overrides preset base color)
-val materialColor: ScallopOption[String] = opt[String](
-  name = "material-color",
-  required = false,
-  descr = "Material color as #RRGGBB or #RRGGBBAA hex"
-)
+**Add material keywords to the parser:**
 
-// Material roughness
-val materialRoughness: ScallopOption[Float] = opt[Float](
-  name = "roughness",
-  required = false,
-  validate = r => r >= 0 && r <= 1,
-  descr = "Material roughness (0=mirror, 1=diffuse)"
-)
+```scala
+// In ObjectSpec.parse or companion object
+private val materialKeywords = Set("material", "ior", "roughness", "color")
 
-// Material IOR (overrides preset)
-val materialIor: ScallopOption[Float] = opt[Float](
-  name = "ior",
-  required = false,
-  validate = _ > 0,
-  descr = "Index of refraction (glass=1.5, water=1.33, diamond=2.42)"
-)
-
-// Validation
-validateOpt(material) { mat =>
-  val valid = Set("glass", "metal", "plastic", "matte", "water", "diamond", "chrome", "gold", "copper")
-  if valid.contains(mat.toLowerCase) then Right(())
-  else Left(s"Unknown material: $mat. Valid: ${valid.mkString(", ")}")
-}
+def parseMaterial(keywords: Map[String, String]): Option[Material] =
+  keywords.get("material").flatMap { presetName =>
+    MaterialPresets.fromName(presetName).map { baseMaterial =>
+      // Apply overrides from keywords
+      var result = baseMaterial
+      keywords.get("ior").foreach(v => result = result.copy(ior = v.toFloat))
+      keywords.get("roughness").foreach(v => result = result.copy(roughness = v.toFloat))
+      keywords.get("color").foreach(hex => result = result.copy(color = Color.fromHex(hex)))
+      result
+    }
+  }
 ```
 
 ---
 
-### Task 7.4.2: Parse material from CLI
+### Task 7.4.2: Material presets lookup
 
-**File:** `src/main/scala/menger/MaterialParser.scala` (new file)
+**File:** `optix-jni/src/main/scala/menger/optix/Material.scala`
+
+**Add preset lookup (as part of Material companion object):**
 
 ```scala
-package menger
+object Material:
+  // Presets
+  val Glass   = Material(Color.WHITE, ior = 1.5f, roughness = 0.0f, metallic = 0.0f)
+  val Water   = Material(Color.WHITE, ior = 1.33f, roughness = 0.0f, metallic = 0.0f)
+  val Diamond = Material(Color.WHITE, ior = 2.42f, roughness = 0.0f, metallic = 0.0f)
+  val Chrome  = Material(
+    Color.fromRGB(0.9f, 0.9f, 0.9f), ior = 1.0f, roughness = 0.0f, metallic = 1.0f
+  )
+  val Gold    = Material(
+    Color.fromRGB(1.0f, 0.84f, 0.0f), ior = 1.0f, roughness = 0.1f, metallic = 1.0f
+  )
+  val Copper  = Material(
+    Color.fromRGB(0.72f, 0.45f, 0.20f), ior = 1.0f, roughness = 0.2f, metallic = 1.0f
+  )
 
-import menger.optix.Material
-import menger.common.Color
-
-object MaterialParser:
+  def matte(color: Color): Material =
+    Material(color, ior = 1.0f, roughness = 1.0f, metallic = 0.0f)
+  def plastic(color: Color): Material =
+    Material(color, ior = 1.5f, roughness = 0.3f, metallic = 0.0f)
+  def metal(color: Color): Material =
+    Material(color, ior = 1.0f, roughness = 0.1f, metallic = 1.0f)
 
   def fromName(name: String): Option[Material] =
     name.toLowerCase match
-      case "glass"   => Some(Material.Glass)
-      case "water"   => Some(Material.Water)
-      case "diamond" => Some(Material.Diamond)
-      case "chrome"  => Some(Material.Chrome)
-      case "gold"    => Some(Material.Gold)
-      case "copper"  => Some(Material.Copper)
-      case "metal"   => Some(Material.metal(Color.fromRGB(0.8f, 0.8f, 0.8f)))
-      case "plastic" => Some(Material.plastic(Color.WHITE))
-      case "matte"   => Some(Material.matte(Color.WHITE))
+      case "glass"   => Some(Glass)
+      case "water"   => Some(Water)
+      case "diamond" => Some(Diamond)
+      case "chrome"  => Some(Chrome)
+      case "gold"    => Some(Gold)
+      case "copper"  => Some(Copper)
+      case "metal"   => Some(metal(Color.WHITE))
+      case "plastic" => Some(plastic(Color.WHITE))
+      case "matte"   => Some(matte(Color.WHITE))
       case _         => None
-
-  def fromOptions(options: MengerCLIOptions): Material =
-    val baseMaterial = options.material.toOption
-      .flatMap(fromName)
-      .getOrElse(Material.matte(Color.WHITE))
-
-    // Apply overrides
-    val withColor = options.materialColor.toOption
-      .map(hex => baseMaterial.copy(color = Color.fromHex(hex)))
-      .getOrElse(baseMaterial)
-
-    val withRoughness = options.materialRoughness.toOption
-      .map(r => withColor.copy(roughness = r))
-      .getOrElse(withColor)
-
-    val withIor = options.materialIor.toOption
-      .map(ior => withRoughness.copy(ior = ior))
-      .getOrElse(withRoughness)
-
-    withIor
 ```
 
 ---
 
-### Task 7.4.3: Wire CLI to renderer
+### Task 7.4.3: Wire ObjectSpec material to renderer
 
 **File:** `src/main/scala/menger/OptiXResources.scala`
 
-**Update object configuration to use materials:**
+**Update object configuration to use per-object materials:**
 
 ```scala
-def configureObjectWithMaterial(spec: ObjectSpec, material: Material): Unit =
+def configureObject(spec: ObjectSpec): Unit =
+  val material = spec.material.getOrElse(Material.matte(spec.color.getOrElse(Color.WHITE)))
+
   spec.objectType match
     case "sphere" =>
-      renderer.addSphereWithMaterial(
-        spec.x, spec.y, spec.z, spec.size, material
-      )
+      renderer.addSphereWithMaterial(spec.x, spec.y, spec.z, spec.size, material)
     case "cube" =>
-      renderer.addCubeWithMaterial(
-        spec.x, spec.y, spec.z, spec.size, material
-      )
+      renderer.addCubeWithMaterial(spec.x, spec.y, spec.z, spec.size, material)
     case "sponge" =>
       renderer.addSpongeWithMaterial(
         spec.x, spec.y, spec.z, spec.size, spec.level.getOrElse(2), material
@@ -1243,7 +1283,7 @@ def configureObjectWithMaterial(spec: ObjectSpec, material: Material): Unit =
 
 ### Task 7.4.4: CLI integration tests
 
-**File:** `src/test/scala/menger/CLIMaterialTest.scala` (new file)
+**File:** `src/test/scala/menger/ObjectSpecMaterialTest.scala` (new file)
 
 ```scala
 package menger
@@ -1251,50 +1291,45 @@ package menger
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import menger.optix.Material
+import menger.common.Color
 
-class CLIMaterialTest extends AnyFlatSpec with Matchers:
+class ObjectSpecMaterialTest extends AnyFlatSpec with Matchers:
 
-  "MaterialParser.fromName" should "return Glass for 'glass'" in:
-    MaterialParser.fromName("glass") shouldBe Some(Material.Glass)
+  "ObjectSpec parser" should "parse material preset" in:
+    val spec = ObjectSpec.parse("type=sphere:pos=0,0,0:material=glass")
+    spec.material shouldBe defined
+    spec.material.get.ior shouldBe 1.5f
+
+  it should "parse material with IOR override" in:
+    val spec = ObjectSpec.parse("type=sphere:pos=0,0,0:material=glass:ior=1.7")
+    spec.material.get.ior shouldBe 1.7f
+
+  it should "parse material with color override" in:
+    val spec = ObjectSpec.parse("type=cube:pos=0,0,0:material=metal:color=#FFD700")
+    spec.material.get.color shouldBe Color.fromHex("#FFD700")
+
+  it should "parse material with multiple overrides" in:
+    val spec = ObjectSpec.parse("type=sphere:material=plastic:roughness=0.5:color=#FF0000")
+    val mat = spec.material.get
+    mat.roughness shouldBe 0.5f
+    mat.color.r shouldBe 1.0f
+
+  it should "return None for unknown material preset" in:
+    val spec = ObjectSpec.parse("type=sphere:pos=0,0,0:material=unobtanium")
+    spec.material shouldBe None
+
+  "Material.fromName" should "return Glass for 'glass'" in:
+    Material.fromName("glass") shouldBe Some(Material.Glass)
 
   it should "return Diamond for 'diamond'" in:
-    MaterialParser.fromName("diamond") shouldBe Some(Material.Diamond)
+    Material.fromName("diamond") shouldBe Some(Material.Diamond)
 
-  it should "return None for unknown material" in:
-    MaterialParser.fromName("unobtanium") shouldBe None
-
-  "CLI parser" should "accept --material glass" in:
-    val args = Array("--optix", "--material", "glass")
-    val options = new MengerCLIOptions(args)
-    options.material() shouldBe "glass"
-
-  it should "accept --material with color override" in:
-    val args = Array("--optix", "--material", "metal", "--material-color", "#FFD700")
-    val options = new MengerCLIOptions(args)
-    options.material() shouldBe "metal"
-    options.materialColor() shouldBe "#FFD700"
-
-  it should "accept --roughness" in:
-    val args = Array("--optix", "--roughness", "0.7")
-    val options = new MengerCLIOptions(args)
-    options.materialRoughness() shouldBe 0.7f
-
-  it should "reject invalid roughness" in:
-    val args = Array("--optix", "--roughness", "1.5")
-    an[Exception] should be thrownBy:
-      val options = new MengerCLIOptions(args)
-      options.verify()
-
-  "MaterialParser.fromOptions" should "apply color override" in:
-    val args = Array("--optix", "--material", "glass", "--material-color", "#FF0000")
-    val options = new MengerCLIOptions(args)
-    val material = MaterialParser.fromOptions(options)
-
-    material.ior shouldBe 1.5f  // From glass preset
-    material.color.r shouldBe 1.0f  // From override
+  it should "be case insensitive" in:
+    Material.fromName("GLASS") shouldBe Some(Material.Glass)
+    Material.fromName("Glass") shouldBe Some(Material.Glass)
 ```
 
-**Run:** `sbt "testOnly menger.CLIMaterialTest"`
+**Run:** `sbt "testOnly menger.ObjectSpecMaterialTest"`
 
 ---
 
@@ -1304,27 +1339,26 @@ class CLIMaterialTest extends AnyFlatSpec with Matchers:
 
 | File | Description |
 |------|-------------|
-| `optix-jni/src/main/native/include/MaterialPresets.h` | C++ material preset definitions |
-| `optix-jni/src/main/scala/menger/optix/Material.scala` | Scala material case class and presets |
-| `optix-jni/src/test/scala/menger/optix/geometry/UVCoordinateTest.scala` | UV coordinate tests |
-| `optix-jni/src/test/scala/menger/optix/TextureRenderTest.scala` | Texture rendering tests |
-| `src/main/scala/menger/MaterialParser.scala` | CLI material parsing |
-| `src/test/scala/menger/CLIMaterialTest.scala` | CLI material tests |
+| `optix-jni/.../include/MaterialPresets.h` | C++ material preset definitions |
+| `optix-jni/.../menger/optix/Material.scala` | Scala material case class and presets |
+| `optix-jni/.../geometry/UVCoordinateTest.scala` | UV coordinate tests |
+| `optix-jni/.../optix/TextureRenderTest.scala` | Texture rendering tests |
+| `src/test/.../ObjectSpecMaterialTest.scala` | Per-object material parsing tests |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
-| `optix-jni/src/main/native/include/OptiXData.h` | Add `MaterialProperties`, `MAX_TEXTURES`, UV vertex format |
-| `optix-jni/src/main/native/OptiXWrapper.h` | Add material and texture management methods |
-| `optix-jni/src/main/native/OptiXWrapper.cpp` | Implement material/texture upload and management |
-| `optix-jni/src/main/native/JNIBindings.cpp` | Add texture upload JNI bindings |
-| `optix-jni/src/main/native/shaders/sphere_combined.cu` | Add UV reading and texture sampling |
-| `optix-jni/src/main/scala/menger/optix/OptiXRenderer.scala` | Add material and texture Scala interface |
-| `optix-jni/src/main/scala/menger/optix/geometry/CubeGeometry.scala` | Add UV generation |
-| `optix-jni/src/main/scala/menger/optix/geometry/SpongeGeometry.scala` | Add UV generation |
-| `src/main/scala/menger/MengerCLIOptions.scala` | Add material CLI options |
-| `src/main/scala/menger/OptiXResources.scala` | Wire material configuration |
+| `optix-jni/.../include/OptiXData.h` | Add `MaterialProperties`, `MAX_TEXTURES` |
+| `optix-jni/.../native/OptiXWrapper.h` | Add material/texture management methods |
+| `optix-jni/.../native/OptiXWrapper.cpp` | Implement material/texture upload |
+| `optix-jni/.../native/JNIBindings.cpp` | Add texture upload JNI bindings |
+| `optix-jni/.../shaders/sphere_combined.cu` | Add UV reading, texture sampling |
+| `optix-jni/.../optix/OptiXRenderer.scala` | Add material/texture Scala interface |
+| `optix-jni/.../geometry/CubeGeometry.scala` | Add UV generation |
+| `optix-jni/.../geometry/SpongeGeometry.scala` | Add UV generation |
+| `src/.../menger/ObjectSpec.scala` | Add `material: Option[Material]` field |
+| `src/.../menger/OptiXResources.scala` | Wire per-object material configuration |
 
 ---
 
