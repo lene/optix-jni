@@ -1,7 +1,12 @@
-package menger.optix
+package menger.optix.visualization
 
 import menger.common.ImageSize
 import menger.common.Vector
+import menger.optix.ColorConstants
+import menger.optix.OptiXRenderer
+import menger.optix.ShadowValidation
+import menger.optix.TestScenario
+import menger.optix.TestUtilities
 
 object MultipleLightsTestVisualization:
 

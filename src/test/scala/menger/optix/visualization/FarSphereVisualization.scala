@@ -1,6 +1,10 @@
-package menger.optix
+package menger.optix.visualization
 
-import menger.common.{Color, Const, Vector}
+import menger.common.Color
+import menger.common.Const
+import menger.common.Vector
+import menger.optix.OptiXRenderer
+import menger.optix.TestUtilities
 
 object FarSphereVisualization:
 

@@ -1,4 +1,10 @@
-package menger.optix
+package menger.optix.visualization
+
+import menger.optix.ColorConstants
+import menger.optix.ImageValidation
+import menger.optix.OptiXRenderer
+import menger.optix.TestScenario
+import menger.optix.TestUtilities
 
 object ColoredGlassComparison:
 

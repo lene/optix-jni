@@ -5,7 +5,7 @@ import org.scalatest.matchers.should.Matchers
 
 import menger.common.Color
 
-class MaterialPresetTest extends AnyFlatSpec with Matchers:
+class MaterialPresetSuite extends AnyFlatSpec with Matchers:
 
   // ========== Preset Value Tests ==========
 

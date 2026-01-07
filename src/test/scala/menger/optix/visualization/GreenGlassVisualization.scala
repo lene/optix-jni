@@ -1,4 +1,13 @@
-package menger.optix
+package menger.optix.visualization
+
+import menger.common.Color
+import menger.common.Const
+import menger.common.Vector
+import menger.optix.ColorConstants
+import menger.optix.ImageValidation
+import menger.optix.OptiXRenderer
+import menger.optix.TestScenario
+import menger.optix.TestUtilities
 
 object GreenGlassVisualization:
 
