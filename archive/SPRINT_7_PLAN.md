@@ -1,7 +1,7 @@
 # Sprint 7: Materials
 
 **Created:** 2025-11-22
-**Status:** 🚧 IN PROGRESS
+**Status:** ✅ COMPLETE
 **Estimated Effort:** 10-15 hours
 **Branch:** feature/sprint-7
 **Prerequisites:** Sprint 6 complete (Full Geometry Support with IAS)
@@ -20,14 +20,14 @@ material assignment. Complete the v0.5 milestone for full 3D mesh support.
 
 ### Success Criteria
 
-- [ ] UV coordinates added to vertex format (8 floats: pos + normal + UV)
-- [ ] Cube and sponge meshes generate valid UV coordinates
-- [ ] Texture upload and sampling works (proof of concept)
-- [ ] Material presets available (glass, metal, matte)
-- [ ] CLI flags for material assignment (`--material`)
-- [ ] All new code has tests
-- [ ] Existing 897+ tests still pass
-- [ ] Integration tests still pass
+- [x] UV coordinates added to vertex format (8 floats: pos + normal + UV)
+- [x] Cube and sponge meshes generate valid UV coordinates
+- [x] Texture upload and sampling works (proof of concept)
+- [x] Material presets available (glass, metal, matte)
+- [x] CLI flags for material assignment (`--material`)
+- [x] All new code has tests
+- [x] Existing 897+ tests still pass
+- [x] Integration tests still pass
 
 **🎯 MILESTONE: v0.5 - Full 3D Support** (after this sprint)
 
@@ -2162,20 +2162,20 @@ class TextureBindingTest extends AnyFlatSpec with Matchers:
 - [x] CLI material parsing (`--objects type=sphere:material=glass`)
 
 ### Step 7.5 (Texture Rendering Pipeline)
-- [ ] Per-instance texture indices in IAS mode
-- [ ] Texture array uploaded to launch params
-- [ ] Shader texture sampling (both single-object and IAS modes)
-- [ ] TextureLoader utility for image file loading
-- [ ] `--texture-dir` CLI option
-- [ ] `texture=path` in ObjectSpec parsing
-- [ ] Texture binding tests passing
+- [x] Per-instance texture indices in IAS mode
+- [x] Texture array uploaded to launch params
+- [x] Shader texture sampling (both single-object and IAS modes)
+- [x] TextureLoader utility for image file loading
+- [x] `--texture-dir` CLI option
+- [x] `texture=path` in ObjectSpec parsing
+- [x] Texture binding tests passing
 
 ### Quality Gates
-- [ ] All tests passing (new + existing 897+)
-- [ ] Code compiles without warnings
-- [ ] Code passes `sbt "scalafix --check"`
-- [ ] CHANGELOG.md updated
-- [ ] Backward compatible: existing scenes without materials/textures still work
+- [x] All tests passing (new + existing 897+)
+- [x] Code compiles without warnings
+- [x] Code passes `sbt "scalafix --check"`
+- [x] CHANGELOG.md updated
+- [x] Backward compatible: existing scenes without materials/textures still work
 
 **🎯 MILESTONE: v0.5 - Full 3D Support** (achieved after this sprint)
 
