@@ -11,7 +11,12 @@ case class Material(
     baseColorTexture: Option[Int] = None,
     normalTexture: Option[Int] = None,
     roughnessTexture: Option[Int] = None
-)
+):
+  def withColorOpt(c: Option[Color]): Material = c.fold(this)(v => copy(color = v))
+  def withIorOpt(i: Option[Float]): Material = i.fold(this)(v => copy(ior = v))
+  def withRoughnessOpt(r: Option[Float]): Material = r.fold(this)(v => copy(roughness = v))
+  def withMetallicOpt(m: Option[Float]): Material = m.fold(this)(v => copy(metallic = v))
+  def withSpecularOpt(s: Option[Float]): Material = s.fold(this)(v => copy(specular = v))
 
 object Material:
 

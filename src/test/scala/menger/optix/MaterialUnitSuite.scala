@@ -194,3 +194,85 @@ class MaterialUnitSuite extends AnyFlatSpec with Matchers:
     Material.presetNames.foreach { name =>
       Material.fromName(name) shouldBe defined
     }
+
+  // Tests for withXxxOpt helper methods
+
+  "withColorOpt" should "return the same material when None is passed" in:
+    val mat = Material(testColor)
+    mat.withColorOpt(None) shouldBe mat
+
+  it should "update color when Some is passed" in:
+    val mat = Material(testColor)
+    val newColor = Color(1.0f, 0.0f, 0.0f, 1.0f)
+    mat.withColorOpt(Some(newColor)).color shouldBe newColor
+
+  it should "preserve other fields when color is updated" in:
+    val mat = Material(testColor, ior = 2.0f, roughness = 0.3f)
+    val newColor = Color(0.0f, 1.0f, 0.0f, 1.0f)
+    val result = mat.withColorOpt(Some(newColor))
+    result.ior shouldBe 2.0f
+    result.roughness shouldBe 0.3f
+
+  "withIorOpt" should "return the same material when None is passed" in:
+    val mat = Material(testColor, ior = 1.5f)
+    mat.withIorOpt(None) shouldBe mat
+
+  it should "update ior when Some is passed" in:
+    val mat = Material(testColor)
+    mat.withIorOpt(Some(2.42f)).ior shouldBe 2.42f
+
+  "withRoughnessOpt" should "return the same material when None is passed" in:
+    val mat = Material(testColor, roughness = 0.5f)
+    mat.withRoughnessOpt(None) shouldBe mat
+
+  it should "update roughness when Some is passed" in:
+    val mat = Material(testColor)
+    mat.withRoughnessOpt(Some(1.0f)).roughness shouldBe 1.0f
+
+  "withMetallicOpt" should "return the same material when None is passed" in:
+    val mat = Material(testColor, metallic = 0.5f)
+    mat.withMetallicOpt(None) shouldBe mat
+
+  it should "update metallic when Some is passed" in:
+    val mat = Material(testColor)
+    mat.withMetallicOpt(Some(1.0f)).metallic shouldBe 1.0f
+
+  "withSpecularOpt" should "return the same material when None is passed" in:
+    val mat = Material(testColor, specular = 0.5f)
+    mat.withSpecularOpt(None) shouldBe mat
+
+  it should "update specular when Some is passed" in:
+    val mat = Material(testColor)
+    mat.withSpecularOpt(Some(1.0f)).specular shouldBe 1.0f
+
+  "chained withXxxOpt calls" should "apply all updates" in:
+    val mat = Material(testColor)
+    val newColor = Color(1.0f, 0.0f, 0.0f, 1.0f)
+    val result = mat
+      .withColorOpt(Some(newColor))
+      .withIorOpt(Some(2.42f))
+      .withRoughnessOpt(Some(0.1f))
+      .withMetallicOpt(Some(1.0f))
+      .withSpecularOpt(Some(0.8f))
+
+    result.color shouldBe newColor
+    result.ior shouldBe 2.42f
+    result.roughness shouldBe 0.1f
+    result.metallic shouldBe 1.0f
+    result.specular shouldBe 0.8f
+
+  it should "skip updates for None values in chain" in:
+    val mat = Material(testColor, ior = 1.5f, roughness = 0.5f)
+    val newColor = Color(0.0f, 0.0f, 1.0f, 1.0f)
+    val result = mat
+      .withColorOpt(Some(newColor))
+      .withIorOpt(None)  // Should keep original
+      .withRoughnessOpt(Some(0.0f))
+      .withMetallicOpt(None)  // Should keep original
+      .withSpecularOpt(None)  // Should keep original
+
+    result.color shouldBe newColor
+    result.ior shouldBe 1.5f  // Original
+    result.roughness shouldBe 0.0f  // Updated
+    result.metallic shouldBe 0.0f  // Original default
+    result.specular shouldBe 0.5f  // Original default
