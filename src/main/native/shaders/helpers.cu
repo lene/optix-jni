@@ -432,6 +432,53 @@ __device__ void getInstanceMaterial(float4& color, float& ior) {
     }
 }
 
+/**
+ * Get texture index for the current hit instance.
+ *
+ * In IAS mode, reads from per-instance material array using optixGetInstanceId().
+ * Returns -1 if no texture is assigned or not in IAS mode.
+ *
+ * @return Texture index or -1 if no texture
+ */
+__device__ int getInstanceTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].texture_index;
+    }
+    return -1;  // No texture in single-object mode
+}
+
+/**
+ * Sample texture color for the current instance at given UV coordinates.
+ *
+ * If the instance has a valid texture, samples it and multiplies with base color.
+ * This allows textures to be tinted by the material color.
+ *
+ * @param base_color The base material color (RGBA)
+ * @param uv UV coordinates (0-1 range, will wrap)
+ * @return Final color (base_color * texture_color, or just base_color if no texture)
+ */
+__device__ float4 sampleInstanceTexture(const float4& base_color, const float2& uv) {
+    const int tex_index = getInstanceTextureIndex();
+
+    // No texture or invalid index - return base color unchanged
+    if (tex_index < 0 || !params.textures || tex_index >= static_cast<int>(params.num_textures)) {
+        return base_color;
+    }
+
+    // Sample the texture (tex2D returns normalized float4 for cudaReadModeNormalizedFloat)
+    const cudaTextureObject_t tex = params.textures[tex_index];
+    const float4 tex_color = tex2D<float4>(tex, uv.x, uv.y);
+
+    // Multiply texture color with base color (allows tinting)
+    return make_float4(
+        base_color.x * tex_color.x,
+        base_color.y * tex_color.y,
+        base_color.z * tex_color.z,
+        base_color.w * tex_color.w
+    );
+}
+
 //==============================================================================
 // Custom Sphere Intersection Program
 // From NVIDIA OptiX SDK 9.0 sphere.cu

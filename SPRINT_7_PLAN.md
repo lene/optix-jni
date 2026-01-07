@@ -1333,6 +1333,796 @@ class ObjectSpecMaterialTest extends AnyFlatSpec with Matchers:
 
 ---
 
+## Step 7.5: Complete Texture Rendering Pipeline
+
+**Goal:** Wire texture objects through the SBT to shaders, implement per-instance texture support for IAS mode, and add full CLI integration for loading texture files.
+
+**Prerequisites:** Steps 7.1-7.4 completed (material system, UV coordinates, texture upload, CLI material parsing)
+
+### Design Decisions
+
+1. **Texture × color** - Texture color multiplies base material color (allows tinting)
+2. **No UVs = no texture** - Meshes with stride < 8 ignore textures gracefully
+3. **`--texture-dir` flag** - Texture paths relative to this directory (default: `.`)
+4. **Strict failure** - Missing texture files cause error (no silent fallback)
+5. **ImageIO formats** - Support PNG, JPG, GIF, BMP via Java ImageIO
+6. **Per-instance textures** - Each instance in IAS mode can have its own texture index
+7. **IAS mode only** - Textures only supported in IAS (multi-instance) mode, not single-object mode
+8. **Default parameter** - `addTriangleMeshInstance()` uses default `textureIndex = -1` for backward compatibility
+9. **Programmatic test textures** - Test images generated in test setup, not committed as binary files
+
+### Architecture Overview
+
+**IAS (multi-instance) mode only:**
+- Texture indices stored per-instance in `InstanceMaterial.texture_index`
+- Texture objects array uploaded to `Params.textures`
+- Shader looks up texture index from instance materials, samples from textures array
+
+**Single-object mode:**
+- Textures NOT supported (simplifies implementation)
+- Uses solid color from SBT hit data
+
+---
+
+### Task 7.5.1: Add texture_index to InstanceMaterial and ObjectInstance
+
+**File:** `optix-jni/src/main/native/include/OptiXData.h`
+
+Update `InstanceMaterial` struct to include texture index:
+
+```cpp
+// Per-instance material data for IAS (indexed by instance ID)
+// Stored in GPU array, accessed via optixGetInstanceId()
+struct InstanceMaterial {
+    float color[4];             // RGBA color (alpha: 0=transparent, 1=opaque)
+    float ior;                  // Index of refraction
+    unsigned int geometry_type; // GeometryType enum value
+    int texture_index;          // Index into textures array (-1 = no texture)
+    unsigned int padding;       // Reduced padding to maintain 32-byte alignment
+};
+```
+
+Add textures array to `Params` struct:
+
+```cpp
+struct Params {
+    ...
+    // Texture array for per-instance texture sampling
+    cudaTextureObject_t* textures;     // Device pointer to texture objects array
+    unsigned int num_textures;          // Number of textures in array
+    ...
+};
+```
+
+**File:** `optix-jni/src/main/native/include/SceneParameters.h`
+
+Add texture_index to `TriangleMeshParams`:
+
+```cpp
+struct TriangleMeshParams {
+    ...
+    int texture_index = -1;  // Index into textures vector (-1 = no texture)
+    bool dirty = false;
+};
+```
+
+**File:** `optix-jni/src/main/native/SceneParameters.cpp`
+
+Add setter method:
+
+```cpp
+void SceneParameters::setTriangleMeshTextureIndex(int textureIndex) {
+    triangle_mesh.texture_index = textureIndex;
+    triangle_mesh.dirty = true;
+}
+```
+
+---
+
+### Task 7.5.2: Update OptiXWrapper for Per-Instance Textures
+
+**File:** `optix-jni/src/main/native/OptiXWrapper.cpp`
+
+Update `ObjectInstance` struct in `Impl`:
+
+```cpp
+struct ObjectInstance {
+    GeometryType geometry_type;
+    OptixTraversableHandle gas_handle;
+    float transform[12];
+    float color[4];
+    float ior;
+    int texture_index;          // NEW: -1 = no texture
+    bool active;
+};
+```
+
+Add to `Impl` struct:
+
+```cpp
+CUdeviceptr d_texture_objects = 0;  // cudaTextureObject_t array on GPU
+```
+
+Update `addTriangleMeshInstance()` signature:
+
+```cpp
+int OptiXWrapper::addTriangleMeshInstance(
+    const float* transform, 
+    float r, float g, float b, float a, 
+    float ior, 
+    int textureIndex = -1) {
+    ...
+    inst.texture_index = textureIndex;
+    ...
+}
+```
+
+Update `buildIAS()` to copy texture_index to material:
+
+```cpp
+InstanceMaterial mat = {};
+std::memcpy(mat.color, inst.color, 4 * sizeof(float));
+mat.ior = inst.ior;
+mat.geometry_type = inst.geometry_type;
+mat.texture_index = inst.texture_index;  // NEW
+materials.push_back(mat);
+```
+
+In `render()`, upload texture objects array and set params:
+
+```cpp
+// Upload texture objects to GPU if needed
+if (!impl->textures.empty() && impl->d_texture_objects == 0) {
+    std::vector<cudaTextureObject_t> tex_objs;
+    for (const auto& tex : impl->textures) {
+        tex_objs.push_back(tex.texture_obj);
+    }
+    CUDA_CHECK(cudaMalloc(&impl->d_texture_objects, 
+                          tex_objs.size() * sizeof(cudaTextureObject_t)));
+    CUDA_CHECK(cudaMemcpy(impl->d_texture_objects, tex_objs.data(),
+                          tex_objs.size() * sizeof(cudaTextureObject_t),
+                          cudaMemcpyHostToDevice));
+}
+params.textures = reinterpret_cast<cudaTextureObject_t*>(impl->d_texture_objects);
+params.num_textures = static_cast<unsigned int>(impl->textures.size());
+```
+
+**File:** `optix-jni/src/main/native/include/OptiXWrapper.h`
+
+Update method signature:
+
+```cpp
+int addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior, int textureIndex = -1);
+```
+
+---
+
+### Task 7.5.3: Update PipelineManager to Accept Textures
+
+**File:** `optix-jni/src/main/native/include/PipelineManager.h`
+
+Change signatures:
+
+```cpp
+void buildPipeline(const SceneParameters& scene, 
+                   OptixTraversableHandle gasHandle,
+                   const std::vector<TextureData>& textures);
+
+private:
+    void setupShaderBindingTable(const SceneParameters& scene, 
+                                 OptixTraversableHandle gasHandle,
+                                 const std::vector<TextureData>& textures);
+```
+
+**File:** `optix-jni/src/main/native/PipelineManager.cpp`
+
+Update `setupShaderBindingTable()` to copy texture to SBT for single-object mode:
+
+```cpp
+if (scene.hasTriangleMesh()) {
+    const auto& mesh = scene.getTriangleMesh();
+    TriangleHitGroupData tri_data;
+    tri_data.vertices = reinterpret_cast<float*>(mesh.d_vertices);
+    tri_data.indices = reinterpret_cast<unsigned int*>(mesh.d_indices);
+    tri_data.vertex_stride = mesh.vertex_stride;
+    std::memcpy(tri_data.color, mesh.color, sizeof(float) * 4);
+    tri_data.ior = mesh.ior;
+    
+    // Set texture object from index (single-object mode)
+    if (mesh.texture_index >= 0 && 
+        static_cast<size_t>(mesh.texture_index) < textures.size()) {
+        tri_data.base_color_texture = textures[mesh.texture_index].texture_obj;
+    } else {
+        tri_data.base_color_texture = 0;  // No texture
+    }
+    ...
+}
+```
+
+**File:** `optix-jni/src/main/native/OptiXWrapper.cpp`
+
+Update `buildPipeline()` to pass textures:
+
+```cpp
+void OptiXWrapper::buildPipeline() {
+    ...
+    impl->pipeline_manager.buildPipeline(impl->scene, impl->gas_handle, impl->textures);
+}
+```
+
+---
+
+### Task 7.5.4: Add Shader Helper Functions for Per-Instance Textures
+
+**File:** `optix-jni/src/main/native/shaders/helpers.cu`
+
+Add helper functions after `getInstanceMaterial()`:
+
+```cuda
+/**
+ * Get texture index for current instance.
+ * Returns -1 if no texture assigned or not in IAS mode.
+ */
+__device__ int getInstanceTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].texture_index;
+    }
+    return -1;  // No texture in single-object mode (uses SBT texture)
+}
+
+/**
+ * Sample texture by index from global textures array.
+ * Returns base_color if texture_index is invalid or no UVs.
+ */
+__device__ float4 sampleInstanceTexture(int texture_index, float2 uv, float4 base_color) {
+    if (texture_index < 0 || 
+        static_cast<unsigned int>(texture_index) >= params.num_textures ||
+        params.textures == nullptr) {
+        return base_color;
+    }
+    float4 tex_color = tex2D<float4>(params.textures[texture_index], uv.x, uv.y);
+    // Multiply texture with base color (allows tinting)
+    return make_float4(
+        base_color.x * tex_color.x,
+        base_color.y * tex_color.y,
+        base_color.z * tex_color.z,
+        base_color.w * tex_color.w
+    );
+}
+```
+
+---
+
+### Task 7.5.5: Update hit_triangle.cu for IAS Mode and Textures
+
+**File:** `optix-jni/src/main/native/shaders/hit_triangle.cu`
+
+Modify `__closesthit__triangle()` to handle both IAS and single-object modes:
+
+After normal interpolation (around line 291), add UV interpolation:
+
+```cuda
+// Interpolate UV coordinates (if stride >= 8)
+float2 uv = make_float2(0.0f, 0.0f);
+if (stride >= 8) {
+    uv = make_float2(
+        w * v0[6] + u * v1[6] + v * v2[6],
+        w * v0[7] + u * v1[7] + v * v2[7]
+    );
+}
+```
+
+Replace mesh_color reading (around line 311) with IAS-mode texture handling:
+
+```cuda
+// Get material color and texture (IAS mode only for textures)
+float4 mesh_color;
+float mesh_ior;
+
+if (params.use_ias && params.instance_materials) {
+    // IAS mode: read from per-instance materials
+    getInstanceMaterial(mesh_color, mesh_ior);
+    const int texture_index = getInstanceTextureIndex();
+    
+    // Apply texture from global textures array
+    if (texture_index >= 0 && stride >= 8) {
+        mesh_color = sampleInstanceTexture(texture_index, uv, mesh_color);
+    }
+} else {
+    // Single-object mode: read from SBT hit data (no texture support)
+    mesh_color = make_float4(
+        hit_data->color[0],
+        hit_data->color[1],
+        hit_data->color[2],
+        hit_data->color[3]
+    );
+    mesh_ior = hit_data->ior;
+}
+
+const float mesh_alpha = mesh_color.w;
+```
+
+---
+
+### Task 7.5.6: Update JNI Bindings
+
+**File:** `optix-jni/src/main/native/JNIBindings.cpp`
+
+Update `addTriangleMeshInstanceNative` to accept texture index:
+
+```cpp
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNative(
+    JNIEnv* env, jobject obj, 
+    jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jint textureIndex) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr || transform == nullptr) return -1;
+        
+        jfloat* transformArr = env->GetFloatArrayElements(transform, nullptr);
+        if (transformArr == nullptr) return -1;
+        
+        int result = wrapper->addTriangleMeshInstance(
+            transformArr, r, g, b, a, ior, static_cast<int>(textureIndex));
+        
+        env->ReleaseFloatArrayElements(transform, transformArr, 0);
+        return result;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addTriangleMeshInstance: " << e.what() << std::endl;
+        return -1;
+    }
+}
+```
+
+---
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr && textureName != nullptr) {
+            const char* name = env->GetStringUTFChars(textureName, nullptr);
+            wrapper->setMeshTexture(name);
+            env->ReleaseStringUTFChars(textureName, name);
+        }
+    } catch (const std::exception& e) {
+---
+
+### Task 7.5.7: Update Scala OptiXRenderer
+
+**File:** `optix-jni/src/main/scala/menger/optix/OptiXRenderer.scala`
+
+Update native declarations and wrappers (using default parameter for backward compatibility):
+
+```scala
+// Updated signature with texture index (default -1 for backward compatibility)
+@native private def addTriangleMeshInstanceNative(
+  transform: Array[Float],
+  r: Float, g: Float, b: Float, a: Float,
+  ior: Float,
+  textureIndex: Int
+): Int
+
+def addTriangleMeshInstance(
+  transform: Array[Float], 
+  color: Color, 
+  ior: Float, 
+  textureIndex: Int = -1  // Default parameter for backward compatibility
+): Option[Int] =
+  require(transform.length == Const.Renderer.transformMatrixSize, 
+    s"Transform must have ${Const.Renderer.transformMatrixSize} elements")
+  val id = addTriangleMeshInstanceNative(
+    transform, color.r, color.g, color.b, color.a, ior, textureIndex)
+  if id >= 0 then Some(id) else None
+
+def addTriangleMeshInstance(
+  position: Vector[3], 
+  color: Color, 
+  ior: Float, 
+  textureIndex: Int = -1  // Default parameter for backward compatibility
+): Option[Int] =
+  val transform = Array(
+    1.0f, 0.0f, 0.0f, position.x,
+    0.0f, 1.0f, 0.0f, position.y,
+    0.0f, 0.0f, 1.0f, position.z
+  )
+  addTriangleMeshInstance(transform, color, ior, textureIndex)
+```
+
+---
+
+### Task 7.5.8: Add textureDir to ExecutionConfig
+
+**File:** `src/main/scala/menger/config/ExecutionConfig.scala`
+
+Add field:
+
+```scala
+case class ExecutionConfig(
+  fpsLogIntervalMs: Int = 5000,
+  timeout: Float = 0f,
+  saveName: Option[String] = None,
+  enableStats: Boolean = false,
+  maxInstances: Int = 64,
+  textureDir: String = "."  // NEW: base directory for texture paths
+)
+```
+
+Update companion object defaults accordingly.
+
+---
+
+### Task 7.5.9: Add texture Field to ObjectSpec
+
+**File:** `src/main/scala/menger/ObjectSpec.scala`
+
+Add field to case class:
+
+```scala
+case class ObjectSpec(
+  objectType: String,
+  x: Float = 0.0f,
+  y: Float = 0.0f,
+  z: Float = 0.0f,
+  size: Float = 1.0f,
+  level: Option[Float] = None,
+  color: Option[Color] = None,
+  ior: Float = 1.0f,
+  material: Option[Material] = None,
+  texture: Option[String] = None  // NEW: texture file path
+)
+```
+
+Add parsing:
+
+```scala
+private def parseTexture(kvPairs: Map[String, String]): Either[String, Option[String]] =
+  Right(kvPairs.get("texture"))
+```
+
+Update `parse()` to include texture in the for-comprehension.
+
+---
+
+### Task 7.5.10: Add --texture-dir CLI Option
+
+**File:** `src/main/scala/menger/MengerCLIOptions.scala`
+
+Add option to `optixSceneGroup`:
+
+```scala
+val textureDir: ScallopOption[String] = opt[String](
+  required = false, default = Some("."), group = optixSceneGroup,
+  descr = "Base directory for texture file paths (default: current directory)"
+)
+```
+
+---
+
+### Task 7.5.11: Create TextureLoader Utility
+
+**File:** `src/main/scala/menger/TextureLoader.scala` (NEW)
+
+```scala
+package menger
+
+import java.awt.image.BufferedImage
+import java.nio.file.Path
+import javax.imageio.ImageIO
+import scala.util.Try
+
+case class TextureImage(
+  name: String,
+  data: Array[Byte],  // RGBA, 4 bytes per pixel
+  width: Int,
+  height: Int
+)
+
+object TextureLoader:
+  
+  def load(path: Path): Try[TextureImage] = Try {
+    val file = path.toFile
+    require(file.exists(), s"Texture file not found: $path")
+    
+    val image = ImageIO.read(file)
+    require(image != null, s"Failed to read image: $path (unsupported format?)")
+    
+    val width = image.getWidth
+    val height = image.getHeight
+    val data = new Array[Byte](width * height * 4)
+    
+    // Convert to RGBA byte array
+    for {
+      y <- 0 until height
+      x <- 0 until width
+    } {
+      val pixel = image.getRGB(x, y)
+      val idx = (y * width + x) * 4
+      data(idx + 0) = ((pixel >> 16) & 0xFF).toByte  // R
+      data(idx + 1) = ((pixel >> 8) & 0xFF).toByte   // G
+      data(idx + 2) = (pixel & 0xFF).toByte          // B
+      data(idx + 3) = ((pixel >> 24) & 0xFF).toByte  // A
+    }
+    
+    TextureImage(
+      name = file.getName,
+      data = data,
+      width = width,
+      height = height
+    )
+  }
+  
+  def loadRelative(textureDir: Path, texturePath: String): Try[TextureImage] =
+    load(textureDir.resolve(texturePath))
+```
+
+---
+
+### Task 7.5.12: Wire Texture Loading in OptiXEngine
+
+**File:** `src/main/scala/menger/engines/OptiXEngine.scala`
+
+In `setupMultipleTriangleMeshes()`:
+
+```scala
+private def setupMultipleTriangleMeshes(
+  specs: List[ObjectSpec], 
+  renderer: OptiXRenderer
+): Try[Unit] = Try:
+  logger.info(s"Setting up ${specs.length} triangle mesh instances")
+
+  // First, upload all textures and build name->index map
+  val textureDir = Paths.get(config.execution.textureDir)
+  val textureIndices: Map[String, Int] = specs
+    .flatMap(_.texture)
+    .distinct
+    .flatMap { texturePath =>
+      TextureLoader.loadRelative(textureDir, texturePath) match
+        case Success(textureImage) =>
+          renderer.uploadTexture(
+            textureImage.name, 
+            textureImage.data, 
+            textureImage.width, 
+            textureImage.height
+          ) match
+            case Success(index) =>
+              logger.info(s"Loaded texture '$texturePath' " +
+                s"(${textureImage.width}x${textureImage.height}) -> index $index")
+              Some(texturePath -> index)
+            case Failure(e) =>
+              throw RuntimeException(
+                s"Failed to upload texture '$texturePath': ${e.getMessage}")
+        case Failure(e) =>
+          throw RuntimeException(
+            s"Failed to load texture '$texturePath': ${e.getMessage}")
+    }.toMap
+
+  // Set up mesh geometry
+  val firstSpec = specs.head
+  val mesh = createMeshForSpec(firstSpec)
+  renderer.setTriangleMesh(mesh)
+
+  // Add instances with texture indices
+  specs.foreach { spec =>
+    val position = menger.common.Vector[3](spec.x, spec.y, spec.z)
+    val (color, ior) = spec.material match
+      case Some(mat) => (mat.color, mat.ior)
+      case None => (spec.color.getOrElse(menger.common.Color(0.7f, 0.7f, 0.7f)), spec.ior)
+
+    val textureIndex = spec.texture.flatMap(textureIndices.get).getOrElse(-1)
+
+    val instanceId = renderer.addTriangleMeshInstance(position, color, ior, textureIndex)
+    instanceId match
+      case Some(id) =>
+        logger.debug(s"Added ${spec.objectType} instance $id with texture index $textureIndex")
+      case None =>
+        logger.error(s"Failed to add ${spec.objectType} instance")
+  }
+```
+
+---
+
+### Task 7.5.13: Create Test Texture Files
+
+**Directory:** `src/test/resources/textures/`
+
+Create small test images programmatically in test setup:
+
+```scala
+object TestTextureGenerator:
+  def createTestTextures(dir: Path): Unit =
+    Files.createDirectories(dir)
+    
+    // 4x4 solid red PNG
+    val redImage = new BufferedImage(4, 4, BufferedImage.TYPE_INT_ARGB)
+    for (x <- 0 until 4; y <- 0 until 4) 
+      redImage.setRGB(x, y, 0xFFFF0000)
+    ImageIO.write(redImage, "PNG", dir.resolve("test_red.png").toFile)
+    
+    // 8x8 checkerboard PNG
+    val checker = new BufferedImage(8, 8, BufferedImage.TYPE_INT_ARGB)
+    for (x <- 0 until 8; y <- 0 until 8) {
+      val color = if ((x + y) % 2 == 0) 0xFFFFFFFF else 0xFF000000
+      checker.setRGB(x, y, color)
+    }
+    ImageIO.write(checker, "PNG", dir.resolve("test_checkerboard.png").toFile)
+    
+    // 16x16 gradient JPG
+    val gradient = new BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB)
+    for (x <- 0 until 16; y <- 0 until 16) {
+      val gray = (x * 16) << 16 | (y * 16) << 8 | 128
+      gradient.setRGB(x, y, gray)
+    }
+    ImageIO.write(gradient, "JPG", dir.resolve("test_gradient.jpg").toFile)
+```
+
+---
+
+### Task 7.5.14: Add Tests
+
+**File:** `src/test/scala/menger/TextureLoaderTest.scala` (NEW)
+
+```scala
+package menger
+
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.BeforeAndAfterAll
+import java.nio.file.{Files, Path}
+import scala.util.{Success, Failure}
+
+class TextureLoaderTest extends AnyFlatSpec with Matchers with BeforeAndAfterAll:
+  
+  private var testDir: Path = _
+  
+  override def beforeAll(): Unit =
+    testDir = Files.createTempDirectory("texture-test")
+    TestTextureGenerator.createTestTextures(testDir)
+  
+  override def afterAll(): Unit =
+    // Clean up test files
+    Files.walk(testDir).sorted(java.util.Comparator.reverseOrder())
+      .forEach(Files.delete)
+  
+  "TextureLoader" should "load PNG file" in:
+    val result = TextureLoader.load(testDir.resolve("test_red.png"))
+    result shouldBe a[Success[_]]
+    val texture = result.get
+    texture.width shouldBe 4
+    texture.height shouldBe 4
+    texture.data.length shouldBe 4 * 4 * 4  // 4x4 pixels, 4 bytes each
+  
+  it should "load JPG file" in:
+    val result = TextureLoader.load(testDir.resolve("test_gradient.jpg"))
+    result shouldBe a[Success[_]]
+    val texture = result.get
+    texture.width shouldBe 16
+    texture.height shouldBe 16
+  
+  it should "return Failure for missing file" in:
+    val result = TextureLoader.load(testDir.resolve("nonexistent.png"))
+    result shouldBe a[Failure[_]]
+  
+  it should "convert RGBA correctly" in:
+    val result = TextureLoader.load(testDir.resolve("test_red.png"))
+    val texture = result.get
+    // First pixel should be red (R=255, G=0, B=0, A=255)
+    texture.data(0) shouldBe 255.toByte  // R
+    texture.data(1) shouldBe 0.toByte    // G
+    texture.data(2) shouldBe 0.toByte    // B
+    texture.data(3) shouldBe 255.toByte  // A (opaque)
+```
+
+**File:** `src/test/scala/menger/ObjectSpecTextureTest.scala` (NEW)
+
+```scala
+package menger
+
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+
+class ObjectSpecTextureTest extends AnyFlatSpec with Matchers:
+
+  "ObjectSpec parser" should "parse texture path" in:
+    val result = ObjectSpec.parse("type=cube:pos=0,0,0:texture=textures/brick.png")
+    result shouldBe a[Right[_, _]]
+    val spec = result.toOption.get
+    spec.texture shouldBe Some("textures/brick.png")
+
+  it should "have None texture when not specified" in:
+    val result = ObjectSpec.parse("type=cube:pos=0,0,0")
+    result shouldBe a[Right[_, _]]
+    val spec = result.toOption.get
+    spec.texture shouldBe None
+
+  it should "parse texture with material" in:
+    val result = ObjectSpec.parse("type=cube:material=metal:texture=metal.png")
+    result shouldBe a[Right[_, _]]
+    val spec = result.toOption.get
+    spec.texture shouldBe Some("metal.png")
+    spec.material shouldBe defined
+```
+
+**File:** `optix-jni/src/test/scala/menger/optix/TextureBindingTest.scala` (NEW)
+
+Integration test for texture binding (requires OptiX):
+
+```scala
+package menger.optix
+
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+import scala.util.Success
+
+class TextureBindingTest extends AnyFlatSpec with Matchers:
+
+  "OptiXRenderer" should "upload texture and return valid index" in:
+    val renderer = new OptiXRenderer()
+    assume(renderer.initialize(), "OptiX not available")
+    
+    try
+      // Create simple 2x2 red texture
+      val data = Array.fill[Byte](2 * 2 * 4)(0)
+      for (i <- 0 until 4) {
+        data(i * 4) = 255.toByte      // R
+        data(i * 4 + 3) = 255.toByte  // A
+      }
+      
+      val result = renderer.uploadTexture("test_red", data, 2, 2)
+      result shouldBe a[Success[_]]
+      result.get shouldBe >= (0)
+    finally
+      renderer.dispose()
+
+  it should "bind texture to mesh instance" in:
+    val renderer = new OptiXRenderer()
+    assume(renderer.initialize(), "OptiX not available")
+    
+    try
+      // Upload texture
+      val data = Array.fill[Byte](2 * 2 * 4)(255.toByte)
+      val textureIndex = renderer.uploadTexture("test", data, 2, 2).get
+      
+      // Create simple mesh (would need actual mesh data)
+      // This test validates the API works, not the rendering result
+      textureIndex shouldBe >= (0)
+    finally
+      renderer.dispose()
+```
+
+---
+
+## Files Summary (Updated for Step 7.5)
+
+### New Files
+
+| File | Description |
+|------|-------------|
+| `src/main/scala/menger/TextureLoader.scala` | Image loading utility |
+| `src/test/scala/menger/TextureLoaderTest.scala` | TextureLoader unit tests |
+| `src/test/scala/menger/ObjectSpecTextureTest.scala` | ObjectSpec texture parsing tests |
+| `optix-jni/src/test/scala/menger/optix/TextureBindingTest.scala` | Texture binding integration tests |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `optix-jni/.../include/OptiXData.h` | Add `texture_index` to `InstanceMaterial`, textures to `Params` |
+| `optix-jni/.../include/SceneParameters.h` | Add `texture_index` to `TriangleMeshParams` |
+| `optix-jni/.../SceneParameters.cpp` | Add `setTriangleMeshTextureIndex()` |
+| `optix-jni/.../include/OptiXWrapper.h` | Update `addTriangleMeshInstance()`, add `setMeshTexture()` |
+| `optix-jni/.../OptiXWrapper.cpp` | Add `texture_index` to `ObjectInstance`, upload textures array |
+| `optix-jni/.../include/PipelineManager.h` | Add textures parameter to `buildPipeline()` |
+| `optix-jni/.../PipelineManager.cpp` | Copy texture to SBT in `setupShaderBindingTable()` |
+| `optix-jni/.../JNIBindings.cpp` | Update `addTriangleMeshInstanceNative`, add `setMeshTextureNative` |
+| `optix-jni/.../shaders/helpers.cu` | Add `getInstanceTextureIndex()`, `sampleInstanceTexture()` |
+| `optix-jni/.../shaders/hit_triangle.cu` | Add IAS mode handling, UV interpolation, texture sampling |
+| `optix-jni/.../optix/OptiXRenderer.scala` | Update `addTriangleMeshInstance()`, add `setMeshTexture()` |
+| `src/.../menger/ObjectSpec.scala` | Add `texture` field and parsing |
+| `src/.../menger/config/ExecutionConfig.scala` | Add `textureDir` field |
+| `src/.../menger/MengerCLIOptions.scala` | Add `--texture-dir` option |
+| `src/.../menger/engines/OptiXEngine.scala` | Wire texture loading with per-instance indices |
+
+---
+
 ## Files Summary
 
 ### New Files
@@ -1364,15 +2154,28 @@ class ObjectSpecMaterialTest extends AnyFlatSpec with Matchers:
 
 ## Definition of Done
 
-- [ ] All tasks completed
+### Steps 7.1-7.4 (Material System Foundation)
+- [x] Material case class with PBR properties
+- [x] Material presets (glass, water, diamond, chrome, gold, copper, metal, plastic, matte)
+- [x] UV coordinates in vertex format (8-float stride)
+- [x] Texture upload API (CUDA arrays and texture objects)
+- [x] CLI material parsing (`--objects type=sphere:material=glass`)
+
+### Step 7.5 (Texture Rendering Pipeline)
+- [ ] Per-instance texture indices in IAS mode
+- [ ] Texture array uploaded to launch params
+- [ ] Shader texture sampling (both single-object and IAS modes)
+- [ ] TextureLoader utility for image file loading
+- [ ] `--texture-dir` CLI option
+- [ ] `texture=path` in ObjectSpec parsing
+- [ ] Texture binding tests passing
+
+### Quality Gates
 - [ ] All tests passing (new + existing 897+)
 - [ ] Code compiles without warnings
 - [ ] Code passes `sbt "scalafix --check"`
 - [ ] CHANGELOG.md updated
-- [ ] UV coordinates work for cube and sponge
-- [ ] At least one texture renders correctly (proof of concept)
-- [ ] Material presets work via CLI
-- [ ] Backward compatible: existing scenes without materials still work
+- [ ] Backward compatible: existing scenes without materials/textures still work
 
 **🎯 MILESTONE: v0.5 - Full 3D Support** (achieved after this sprint)
 

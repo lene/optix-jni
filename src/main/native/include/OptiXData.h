@@ -97,7 +97,8 @@ struct InstanceMaterial {
     float color[4];             // RGBA color (alpha: 0=transparent, 1=opaque)
     float ior;                  // Index of refraction
     unsigned int geometry_type; // GeometryType enum value
-    unsigned int padding[2];    // Align to 32 bytes for GPU efficiency
+    int texture_index;          // Index into Params.textures array (-1 = no texture)
+    unsigned int padding;       // Align to 32 bytes for GPU efficiency
 };
 
 // Extended material properties for physically-based rendering (Sprint 7)
@@ -313,6 +314,10 @@ struct Params {
     bool use_ias;                           // true = multi-object mode (use IAS), false = single GAS
     InstanceMaterial* instance_materials;   // Device pointer to per-instance material array
     unsigned int num_instances;             // Number of active instances
+
+    // Texture support (IAS mode only)
+    cudaTextureObject_t* textures;          // Device pointer to array of texture objects
+    unsigned int num_textures;              // Number of textures in array
 
     // Dynamic scene data (moved from SBT for performance)
     float sphere_color[4];      // Sphere color (RGBA, 0.0-1.0)

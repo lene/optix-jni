@@ -291,6 +291,16 @@ extern "C" __global__ void __closesthit__triangle() {
     );
     normal = normalize(normal);
 
+    // Interpolate UV coordinates if available (stride >= 8)
+    float2 uv_coords = make_float2(0.0f, 0.0f);
+    if (stride >= VERTEX_STRIDE_WITH_UV) {
+        // UVs are at offset 6 within each vertex
+        uv_coords = make_float2(
+            w * v0[6] + u * v1[6] + v * v2[6],
+            w * v0[7] + u * v1[7] + v * v2[7]
+        );
+    }
+
     // Determine if ray is entering or exiting (front face = entering)
     const bool entering = (dot(ray_direction, normal) < 0.0f);
 
@@ -308,15 +318,33 @@ extern "C" __global__ void __closesthit__triangle() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get mesh color and alpha
-    const float4 mesh_color = make_float4(
-        hit_data->color[0],
-        hit_data->color[1],
-        hit_data->color[2],
-        hit_data->color[3]
-    );
+    // Get mesh color and IOR - source depends on IAS mode
+    float4 mesh_color;
+    float mesh_ior;
+
+    if (params.use_ias && params.instance_materials) {
+        // IAS mode: read from per-instance materials array
+        const unsigned int instance_id = optixGetInstanceId();
+        const InstanceMaterial& mat = params.instance_materials[instance_id];
+        mesh_color = make_float4(mat.color[0], mat.color[1], mat.color[2], mat.color[3]);
+        mesh_ior = mat.ior;
+
+        // Apply texture if available (in IAS mode only)
+        if (stride >= VERTEX_STRIDE_WITH_UV) {
+            mesh_color = sampleInstanceTexture(mesh_color, uv_coords);
+        }
+    } else {
+        // Single-object mode: use SBT hit group data
+        mesh_color = make_float4(
+            hit_data->color[0],
+            hit_data->color[1],
+            hit_data->color[2],
+            hit_data->color[3]
+        );
+        mesh_ior = hit_data->ior;
+    }
+
     const float mesh_alpha = mesh_color.w;
-    const float mesh_ior = hit_data->ior;
 
     // Handle fully transparent triangles
     if (mesh_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {

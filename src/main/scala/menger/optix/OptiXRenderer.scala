@@ -331,7 +331,8 @@ class OptiXRenderer extends LazyLogging:
     g: Float,
     b: Float,
     a: Float,
-    ior: Float
+    ior: Float,
+    textureIndex: Int
   ): Int
 
   @native def removeInstance(instanceId: Int): Unit
@@ -357,18 +358,31 @@ class OptiXRenderer extends LazyLogging:
     )
     addSphereInstance(transform, color, ior)
 
-  def addTriangleMeshInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
+  def addTriangleMeshInstance(
+    transform: Array[Float],
+    color: Color,
+    ior: Float,
+    textureIndex: Int = -1
+  ): Option[Int] =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addTriangleMeshInstanceNative(transform, color.r, color.g, color.b, color.a, ior)
+    val id = addTriangleMeshInstanceNative(transform, color.r, color.g, color.b, color.a, ior, textureIndex)
     if id >= 0 then Some(id) else None
 
-  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+  def addTriangleMeshInstance(
+    position: Vector[3],
+    color: Color,
+    ior: Float,
+    textureIndex: Int
+  ): Option[Int] =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
       0.0f, 0.0f, 1.0f, position.z
     )
-    addTriangleMeshInstance(transform, color, ior)
+    addTriangleMeshInstance(transform, color, ior, textureIndex)
+
+  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+    addTriangleMeshInstance(position, color, ior, -1)
 
   def render(size: ImageSize): Option[Array[Byte]] =
     render(size.width, size.height)

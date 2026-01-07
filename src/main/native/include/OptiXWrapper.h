@@ -83,7 +83,9 @@ public:
     // Transform is 4x3 row-major matrix: [m00 m01 m02 m03; m10 m11 m12 m13; m20 m21 m22 m23]
     // where m03, m13, m23 are translation components
     int addSphereInstance(const float* transform, float r, float g, float b, float a, float ior);
-    int addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior);
+    int addTriangleMeshInstance(
+        const float* transform, float r, float g, float b, float a, float ior, int textureIndex = -1
+    );
     void removeInstance(int instanceId);
     void clearAllInstances();
     int getInstanceCount() const;

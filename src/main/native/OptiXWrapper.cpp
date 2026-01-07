@@ -51,6 +51,7 @@ struct OptiXWrapper::Impl {
         float transform[12];                  // 4x3 row-major transform matrix
         float color[4];                       // RGBA material color
         float ior;                            // Index of refraction
+        int texture_index;                    // Index into textures array (-1 = no texture)
         bool active;                          // True if instance is enabled
     };
 
@@ -76,6 +77,7 @@ struct OptiXWrapper::Impl {
     // Texture management
     std::vector<TextureData> textures;
     std::map<std::string, int> texture_name_to_index;
+    CUdeviceptr d_texture_objects = 0;        // Device array of cudaTextureObject_t for Params
 
     Impl()
         : pipeline_manager(optix_context)
@@ -399,6 +401,7 @@ void OptiXWrapper::buildIAS() {
         std::memcpy(mat.color, inst.color, 4 * sizeof(float));
         mat.ior = inst.ior;
         mat.geometry_type = inst.geometry_type;
+        mat.texture_index = inst.texture_index;
         materials.push_back(mat);
     }
 
@@ -541,11 +544,42 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.use_ias = true;
             params.instance_materials = reinterpret_cast<InstanceMaterial*>(impl->d_instance_materials);
             params.num_instances = getInstanceCount();
+
+            // Upload texture objects array for IAS mode
+            if (!impl->textures.empty()) {
+                // Build array of texture objects
+                std::vector<cudaTextureObject_t> tex_objs;
+                tex_objs.reserve(impl->textures.size());
+                for (const auto& tex : impl->textures) {
+                    tex_objs.push_back(tex.texture_obj);
+                }
+
+                // Reallocate GPU buffer if size changed
+                size_t tex_size = tex_objs.size() * sizeof(cudaTextureObject_t);
+                if (impl->d_texture_objects) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_texture_objects));
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_texture_objects), tex_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_texture_objects),
+                    tex_objs.data(),
+                    tex_size,
+                    cudaMemcpyHostToDevice
+                ));
+
+                params.textures = reinterpret_cast<cudaTextureObject_t*>(impl->d_texture_objects);
+                params.num_textures = static_cast<unsigned int>(tex_objs.size());
+            } else {
+                params.textures = nullptr;
+                params.num_textures = 0;
+            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
             params.instance_materials = nullptr;
             params.num_instances = 0;
+            params.textures = nullptr;
+            params.num_textures = 0;
         }
 
         // Dynamic scene data
@@ -700,6 +734,7 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
     inst.color[2] = b;
     inst.color[3] = a;
     inst.ior = ior;
+    inst.texture_index = -1;  // Spheres don't support textures
     inst.active = true;
 
     int instanceId = static_cast<int>(impl->instances.size());
@@ -716,7 +751,9 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
     return instanceId;
 }
 
-int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float g, float b, float a, float ior) {
+int OptiXWrapper::addTriangleMeshInstance(
+    const float* transform, float r, float g, float b, float a, float ior, int textureIndex
+) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
             std::cerr << "[OptiX][TriangleMesh] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
@@ -754,6 +791,7 @@ int OptiXWrapper::addTriangleMeshInstance(const float* transform, float r, float
     inst.color[2] = b;
     inst.color[3] = a;
     inst.ior = ior;
+    inst.texture_index = textureIndex;
     inst.active = true;
 
     int instanceId = static_cast<int>(impl->instances.size());
@@ -894,6 +932,12 @@ void OptiXWrapper::releaseTextures() {
     }
     impl->textures.clear();
     impl->texture_name_to_index.clear();
+
+    // Free device texture objects array
+    if (impl->d_texture_objects) {
+        cudaFree(reinterpret_cast<void*>(impl->d_texture_objects));
+        impl->d_texture_objects = 0;
+    }
 }
 
 void OptiXWrapper::dispose() {

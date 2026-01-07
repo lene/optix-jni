@@ -679,11 +679,12 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSphereInstanceNative(
 /**
  * Add a triangle mesh instance to the scene with transform and material.
  * The mesh must be set first with setTriangleMesh().
+ * @param textureIndex Index of texture to use (-1 for no texture)
  * Returns instance ID (>= 0) on success, -1 on failure.
  */
 JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNative(
     JNIEnv* env, jobject obj,
-    jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior) {
+    jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior, jint textureIndex) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -706,7 +707,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNa
             return -1;
         }
 
-        int instanceId = wrapper->addTriangleMeshInstance(transformArr, r, g, b, a, ior);
+        int instanceId = wrapper->addTriangleMeshInstance(transformArr, r, g, b, a, ior, textureIndex);
 
         env->ReleaseFloatArrayElements(transform, transformArr, 0);
 
