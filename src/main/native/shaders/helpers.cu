@@ -227,8 +227,8 @@ __device__ float colorDistance(
     const float dg = fg1 - fg2;
     const float db = fb1 - fb2;
 
-    // Return normalized distance (max distance in RGB cube is √3)
-    return sqrtf(dr * dr + dg * dg + db * db) / 1.732050808f;
+    // Return normalized distance (max distance in RGB cube is sqrt(3))
+    return sqrtf(dr * dr + dg * dg + db * db) / SQRT_3;
 }
 
 /**

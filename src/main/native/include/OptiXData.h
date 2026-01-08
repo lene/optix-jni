@@ -74,6 +74,21 @@ namespace RayTracingConstants {
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     constexpr int CAUSTICS_GRID_RESOLUTION = 128;    // Spatial hash grid resolution (128^3 cells)
     constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
+
+    // Numerical thresholds
+    constexpr float RAY_PARALLEL_THRESHOLD = 1e-6f;    // Ray nearly parallel to surface (avoid div by zero)
+    constexpr float FLUX_EPSILON = 1e-10f;             // Near-zero flux/area threshold for caustics
+    constexpr float HIT_POINT_RAY_TMIN = 0.0001f;      // Hit point collection ray tmin (smaller than CONTINUATION_RAY_OFFSET)
+
+    // Photon emission geometry
+    constexpr float PHOTON_EMISSION_DISTANCE = 20.0f;      // Distance behind sphere for photon origin
+    constexpr float PHOTON_DISK_RADIUS_MULTIPLIER = 2.0f;  // Disk radius = multiplier * sphere_radius
+
+    // Mathematical constants
+    constexpr float SQRT_3 = 1.732050808f;             // sqrt(3), RGB cube diagonal for color distance normalization
+
+    // Output buffer
+    constexpr unsigned char ALPHA_OPAQUE_BYTE = 255;   // Fully opaque alpha for output image
 }
 
 // Material constants (Index of Refraction)

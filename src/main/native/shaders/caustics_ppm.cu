@@ -1,4 +1,40 @@
 //==============================================================================
+// Progressive Photon Mapping (PPM) for Caustics
+//==============================================================================
+//
+// This file implements Progressive Photon Mapping for rendering caustics
+// (focused light patterns created by refraction through transparent objects).
+//
+// PPM Algorithm Overview (4 phases per iteration):
+//
+// Phase 1 - Hit Point Generation (__raygen__hitpoints):
+//   Trace camera rays and record positions where they hit diffuse surfaces.
+//   These "hit points" will accumulate photon energy over multiple iterations.
+//
+// Phase 2 - Grid Building (__caustics_count_grid_cells):
+//   Build spatial hash grid for efficient photon-to-hitpoint lookups.
+//   (Currently uses brute-force; grid is prepared for future optimization)
+//
+// Phase 3 - Photon Tracing (__raygen__photons):
+//   Emit photons from light sources, trace through scene geometry.
+//   When photons hit the glass sphere, apply Snell's law refraction and
+//   Beer-Lambert absorption. When photons hit the diffuse plane, deposit
+//   their energy at nearby hit points (depositPhoton).
+//
+// Phase 4 - Radiance Computation (__raygen__caustics_radiance, __caustics_update_radii):
+//   Convert accumulated flux to radiance: L = Flux / (pi * R^2)
+//   Progressively reduce search radius using PPM formula:
+//     R_new = R_old * sqrt((N + alpha*M) / (N + M))
+//   This improves estimate quality over iterations.
+//
+// Key Physics:
+//   - Snell's Law: n1*sin(theta1) = n2*sin(theta2) for refraction angles
+//   - Beer-Lambert: I = I0 * exp(-extinction * distance) for absorption
+//   - Total Internal Reflection: when sin(theta_t) > 1, light reflects
+//
+//==============================================================================
+
+//==============================================================================
 // Progressive Photon Mapping - Helper Functions
 //==============================================================================
 
@@ -210,7 +246,7 @@ extern "C" __global__ void __raygen__hitpoints() {
         params.handle,
         cam_eye,
         ray_direction,
-        0.0001f,                     // tmin
+        HIT_POINT_RAY_TMIN,          // tmin
         MAX_RAY_DISTANCE,            // tmax
         0.0f,                        // rayTime
         OptixVisibilityMask(255),
@@ -229,7 +265,7 @@ extern "C" __global__ void __raygen__hitpoints() {
     getRayPlaneComponents(cam_eye, ray_direction, plane_axis, ray_orig_comp, ray_dir_comp);
 
     // Check for plane intersection
-    if (fabsf(ray_dir_comp) > 1e-6f) {
+    if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
         const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
 
         if (t_plane > 0.0f) {
@@ -352,11 +388,11 @@ __device__ float intersectSphere(
     const float sqrt_d = sqrtf(discriminant);
     float t = (-half_b - sqrt_d) / a;  // Near intersection
 
-    if (t < 0.001f) {
+    if (t < CONTINUATION_RAY_OFFSET) {
         t = (-half_b + sqrt_d) / a;  // Try far intersection
     }
 
-    return (t > 0.001f) ? t : -1.0f;
+    return (t > CONTINUATION_RAY_OFFSET) ? t : -1.0f;
 }
 
 /**
@@ -478,10 +514,10 @@ __device__ bool checkPlaneIntersection(
         ray_dir_comp = dir.z;
     }
 
-    if (fabsf(ray_dir_comp) > 1e-6f) {
+    if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
         const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
 
-        if (t_plane > 0.001f) {
+        if (t_plane > CONTINUATION_RAY_OFFSET) {
             const float3 plane_hit = origin + dir * t_plane;
             depositPhoton(plane_hit, dir, flux);
             return true;  // Photon absorbed by diffuse surface
@@ -595,7 +631,7 @@ extern "C" __global__ void __raygen__photons() {
         createONB(light_dir, tangent, bitangent);
 
         // Sample disk with radius large enough to cover sphere
-        const float disk_radius = 2.0f * params.caustics.sphere_radius;  // Cover sphere + margin
+        const float disk_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.sphere_radius;  // Cover sphere + margin
         const float2 disk_sample = sampleDisk(rnd(seed), rnd(seed));
 
         // Photon starts from disk behind the sphere
@@ -607,7 +643,7 @@ extern "C" __global__ void __raygen__photons() {
         photon_origin = sphere_center
                        + tangent * (disk_sample.x * disk_radius)
                        + bitangent * (disk_sample.y * disk_radius)
-                       - light_dir * 20.0f;  // Start well behind sphere
+                       - light_dir * PHOTON_EMISSION_DISTANCE;  // Start well behind sphere
 
         photon_dir = light_dir;
 
@@ -718,7 +754,7 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     // Skip hit points with no accumulated flux
     // Check flux magnitude instead of photon count (n is only updated by radius kernel)
     const float flux_magnitude = hp.flux[0] + hp.flux[1] + hp.flux[2];
-    if (flux_magnitude < 1e-10f) return;
+    if (flux_magnitude < FLUX_EPSILON) return;
 
     // C4: Track hit points that received flux
     if (params.caustics.stats) {
@@ -735,7 +771,7 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     const float area = M_PI * hp.radius * hp.radius;
 
     // Avoid division by zero
-    if (area < 1e-10f) return;
+    if (area < FLUX_EPSILON) return;
 
     // Radiance = flux / (π * R²)
     // Note: For Lambertian BRDF, the reflected radiance is flux/(π*area).

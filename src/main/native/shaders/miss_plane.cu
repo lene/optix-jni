@@ -120,7 +120,7 @@ extern "C" __global__ void __miss__ms() {
 
     unsigned int r, g, b;
 
-    if (fabsf(ray_dir_comp) > 1e-6f) {
+    if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
         const float t = (plane_value - ray_orig_comp) / ray_dir_comp;
 
         if (t > 0.0f) {

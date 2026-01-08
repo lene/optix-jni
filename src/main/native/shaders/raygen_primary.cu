@@ -83,5 +83,5 @@ extern "C" __global__ void __raygen__rg() {
     params.image[pixel_index * 4 + 0] = static_cast<unsigned char>(r);
     params.image[pixel_index * 4 + 1] = static_cast<unsigned char>(g);
     params.image[pixel_index * 4 + 2] = static_cast<unsigned char>(b);
-    params.image[pixel_index * 4 + 3] = 255;  // Alpha
+    params.image[pixel_index * 4 + 3] = ALPHA_OPAQUE_BYTE;  // Alpha
 }
