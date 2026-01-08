@@ -146,13 +146,13 @@ case class RenderResult(
 class OptiXRenderer extends LazyLogging:
 
   // Native handle to the C++ OptiXWrapper instance (0 = not initialized)
-  // Note: Must be accessible to JNI (not private)
+  // Note: Must be accessible to JNI (not private) - JNI reads/writes this field directly
+  // This var is required by the JNI handle pattern - no functional alternative exists
   @SuppressWarnings(Array("org.wartremover.warts.Var"))
   @volatile var nativeHandle: Long = 0L
 
-  // Track initialization state to ensure idempotence
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  private var initialized: Boolean = false
+  // Derive initialization state from nativeHandle (0 = not initialized)
+  private def isInitialized: Boolean = nativeHandle != 0L
 
   // Native method declarations (private - use public wrappers)
   @native private def initializeNative(maxInstances: Int): Boolean
@@ -400,21 +400,18 @@ class OptiXRenderer extends LazyLogging:
 
   // Idempotent initialization - safe to call multiple times
   def initialize(maxInstances: Int = 64): Boolean =
-    if initialized then
+    if isInitialized then
       true  // Already initialized, return success
     else
       val result = initializeNative(maxInstances)
-      if result then
-        initialized = true
-      else
+      if !result then
         logger.error("Failed to initialize OptiX renderer")
       result
 
   // Can be re-initialized after dispose by calling initialize() again
   def dispose(): Unit =
-    if initialized then
+    if isInitialized then
       disposeNative()
-      initialized = false
 
   def isAvailable: Boolean =
     Try(initialize()).recover:
