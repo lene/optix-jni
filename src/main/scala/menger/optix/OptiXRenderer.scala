@@ -1,14 +1,24 @@
 package menger.optix
 
-import com.typesafe.scalalogging.LazyLogging
-import menger.common.{Color, Const, ImageSize, TriangleMeshData, Vector, x, y, z}
-import menger.common.toArray
-
-import java.io.{FileOutputStream, InputStream}
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.nio.file.Files
-import scala.util.{Failure, Success, Try}
+
+import scala.util.Failure
+import scala.util.Success
+import scala.util.Try
 import scala.util.control.Exception.catching
 
+import com.typesafe.scalalogging.LazyLogging
+import menger.common.Color
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.TriangleMeshData
+import menger.common.Vector
+import menger.common.toArray
+import menger.common.x
+import menger.common.y
+import menger.common.z
 import menger.common.{Light => CommonLight}
 
 // Light source types (must match C++ LightType enum)
@@ -276,8 +286,9 @@ class OptiXRenderer extends LazyLogging:
   @native private def releaseTexturesNative(): Unit
 
   def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Try[Int] =
-    require(name != null && name.nonEmpty, "Texture name must not be null or empty")
-    require(imageData != null, "Image data must not be null")
+    // JNI boundary validation - null checks required for native method safety
+    require(name != null && name.nonEmpty, "Texture name must not be null or empty") // scalafix:ok DisableSyntax.null
+    require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
     require(width > 0, s"Width must be positive, got $width")
     require(height > 0, s"Height must be positive, got $height")
     val expectedSize = width * height * 4  // RGBA, 4 bytes per pixel
