@@ -339,29 +339,11 @@ extern "C" __global__ void __closesthit__ch() {
     }
 
     // Convert refracted color to float for absorption calculation
-    float3 refract_color = make_float3(
-        static_cast<float>(refract_r) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(refract_g) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(refract_b) / RayTracingConstants::COLOR_BYTE_MAX
-    );
+    float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
 
     // Apply Beer-Lambert absorption when exiting
     refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color);
 
-    // Blend reflected and refracted rays using Fresnel coefficient
-    const float3 reflect_color = make_float3(
-        static_cast<float>(reflect_r) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(reflect_g) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(reflect_b) / RayTracingConstants::COLOR_BYTE_MAX
-    );
-
-    const float3 final_color = make_float3(
-        fresnel * reflect_color.x + (1.0f - fresnel) * refract_color.x,
-        fresnel * reflect_color.y + (1.0f - fresnel) * refract_color.y,
-        fresnel * reflect_color.z + (1.0f - fresnel) * refract_color.z
-    );
-
-    optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    // Blend reflected and refracted colors using Fresnel and set output payloads
+    blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color);
 }

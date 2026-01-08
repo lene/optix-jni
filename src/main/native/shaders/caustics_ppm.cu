@@ -396,6 +396,52 @@ __device__ float intersectSphere(
 }
 
 /**
+ * Apply Beer-Lambert absorption to photon flux when exiting the sphere.
+ *
+ * Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
+ * Where α is derived from glass color and opacity.
+ *
+ * @param flux Photon flux (modified in place)
+ * @param distance Distance traveled through the medium
+ * @param entering True if photon is entering the sphere (no absorption)
+ */
+__device__ void applyPhotonBeerLambert(float3& flux, float distance, bool entering) {
+    if (entering) return;  // No absorption when entering
+
+    const float3 glass_color = make_float3(
+        params.sphere_color[0],
+        params.sphere_color[1],
+        params.sphere_color[2]
+    );
+    const float glass_alpha = params.sphere_color[3];
+
+    const float absorption_scale = BEER_LAMBERT_ABSORPTION_SCALE;
+    const float3 extinction = make_float3(
+        -logf(fmaxf(glass_color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+        -logf(fmaxf(glass_color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+        -logf(fmaxf(glass_color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale
+    );
+
+    const float3 attenuation = make_float3(
+        expf(-extinction.x * distance * params.sphere_scale),
+        expf(-extinction.y * distance * params.sphere_scale),
+        expf(-extinction.z * distance * params.sphere_scale)
+    );
+
+    // Track absorbed flux in statistics
+    if (params.caustics.stats) {
+        const double absorbed = static_cast<double>(
+            flux.x * (1.0f - attenuation.x) +
+            flux.y * (1.0f - attenuation.y) +
+            flux.z * (1.0f - attenuation.z)
+        );
+        atomicAdd(&params.caustics.stats->total_flux_absorbed, absorbed);
+    }
+
+    flux = make_float3(flux.x * attenuation.x, flux.y * attenuation.y, flux.z * attenuation.z);
+}
+
+/**
  * Handle photon interaction with sphere surface.
  * Applies Beer-Lambert absorption when exiting, then refracts or reflects photon.
  * Updates origin and dir for the next bounce.
@@ -427,38 +473,7 @@ __device__ bool handlePhotonSphereHit(
     const float sin_theta_t_sq = eta * eta * sin_theta_i_sq;
 
     // Apply Beer-Lambert absorption when exiting
-    if (!entering) {
-        const float3 glass_color = make_float3(
-            params.sphere_color[0],
-            params.sphere_color[1],
-            params.sphere_color[2]
-        );
-        const float glass_alpha = params.sphere_color[3];
-
-        const float absorption_scale = BEER_LAMBERT_ABSORPTION_SCALE;
-        const float3 extinction = make_float3(
-            -logf(fmaxf(glass_color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
-            -logf(fmaxf(glass_color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
-            -logf(fmaxf(glass_color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale
-        );
-
-        const float3 attenuation = make_float3(
-            expf(-extinction.x * t * params.sphere_scale),
-            expf(-extinction.y * t * params.sphere_scale),
-            expf(-extinction.z * t * params.sphere_scale)
-        );
-
-        if (params.caustics.stats) {
-            const double absorbed = static_cast<double>(
-                flux.x * (1.0f - attenuation.x) +
-                flux.y * (1.0f - attenuation.y) +
-                flux.z * (1.0f - attenuation.z)
-            );
-            atomicAdd(&params.caustics.stats->total_flux_absorbed, absorbed);
-        }
-
-        flux = make_float3(flux.x * attenuation.x, flux.y * attenuation.y, flux.z * attenuation.z);
-    }
+    applyPhotonBeerLambert(flux, t, entering);
 
     // Check for total internal reflection
     if (sin_theta_t_sq > 1.0f) {
@@ -583,6 +598,98 @@ __device__ void tracePhoton(
 }
 
 //==============================================================================
+// Progressive Photon Mapping - Photon Emission Helpers (Phase 3)
+//==============================================================================
+
+/**
+ * Emit a photon from a directional light source.
+ *
+ * Generates a parallel ray targeting the sphere by sampling a disk
+ * perpendicular to the light direction, positioned behind the sphere.
+ *
+ * @param light The directional light source
+ * @param seed RNG seed (modified in place)
+ * @param photon_origin Output: photon starting position
+ * @param photon_dir Output: photon direction (normalized)
+ */
+__device__ void emitDirectionalPhoton(
+    const Light& light,
+    unsigned int& seed,
+    float3& photon_origin,
+    float3& photon_dir
+) {
+    // Directional light: emit parallel rays targeting the sphere
+    const float3 light_dir = normalize(make_float3(
+        light.direction[0],
+        light.direction[1],
+        light.direction[2]
+    ));
+
+    // Create tangent space around light direction
+    float3 tangent, bitangent;
+    createONB(light_dir, tangent, bitangent);
+
+    // Sample disk with radius large enough to cover sphere
+    const float disk_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.sphere_radius;
+    const float2 disk_sample = sampleDisk(rnd(seed), rnd(seed));
+
+    // Photon starts from disk behind the sphere
+    const float3 sphere_center = make_float3(
+        params.caustics.sphere_center[0],
+        params.caustics.sphere_center[1],
+        params.caustics.sphere_center[2]
+    );
+    photon_origin = sphere_center
+                   + tangent * (disk_sample.x * disk_radius)
+                   + bitangent * (disk_sample.y * disk_radius)
+                   - light_dir * PHOTON_EMISSION_DISTANCE;
+
+    photon_dir = light_dir;
+}
+
+/**
+ * Emit a photon from a point light source.
+ *
+ * Generates a ray in a random direction from the light position
+ * using uniform sphere sampling.
+ *
+ * @param light The point light source
+ * @param seed RNG seed (modified in place)
+ * @param photon_origin Output: photon starting position (light position)
+ * @param photon_dir Output: photon direction (normalized, random)
+ */
+__device__ void emitPointPhoton(
+    const Light& light,
+    unsigned int& seed,
+    float3& photon_origin,
+    float3& photon_dir
+) {
+    photon_origin = make_float3(
+        light.position[0],
+        light.position[1],
+        light.position[2]
+    );
+    photon_dir = sampleSphere(rnd(seed), rnd(seed));
+}
+
+/**
+ * Calculate photon flux based on light properties and total photon count.
+ *
+ * Distributes total light energy evenly among all photons in this iteration.
+ *
+ * @param light The light source
+ * @param total_photons Total number of photons being emitted
+ * @return RGB flux carried by each photon
+ */
+__device__ float3 calculatePhotonFlux(const Light& light, float total_photons) {
+    return make_float3(
+        light.color[0] * light.intensity / total_photons,
+        light.color[1] * light.intensity / total_photons,
+        light.color[2] * light.intensity / total_photons
+    );
+}
+
+//==============================================================================
 // Progressive Photon Mapping - Photon Emission Raygen (Phase 3)
 //==============================================================================
 
@@ -615,56 +722,16 @@ extern "C" __global__ void __raygen__photons() {
     // Generate photon origin and direction based on light type
     float3 photon_origin;
     float3 photon_dir;
-    float3 photon_flux;
 
     if (light.type == LightType::DIRECTIONAL) {
-        // Directional light: emit parallel rays targeting the sphere
-        // Sample a disk perpendicular to light direction, centered on sphere
-        const float3 light_dir = normalize(make_float3(
-            light.direction[0],
-            light.direction[1],
-            light.direction[2]
-        ));
-
-        // Create tangent space around light direction
-        float3 tangent, bitangent;
-        createONB(light_dir, tangent, bitangent);
-
-        // Sample disk with radius large enough to cover sphere
-        const float disk_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.sphere_radius;  // Cover sphere + margin
-        const float2 disk_sample = sampleDisk(rnd(seed), rnd(seed));
-
-        // Photon starts from disk behind the sphere
-        const float3 sphere_center = make_float3(
-            params.caustics.sphere_center[0],
-            params.caustics.sphere_center[1],
-            params.caustics.sphere_center[2]
-        );
-        photon_origin = sphere_center
-                       + tangent * (disk_sample.x * disk_radius)
-                       + bitangent * (disk_sample.y * disk_radius)
-                       - light_dir * PHOTON_EMISSION_DISTANCE;  // Start well behind sphere
-
-        photon_dir = light_dir;
-
+        emitDirectionalPhoton(light, seed, photon_origin, photon_dir);
     } else {
-        // Point light: emit in random direction from light position
-        photon_origin = make_float3(
-            light.position[0],
-            light.position[1],
-            light.position[2]
-        );
-        photon_dir = sampleSphere(rnd(seed), rnd(seed));
+        emitPointPhoton(light, seed, photon_origin, photon_dir);
     }
 
     // Calculate photon flux
-    // Total flux from light is distributed among all photons
     const float total_photons = static_cast<float>(dim.x * dim.y);
-    photon_flux = make_float3(
-        light.color[0] * light.intensity / total_photons,
-        light.color[1] * light.intensity / total_photons,
-        light.color[2] * light.intensity / total_photons
-    );
+    const float3 photon_flux = calculatePhotonFlux(light, total_photons);
 
     // C1: Track photon emission statistics
     if (params.caustics.stats) {

@@ -286,6 +286,77 @@ struct AAStackEntry {
 constexpr int AA_STACK_SIZE = 64;
 
 /**
+ * Sample 3x3 grid within a pixel region and detect edges.
+ *
+ * Traces 9 rays in a grid pattern and computes the maximum color difference
+ * between adjacent samples to detect edges requiring further subdivision.
+ *
+ * @param center_u Center U coordinate in normalized device coordinates
+ * @param center_v Center V coordinate in normalized device coordinates
+ * @param half_size Half-width of current pixel/sub-pixel in NDC
+ * @param camera_u Camera right vector
+ * @param camera_v Camera up vector
+ * @param camera_w Camera forward vector
+ * @param ray_origin Camera position
+ * @param samples Output: 9x3 array of RGB samples (0-255 per channel)
+ * @param step Output: grid step size (for subdivision positioning)
+ * @return Maximum color difference between adjacent samples [0, 1]
+ */
+__device__ float sampleGridAndDetectEdges(
+    float center_u,
+    float center_v,
+    float half_size,
+    const float3& camera_u,
+    const float3& camera_v,
+    const float3& camera_w,
+    const float3& ray_origin,
+    unsigned int samples[9][3],
+    float& step
+) {
+    float max_diff = 0.0f;
+
+    // Grid positions: -1, 0, +1 (in units of half_size/1.5 for 3×3 subdivision)
+    step = half_size / 1.5f;
+
+    for (int iy = 0; iy < 3; ++iy) {
+        for (int ix = 0; ix < 3; ++ix) {
+            const int idx = iy * 3 + ix;
+
+            // Calculate sample position
+            const float u = center_u + (ix - 1) * step;
+            const float v = center_v + (iy - 1) * step;
+
+            // Construct ray direction
+            const float3 ray_dir = normalize(camera_u * u + camera_v * v + camera_w);
+
+            // Trace ray
+            traceRay(ray_origin, ray_dir, samples[idx][0], samples[idx][1], samples[idx][2]);
+
+            // Check color difference with neighbors for edge detection
+            if (ix > 0) {
+                const int left_idx = iy * 3 + (ix - 1);
+                const float diff = colorDistance(
+                    samples[idx][0], samples[idx][1], samples[idx][2],
+                    samples[left_idx][0], samples[left_idx][1], samples[left_idx][2]
+                );
+                max_diff = fmaxf(max_diff, diff);
+            }
+
+            if (iy > 0) {
+                const int top_idx = (iy - 1) * 3 + ix;
+                const float diff = colorDistance(
+                    samples[idx][0], samples[idx][1], samples[idx][2],
+                    samples[top_idx][0], samples[top_idx][1], samples[top_idx][2]
+                );
+                max_diff = fmaxf(max_diff, diff);
+            }
+        }
+    }
+
+    return max_diff;
+}
+
+/**
  * Iteratively subdivide pixel into 3×3 grid with adaptive sampling.
  * Uses explicit stack instead of recursion (required for OptiX).
  *
@@ -331,47 +402,14 @@ __device__ void subdividePixel(
         const float half_size = entry.half_size;
         const int depth = entry.depth;
 
-        // Sample 3×3 grid within current region
+        // Sample 3×3 grid and detect edges
         unsigned int samples[9][3];  // RGB for each of 9 samples
-        float max_diff = 0.0f;
-
-        // Grid positions: -1, 0, +1 (in units of half_size/1.5 for 3×3 subdivision)
-        const float step = half_size / 1.5f;
-
-        for (int iy = 0; iy < 3; ++iy) {
-            for (int ix = 0; ix < 3; ++ix) {
-                const int idx = iy * 3 + ix;
-
-                // Calculate sample position
-                const float u = center_u + (ix - 1) * step;
-                const float v = center_v + (iy - 1) * step;
-
-                // Construct ray direction
-                const float3 ray_dir = normalize(camera_u * u + camera_v * v + camera_w);
-
-                // Trace ray
-                traceRay(ray_origin, ray_dir, samples[idx][0], samples[idx][1], samples[idx][2]);
-
-                // Check color difference with neighbors for edge detection
-                if (ix > 0) {
-                    const int left_idx = iy * 3 + (ix - 1);
-                    const float diff = colorDistance(
-                        samples[idx][0], samples[idx][1], samples[idx][2],
-                        samples[left_idx][0], samples[left_idx][1], samples[left_idx][2]
-                    );
-                    max_diff = fmaxf(max_diff, diff);
-                }
-
-                if (iy > 0) {
-                    const int top_idx = (iy - 1) * 3 + ix;
-                    const float diff = colorDistance(
-                        samples[idx][0], samples[idx][1], samples[idx][2],
-                        samples[top_idx][0], samples[top_idx][1], samples[top_idx][2]
-                    );
-                    max_diff = fmaxf(max_diff, diff);
-                }
-            }
-        }
+        float step;
+        const float max_diff = sampleGridAndDetectEdges(
+            center_u, center_v, half_size,
+            camera_u, camera_v, camera_w, ray_origin,
+            samples, step
+        );
 
         // Edge detected and can recurse further?
         const bool should_subdivide = (max_diff > params.aa_threshold) && (depth < params.aa_max_depth);
@@ -398,6 +436,64 @@ __device__ void subdividePixel(
             }
         }
     }
+}
+
+//==============================================================================
+// Fresnel Color Blending Helper
+//==============================================================================
+
+/**
+ * Blend reflected and refracted colors using Fresnel coefficient and set payloads.
+ *
+ * This is the final step of glass/transparent material rendering:
+ * 1. Convert integer color payloads to normalized floats
+ * 2. Apply Beer-Lambert absorption to refracted color (caller handles this first)
+ * 3. Blend colors using Fresnel: final = fresnel * reflect + (1 - fresnel) * refract
+ * 4. Convert back to integer and set output payloads
+ *
+ * @param fresnel Fresnel reflectance coefficient [0, 1]
+ * @param reflect_r/g/b Reflected ray color (0-255)
+ * @param refract_color Refracted ray color after Beer-Lambert (0.0-1.0 per channel)
+ */
+__device__ void blendFresnelColorsAndSetPayload(
+    float fresnel,
+    unsigned int reflect_r,
+    unsigned int reflect_g,
+    unsigned int reflect_b,
+    const float3& refract_color
+) {
+    // Convert reflected color to normalized float
+    const float3 reflect_color = make_float3(
+        static_cast<float>(reflect_r) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(reflect_g) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(reflect_b) / RayTracingConstants::COLOR_BYTE_MAX
+    );
+
+    // Blend using Fresnel coefficient
+    const float3 final_color = make_float3(
+        fresnel * reflect_color.x + (1.0f - fresnel) * refract_color.x,
+        fresnel * reflect_color.y + (1.0f - fresnel) * refract_color.y,
+        fresnel * reflect_color.z + (1.0f - fresnel) * refract_color.z
+    );
+
+    // Convert to integer and set payloads
+    optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+}
+
+/**
+ * Convert integer color payload to normalized float color.
+ *
+ * @param r/g/b Integer color channels (0-255)
+ * @return Normalized float3 color (0.0-1.0 per channel)
+ */
+__device__ float3 payloadToFloat3(unsigned int r, unsigned int g, unsigned int b) {
+    return make_float3(
+        static_cast<float>(r) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(g) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(b) / RayTracingConstants::COLOR_BYTE_MAX
+    );
 }
 
 //==============================================================================
@@ -483,6 +579,18 @@ __device__ float4 sampleInstanceTexture(const float4& base_color, const float2& 
 // Custom Sphere Intersection Program
 // From NVIDIA OptiX SDK 9.0 sphere.cu
 // Uses normalized direction + length correction for numerical stability
+//==============================================================================
+//
+// DESIGN DECISION: This function (92 lines) intentionally NOT refactored.
+//
+// This intersection program is adapted from the NVIDIA OptiX SDK and follows
+// their established patterns for numerical stability. Extracting helpers would:
+// 1. Risk introducing bugs in a well-tested algorithm
+// 2. Make it harder to compare with SDK reference implementation
+// 3. Provide minimal benefit (the algorithm is inherently monolithic)
+//
+// The numerical refinement step (lines 533-547 in SDK) requires access to
+// intermediate values that would complicate any extracted helper interface.
 //==============================================================================
 extern "C" __global__ void __intersection__sphere()
 {

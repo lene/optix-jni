@@ -4,6 +4,125 @@
 //==============================================================================
 
 /**
+ * Interpolated triangle geometry data from hit point.
+ */
+struct TriangleGeometry {
+    float3 hit_point;
+    float3 normal;       // Face-aligned normal (points toward ray origin)
+    float2 uv_coords;
+    float t;             // Ray parameter at hit
+    bool entering;       // True if ray is entering the mesh (front face hit)
+};
+
+/**
+ * Get interpolated geometry data from triangle hit.
+ *
+ * Extracts hit point, interpolated normal, and UV coordinates using
+ * barycentric interpolation from the triangle's vertex attributes.
+ *
+ * @param hit_data Triangle hit group data from SBT
+ * @return Interpolated geometry at hit point
+ */
+__device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_data) {
+    TriangleGeometry geom;
+
+    // Get hit point
+    geom.t = optixGetRayTmax();
+    const float3 ray_origin = optixGetWorldRayOrigin();
+    const float3 ray_direction = optixGetWorldRayDirection();
+    geom.hit_point = ray_origin + ray_direction * geom.t;
+
+    // Get triangle primitive index and barycentric coordinates
+    const unsigned int prim_idx = optixGetPrimitiveIndex();
+    const float2 barycentrics = optixGetTriangleBarycentrics();
+    const float u = barycentrics.x;
+    const float v = barycentrics.y;
+    const float w = 1.0f - u - v;
+
+    // Get vertex indices for this triangle
+    const unsigned int idx0 = hit_data->indices[prim_idx * 3 + 0];
+    const unsigned int idx1 = hit_data->indices[prim_idx * 3 + 1];
+    const unsigned int idx2 = hit_data->indices[prim_idx * 3 + 2];
+
+    // Get vertex stride (6 for pos+normal, 8 for pos+normal+uv)
+    const unsigned int stride = hit_data->vertex_stride;
+
+    // Vertices are interleaved: [px, py, pz, nx, ny, nz, (u, v)] = stride floats per vertex
+    const float* v0 = &hit_data->vertices[idx0 * stride];
+    const float* v1 = &hit_data->vertices[idx1 * stride];
+    const float* v2 = &hit_data->vertices[idx2 * stride];
+
+    // Interpolate normal using barycentric coordinates
+    // Normals are at offset 3 within each vertex
+    float3 normal = make_float3(
+        w * v0[3] + u * v1[3] + v * v2[3],
+        w * v0[4] + u * v1[4] + v * v2[4],
+        w * v0[5] + u * v1[5] + v * v2[5]
+    );
+    normal = normalize(normal);
+
+    // Interpolate UV coordinates if available (stride >= 8)
+    geom.uv_coords = make_float2(0.0f, 0.0f);
+    if (stride >= VERTEX_STRIDE_WITH_UV) {
+        // UVs are at offset 6 within each vertex
+        geom.uv_coords = make_float2(
+            w * v0[6] + u * v1[6] + v * v2[6],
+            w * v0[7] + u * v1[7] + v * v2[7]
+        );
+    }
+
+    // Determine if ray is entering or exiting (front face = entering)
+    geom.entering = (dot(ray_direction, normal) < 0.0f);
+
+    // Flip normal to face incoming ray
+    geom.normal = geom.entering ? normal : make_float3(-normal.x, -normal.y, -normal.z);
+
+    return geom;
+}
+
+/**
+ * Get material properties for triangle mesh.
+ *
+ * In IAS mode, reads from per-instance materials array.
+ * In single-object mode, uses SBT hit group data.
+ * Applies texture sampling if available.
+ *
+ * @param hit_data Triangle hit group data from SBT
+ * @param uv_coords UV coordinates for texture sampling
+ * @param color Output: RGBA material color
+ * @param ior Output: Index of refraction
+ */
+__device__ void getTriangleMaterial(
+    const TriangleHitGroupData* hit_data,
+    const float2& uv_coords,
+    unsigned int vertex_stride,
+    float4& color,
+    float& ior
+) {
+    if (params.use_ias && params.instance_materials) {
+        // IAS mode: read from per-instance materials array
+        const unsigned int instance_id = optixGetInstanceId();
+        const InstanceMaterial& mat = params.instance_materials[instance_id];
+        color = make_float4(mat.color[0], mat.color[1], mat.color[2], mat.color[3]);
+        ior = mat.ior;
+
+        // Apply texture if available (in IAS mode only)
+        if (vertex_stride >= VERTEX_STRIDE_WITH_UV) {
+            color = sampleInstanceTexture(color, uv_coords);
+        }
+    } else {
+        // Single-object mode: use SBT hit group data
+        color = make_float4(
+            hit_data->color[0],
+            hit_data->color[1],
+            hit_data->color[2],
+            hit_data->color[3]
+        );
+        ior = hit_data->ior;
+    }
+}
+
+/**
  * Handle fully transparent triangle (alpha < threshold).
  * Ray continues through as if triangle doesn't exist.
  */
@@ -256,58 +375,9 @@ extern "C" __global__ void __closesthit__triangle() {
     // Get triangle hit group data from SBT
     const TriangleHitGroupData* hit_data = reinterpret_cast<TriangleHitGroupData*>(optixGetSbtDataPointer());
 
-    // Get hit point
-    const float t = optixGetRayTmax();
-    const float3 ray_origin = optixGetWorldRayOrigin();
+    // Get interpolated geometry (hit point, normal, UVs)
+    const TriangleGeometry geom = getTriangleGeometry(hit_data);
     const float3 ray_direction = optixGetWorldRayDirection();
-    const float3 hit_point = ray_origin + ray_direction * t;
-
-    // Get triangle primitive index and barycentric coordinates
-    const unsigned int prim_idx = optixGetPrimitiveIndex();
-    const float2 barycentrics = optixGetTriangleBarycentrics();
-    const float u = barycentrics.x;
-    const float v = barycentrics.y;
-    const float w = 1.0f - u - v;
-
-    // Get vertex indices for this triangle
-    const unsigned int idx0 = hit_data->indices[prim_idx * 3 + 0];
-    const unsigned int idx1 = hit_data->indices[prim_idx * 3 + 1];
-    const unsigned int idx2 = hit_data->indices[prim_idx * 3 + 2];
-
-    // Get vertex stride (6 for pos+normal, 8 for pos+normal+uv)
-    const unsigned int stride = hit_data->vertex_stride;
-
-    // Vertices are interleaved: [px, py, pz, nx, ny, nz, (u, v)] = stride floats per vertex
-    const float* v0 = &hit_data->vertices[idx0 * stride];
-    const float* v1 = &hit_data->vertices[idx1 * stride];
-    const float* v2 = &hit_data->vertices[idx2 * stride];
-
-    // Interpolate normal using barycentric coordinates
-    // Normals are at offset 3 within each vertex
-    float3 normal = make_float3(
-        w * v0[3] + u * v1[3] + v * v2[3],
-        w * v0[4] + u * v1[4] + v * v2[4],
-        w * v0[5] + u * v1[5] + v * v2[5]
-    );
-    normal = normalize(normal);
-
-    // Interpolate UV coordinates if available (stride >= 8)
-    float2 uv_coords = make_float2(0.0f, 0.0f);
-    if (stride >= VERTEX_STRIDE_WITH_UV) {
-        // UVs are at offset 6 within each vertex
-        uv_coords = make_float2(
-            w * v0[6] + u * v1[6] + v * v2[6],
-            w * v0[7] + u * v1[7] + v * v2[7]
-        );
-    }
-
-    // Determine if ray is entering or exiting (front face = entering)
-    const bool entering = (dot(ray_direction, normal) < 0.0f);
-
-    // Flip normal to face incoming ray
-    if (!entering) {
-        normal = make_float3(-normal.x, -normal.y, -normal.z);
-    }
 
     // Get current depth from payload
     const unsigned int depth = optixGetPayload_3();
@@ -318,63 +388,42 @@ extern "C" __global__ void __closesthit__triangle() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get mesh color and IOR - source depends on IAS mode
+    // Get material properties (color, IOR) with texture sampling
     float4 mesh_color;
     float mesh_ior;
-
-    if (params.use_ias && params.instance_materials) {
-        // IAS mode: read from per-instance materials array
-        const unsigned int instance_id = optixGetInstanceId();
-        const InstanceMaterial& mat = params.instance_materials[instance_id];
-        mesh_color = make_float4(mat.color[0], mat.color[1], mat.color[2], mat.color[3]);
-        mesh_ior = mat.ior;
-
-        // Apply texture if available (in IAS mode only)
-        if (stride >= VERTEX_STRIDE_WITH_UV) {
-            mesh_color = sampleInstanceTexture(mesh_color, uv_coords);
-        }
-    } else {
-        // Single-object mode: use SBT hit group data
-        mesh_color = make_float4(
-            hit_data->color[0],
-            hit_data->color[1],
-            hit_data->color[2],
-            hit_data->color[3]
-        );
-        mesh_ior = hit_data->ior;
-    }
+    getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride, mesh_color, mesh_ior);
 
     const float mesh_alpha = mesh_color.w;
 
     // Handle fully transparent triangles
     if (mesh_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparentTriangle(hit_point, ray_direction, depth);
+        handleFullyTransparentTriangle(geom.hit_point, ray_direction, depth);
         return;
     }
 
     // Handle fully opaque triangles
     if (mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
-        handleFullyOpaqueTriangle(hit_point, normal, mesh_color);
+        handleFullyOpaqueTriangle(geom.hit_point, geom.normal, mesh_color);
         return;
     }
 
     // If max depth reached, trace final non-recursive ray
     if (depth >= MAX_TRACE_DEPTH) {
-        traceFinalNonRecursiveRayTriangle(hit_point, ray_direction, normal);
+        traceFinalNonRecursiveRayTriangle(geom.hit_point, ray_direction, geom.normal);
         return;
     }
 
     // Compute Fresnel reflectance
-    const float fresnel = computeFresnelReflectanceTriangle(ray_direction, normal, mesh_ior, entering);
+    const float fresnel = computeFresnelReflectanceTriangle(ray_direction, geom.normal, mesh_ior, geom.entering);
 
     // Trace reflected ray
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    traceReflectedRayTriangle(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
+    traceReflectedRayTriangle(geom.hit_point, ray_direction, geom.normal, depth, reflect_r, reflect_g, reflect_b);
 
     // Trace refracted ray
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
     const bool refraction_occurred = traceRefractedRayTriangle(
-        hit_point, ray_direction, normal, mesh_ior, entering, depth,
+        geom.hit_point, ray_direction, geom.normal, mesh_ior, geom.entering, depth,
         refract_r, refract_g, refract_b
     );
 
@@ -386,31 +435,13 @@ extern "C" __global__ void __closesthit__triangle() {
     }
 
     // Convert refracted color to float for absorption calculation
-    float3 refract_color = make_float3(
-        static_cast<float>(refract_r) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(refract_g) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(refract_b) / RayTracingConstants::COLOR_BYTE_MAX
-    );
+    float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
 
     // Apply Beer-Lambert absorption when exiting
-    refract_color = applyBeerLambertAbsorptionTriangle(refract_color, t, mesh_color, entering);
+    refract_color = applyBeerLambertAbsorptionTriangle(refract_color, geom.t, mesh_color, geom.entering);
 
-    // Blend reflected and refracted rays using Fresnel coefficient
-    const float3 reflect_color = make_float3(
-        static_cast<float>(reflect_r) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(reflect_g) / RayTracingConstants::COLOR_BYTE_MAX,
-        static_cast<float>(reflect_b) / RayTracingConstants::COLOR_BYTE_MAX
-    );
-
-    const float3 final_color = make_float3(
-        fresnel * reflect_color.x + (1.0f - fresnel) * refract_color.x,
-        fresnel * reflect_color.y + (1.0f - fresnel) * refract_color.y,
-        fresnel * reflect_color.z + (1.0f - fresnel) * refract_color.z
-    );
-
-    optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    // Blend reflected and refracted colors using Fresnel and set output payloads
+    blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color);
 }
 
 //==============================================================================
