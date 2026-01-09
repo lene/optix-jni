@@ -122,252 +122,6 @@ __device__ void getTriangleMaterial(
     }
 }
 
-/**
- * Handle fully transparent triangle (alpha < threshold).
- * Ray continues through as if triangle doesn't exist.
- */
-__device__ void handleFullyTransparentTriangle(
-    const float3& hit_point,
-    const float3& ray_direction,
-    unsigned int depth
-) {
-    const float3 continue_origin = hit_point + ray_direction * CONTINUATION_RAY_OFFSET;
-    unsigned int continue_r = 0, continue_g = 0, continue_b = 0;
-    unsigned int next_depth = depth;  // Don't increment depth for transparent pass-through
-
-    optixTrace(
-        params.handle,
-        continue_origin,
-        ray_direction,
-        CONTINUATION_RAY_OFFSET,
-        MAX_RAY_DISTANCE,
-        0.0f,
-        OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,
-        continue_r, continue_g, continue_b, next_depth
-    );
-
-    optixSetPayload_0(continue_r);
-    optixSetPayload_1(continue_g);
-    optixSetPayload_2(continue_b);
-}
-
-/**
- * Handle fully opaque triangle (alpha >= threshold).
- * Solid surface with diffuse shading.
- */
-__device__ void handleFullyOpaqueTriangle(
-    const float3& hit_point,
-    const float3& normal,
-    const float4& color
-) {
-    const float3 lighting = calculateLighting(hit_point, normal);
-
-    const float3 mesh_color = make_float3(color.x, color.y, color.z);
-
-    const float3 lit_color = make_float3(
-        mesh_color.x * lighting.x,
-        mesh_color.y * lighting.y,
-        mesh_color.z * lighting.z
-    );
-
-    const unsigned int r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    const unsigned int g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    const unsigned int b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-
-    optixSetPayload_0(r);
-    optixSetPayload_1(g);
-    optixSetPayload_2(b);
-}
-
-/**
- * Trace final non-recursive ray for triangles when max depth is reached.
- */
-__device__ void traceFinalNonRecursiveRayTriangle(
-    const float3& hit_point,
-    const float3& ray_direction,
-    const float3& normal
-) {
-    const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float3 reflect_dir = make_float3(
-        ray_direction.x - 2.0f * cos_theta * normal.x,
-        ray_direction.y - 2.0f * cos_theta * normal.y,
-        ray_direction.z - 2.0f * cos_theta * normal.z
-    );
-
-    unsigned int final_r = 0, final_g = 0, final_b = 0;
-    unsigned int final_depth = MAX_TRACE_DEPTH;
-    const float3 final_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
-
-    optixTrace(
-        params.handle,
-        final_origin,
-        reflect_dir,
-        CONTINUATION_RAY_OFFSET,
-        MAX_RAY_DISTANCE,
-        0.0f,
-        OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,
-        final_r, final_g, final_b, final_depth
-    );
-
-    optixSetPayload_0(final_r);
-    optixSetPayload_1(final_g);
-    optixSetPayload_2(final_b);
-}
-
-/**
- * Compute Fresnel reflectance for triangles using Schlick approximation.
- */
-__device__ float computeFresnelReflectanceTriangle(
-    const float3& ray_direction,
-    const float3& normal,
-    float ior,
-    bool entering
-) {
-    const float n1 = entering ? 1.0f : ior;
-    const float n2 = entering ? ior : 1.0f;
-    const float r0 = (n1 - n2) / (n1 + n2);
-    const float R0 = r0 * r0;
-    const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float one_minus_cos = 1.0f - cos_theta;
-    return R0 + (1.0f - R0) * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
-}
-
-/**
- * Trace reflected ray for triangles and return color components.
- */
-__device__ void traceReflectedRayTriangle(
-    const float3& hit_point,
-    const float3& ray_direction,
-    const float3& normal,
-    unsigned int depth,
-    unsigned int& reflect_r,
-    unsigned int& reflect_g,
-    unsigned int& reflect_b
-) {
-    const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float3 reflect_dir = make_float3(
-        ray_direction.x - 2.0f * cos_theta * normal.x,
-        ray_direction.y - 2.0f * cos_theta * normal.y,
-        ray_direction.z - 2.0f * cos_theta * normal.z
-    );
-
-    if (params.stats) {
-        atomicAdd(&params.stats->reflected_rays, 1ULL);
-        atomicAdd(&params.stats->total_rays, 1ULL);
-    }
-
-    const float3 reflect_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = depth + 1;
-
-    optixTrace(
-        params.handle,
-        reflect_origin,
-        reflect_dir,
-        CONTINUATION_RAY_OFFSET,
-        MAX_RAY_DISTANCE,
-        0.0f,
-        OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,
-        reflect_r, reflect_g, reflect_b, next_depth
-    );
-}
-
-/**
- * Trace refracted ray for triangles using Snell's law.
- * Returns false if total internal reflection occurs.
- */
-__device__ bool traceRefractedRayTriangle(
-    const float3& hit_point,
-    const float3& ray_direction,
-    const float3& normal,
-    float ior,
-    bool entering,
-    unsigned int depth,
-    unsigned int& refract_r,
-    unsigned int& refract_g,
-    unsigned int& refract_b
-) {
-    const float n1 = entering ? 1.0f : ior;
-    const float n2 = entering ? ior : 1.0f;
-    const float eta = n1 / n2;
-    const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float k = 1.0f - eta * eta * (1.0f - cos_theta * cos_theta);
-
-    if (k < 0.0f) {
-        return false;  // Total internal reflection
-    }
-
-    if (params.stats) {
-        atomicAdd(&params.stats->refracted_rays, 1ULL);
-        atomicAdd(&params.stats->total_rays, 1ULL);
-    }
-
-    const float coeff = eta * cos_theta - sqrtf(k);
-    const float3 refract_dir = make_float3(
-        eta * ray_direction.x + coeff * normal.x,
-        eta * ray_direction.y + coeff * normal.y,
-        eta * ray_direction.z + coeff * normal.z
-    );
-
-    const float3 refract_origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = depth + 1;
-
-    optixTrace(
-        params.handle,
-        refract_origin,
-        refract_dir,
-        CONTINUATION_RAY_OFFSET,
-        MAX_RAY_DISTANCE,
-        0.0f,
-        OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,
-        refract_r, refract_g, refract_b, next_depth
-    );
-
-    return true;
-}
-
-/**
- * Apply Beer-Lambert absorption for triangles when exiting the mesh.
- */
-__device__ float3 applyBeerLambertAbsorptionTriangle(
-    const float3& refract_color,
-    float distance,
-    const float4& mesh_color,
-    bool entering
-) {
-    if (entering) {
-        return refract_color;  // No absorption when entering
-    }
-
-    const float3 glass_color = make_float3(mesh_color.x, mesh_color.y, mesh_color.z);
-    const float glass_alpha = mesh_color.w;
-
-    // STANDARD GRAPHICS ALPHA CONVENTION:
-    // alpha=0.0 -> fully transparent (no absorption)
-    // alpha=1.0 -> fully opaque (maximum absorption)
-    const float absorption_scale = BEER_LAMBERT_ABSORPTION_SCALE;
-    const float3 extinction_constant = make_float3(
-        -logf(fmaxf(glass_color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
-        -logf(fmaxf(glass_color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
-        -logf(fmaxf(glass_color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale
-    );
-
-    const float3 beer_attenuation = make_float3(
-        expf(-extinction_constant.x * distance),
-        expf(-extinction_constant.y * distance),
-        expf(-extinction_constant.z * distance)
-    );
-
-    return refract_color * beer_attenuation;
-}
-
 //==============================================================================
 // Triangle closest hit shader - handles triangle mesh geometry
 //==============================================================================
@@ -397,33 +151,33 @@ extern "C" __global__ void __closesthit__triangle() {
 
     // Handle fully transparent triangles
     if (mesh_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparentTriangle(geom.hit_point, ray_direction, depth);
+        handleFullyTransparent(geom.hit_point, ray_direction, depth);
         return;
     }
 
     // Handle fully opaque triangles
     if (mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
-        handleFullyOpaqueTriangle(geom.hit_point, geom.normal, mesh_color);
+        handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
         return;
     }
 
     // If max depth reached, trace final non-recursive ray
     if (depth >= MAX_TRACE_DEPTH) {
-        traceFinalNonRecursiveRayTriangle(geom.hit_point, ray_direction, geom.normal);
+        traceFinalNonRecursiveRay(geom.hit_point, ray_direction, geom.normal);
         return;
     }
 
     // Compute Fresnel reflectance
-    const float fresnel = computeFresnelReflectanceTriangle(ray_direction, geom.normal, mesh_ior, geom.entering);
+    const float fresnel = computeFresnelReflectance(ray_direction, geom.normal, geom.entering, mesh_ior);
 
     // Trace reflected ray
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    traceReflectedRayTriangle(geom.hit_point, ray_direction, geom.normal, depth, reflect_r, reflect_g, reflect_b);
+    traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, reflect_r, reflect_g, reflect_b);
 
     // Trace refracted ray
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
-    const bool refraction_occurred = traceRefractedRayTriangle(
-        geom.hit_point, ray_direction, geom.normal, mesh_ior, geom.entering, depth,
+    const bool refraction_occurred = traceRefractedRay(
+        geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
         refract_r, refract_g, refract_b
     );
 
@@ -437,8 +191,8 @@ extern "C" __global__ void __closesthit__triangle() {
     // Convert refracted color to float for absorption calculation
     float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
 
-    // Apply Beer-Lambert absorption when exiting
-    refract_color = applyBeerLambertAbsorptionTriangle(refract_color, geom.t, mesh_color, geom.entering);
+    // Apply Beer-Lambert absorption when exiting (triangles use default distance_scale=1.0)
+    refract_color = applyBeerLambertAbsorption(refract_color, geom.t, geom.entering, mesh_color);
 
     // Blend reflected and refracted colors using Fresnel and set output payloads
     blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color);
