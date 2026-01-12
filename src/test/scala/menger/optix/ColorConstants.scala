@@ -57,6 +57,7 @@ object ColorConstants:
 
   val REFRACTION_TEST_GRAY = Color(0.784f, 0.784f, 0.784f, 0.784f)
   val RED_TINTED_GLASS = Color(1.0f, 0.392f, 0.392f, 0.502f)       // RGB(255, 100, 100)
+  val GREEN_TINTED_GLASS = Color(0.392f, 1.0f, 0.392f, 0.502f)     // RGB(100, 255, 100)
   val BLUE_TINTED_GLASS = Color(0.392f, 0.588f, 1.0f, 0.502f)      // RGB(100, 150, 255)
   val HIGHLY_TRANSPARENT_GRAY = Color(0.392f, 0.392f, 0.392f, 0.392f)
 

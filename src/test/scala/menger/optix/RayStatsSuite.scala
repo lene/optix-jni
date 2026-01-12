@@ -78,7 +78,8 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     // Glass sphere with refraction should have multiple bounces
     result.maxDepthReached should be > result.minDepthReached
-    result.maxDepthReached should be <= 5  // MAX_TRACE_DEPTH constant
+    // Stats track depth + 1 (1-indexed), so max possible is MAX_TRACE_DEPTH + 1 = 6
+    result.maxDepthReached should be <= 6
 
   it should "have more rays for larger image dimensions" in:
     TestScenario.glassSphere().applyTo(renderer)

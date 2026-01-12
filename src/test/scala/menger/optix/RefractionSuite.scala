@@ -5,8 +5,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import ColorConstants.{
-  BLUE_TINTED_GLASS, HIGHLY_TRANSPARENT_GRAY, HIGHLY_TRANSPARENT_WHITE, PERFORMANCE_TEST_GREEN_CYAN, RED_TINTED_GLASS,
-  REFRACTION_TEST_GRAY, SEMI_TRANSPARENT_WHITE
+  BLUE_TINTED_GLASS, GREEN_TINTED_GLASS, HIGHLY_TRANSPARENT_GRAY, HIGHLY_TRANSPARENT_WHITE,
+  RED_TINTED_GLASS, REFRACTION_TEST_GRAY, SEMI_TRANSPARENT_WHITE
 }
 import ThresholdConstants.TEST_IMAGE_SIZE
 import ImageMatchers.{
@@ -104,13 +104,15 @@ class RefractionSuite extends AnyFlatSpec
 
   it should "transmit green light through green glass" in:
     TestScenario.glassSphere()
-      .withSphereColor(PERFORMANCE_TEST_GREEN_CYAN)
+      .withSphereColor(GREEN_TINTED_GLASS)
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
-    // Green channel should dominate (tolerance = 7.0 to account for lower brightness in multi-light implementation)
+    // Green channel should dominate
+    // Tolerance=7.0 because green glass produces less separation than red/blue
+    // due to symmetric absorption of R and B channels against purple background
     imageData should beGreenDominant(TEST_IMAGE_SIZE, tolerance = 7.0)
 
   it should "transmit blue light through blue glass" in:
