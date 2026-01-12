@@ -51,6 +51,9 @@ struct OptiXWrapper::Impl {
         float transform[12];                  // 4x3 row-major transform matrix
         float color[4];                       // RGBA material color
         float ior;                            // Index of refraction
+        float roughness;                      // 0=mirror, 1=diffuse (default: 0.5)
+        float metallic;                       // 0=dielectric, 1=metal (default: 0.0)
+        float specular;                       // Specular intensity (default: 0.5)
         int texture_index;                    // Index into textures array (-1 = no texture)
         bool active;                          // True if instance is enabled
     };
@@ -397,10 +400,13 @@ void OptiXWrapper::buildIAS() {
 
         optix_instances.push_back(oi);
 
-        // Build material entry
+        // Build material entry with PBR properties
         InstanceMaterial mat = {};
         std::memcpy(mat.color, inst.color, 4 * sizeof(float));
         mat.ior = inst.ior;
+        mat.roughness = inst.roughness;
+        mat.metallic = inst.metallic;
+        mat.specular = inst.specular;
         mat.geometry_type = inst.geometry_type;
         mat.texture_index = inst.texture_index;
         materials.push_back(mat);
@@ -686,7 +692,10 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
 
 // Multi-object instance management (IAS mode)
 
-int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, float b, float a, float ior) {
+int OptiXWrapper::addSphereInstance(
+    const float* transform, float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular
+) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
             std::cerr << "[OptiX][Sphere] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
@@ -735,6 +744,9 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
     inst.color[2] = b;
     inst.color[3] = a;
     inst.ior = ior;
+    inst.roughness = roughness;
+    inst.metallic = metallic;
+    inst.specular = specular;
     inst.texture_index = -1;  // Spheres don't support textures
     inst.active = true;
 
@@ -753,7 +765,8 @@ int OptiXWrapper::addSphereInstance(const float* transform, float r, float g, fl
 }
 
 int OptiXWrapper::addTriangleMeshInstance(
-    const float* transform, float r, float g, float b, float a, float ior, int textureIndex
+    const float* transform, float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, int textureIndex
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -792,6 +805,9 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.color[2] = b;
     inst.color[3] = a;
     inst.ior = ior;
+    inst.roughness = roughness;
+    inst.metallic = metallic;
+    inst.specular = specular;
     inst.texture_index = textureIndex;
     inst.active = true;
 

@@ -333,7 +333,10 @@ class OptiXRenderer extends LazyLogging:
     g: Float,
     b: Float,
     a: Float,
-    ior: Float
+    ior: Float,
+    roughness: Float,
+    metallic: Float,
+    specular: Float
   ): Int
 
   @native private def addTriangleMeshInstanceNative(
@@ -343,6 +346,9 @@ class OptiXRenderer extends LazyLogging:
     b: Float,
     a: Float,
     ior: Float,
+    roughness: Float,
+    metallic: Float,
+    specular: Float,
     textureIndex: Int
   ): Int
 
@@ -356,33 +362,61 @@ class OptiXRenderer extends LazyLogging:
 
   @native def setIASMode(enabled: Boolean): Unit
 
-  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
+  def addSphereInstance(transform: Array[Float], material: Material): Option[Int] =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addSphereInstanceNative(transform, color.r, color.g, color.b, color.a, ior)
+    val id = addSphereInstanceNative(
+      transform,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular
+    )
     if id >= 0 then Some(id) else None
 
-  def addSphereInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
+    addSphereInstance(transform, Material(color, ior))
+
+  def addSphereInstance(position: Vector[3], material: Material): Option[Int] =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
       0.0f, 0.0f, 1.0f, position.z
     )
-    addSphereInstance(transform, color, ior)
+    addSphereInstance(transform, material)
+
+  def addSphereInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+    addSphereInstance(position, Material(color, ior))
+
+  def addTriangleMeshInstance(
+    transform: Array[Float],
+    material: Material,
+    textureIndex: Int = -1
+  ): Option[Int] =
+    require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
+    val id = addTriangleMeshInstanceNative(
+      transform,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular,
+      textureIndex
+    )
+    if id >= 0 then Some(id) else None
 
   def addTriangleMeshInstance(
     transform: Array[Float],
     color: Color,
     ior: Float,
-    textureIndex: Int = -1
+    textureIndex: Int
   ): Option[Int] =
-    require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addTriangleMeshInstanceNative(transform, color.r, color.g, color.b, color.a, ior, textureIndex)
-    if id >= 0 then Some(id) else None
+    addTriangleMeshInstance(transform, Material(color, ior), textureIndex)
+
+  def addTriangleMeshInstance(
+    transform: Array[Float],
+    color: Color,
+    ior: Float
+  ): Option[Int] =
+    addTriangleMeshInstance(transform, Material(color, ior), -1)
 
   def addTriangleMeshInstance(
     position: Vector[3],
-    color: Color,
-    ior: Float,
+    material: Material,
     textureIndex: Int
   ): Option[Int] =
     val transform = Array(
@@ -390,10 +424,18 @@ class OptiXRenderer extends LazyLogging:
       0.0f, 1.0f, 0.0f, position.y,
       0.0f, 0.0f, 1.0f, position.z
     )
-    addTriangleMeshInstance(transform, color, ior, textureIndex)
+    addTriangleMeshInstance(transform, material, textureIndex)
+
+  def addTriangleMeshInstance(
+    position: Vector[3],
+    color: Color,
+    ior: Float,
+    textureIndex: Int
+  ): Option[Int] =
+    addTriangleMeshInstance(position, Material(color, ior), textureIndex)
 
   def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
-    addTriangleMeshInstance(position, color, ior, -1)
+    addTriangleMeshInstance(position, Material(color, ior), -1)
 
   def render(size: ImageSize): Option[Array[Byte]] =
     render(size.width, size.height)

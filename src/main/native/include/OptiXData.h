@@ -111,9 +111,12 @@ enum GeometryType {
 struct InstanceMaterial {
     float color[4];             // RGBA color (alpha: 0=transparent, 1=opaque)
     float ior;                  // Index of refraction
+    float roughness;            // 0=mirror, 1=diffuse (default: 0.5)
+    float metallic;             // 0=dielectric, 1=metal (default: 0.0)
+    float specular;             // Specular intensity (default: 0.5)
     unsigned int geometry_type; // GeometryType enum value
     int texture_index;          // Index into Params.textures array (-1 = no texture)
-    unsigned int padding;       // Align to 32 bytes for GPU efficiency
+    unsigned int padding[2];    // Align to 48 bytes for GPU efficiency
 };
 
 // Extended material properties for physically-based rendering (Sprint 7)

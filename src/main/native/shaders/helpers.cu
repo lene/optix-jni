@@ -830,6 +830,45 @@ __device__ void getInstanceMaterial(float4& color, float& ior) {
 }
 
 /**
+ * Get material properties including PBR values for the current hit instance.
+ *
+ * In IAS mode, reads from per-instance material array using optixGetInstanceId().
+ * In single-object mode, falls back to global sphere parameters with default PBR values.
+ *
+ * @param color Output: RGBA color (0-1 range)
+ * @param ior Output: Index of refraction
+ * @param roughness Output: Roughness (0=mirror, 1=diffuse)
+ * @param metallic Output: Metallic (0=dielectric, 1=metal)
+ * @param specular Output: Specular intensity
+ */
+__device__ void getInstanceMaterialPBR(
+    float4& color, float& ior, float& roughness, float& metallic, float& specular
+) {
+    if (params.use_ias && params.instance_materials) {
+        // IAS mode: read from per-instance materials array
+        const unsigned int instance_id = optixGetInstanceId();
+        const InstanceMaterial& mat = params.instance_materials[instance_id];
+        color = make_float4(mat.color[0], mat.color[1], mat.color[2], mat.color[3]);
+        ior = mat.ior;
+        roughness = mat.roughness;
+        metallic = mat.metallic;
+        specular = mat.specular;
+    } else {
+        // Single-object mode: use global sphere parameters with default PBR values
+        color = make_float4(
+            params.sphere_color[0],
+            params.sphere_color[1],
+            params.sphere_color[2],
+            params.sphere_color[3]
+        );
+        ior = params.sphere_ior;
+        roughness = 0.5f;  // Default middle roughness
+        metallic = 0.0f;   // Default non-metallic (dielectric)
+        specular = 0.5f;   // Default specular intensity
+    }
+}
+
+/**
  * Get texture index for the current hit instance.
  *
  * In IAS mode, reads from per-instance material array using optixGetInstanceId().

@@ -39,10 +39,10 @@ extern "C" __global__ void __closesthit__ch() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get material properties (from IAS instance or global params)
+    // Get material properties including PBR values (from IAS instance or global params)
     float4 material_color;
-    float material_ior;
-    getInstanceMaterial(material_color, material_ior);
+    float material_ior, roughness, metallic, specular;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular);
     const float sphere_alpha = material_color.w;
 
     // Handle fully transparent spheres
@@ -51,7 +51,32 @@ extern "C" __global__ void __closesthit__ch() {
         return;
     }
 
-    // Handle fully opaque spheres
+    // Handle metallic surfaces (opaque, reflective, colored reflections)
+    // Metallic > 0.5 and opaque = metal material
+    if (metallic > 0.5f && sphere_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
+        // If at max depth, trace final non-recursive ray
+        if (depth >= MAX_TRACE_DEPTH) {
+            traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
+            return;
+        }
+
+        // Trace reflection ray
+        unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+        traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
+
+        // Tint reflection by material color (metals have colored reflections)
+        const float3 tint = make_float3(material_color.x, material_color.y, material_color.z);
+        const float fr = fminf(static_cast<float>(reflect_r) * tint.x, 255.0f);
+        const float fg = fminf(static_cast<float>(reflect_g) * tint.y, 255.0f);
+        const float fb = fminf(static_cast<float>(reflect_b) * tint.z, 255.0f);
+
+        optixSetPayload_0(static_cast<unsigned int>(fr));
+        optixSetPayload_1(static_cast<unsigned int>(fg));
+        optixSetPayload_2(static_cast<unsigned int>(fb));
+        return;
+    }
+
+    // Handle fully opaque non-metallic spheres (diffuse shading)
     if (sphere_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
         handleFullyOpaque(hit_point, normal, material_color);
         return;
