@@ -597,11 +597,13 @@ __device__ void traceReflectedRay(
     unsigned int& reflect_g,
     unsigned int& reflect_b
 ) {
-    const float cos_theta = fabsf(dot(ray_direction, normal));
+    // Reflection formula: R = I - 2 * dot(I, N) * N
+    // Note: dot(I, N) is typically negative for front-facing hits, which is correct
+    const float dot_in = dot(ray_direction, normal);
     const float3 reflect_dir = make_float3(
-        ray_direction.x - 2.0f * cos_theta * normal.x,
-        ray_direction.y - 2.0f * cos_theta * normal.y,
-        ray_direction.z - 2.0f * cos_theta * normal.z
+        ray_direction.x - 2.0f * dot_in * normal.x,
+        ray_direction.y - 2.0f * dot_in * normal.y,
+        ray_direction.z - 2.0f * dot_in * normal.z
     );
 
     if (params.stats) {
