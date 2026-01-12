@@ -440,19 +440,20 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
     unsigned int num_vertices,
     CUdeviceptr d_indices,
     unsigned int num_triangles,
-    const OptixAccelBuildOptions& build_options)
+    const OptixAccelBuildOptions& build_options,
+    unsigned int vertex_stride)
 {
     // Set up triangle build input
     OptixBuildInput triangle_input = {};
     triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
 
     // Vertex buffer: positions only (OptiX needs just xyz for GAS)
-    // Our vertex format is [px, py, pz, nx, ny, nz] = 6 floats = 24 bytes stride
-    // OptiX will read xyz at offset 0, then skip to next vertex at offset 24
+    // Vertex format is [px, py, pz, nx, ny, nz, (u, v)] = vertex_stride floats
+    // OptiX will read xyz at offset 0, then skip to next vertex at stride * sizeof(float)
     triangle_input.triangleArray.vertexBuffers = &d_vertices;
     triangle_input.triangleArray.numVertices = num_vertices;
     triangle_input.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
-    triangle_input.triangleArray.vertexStrideInBytes = 6 * sizeof(float);  // 24 bytes stride
+    triangle_input.triangleArray.vertexStrideInBytes = vertex_stride * sizeof(float);
 
     // Index buffer: 3 unsigned ints per triangle
     triangle_input.triangleArray.indexBuffer = d_indices;

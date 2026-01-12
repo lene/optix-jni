@@ -89,14 +89,16 @@ public:
     );
 
     // Build GAS for triangle mesh
-    // Vertices: device pointer to interleaved pos+normal (6 floats per vertex, stride 24 bytes)
+    // Vertices: device pointer to interleaved vertex data (vertex_stride floats per vertex)
     // Indices: device pointer to triangle indices (3 unsigned ints per triangle)
+    // vertex_stride: floats per vertex (6 for pos+normal, 8 for pos+normal+uv)
     GASBuildResult buildTriangleGAS(
         CUdeviceptr d_vertices,
         unsigned int num_vertices,
         CUdeviceptr d_indices,
         unsigned int num_triangles,
-        const OptixAccelBuildOptions& build_options
+        const OptixAccelBuildOptions& build_options,
+        unsigned int vertex_stride
     );
 
     void destroyGAS(CUdeviceptr gas_buffer);

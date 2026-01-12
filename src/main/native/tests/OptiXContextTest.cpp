@@ -511,7 +511,7 @@ TEST_F(OptiXContextTest, TriangleGASHasNoAABBBuffer) {
     build_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
     build_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-    auto gas_result = context.buildTriangleGAS(d_vertices, 3, d_indices, 1, build_options);
+    auto gas_result = context.buildTriangleGAS(d_vertices, 3, d_indices, 1, build_options, 6);
 
     // Triangle meshes should have aabb_buffer = 0
     EXPECT_EQ(0, gas_result.aabb_buffer);

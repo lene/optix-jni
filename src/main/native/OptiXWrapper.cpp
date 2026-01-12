@@ -342,7 +342,8 @@ void OptiXWrapper::buildTriangleMeshGAS() {
         mesh_params.num_vertices,
         impl->triangle_mesh_gpu.d_indices,
         mesh_params.num_triangles,
-        accel_options
+        accel_options,
+        mesh_params.vertex_stride
     );
 
     impl->triangle_mesh_gpu.d_gas_output_buffer = result.gas_buffer;
