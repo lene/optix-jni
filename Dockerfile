@@ -6,11 +6,11 @@
 #   2. Build tools (cmake, g++, ~200MB)
 #   3. OptiX SDK 9.0 (~500MB)
 #   4. Java 25 (~400MB)
-#   5. sbt 1.11.7 (~100MB)
+#   5. sbt 1.12.0 (~100MB)
 #   6. CI tools (xvfb, valgrind, curl, etc., ~150MB)
 #
 # Image tag format: {CUDA}-{OptiX}-{Java}-{sbt}
-# Example: registry.gitlab.com/lilacashes/menger/optix-cuda:12.8-9.0-25-1.11.7
+# Example: registry.gitlab.com/lilacashes/menger/optix-cuda:12.8-9.0-25-1.12.0
 #
 FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
 
@@ -52,7 +52,7 @@ RUN wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gp
 # Set JAVA_HOME for JNI detection
 ENV JAVA_HOME=/usr/lib/jvm/temurin-25-jdk-amd64
 
-# Layer 5: sbt 1.11.7 and git
+# Layer 5: sbt 1.12.0 and git
 # sbt manages Scala version (downloads from build.sbt at runtime)
 RUN echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" > /etc/apt/sources.list.d/sbt.list && \
     wget -qO - "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823" | gpg --dearmor > /usr/share/keyrings/sbt-archive-keyring.gpg && \
