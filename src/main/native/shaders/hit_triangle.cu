@@ -81,7 +81,7 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
 }
 
 /**
- * Get material properties for triangle mesh.
+ * Get material properties for triangle mesh including PBR values.
  *
  * In IAS mode, reads from per-instance materials array.
  * In single-object mode, uses SBT hit group data.
@@ -89,15 +89,22 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
  *
  * @param hit_data Triangle hit group data from SBT
  * @param uv_coords UV coordinates for texture sampling
+ * @param vertex_stride Vertex stride (determines UV availability)
  * @param color Output: RGBA material color
  * @param ior Output: Index of refraction
+ * @param roughness Output: Roughness (0=mirror, 1=diffuse)
+ * @param metallic Output: Metallic (0=dielectric, 1=metal)
+ * @param specular Output: Specular intensity
  */
 __device__ void getTriangleMaterial(
     const TriangleHitGroupData* hit_data,
     const float2& uv_coords,
     unsigned int vertex_stride,
     float4& color,
-    float& ior
+    float& ior,
+    float& roughness,
+    float& metallic,
+    float& specular
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
@@ -105,6 +112,9 @@ __device__ void getTriangleMaterial(
         const InstanceMaterial& mat = params.instance_materials[instance_id];
         color = make_float4(mat.color[0], mat.color[1], mat.color[2], mat.color[3]);
         ior = mat.ior;
+        roughness = mat.roughness;
+        metallic = mat.metallic;
+        specular = mat.specular;
 
         // Apply texture if available (in IAS mode only)
         if (vertex_stride >= VERTEX_STRIDE_WITH_UV) {
@@ -119,6 +129,10 @@ __device__ void getTriangleMaterial(
             hit_data->color[3]
         );
         ior = hit_data->ior;
+        // Default PBR values for single-object mode
+        roughness = 0.5f;
+        metallic = 0.0f;
+        specular = 0.5f;
     }
 }
 
@@ -142,10 +156,11 @@ extern "C" __global__ void __closesthit__triangle() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get material properties (color, IOR) with texture sampling
+    // Get material properties including PBR values (color, IOR, roughness, metallic, specular)
     float4 mesh_color;
-    float mesh_ior;
-    getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride, mesh_color, mesh_ior);
+    float mesh_ior, roughness, metallic, specular;
+    getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride,
+                       mesh_color, mesh_ior, roughness, metallic, specular);
 
     const float mesh_alpha = mesh_color.w;
 
@@ -155,10 +170,44 @@ extern "C" __global__ void __closesthit__triangle() {
         return;
     }
 
-    // Handle fully opaque triangles
+    // Handle fully opaque triangles with metallic/diffuse blending
     if (mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
-        handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
-        return;
+        // Check if material has any metallic component
+        if (metallic > 0.0f) {
+            // If at max depth, trace final non-recursive ray
+            if (depth >= MAX_TRACE_DEPTH) {
+                traceFinalNonRecursiveRay(geom.hit_point, ray_direction, geom.normal);
+                return;
+            }
+
+            // Trace reflection ray (metallic component)
+            unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+            traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, reflect_r, reflect_g, reflect_b);
+
+            // Tint reflected color by material color (colored metals like gold, copper)
+            const float3 tint = make_float3(mesh_color.x, mesh_color.y, mesh_color.z);
+            const float tinted_r = static_cast<float>(reflect_r) * tint.x;
+            const float tinted_g = static_cast<float>(reflect_g) * tint.y;
+            const float tinted_b = static_cast<float>(reflect_b) * tint.z;
+
+            // Compute diffuse component (non-metallic)
+            unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
+            computeDiffuseColor(geom.hit_point, geom.normal, mesh_color, diffuse_r, diffuse_g, diffuse_b);
+
+            // Blend: final = metallic * reflection + (1 - metallic) * diffuse
+            const float fr = fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), 255.0f);
+            const float fg = fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), 255.0f);
+            const float fb = fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), 255.0f);
+
+            optixSetPayload_0(static_cast<unsigned int>(fr));
+            optixSetPayload_1(static_cast<unsigned int>(fg));
+            optixSetPayload_2(static_cast<unsigned int>(fb));
+            return;
+        } else {
+            // Fully non-metallic, just diffuse shading
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
+            return;
+        }
     }
 
     // If max depth reached, trace final non-recursive ray

@@ -478,17 +478,24 @@ __device__ void handleFullyTransparent(
 }
 
 /**
- * Handle fully opaque surface (alpha >= threshold).
- * Solid surface with diffuse shading.
+ * Compute diffuse lighting color for opaque surface.
+ * Returns RGB color values (0-255 range) without setting payload.
+ * Used for blending metallic and diffuse contributions.
  *
  * @param hit_point Surface intersection point
  * @param normal Surface normal (pointing toward ray origin)
  * @param material_color RGBA material color
+ * @param diffuse_r Output: Red component (0-255)
+ * @param diffuse_g Output: Green component (0-255)
+ * @param diffuse_b Output: Blue component (0-255)
  */
-__device__ void handleFullyOpaque(
+__device__ void computeDiffuseColor(
     const float3& hit_point,
     const float3& normal,
-    const float4& material_color
+    const float4& material_color,
+    unsigned int& diffuse_r,
+    unsigned int& diffuse_g,
+    unsigned int& diffuse_b
 ) {
     const float3 lighting = calculateLighting(hit_point, normal);
 
@@ -504,10 +511,26 @@ __device__ void handleFullyOpaque(
         surface_color.z * lighting.z
     );
 
-    const unsigned int r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    const unsigned int g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    const unsigned int b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    diffuse_r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    diffuse_g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    diffuse_b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+}
 
+/**
+ * Handle fully opaque surface (alpha >= threshold).
+ * Solid surface with diffuse shading.
+ *
+ * @param hit_point Surface intersection point
+ * @param normal Surface normal (pointing toward ray origin)
+ * @param material_color RGBA material color
+ */
+__device__ void handleFullyOpaque(
+    const float3& hit_point,
+    const float3& normal,
+    const float4& material_color
+) {
+    unsigned int r, g, b;
+    computeDiffuseColor(hit_point, normal, material_color, r, g, b);
     optixSetPayload_0(r);
     optixSetPayload_1(g);
     optixSetPayload_2(b);
