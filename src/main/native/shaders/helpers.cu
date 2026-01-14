@@ -717,6 +717,61 @@ __device__ bool traceRefractedRay(
 }
 
 /**
+ * Handle metallic opaque surface with blended metallic/diffuse rendering.
+ *
+ * Combines reflection (metallic component) with diffuse shading (non-metallic component)
+ * using the formula: final = metallic * tinted_reflection + (1-metallic) * diffuse
+ *
+ * This implements physically-based rendering where metallic materials reflect their
+ * environment tinted by their color (e.g., gold reflects with yellow tint, copper with
+ * orange tint), while non-metallic portions show standard diffuse lighting.
+ *
+ * @param hit_point Surface hit point
+ * @param ray_direction Incoming ray direction
+ * @param normal Surface normal (facing toward ray)
+ * @param material_color Material RGBA color
+ * @param metallic Metallic value [0,1] (0=fully diffuse, 1=fully metallic)
+ * @param depth Current ray depth
+ */
+__device__ void handleMetallicOpaque(
+    const float3& hit_point,
+    const float3& ray_direction,
+    const float3& normal,
+    const float4& material_color,
+    float metallic,
+    unsigned int depth
+) {
+    // If at max depth, trace final non-recursive ray
+    if (depth >= MAX_TRACE_DEPTH) {
+        traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
+        return;
+    }
+
+    // Trace reflection ray (metallic component)
+    unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
+
+    // Tint reflected color by material color (colored metals like gold, copper)
+    const float3 tint = make_float3(material_color.x, material_color.y, material_color.z);
+    const float tinted_r = static_cast<float>(reflect_r) * tint.x;
+    const float tinted_g = static_cast<float>(reflect_g) * tint.y;
+    const float tinted_b = static_cast<float>(reflect_b) * tint.z;
+
+    // Compute diffuse component (non-metallic)
+    unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
+    computeDiffuseColor(hit_point, normal, material_color, diffuse_r, diffuse_g, diffuse_b);
+
+    // Blend: final = metallic * reflection + (1 - metallic) * diffuse
+    const float fr = fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), 255.0f);
+    const float fg = fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), 255.0f);
+    const float fb = fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), 255.0f);
+
+    optixSetPayload_0(static_cast<unsigned int>(fr));
+    optixSetPayload_1(static_cast<unsigned int>(fg));
+    optixSetPayload_2(static_cast<unsigned int>(fb));
+}
+
+/**
  * Apply Beer-Lambert absorption to refracted light when exiting a medium.
  *
  * STANDARD GRAPHICS ALPHA CONVENTION:

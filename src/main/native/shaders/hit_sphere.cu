@@ -55,34 +55,7 @@ extern "C" __global__ void __closesthit__ch() {
     if (sphere_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
         // Check if material has any metallic component
         if (metallic > 0.0f) {
-            // If at max depth, trace final non-recursive ray
-            if (depth >= MAX_TRACE_DEPTH) {
-                traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
-                return;
-            }
-
-            // Trace reflection ray (metallic component)
-            unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-            traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
-
-            // Tint reflected color by material color (colored metals like gold, copper)
-            const float3 tint = make_float3(material_color.x, material_color.y, material_color.z);
-            const float tinted_r = static_cast<float>(reflect_r) * tint.x;
-            const float tinted_g = static_cast<float>(reflect_g) * tint.y;
-            const float tinted_b = static_cast<float>(reflect_b) * tint.z;
-
-            // Compute diffuse component (non-metallic)
-            unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
-            computeDiffuseColor(hit_point, normal, material_color, diffuse_r, diffuse_g, diffuse_b);
-
-            // Blend: final = metallic * reflection + (1 - metallic) * diffuse
-            const float fr = fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), 255.0f);
-            const float fg = fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), 255.0f);
-            const float fb = fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), 255.0f);
-
-            optixSetPayload_0(static_cast<unsigned int>(fr));
-            optixSetPayload_1(static_cast<unsigned int>(fg));
-            optixSetPayload_2(static_cast<unsigned int>(fb));
+            handleMetallicOpaque(hit_point, ray_direction, normal, material_color, metallic, depth);
             return;
         } else {
             // Fully non-metallic, just diffuse shading
