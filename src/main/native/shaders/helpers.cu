@@ -413,8 +413,9 @@ __device__ void subdividePixel(
 
         // Edge detected and can recurse further?
         const bool should_subdivide = (max_diff > params.aa_threshold) && (depth < params.aa_max_depth);
+        const bool stack_has_space = stack_top + RayTracingConstants::AA_SUBPIXEL_COUNT <= AA_STACK_SIZE;
 
-        if (should_subdivide && stack_top + RayTracingConstants::AA_SUBPIXEL_COUNT <= AA_STACK_SIZE) {
+        if (should_subdivide && stack_has_space) {
             // Push 9 sub-pixel tasks onto stack
             const float new_half_size = half_size / static_cast<float>(RayTracingConstants::AA_SUBDIVISION_FACTOR);
 
@@ -427,6 +428,10 @@ __device__ void subdividePixel(
                 }
             }
         } else {
+            // Track when subdivision was skipped due to stack overflow
+            if (should_subdivide && !stack_has_space && params.stats) {
+                atomicAdd(&params.stats->aa_stack_overflows, 1ULL);
+            }
             // No edge, max depth reached, or stack full - accumulate these 9 samples
             for (int i = 0; i < RayTracingConstants::AA_SUBPIXEL_COUNT; ++i) {
                 sum_r += samples[i][0];

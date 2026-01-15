@@ -372,6 +372,7 @@ struct RayStats {
     unsigned long long refracted_rays;  // Rays transmitted through sphere
     unsigned long long shadow_rays;     // Rays cast to check light occlusion
     unsigned long long aa_rays;         // Additional rays from adaptive antialiasing
+    unsigned long long aa_stack_overflows; // Times AA subdivision skipped due to full stack
     unsigned int max_depth_reached;     // Deepest ray recursion
     unsigned int min_depth_reached;     // Shallowest ray recursion (should be 1)
 };

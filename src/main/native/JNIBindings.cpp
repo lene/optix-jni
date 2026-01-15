@@ -517,7 +517,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
             return nullptr;
         }
 
-        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJJII)V");
+        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJJJII)V");
         if (constructor == nullptr) {
             std::cerr << "[JNI] Failed to find RenderResult constructor" << std::endl;
             return nullptr;
@@ -531,6 +531,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
             static_cast<jlong>(stats.refracted_rays),
             static_cast<jlong>(stats.shadow_rays),
             static_cast<jlong>(stats.aa_rays),
+            static_cast<jlong>(stats.aa_stack_overflows),
             static_cast<jint>(stats.max_depth_reached),
             static_cast<jint>(stats.min_depth_reached)
         );

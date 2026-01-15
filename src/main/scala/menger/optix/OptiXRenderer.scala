@@ -65,6 +65,7 @@ case class RayStats(
   refractedRays: Long,
   shadowRays: Long,
   aaRays: Long,
+  aaStackOverflows: Long,
   maxDepthReached: Int,
   minDepthReached: Int
 )
@@ -124,6 +125,7 @@ case class RenderResult(
   refractedRays: Long,
   shadowRays: Long,
   aaRays: Long,
+  aaStackOverflows: Long,
   maxDepthReached: Int,
   minDepthReached: Int
 ):
@@ -134,6 +136,7 @@ case class RenderResult(
     refractedRays,
     shadowRays,
     aaRays,
+    aaStackOverflows,
     maxDepthReached,
     minDepthReached
   )
