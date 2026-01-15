@@ -153,8 +153,8 @@ __device__ float3 generateCameraRay(
     float3& cam_eye
 ) {
     // Screen convention: idx.y=0 is top, so flip to get v=+1 at top, v=-1 at bottom
-    const float u = (static_cast<float>(idx.x) + 0.5f) / static_cast<float>(dim.x) * 2.0f - 1.0f;
-    const float v = 1.0f - (static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y) * 2.0f;
+    const float u = (static_cast<float>(idx.x) + RenderingConstants::PIXEL_CENTER_OFFSET) / static_cast<float>(dim.x) * RenderingConstants::NDC_SCALE - RenderingConstants::NDC_OFFSET;
+    const float v = RenderingConstants::NDC_OFFSET - (static_cast<float>(idx.y) + RenderingConstants::PIXEL_CENTER_OFFSET) / static_cast<float>(dim.y) * RenderingConstants::NDC_SCALE;
     const float2 d = make_float2(u, v);
 
     cam_eye = make_float3(rt_data->cam_eye[0], rt_data->cam_eye[1], rt_data->cam_eye[2]);

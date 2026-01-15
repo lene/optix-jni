@@ -62,7 +62,7 @@ __device__ float traceShadowRay(
 
     // Convert to shadow factor
     // shadow_factor: 1.0 = fully lit, 0.0 = fully shadowed
-    const float shadow_factor = 1.0f - shadow_attenuation;
+    const float shadow_factor = SBTConstants::SHADOW_FACTOR_FULLY_LIT - shadow_attenuation;
 
     // Track shadow ray statistics
     if (params.stats) {
@@ -90,7 +90,7 @@ __device__ void getDirectionalLightParams(
         light.direction[1],
         light.direction[2]
     ));
-    attenuation = 1.0f;  // No distance falloff
+    attenuation = RenderingConstants::DISTANCE_FALLOFF_NONE;  // No distance falloff
 }
 
 /**
@@ -112,7 +112,7 @@ __device__ void getPointLightParams(
     light_dir = to_light / distance;  // Normalize
 
     // Inverse-square law: I = I₀ / (1 + d²)
-    attenuation = 1.0f / (1.0f + distance * distance);
+    attenuation = RenderingConstants::DISTANCE_FALLOFF_BASE / (RenderingConstants::DISTANCE_FALLOFF_BASE + distance * distance);
 }
 
 /**
@@ -129,7 +129,7 @@ __device__ float calculateDiffuseTerm(
         return fabsf(raw_ndotl);
     } else {
         // Single-sided surface (e.g., sphere): clamp to [0, ∞)
-        return fmaxf(0.0f, dot(normal, light_dir));
+        return fmaxf(RenderingConstants::DOT_PRODUCT_ZERO_THRESHOLD, dot(normal, light_dir));
     }
 }
 
@@ -149,7 +149,7 @@ __device__ float3 calculateLighting(
     const float3& normal,
     bool double_sided = false
 ) {
-    float3 total_lighting = make_float3(0.0f, 0.0f, 0.0f);
+    float3 total_lighting = make_float3(RenderingConstants::COLOR_BLACK, RenderingConstants::COLOR_BLACK, RenderingConstants::COLOR_BLACK);
 
     // Accumulate contribution from each light
     for (int light_idx = 0; light_idx < params.num_lights; ++light_idx) {
@@ -176,7 +176,7 @@ __device__ float3 calculateLighting(
         // Trace shadow ray if shadows enabled
         const float shadow_factor = params.shadows_enabled
             ? traceShadowRay(hit_point, normal, light_dir)
-            : 1.0f;
+            : SBTConstants::SHADOW_FACTOR_FULLY_LIT;
 
         // Accumulate light contribution
         const float3 light_color = make_float3(
@@ -188,11 +188,11 @@ __device__ float3 calculateLighting(
         total_lighting = total_lighting + light_color * light.intensity * attenuation * ndotl * shadow_factor;
     }
 
-    // Add ambient lighting (prevents pure black shadows)
+// Add ambient lighting (prevents pure black shadows)
     const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
-
+    
     // Combine: ambient + diffuse (energy conserving)
-    return ambient + total_lighting * (1.0f - AMBIENT_LIGHT_FACTOR);
+    return ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR;
 }
 
 //==============================================================================
@@ -259,7 +259,7 @@ __device__ void traceRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         r, g, b, depth
     );
 
@@ -316,11 +316,11 @@ __device__ float sampleGridAndDetectEdges(
     float max_diff = 0.0f;
 
     // Grid positions: -1, 0, +1 (in units of half_size/1.5 for 3×3 subdivision)
-    step = half_size / 1.5f;
+    step = half_size / RayTracingConstants::AA_GRID_SUBDIVISION_DIVISOR;
 
-    for (int iy = 0; iy < 3; ++iy) {
-        for (int ix = 0; ix < 3; ++ix) {
-            const int idx = iy * 3 + ix;
+    for (int iy = 0; iy < RayTracingConstants::AA_SUBDIVISION_FACTOR; ++iy) {
+        for (int ix = 0; ix < RayTracingConstants::AA_SUBDIVISION_FACTOR; ++ix) {
+            const int idx = iy * RayTracingConstants::AA_SUBDIVISION_FACTOR + ix;
 
             // Calculate sample position
             const float u = center_u + (ix - 1) * step;
@@ -334,7 +334,7 @@ __device__ float sampleGridAndDetectEdges(
 
             // Check color difference with neighbors for edge detection
             if (ix > 0) {
-                const int left_idx = iy * 3 + (ix - 1);
+                const int left_idx = iy * RayTracingConstants::AA_SUBDIVISION_FACTOR + (ix - 1);
                 const float diff = colorDistance(
                     samples[idx][0], samples[idx][1], samples[idx][2],
                     samples[left_idx][0], samples[left_idx][1], samples[left_idx][2]
@@ -343,7 +343,7 @@ __device__ float sampleGridAndDetectEdges(
             }
 
             if (iy > 0) {
-                const int top_idx = (iy - 1) * 3 + ix;
+                const int top_idx = (iy - 1) * RayTracingConstants::AA_SUBDIVISION_FACTOR + ix;
                 const float diff = colorDistance(
                     samples[idx][0], samples[idx][1], samples[idx][2],
                     samples[top_idx][0], samples[top_idx][1], samples[top_idx][2]
@@ -414,12 +414,12 @@ __device__ void subdividePixel(
         // Edge detected and can recurse further?
         const bool should_subdivide = (max_diff > params.aa_threshold) && (depth < params.aa_max_depth);
 
-        if (should_subdivide && stack_top + 9 <= AA_STACK_SIZE) {
+        if (should_subdivide && stack_top + RayTracingConstants::AA_SUBPIXEL_COUNT <= AA_STACK_SIZE) {
             // Push 9 sub-pixel tasks onto stack
-            const float new_half_size = half_size / 3.0f;
+            const float new_half_size = half_size / static_cast<float>(RayTracingConstants::AA_SUBDIVISION_FACTOR);
 
-            for (int iy = 0; iy < 3; ++iy) {
-                for (int ix = 0; ix < 3; ++ix) {
+            for (int iy = 0; iy < RayTracingConstants::AA_SUBDIVISION_FACTOR; ++iy) {
+                for (int ix = 0; ix < RayTracingConstants::AA_SUBDIVISION_FACTOR; ++ix) {
                     const float sub_u = center_u + (ix - 1) * step;
                     const float sub_v = center_v + (iy - 1) * step;
 
@@ -428,7 +428,7 @@ __device__ void subdividePixel(
             }
         } else {
             // No edge, max depth reached, or stack full - accumulate these 9 samples
-            for (int i = 0; i < 9; ++i) {
+            for (int i = 0; i < RayTracingConstants::AA_SUBPIXEL_COUNT; ++i) {
                 sum_r += samples[i][0];
                 sum_g += samples[i][1];
                 sum_b += samples[i][2];
@@ -468,7 +468,7 @@ __device__ void handleFullyTransparent(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         continue_r, continue_g, continue_b, next_depth
     );
 
@@ -551,9 +551,9 @@ __device__ void traceFinalNonRecursiveRay(
 ) {
     const float cos_theta = fabsf(dot(ray_direction, normal));
     const float3 reflect_dir = make_float3(
-        ray_direction.x - 2.0f * cos_theta * normal.x,
-        ray_direction.y - 2.0f * cos_theta * normal.y,
-        ray_direction.z - 2.0f * cos_theta * normal.z
+        ray_direction.x - RenderingConstants::REFLECTION_SCALE * cos_theta * normal.x,
+        ray_direction.y - RenderingConstants::REFLECTION_SCALE * cos_theta * normal.y,
+        ray_direction.z - RenderingConstants::REFLECTION_SCALE * cos_theta * normal.z
     );
 
     unsigned int final_r = 0, final_g = 0, final_b = 0;
@@ -569,7 +569,7 @@ __device__ void traceFinalNonRecursiveRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         final_r, final_g, final_b, final_depth
     );
 
@@ -593,13 +593,13 @@ __device__ float computeFresnelReflectance(
     bool entering,
     float material_ior
 ) {
-    const float n1 = entering ? 1.0f : material_ior;
-    const float n2 = entering ? material_ior : 1.0f;
+    const float n1 = entering ? RenderingConstants::VACUUM_IOR : material_ior;
+    const float n2 = entering ? material_ior : RenderingConstants::VACUUM_IOR;
     const float r0 = (n1 - n2) / (n1 + n2);
     const float R0 = r0 * r0;
     const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float one_minus_cos = 1.0f - cos_theta;
-    return R0 + (1.0f - R0) * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+    const float one_minus_cos = RenderingConstants::FRESNEL_ONE_MINUS_COS - cos_theta;
+    return R0 + RenderingConstants::FRESNEL_ONE_MINUS_R0 * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
 }
 
 /**
@@ -646,7 +646,7 @@ __device__ void traceReflectedRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         reflect_r, reflect_g, reflect_b, next_depth
     );
 }
@@ -709,7 +709,7 @@ __device__ bool traceRefractedRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         refract_r, refract_g, refract_b, next_depth
     );
 
@@ -762,9 +762,9 @@ __device__ void handleMetallicOpaque(
     computeDiffuseColor(hit_point, normal, material_color, diffuse_r, diffuse_g, diffuse_b);
 
     // Blend: final = metallic * reflection + (1 - metallic) * diffuse
-    const float fr = fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), 255.0f);
-    const float fg = fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), 255.0f);
-    const float fb = fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), 255.0f);
+    const float fr = fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), RenderingConstants::COLOR_BYTE_MAX);
+    const float fg = fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), RenderingConstants::COLOR_BYTE_MAX);
+    const float fb = fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), RenderingConstants::COLOR_BYTE_MAX);
 
     optixSetPayload_0(static_cast<unsigned int>(fr));
     optixSetPayload_1(static_cast<unsigned int>(fg));
@@ -942,9 +942,9 @@ __device__ void getInstanceMaterialPBR(
             params.sphere_color[3]
         );
         ior = params.sphere_ior;
-        roughness = 0.5f;  // Default middle roughness
-        metallic = 0.0f;   // Default non-metallic (dielectric)
-        specular = 0.5f;   // Default specular intensity
+        roughness = MaterialDefaults::DEFAULT_ROUGHNESS;  // Default middle roughness
+        metallic = MaterialDefaults::DEFAULT_METALLIC;    // Default non-metallic (dielectric)
+        specular = MaterialDefaults::DEFAULT_SPECULAR;    // Default specular intensity
     }
 }
 

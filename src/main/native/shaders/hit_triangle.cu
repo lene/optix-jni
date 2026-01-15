@@ -130,9 +130,9 @@ __device__ void getTriangleMaterial(
         );
         ior = hit_data->ior;
         // Default PBR values for single-object mode
-        roughness = 0.5f;
-        metallic = 0.0f;
-        specular = 0.5f;
+        roughness = MaterialDefaults::DEFAULT_ROUGHNESS;
+        metallic = MaterialDefaults::DEFAULT_METALLIC;
+        specular = MaterialDefaults::DEFAULT_SPECULAR;
     }
 }
 

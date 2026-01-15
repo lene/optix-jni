@@ -14,8 +14,8 @@ extern "C" __global__ void __raygen__rg() {
     // For floor at bottom: top screen should look up (positive v), bottom should look down (negative v)
     // Since idx.y increases downward but v should increase upward, we need to flip:
     // idx.y=0 → v=+1 (top of screen looks up), idx.y=height → v=-1 (bottom looks down)
-    const float u = (static_cast<float>(idx.x) + 0.5f) / static_cast<float>(dim.x) * 2.0f - 1.0f;
-    const float v = 1.0f - (static_cast<float>(idx.y) + 0.5f) / static_cast<float>(dim.y) * 2.0f;
+    const float u = (static_cast<float>(idx.x) + RenderingConstants::PIXEL_CENTER_OFFSET) / static_cast<float>(dim.x) * RenderingConstants::NDC_SCALE - RenderingConstants::NDC_OFFSET;
+    const float v = RenderingConstants::NDC_OFFSET - (static_cast<float>(idx.y) + RenderingConstants::PIXEL_CENTER_OFFSET) / static_cast<float>(dim.y) * RenderingConstants::NDC_SCALE;
 
     // Construct ray direction from camera basis vectors
     const float3 ray_origin = make_float3(
@@ -36,8 +36,8 @@ extern "C" __global__ void __raygen__rg() {
         unsigned int sample_count = 0;
 
         // Calculate pixel half-size in NDC (for initial subdivision)
-        const float pixel_half_width = 1.0f / static_cast<float>(dim.x);
-        const float pixel_half_height = 1.0f / static_cast<float>(dim.y);
+        const float pixel_half_width = RenderingConstants::UNIT_CONVERSION_FACTOR / static_cast<float>(dim.x);
+        const float pixel_half_height = RenderingConstants::UNIT_CONVERSION_FACTOR / static_cast<float>(dim.y);
         const float pixel_half_size = fmaxf(pixel_half_width, pixel_half_height);
 
         // Start recursive subdivision at depth 0
@@ -68,12 +68,12 @@ extern "C" __global__ void __raygen__rg() {
             params.handle,
             ray_origin,
             ray_direction,
-            0.0f,
+            SBTConstants::RAY_TMIN_PRIMARY,
             MAX_RAY_DISTANCE,
             0.0f,
             OptixVisibilityMask(255),
             OPTIX_RAY_FLAG_NONE,
-            0, 2, 0,  // ray_type=0 (primary), stride=2, miss_index=0
+            SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
             r, g, b, p3
         );
     }

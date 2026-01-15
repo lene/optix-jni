@@ -64,6 +64,8 @@ namespace RayTracingConstants {
     // Adaptive antialiasing
     constexpr int AA_MAX_DEPTH_LIMIT = 4;           // Maximum recursion depth for AA
     constexpr int AA_SUBDIVISION_FACTOR = 3;        // 3x3 subdivision per level
+    constexpr int AA_SUBPIXEL_COUNT = AA_SUBDIVISION_FACTOR * AA_SUBDIVISION_FACTOR;  // 9 subpixels in 3x3 grid
+    constexpr float AA_GRID_SUBDIVISION_DIVISOR = 1.5f;  // Divisor for grid step calculation (positions at -1, 0, +1)
     constexpr float AA_DEFAULT_THRESHOLD = 0.1f;    // Default color difference threshold
 
     // Progressive Photon Mapping (Caustics)
@@ -97,6 +99,61 @@ namespace MaterialConstants {
     constexpr float IOR_WATER = 1.33f;     // Water
     constexpr float IOR_GLASS = 1.5f;      // Standard glass
     constexpr float IOR_DIAMOND = 2.42f;   // Diamond (high dispersion)
+}
+
+// Default PBR material values
+namespace MaterialDefaults {
+    constexpr float DEFAULT_ROUGHNESS = 0.5f;  // Default middle roughness (0=mirror, 1=diffuse)
+    constexpr float DEFAULT_METALLIC = 0.0f;    // Default non-metallic (dielectric)
+    constexpr float DEFAULT_SPECULAR = 0.5f;    // Default specular intensity
+}
+
+// Rendering and physics constants for ray tracing
+namespace RenderingConstants {
+    // Normalized Device Coordinates (NDC)
+    constexpr float PIXEL_CENTER_OFFSET = 0.5f;          // Pixel center offset for ray generation
+    constexpr float NDC_SCALE = 2.0f;                    // Scale factor for NDC [-1,1] range
+    constexpr float NDC_OFFSET = 1.0f;                   // Offset for NDC calculation
+    
+    // Color and conversion constants
+    constexpr float COLOR_BLACK = 0.0f;                   // Black RGB value
+    constexpr float COLOR_WHITE = 1.0f;                   // White RGB value
+    constexpr float COLOR_BYTE_MAX = 255.0f;              // Maximum color component for output
+    constexpr float UNIT_CONVERSION_FACTOR = 1.0f;        // Base conversion factor
+    
+    // Physics and ray tracing
+    constexpr float VACUUM_IOR = 1.0f;                   // Index of refraction for vacuum/air
+    constexpr float REFLECTION_SCALE = 2.0f;                 // Scale factor for reflection calculation
+    constexpr float FRESNEL_BASE = 1.0f;                    // Base value for Fresnel equations
+    constexpr float METALLIC_THRESHOLD = 0.0f;              // Threshold for metallic material detection
+    constexpr float DOT_PRODUCT_ZERO_THRESHOLD = 0.0f;        // Zero threshold for dot product
+    constexpr float DISTANCE_FALLOFF_NONE = 1.0f;        // No distance attenuation factor
+    constexpr float DISTANCE_FALLOFF_BASE = 1.0f;        // Base for inverse-square law
+    constexpr float DOT_PRODUCT_CLAMP_MIN = 0.0f;          // Minimum clamp for diffuse term
+    constexpr float DOT_PRODUCT_CLAMP_MIN_SINGLE = 0.0f;   // Single-sided clamp minimum
+    constexpr float DIFFUSE_BLEND_FACTOR = 1.0f - RayTracingConstants::AMBIENT_LIGHT_FACTOR;  // Diffuse contribution (energy conservation: ambient + diffuse = 1.0)
+    
+    // Fresnel calculation terms
+    constexpr float FRESNEL_ONE_MINUS_R0 = 1.0f;          // (1 - R0) term for Fresnel equations
+    constexpr float FRESNEL_ONE_MINUS_COS = 1.0f;          // (1 - cosθ) term for Fresnel calculations
+}
+
+// Shader Binding Table (SBT) parameters
+namespace SBTConstants {
+    // Ray types
+    constexpr unsigned int RAY_TYPE_PRIMARY = 0;           // Primary camera ray
+    constexpr unsigned int RAY_TYPE_SHADOW = 1;            // Shadow ray
+    
+    // SBT indices
+    constexpr unsigned int MISS_PRIMARY = 0;               // Primary ray miss shader
+    constexpr unsigned int MISS_SHADOW = 1;                // Shadow ray miss shader
+    constexpr unsigned int OFFSET_SHADOW = 1;                // SBT offset for shadow rays
+    constexpr unsigned int STRIDE_RAY_TYPES = 2;            // SBT stride (number of ray types)
+    
+    // Common ray parameters
+    constexpr unsigned int PAYLOAD_SHADOW_FACTOR = 0;        // Payload index for shadow attenuation
+    constexpr float SHADOW_FACTOR_FULLY_LIT = 1.0f;     // Shadow factor for fully lit pixels
+    constexpr float RAY_TMIN_PRIMARY = 0.0f;            // Primary ray minimum distance
 }
 
 // Geometry types for IAS/SBT offset calculation
