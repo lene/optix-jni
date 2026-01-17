@@ -160,7 +160,8 @@ namespace SBTConstants {
 enum GeometryType {
     GEOMETRY_TYPE_SPHERE = 0,    // Custom sphere primitive (uses intersection program)
     GEOMETRY_TYPE_TRIANGLE = 1,  // Built-in triangle mesh (cube, sponge)
-    GEOMETRY_TYPE_COUNT = 2      // Number of geometry types
+    GEOMETRY_TYPE_CYLINDER = 2,  // Custom cylinder primitive (uses intersection program)
+    GEOMETRY_TYPE_COUNT = 3      // Number of geometry types
 };
 
 // Per-instance material data for IAS (indexed by instance ID)
@@ -442,6 +443,16 @@ struct HitGroupData {
     float sphere_radius;    // Sphere radius
 };
 
+// Cylinder geometry data for ray intersection
+// Stored in custom primitive AABB buffer, accessed in intersection shader
+struct CylinderData {
+    float p0[3];      // Start point (12 bytes)
+    float radius;     // Radius (4 bytes)
+    float p1[3];      // End point (12 bytes)
+    float padding;    // Alignment padding (4 bytes)
+    // Total: 32 bytes (GPU-friendly alignment)
+};
+
 // Shader Binding Table (SBT) record structures
 // These combine the OptiX header with our custom data
 template <typename T>
@@ -454,5 +465,6 @@ typedef SbtRecord<RayGenData>   RayGenSbtRecord;
 typedef SbtRecord<MissData>     MissSbtRecord;
 typedef SbtRecord<HitGroupData> HitGroupSbtRecord;
 typedef SbtRecord<TriangleHitGroupData> TriangleHitGroupSbtRecord;
+typedef SbtRecord<CylinderData> CylinderHitGroupSbtRecord;
 
 #endif // OPTIX_DATA_H

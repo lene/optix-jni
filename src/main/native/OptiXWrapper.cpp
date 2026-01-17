@@ -829,6 +829,115 @@ int OptiXWrapper::addTriangleMeshInstance(
     return instanceId;
 }
 
+int OptiXWrapper::addCylinderInstance(
+    float p0_x, float p0_y, float p0_z,
+    float p1_x, float p1_y, float p1_z,
+    float radius,
+    float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, float emission
+) {
+    if (impl->instances.size() >= impl->max_instances) {
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Cylinder] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
+        return -1;
+    }
+
+    // Each cylinder has unique geometry, so create a unique GAS
+    // Calculate AABB that bounds the cylinder
+    float min_x = fminf(p0_x, p1_x) - radius;
+    float min_y = fminf(p0_y, p1_y) - radius;
+    float min_z = fminf(p0_z, p1_z) - radius;
+    float max_x = fmaxf(p0_x, p1_x) + radius;
+    float max_y = fmaxf(p0_y, p1_y) + radius;
+    float max_z = fmaxf(p0_z, p1_z) + radius;
+
+    OptixAabb aabb;
+    aabb.minX = min_x;
+    aabb.minY = min_y;
+    aabb.minZ = min_z;
+    aabb.maxX = max_x;
+    aabb.maxY = max_y;
+    aabb.maxZ = max_z;
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(
+        aabb,
+        accel_options
+    );
+
+    // Create CylinderData and upload to GPU
+    CylinderData cylinder_data;
+    cylinder_data.p0[0] = p0_x;
+    cylinder_data.p0[1] = p0_y;
+    cylinder_data.p0[2] = p0_z;
+    cylinder_data.radius = radius;
+    cylinder_data.p1[0] = p1_x;
+    cylinder_data.p1[1] = p1_y;
+    cylinder_data.p1[2] = p1_z;
+    cylinder_data.padding = 0.0f;
+
+    CUdeviceptr d_cylinder_data = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_cylinder_data), sizeof(CylinderData)));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(d_cylinder_data),
+        &cylinder_data,
+        sizeof(CylinderData),
+        cudaMemcpyHostToDevice
+    ));
+
+    // Store GAS data with cylinder data buffer
+    Impl::GASData gas_data;
+    gas_data.handle = result.handle;
+    gas_data.gas_buffer = result.gas_buffer;
+    gas_data.aabb_buffer = d_cylinder_data;  // Store cylinder data in aabb_buffer field
+
+    // Create instance
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_CYLINDER;
+    inst.gas_handle = gas_data.handle;
+
+    // Cylinders use identity transform since geometry is already positioned via p0/p1
+    float identity_transform[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
+
+    inst.color[0] = r;
+    inst.color[1] = g;
+    inst.color[2] = b;
+    inst.color[3] = a;
+    inst.ior = ior;
+    inst.roughness = roughness;
+    inst.metallic = metallic;
+    inst.specular = specular;
+    inst.emission = emission;
+    inst.texture_index = -1;  // Cylinders don't support textures
+    inst.active = true;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+
+    // Store GAS data with unique key (use negative instance ID to distinguish from shared GAS)
+    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
+
+    impl->ias_dirty = true;
+
+    // Force pipeline rebuild when entering IAS mode for first time
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
 void OptiXWrapper::removeInstance(int instanceId) {
     if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) {
         std::cerr << "[OptiX] Invalid instance ID: " << instanceId << std::endl;

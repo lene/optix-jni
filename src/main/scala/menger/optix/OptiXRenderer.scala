@@ -357,6 +357,21 @@ class OptiXRenderer extends LazyLogging:
     textureIndex: Int
   ): Int
 
+  @native private def addCylinderInstanceNative(
+    p0_x: Float, p0_y: Float, p0_z: Float,
+    p1_x: Float, p1_y: Float, p1_z: Float,
+    radius: Float,
+    r: Float,
+    g: Float,
+    b: Float,
+    a: Float,
+    ior: Float,
+    roughness: Float,
+    metallic: Float,
+    specular: Float,
+    emission: Float
+  ): Int
+
   @native def removeInstance(instanceId: Int): Unit
 
   @native def clearAllInstances(): Unit
@@ -441,6 +456,31 @@ class OptiXRenderer extends LazyLogging:
 
   def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
     addTriangleMeshInstance(position, Material(color, ior), -1)
+
+  // Cylinder instance management
+  def addCylinderInstance(
+    p0: Vector[3],
+    p1: Vector[3],
+    radius: Float,
+    material: Material
+  ): Option[Int] =
+    val id = addCylinderInstanceNative(
+      p0.x, p0.y, p0.z,
+      p1.x, p1.y, p1.z,
+      radius,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular, material.emission
+    )
+    if id >= 0 then Some(id) else None
+
+  def addCylinderInstance(
+    p0: Vector[3],
+    p1: Vector[3],
+    radius: Float,
+    color: Color,
+    ior: Float
+  ): Option[Int] =
+    addCylinderInstance(p0, p1, radius, Material(color, ior))
 
   def render(size: ImageSize): Option[Array[Byte]] =
     render(size.width, size.height)

@@ -729,6 +729,50 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNa
 }
 
 /**
+ * Add a cylinder instance to the scene.
+ * @param p0_x/y/z Start point coordinates
+ * @param p1_x/y/z End point coordinates
+ * @param radius Cylinder radius
+ * @param r/g/b/a Material color
+ * @param ior Index of refraction
+ * @param roughness Roughness (0=mirror, 1=diffuse)
+ * @param metallic Metallic (0=dielectric, 1=metal)
+ * @param specular Specular intensity
+ * @param emission Emission intensity
+ * Returns instance ID (>= 0) on success, -1 on failure.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addCylinderInstanceNative(
+    JNIEnv* env, jobject obj,
+    jfloat p0_x, jfloat p0_y, jfloat p0_z,
+    jfloat p1_x, jfloat p1_y, jfloat p1_z,
+    jfloat radius,
+    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        int instanceId = wrapper->addCylinderInstance(
+            p0_x, p0_y, p0_z,
+            p1_x, p1_y, p1_z,
+            radius,
+            r, g, b, a, ior,
+            roughness, metallic, specular, emission
+        );
+
+        return instanceId;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addCylinderInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Remove an instance by ID.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(
