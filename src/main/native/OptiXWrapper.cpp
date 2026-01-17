@@ -54,6 +54,7 @@ struct OptiXWrapper::Impl {
         float roughness;                      // 0=mirror, 1=diffuse (default: 0.5)
         float metallic;                       // 0=dielectric, 1=metal (default: 0.0)
         float specular;                       // Specular intensity (default: 0.5)
+        float emission;                       // Emission intensity (default: 0.0)
         int texture_index;                    // Index into textures array (-1 = no texture)
         bool active;                          // True if instance is enabled
     };
@@ -407,6 +408,7 @@ void OptiXWrapper::buildIAS() {
         mat.roughness = inst.roughness;
         mat.metallic = inst.metallic;
         mat.specular = inst.specular;
+        mat.emission = inst.emission;
         mat.geometry_type = inst.geometry_type;
         mat.texture_index = inst.texture_index;
         materials.push_back(mat);
@@ -694,7 +696,7 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
 
 int OptiXWrapper::addSphereInstance(
     const float* transform, float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular
+    float roughness, float metallic, float specular, float emission
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -747,6 +749,7 @@ int OptiXWrapper::addSphereInstance(
     inst.roughness = roughness;
     inst.metallic = metallic;
     inst.specular = specular;
+    inst.emission = emission;
     inst.texture_index = -1;  // Spheres don't support textures
     inst.active = true;
 
@@ -766,7 +769,7 @@ int OptiXWrapper::addSphereInstance(
 
 int OptiXWrapper::addTriangleMeshInstance(
     const float* transform, float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular, int textureIndex
+    float roughness, float metallic, float specular, float emission, int textureIndex
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -808,6 +811,7 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.roughness = roughness;
     inst.metallic = metallic;
     inst.specular = specular;
+    inst.emission = emission;
     inst.texture_index = textureIndex;
     inst.active = true;
 

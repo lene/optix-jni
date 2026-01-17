@@ -41,8 +41,8 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Get material properties including PBR values (from IAS instance or global params)
     float4 material_color;
-    float material_ior, roughness, metallic, specular;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular);
+    float material_ior, roughness, metallic, specular, emission;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission);
     const float sphere_alpha = material_color.w;
 
     // Handle fully transparent spheres
@@ -55,11 +55,11 @@ extern "C" __global__ void __closesthit__ch() {
     if (sphere_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
         // Check if material has any metallic component
         if (metallic > 0.0f) {
-            handleMetallicOpaque(hit_point, ray_direction, normal, material_color, metallic, depth);
+            handleMetallicOpaque(hit_point, ray_direction, normal, material_color, metallic, depth, emission);
             return;
         } else {
             // Fully non-metallic, just diffuse shading
-            handleFullyOpaque(hit_point, normal, material_color);
+            handleFullyOpaque(hit_point, normal, material_color, emission);
             return;
         }
     }
@@ -98,5 +98,5 @@ extern "C" __global__ void __closesthit__ch() {
     refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color, params.sphere_scale);
 
     // Blend reflected and refracted colors using Fresnel and set output payloads
-    blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color);
+    blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color, material_color, emission);
 }

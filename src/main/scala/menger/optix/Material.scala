@@ -8,6 +8,7 @@ case class Material(
     roughness: Float = 0.5f,
     metallic: Float = 0.0f,
     specular: Float = 0.5f,
+    emission: Float = 0.0f,
     baseColorTexture: Option[Int] = None,
     normalTexture: Option[Int] = None,
     roughnessTexture: Option[Int] = None
@@ -17,6 +18,7 @@ case class Material(
   def withRoughnessOpt(r: Option[Float]): Material = r.fold(this)(v => copy(roughness = v))
   def withMetallicOpt(m: Option[Float]): Material = m.fold(this)(v => copy(metallic = v))
   def withSpecularOpt(s: Option[Float]): Material = s.fold(this)(v => copy(specular = v))
+  def withEmissionOpt(e: Option[Float]): Material = e.fold(this)(v => copy(emission = v))
 
 object Material:
 
@@ -28,7 +30,8 @@ object Material:
     ior = 1.5f,
     roughness = 0.0f,
     metallic = 0.0f,
-    specular = 1.0f
+    specular = 1.0f,
+    emission = 0.0f
   )
 
   val Water = Material(
@@ -36,7 +39,8 @@ object Material:
     ior = 1.33f,
     roughness = 0.0f,
     metallic = 0.0f,
-    specular = 1.0f
+    specular = 1.0f,
+    emission = 0.0f
   )
 
   val Diamond = Material(
@@ -44,7 +48,8 @@ object Material:
     ior = 2.42f,
     roughness = 0.0f,
     metallic = 0.0f,
-    specular = 1.0f
+    specular = 1.0f,
+    emission = 0.0f
   )
 
   // Metal presets (colored reflections, no refraction)
@@ -53,7 +58,8 @@ object Material:
     ior = 1.0f,
     roughness = 0.0f,
     metallic = 1.0f,
-    specular = 1.0f
+    specular = 1.0f,
+    emission = 0.0f
   )
 
   val Gold = Material(
@@ -61,7 +67,8 @@ object Material:
     ior = 1.0f,
     roughness = 0.1f,
     metallic = 1.0f,
-    specular = 1.0f
+    specular = 1.0f,
+    emission = 0.0f
   )
 
   val Copper = Material(
@@ -69,7 +76,27 @@ object Material:
     ior = 1.0f,
     roughness = 0.2f,
     metallic = 1.0f,
-    specular = 1.0f
+    specular = 1.0f,
+    emission = 0.0f
+  )
+
+  // Semi-transparent film/parchment materials
+  val Film = Material(
+    color = White.copy(a = 0.2f),  // 20% opaque (80% transparent)
+    ior = 1.1f,
+    roughness = 0.1f,
+    metallic = 0.0f,
+    specular = 0.5f,
+    emission = 0.0f
+  )
+
+  val Parchment = Material(
+    color = Color(245f/255f, 222f/255f, 179f/255f, 0.4f),  // Beige/tan, 40% opaque
+    ior = 1.2f,
+    roughness = 0.4f,
+    metallic = 0.0f,
+    specular = 0.3f,
+    emission = 0.0f
   )
 
   // Factory methods for custom colors
@@ -88,17 +115,19 @@ object Material:
   // Lookup by name (case-insensitive)
   def fromName(name: String): Option[Material] =
     name.toLowerCase match
-      case "glass"   => Some(Glass)
-      case "water"   => Some(Water)
-      case "diamond" => Some(Diamond)
-      case "chrome"  => Some(Chrome)
-      case "gold"    => Some(Gold)
-      case "copper"  => Some(Copper)
-      case "metal"   => Some(metal(White))
-      case "plastic" => Some(plastic(White))
-      case "matte"   => Some(matte(White))
-      case _         => None
+      case "glass"     => Some(Glass)
+      case "water"     => Some(Water)
+      case "diamond"   => Some(Diamond)
+      case "chrome"    => Some(Chrome)
+      case "gold"      => Some(Gold)
+      case "copper"    => Some(Copper)
+      case "film"      => Some(Film)
+      case "parchment" => Some(Parchment)
+      case "metal"     => Some(metal(White))
+      case "plastic"   => Some(plastic(White))
+      case "matte"     => Some(matte(White))
+      case _           => None
 
   // All known preset names (for validation/help text)
   val presetNames: Set[String] =
-    Set("glass", "water", "diamond", "chrome", "gold", "copper", "metal", "plastic", "matte")
+    Set("glass", "water", "diamond", "chrome", "gold", "copper", "film", "parchment", "metal", "plastic", "matte")

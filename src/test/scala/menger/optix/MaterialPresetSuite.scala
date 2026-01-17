@@ -137,8 +137,8 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
     Material.presetNames should contain("plastic")
     Material.presetNames should contain("matte")
 
-  it should "have exactly 9 presets" in:
-    Material.presetNames.size shouldBe 9
+  it should "have exactly 11 presets" in:
+    Material.presetNames.size shouldBe 11
 
   // ========== Physical Correctness Validation ==========
 

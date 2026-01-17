@@ -339,7 +339,8 @@ class OptiXRenderer extends LazyLogging:
     ior: Float,
     roughness: Float,
     metallic: Float,
-    specular: Float
+    specular: Float,
+    emission: Float
   ): Int
 
   @native private def addTriangleMeshInstanceNative(
@@ -352,6 +353,7 @@ class OptiXRenderer extends LazyLogging:
     roughness: Float,
     metallic: Float,
     specular: Float,
+    emission: Float,
     textureIndex: Int
   ): Int
 
@@ -370,7 +372,7 @@ class OptiXRenderer extends LazyLogging:
     val id = addSphereInstanceNative(
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular
+      material.ior, material.roughness, material.metallic, material.specular, material.emission
     )
     if id >= 0 then Some(id) else None
 
@@ -397,7 +399,7 @@ class OptiXRenderer extends LazyLogging:
     val id = addTriangleMeshInstanceNative(
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular,
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
       textureIndex
     )
     if id >= 0 then Some(id) else None

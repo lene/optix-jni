@@ -522,20 +522,47 @@ __device__ void computeDiffuseColor(
 }
 
 /**
+ * Add emission to RGB color values (0-255 range).
+ * Emission is multiplied by the material color to preserve color while adding glow.
+ *
+ * @param r/g/b Input/output: RGB values (0-255)
+ * @param color Material color (0.0-1.0)
+ * @param emission Emission intensity (0.0-10.0)
+ */
+__device__ void addEmissionToColor(
+    unsigned int& r, unsigned int& g, unsigned int& b,
+    const float4& color,
+    float emission
+) {
+    if (emission > 0.0f) {
+        float emissive_r = emission * color.x * RayTracingConstants::COLOR_SCALE_FACTOR;
+        float emissive_g = emission * color.y * RayTracingConstants::COLOR_SCALE_FACTOR;
+        float emissive_b = emission * color.z * RayTracingConstants::COLOR_SCALE_FACTOR;
+
+        r = min(r + static_cast<unsigned int>(emissive_r), 255u);
+        g = min(g + static_cast<unsigned int>(emissive_g), 255u);
+        b = min(b + static_cast<unsigned int>(emissive_b), 255u);
+    }
+}
+
+/**
  * Handle fully opaque surface (alpha >= threshold).
  * Solid surface with diffuse shading.
  *
  * @param hit_point Surface intersection point
  * @param normal Surface normal (pointing toward ray origin)
  * @param material_color RGBA material color
+ * @param emission Emission intensity (0.0-10.0)
  */
 __device__ void handleFullyOpaque(
     const float3& hit_point,
     const float3& normal,
-    const float4& material_color
+    const float4& material_color,
+    float emission = 0.0f
 ) {
     unsigned int r, g, b;
     computeDiffuseColor(hit_point, normal, material_color, r, g, b);
+    addEmissionToColor(r, g, b, material_color, emission);
     optixSetPayload_0(r);
     optixSetPayload_1(g);
     optixSetPayload_2(b);
@@ -737,6 +764,7 @@ __device__ bool traceRefractedRay(
  * @param material_color Material RGBA color
  * @param metallic Metallic value [0,1] (0=fully diffuse, 1=fully metallic)
  * @param depth Current ray depth
+ * @param emission Emission intensity (0.0-10.0)
  */
 __device__ void handleMetallicOpaque(
     const float3& hit_point,
@@ -744,7 +772,8 @@ __device__ void handleMetallicOpaque(
     const float3& normal,
     const float4& material_color,
     float metallic,
-    unsigned int depth
+    unsigned int depth,
+    float emission = 0.0f
 ) {
     // If at max depth, trace final non-recursive ray
     if (depth >= MAX_TRACE_DEPTH) {
@@ -767,13 +796,16 @@ __device__ void handleMetallicOpaque(
     computeDiffuseColor(hit_point, normal, material_color, diffuse_r, diffuse_g, diffuse_b);
 
     // Blend: final = metallic * reflection + (1 - metallic) * diffuse
-    const float fr = fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), RenderingConstants::COLOR_BYTE_MAX);
-    const float fg = fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), RenderingConstants::COLOR_BYTE_MAX);
-    const float fb = fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), RenderingConstants::COLOR_BYTE_MAX);
+    unsigned int r = static_cast<unsigned int>(fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), RenderingConstants::COLOR_BYTE_MAX));
+    unsigned int g = static_cast<unsigned int>(fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), RenderingConstants::COLOR_BYTE_MAX));
+    unsigned int b = static_cast<unsigned int>(fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), RenderingConstants::COLOR_BYTE_MAX));
 
-    optixSetPayload_0(static_cast<unsigned int>(fr));
-    optixSetPayload_1(static_cast<unsigned int>(fg));
-    optixSetPayload_2(static_cast<unsigned int>(fb));
+    // Add emission
+    addEmissionToColor(r, g, b, material_color, emission);
+
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
 }
 
 /**
@@ -835,18 +867,23 @@ __device__ float3 applyBeerLambertAbsorption(
  * 1. Convert integer color payloads to normalized floats
  * 2. Apply Beer-Lambert absorption to refracted color (caller handles this first)
  * 3. Blend colors using Fresnel: final = fresnel * reflect + (1 - fresnel) * refract
- * 4. Convert back to integer and set output payloads
+ * 4. Add emission if present
+ * 5. Convert back to integer and set output payloads
  *
  * @param fresnel Fresnel reflectance coefficient [0, 1]
  * @param reflect_r/g/b Reflected ray color (0-255)
  * @param refract_color Refracted ray color after Beer-Lambert (0.0-1.0 per channel)
+ * @param material_color Material color for emission tinting
+ * @param emission Emission intensity (0.0-10.0)
  */
 __device__ void blendFresnelColorsAndSetPayload(
     float fresnel,
     unsigned int reflect_r,
     unsigned int reflect_g,
     unsigned int reflect_b,
-    const float3& refract_color
+    const float3& refract_color,
+    const float4& material_color = make_float4(1.0f, 1.0f, 1.0f, 1.0f),
+    float emission = 0.0f
 ) {
     // Convert reflected color to normalized float
     const float3 reflect_color = make_float3(
@@ -862,10 +899,18 @@ __device__ void blendFresnelColorsAndSetPayload(
         fresnel * reflect_color.z + (1.0f - fresnel) * refract_color.z
     );
 
-    // Convert to integer and set payloads
-    optixSetPayload_0(static_cast<unsigned int>(fminf(final_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_1(static_cast<unsigned int>(fminf(final_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_2(static_cast<unsigned int>(fminf(final_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    // Convert to integer
+    unsigned int r = static_cast<unsigned int>(fminf(final_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int g = static_cast<unsigned int>(fminf(final_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int b = static_cast<unsigned int>(fminf(final_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+
+    // Add emission
+    addEmissionToColor(r, g, b, material_color, emission);
+
+    // Set payloads
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
 }
 
 /**
@@ -925,9 +970,10 @@ __device__ void getInstanceMaterial(float4& color, float& ior) {
  * @param roughness Output: Roughness (0=mirror, 1=diffuse)
  * @param metallic Output: Metallic (0=dielectric, 1=metal)
  * @param specular Output: Specular intensity
+ * @param emission Output: Emission intensity (0.0-10.0)
  */
 __device__ void getInstanceMaterialPBR(
-    float4& color, float& ior, float& roughness, float& metallic, float& specular
+    float4& color, float& ior, float& roughness, float& metallic, float& specular, float& emission
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
@@ -938,6 +984,7 @@ __device__ void getInstanceMaterialPBR(
         roughness = mat.roughness;
         metallic = mat.metallic;
         specular = mat.specular;
+        emission = mat.emission;
     } else {
         // Single-object mode: use global sphere parameters with default PBR values
         color = make_float4(
@@ -950,6 +997,7 @@ __device__ void getInstanceMaterialPBR(
         roughness = MaterialDefaults::DEFAULT_ROUGHNESS;  // Default middle roughness
         metallic = MaterialDefaults::DEFAULT_METALLIC;    // Default non-metallic (dielectric)
         specular = MaterialDefaults::DEFAULT_SPECULAR;    // Default specular intensity
+        emission = 0.0f;  // Default no emission
     }
 }
 

@@ -171,9 +171,10 @@ struct InstanceMaterial {
     float roughness;            // 0=mirror, 1=diffuse (default: 0.5)
     float metallic;             // 0=dielectric, 1=metal (default: 0.0)
     float specular;             // Specular intensity (default: 0.5)
+    float emission;             // Emission intensity (0.0-10.0, default: 0.0)
     unsigned int geometry_type; // GeometryType enum value
     int texture_index;          // Index into Params.textures array (-1 = no texture)
-    unsigned int padding[2];    // Align to 48 bytes for GPU efficiency
+    unsigned int padding[1];    // Align to 48 bytes for GPU efficiency
 };
 
 // Extended material properties for physically-based rendering (Sprint 7)
@@ -187,6 +188,7 @@ struct MaterialProperties {
     float roughness;             // 0=mirror, 1=diffuse (default: 0.5)
     float metallic;              // 0=dielectric, 1=metal (default: 0.0)
     float specular;              // Specular intensity (default: 0.5)
+    float emission;              // Emission intensity (0.0-10.0, default: 0.0)
 
     // Texture indices (-1 = no texture)
     int base_color_texture;      // Albedo/diffuse texture index
@@ -194,7 +196,7 @@ struct MaterialProperties {
     int roughness_texture;       // Roughness map texture index (future)
 
     // Padding for 16-byte alignment (64 bytes total)
-    unsigned int padding[2];
+    unsigned int padding[3];
 };
 
 // Material type for presets
