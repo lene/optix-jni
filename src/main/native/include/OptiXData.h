@@ -380,6 +380,16 @@ struct RayStats {
     unsigned int min_depth_reached;     // Shallowest ray recursion (should be 1)
 };
 
+// Cylinder geometry data for ray intersection
+// Stored in params.cylinder_data buffer, accessed in intersection shader via instance material's texture_index
+struct CylinderData {
+    float p0[3];      // Start point (12 bytes)
+    float radius;     // Radius (4 bytes)
+    float p1[3];      // End point (12 bytes)
+    float padding;    // Alignment padding (4 bytes)
+    // Total: 32 bytes (GPU-friendly alignment)
+};
+
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
@@ -415,6 +425,11 @@ struct Params {
     // Ray statistics (GPU buffer)
     RayStats* stats;            // Pointer to GPU stats buffer
 
+    // Cylinder geometry data buffer (for cylinder intersection shader)
+    // Indexed by cylinder_index stored in InstanceMaterial.texture_index for cylinder instances
+    CylinderData* cylinder_data;    // Device pointer to array of cylinder geometry
+    unsigned int num_cylinders;     // Number of cylinders in array
+
     // Adaptive antialiasing
     bool  aa_enabled;           // Enable adaptive antialiasing
     int   aa_max_depth;         // Maximum recursion depth (1-4)
@@ -441,16 +456,6 @@ struct MissData {
 struct HitGroupData {
     float sphere_center[3]; // Sphere center position
     float sphere_radius;    // Sphere radius
-};
-
-// Cylinder geometry data for ray intersection
-// Stored in custom primitive AABB buffer, accessed in intersection shader
-struct CylinderData {
-    float p0[3];      // Start point (12 bytes)
-    float radius;     // Radius (4 bytes)
-    float p1[3];      // End point (12 bytes)
-    float padding;    // Alignment padding (4 bytes)
-    // Total: 32 bytes (GPU-friendly alignment)
 };
 
 // Shader Binding Table (SBT) record structures

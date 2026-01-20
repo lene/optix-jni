@@ -147,7 +147,6 @@ message(STATUS "")
 #=============================================================================
 add_library(optix_shaders OBJECT
     shaders/sphere_combined.cu
-    shaders/cylinder.cu
 )
 
 target_include_directories(optix_shaders PRIVATE
@@ -204,10 +203,7 @@ install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/optix_shaders.dir/shaders/sphere_c
         RENAME "sphere_combined.ptx"
 )
 
-install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/optix_shaders.dir/shaders/cylinder.ptx"
-        DESTINATION .
-        RENAME "cylinder.ptx"
-)
+# Cylinder programs are now included in sphere_combined.ptx via hit_cylinder.cu
 
 # Set output directory for development
 set_target_properties(optixjni PROPERTIES

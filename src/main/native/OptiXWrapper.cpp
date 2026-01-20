@@ -83,6 +83,10 @@ struct OptiXWrapper::Impl {
     std::map<std::string, int> texture_name_to_index;
     CUdeviceptr d_texture_objects = 0;        // Device array of cudaTextureObject_t for Params
 
+    // Cylinder geometry data (host-side storage, uploaded to GPU before render)
+    std::vector<CylinderData> cylinder_data;
+    CUdeviceptr d_cylinder_data = 0;          // Device array of CylinderData for Params
+
     Impl()
         : pipeline_manager(optix_context)
         , buffer_manager(optix_context)
@@ -582,6 +586,29 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.textures = nullptr;
                 params.num_textures = 0;
             }
+
+            // Upload cylinder data if any cylinders exist
+            if (!impl->cylinder_data.empty()) {
+                size_t cyl_size = impl->cylinder_data.size() * sizeof(CylinderData);
+
+                // Reallocate GPU buffer if needed
+                if (impl->d_cylinder_data) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cylinder_data), cyl_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_cylinder_data),
+                    impl->cylinder_data.data(),
+                    cyl_size,
+                    cudaMemcpyHostToDevice
+                ));
+
+                params.cylinder_data = reinterpret_cast<CylinderData*>(impl->d_cylinder_data);
+                params.num_cylinders = static_cast<unsigned int>(impl->cylinder_data.size());
+            } else {
+                params.cylinder_data = nullptr;
+                params.num_cylinders = 0;
+            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -589,6 +616,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_instances = 0;
             params.textures = nullptr;
             params.num_textures = 0;
+            params.cylinder_data = nullptr;
+            params.num_cylinders = 0;
         }
 
         // Dynamic scene data
@@ -870,31 +899,25 @@ int OptiXWrapper::addCylinderInstance(
         accel_options
     );
 
-    // Create CylinderData and upload to GPU
-    CylinderData cylinder_data;
-    cylinder_data.p0[0] = p0_x;
-    cylinder_data.p0[1] = p0_y;
-    cylinder_data.p0[2] = p0_z;
-    cylinder_data.radius = radius;
-    cylinder_data.p1[0] = p1_x;
-    cylinder_data.p1[1] = p1_y;
-    cylinder_data.p1[2] = p1_z;
-    cylinder_data.padding = 0.0f;
+    // Store CylinderData in host-side vector (will be uploaded to GPU before render)
+    CylinderData cyl_data;
+    cyl_data.p0[0] = p0_x;
+    cyl_data.p0[1] = p0_y;
+    cyl_data.p0[2] = p0_z;
+    cyl_data.radius = radius;
+    cyl_data.p1[0] = p1_x;
+    cyl_data.p1[1] = p1_y;
+    cyl_data.p1[2] = p1_z;
+    cyl_data.padding = 0.0f;
 
-    CUdeviceptr d_cylinder_data = 0;
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_cylinder_data), sizeof(CylinderData)));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(d_cylinder_data),
-        &cylinder_data,
-        sizeof(CylinderData),
-        cudaMemcpyHostToDevice
-    ));
+    int cylinder_index = static_cast<int>(impl->cylinder_data.size());
+    impl->cylinder_data.push_back(cyl_data);
 
-    // Store GAS data with cylinder data buffer
+    // Store GAS data (no per-instance cylinder data upload - done in batch before render)
     Impl::GASData gas_data;
     gas_data.handle = result.handle;
     gas_data.gas_buffer = result.gas_buffer;
-    gas_data.aabb_buffer = d_cylinder_data;  // Store cylinder data in aabb_buffer field
+    gas_data.aabb_buffer = 0;  // Cylinder data stored in params.cylinder_data instead
 
     // Create instance
     Impl::ObjectInstance inst;
@@ -918,7 +941,7 @@ int OptiXWrapper::addCylinderInstance(
     inst.metallic = metallic;
     inst.specular = specular;
     inst.emission = emission;
-    inst.texture_index = -1;  // Cylinders don't support textures
+    inst.texture_index = cylinder_index;  // For cylinders: index into cylinder_data array
     inst.active = true;
 
     int instanceId = static_cast<int>(impl->instances.size());
@@ -968,6 +991,13 @@ void OptiXWrapper::clearAllInstances() {
         impl->d_instance_materials = 0;
     }
     impl->ias_handle = 0;
+
+    // Clear cylinder data
+    impl->cylinder_data.clear();
+    if (impl->d_cylinder_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
+        impl->d_cylinder_data = 0;
+    }
 }
 
 int OptiXWrapper::getInstanceCount() const {

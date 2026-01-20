@@ -59,6 +59,9 @@ OptixModule PipelineManager::loadPTXModules() {
         pipeline_compile_options
     );
 
+    // Cylinder programs are now included in the main module via hit_cylinder.cu
+    cylinder_module = module;
+
     return module;
 }
 
@@ -99,6 +102,17 @@ void PipelineManager::createProgramGroups() {
         module, "__closesthit__triangle_shadow"
     );
 
+    // Cylinder hit groups (custom intersection from cylinder module)
+    cylinder_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
+        cylinder_module, "__closesthit__cylinder",
+        cylinder_module, "__intersection__cylinder"
+    );
+
+    cylinder_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
+        module, "__closesthit__shadow",  // Reuse sphere shadow closest hit
+        cylinder_module, "__intersection__cylinder"
+    );
+
     // Caustics raygen programs (for Progressive Photon Mapping)
     caustics_hitpoints_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__hitpoints"
@@ -120,6 +134,8 @@ void PipelineManager::createPipeline() {
         shadow_hitgroup_prog_group,
         triangle_hitgroup_prog_group,
         triangle_shadow_hitgroup_prog_group,
+        cylinder_hitgroup_prog_group,
+        cylinder_shadow_hitgroup_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
         caustics_radiance_raygen
@@ -135,7 +151,7 @@ void PipelineManager::createPipeline() {
         pipeline_compile_options,
         pipeline_link_options,
         program_groups,
-        10  // Updated to include triangle and caustics program groups
+        12  // Updated to include triangle, cylinder, and caustics program groups
     );
 }
 
@@ -194,18 +210,19 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     sbt.missRecordStrideInBytes = sizeof(MissSbtRecord);
     sbt.missRecordCount = 2;
 
-    // Hit group records for IAS mode need to support both sphere and triangle geometry types
-    // SBT layout: [0]=sphere_primary, [1]=sphere_shadow, [2]=triangle_primary, [3]=triangle_shadow
+    // Hit group records for IAS mode need to support sphere, triangle, and cylinder geometry types
+    // SBT layout: [0]=sphere_primary, [1]=sphere_shadow, [2]=triangle_primary, [3]=triangle_shadow,
+    //             [4]=cylinder_primary, [5]=cylinder_shadow
     // Offset calculation: geometry_type * 2 + ray_type (0=primary, 1=shadow)
 
-    // For IAS mode: always build unified 4-record SBT
+    // For IAS mode: always build unified 6-record SBT
     // For single-object mode: build 2-record SBT (backward compatible)
 
     // Maximum record size to ensure proper alignment
     constexpr size_t record_size = std::max(sizeof(HitGroupSbtRecord), sizeof(TriangleHitGroupSbtRecord));
 
-    // Allocate 4 records for IAS mode (GEOMETRY_TYPE_COUNT * 2 ray types)
-    constexpr int num_records = 4;  // 2 geometry types * 2 ray types
+    // Allocate 6 records for IAS mode (3 geometry types * 2 ray types)
+    constexpr int num_records = 6;  // 3 geometry types * 2 ray types
     char hitgroup_records[num_records * record_size];
     std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
 
@@ -242,6 +259,16 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
         tri_shadow->data = tri_data;
     }
 
+    // Build cylinder hitgroup records [4]=primary, [5]=shadow
+    // Cylinder data is stored per-instance in the GAS, so SBT record just needs header
+    HitGroupSbtRecord* cylinder_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 4 * record_size);
+    optixSbtRecordPackHeader(cylinder_hitgroup_prog_group, cylinder_primary);
+    cylinder_primary->data = sphere_data;  // Placeholder data (not used by cylinder shader)
+
+    HitGroupSbtRecord* cylinder_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 5 * record_size);
+    optixSbtRecordPackHeader(cylinder_shadow_hitgroup_prog_group, cylinder_shadow);
+    cylinder_shadow->data = sphere_data;  // Placeholder data (not used by cylinder shader)
+
     // Upload unified SBT to GPU
     CUdeviceptr d_hitgroup_records;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
@@ -276,6 +303,8 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(triangle_hitgroup_prog_group);
     destroyProgramGroupIfExists(triangle_shadow_hitgroup_prog_group);
+    destroyProgramGroupIfExists(cylinder_hitgroup_prog_group);
+    destroyProgramGroupIfExists(cylinder_shadow_hitgroup_prog_group);
 
     if (includeCaustics) {
         destroyProgramGroupIfExists(caustics_hitpoints_raygen);
@@ -287,6 +316,13 @@ void PipelineManager::cleanup(bool includeCaustics) {
         optix_context.destroyModule(module);
         module = nullptr;
     }
+
+    // Only destroy cylinder_module if it's a separate module (not same as module)
+    // Currently cylinder programs are included in the main module, so this is a no-op
+    if (cylinder_module && cylinder_module != module) {
+        optix_context.destroyModule(cylinder_module);
+    }
+    cylinder_module = nullptr;
 
     // Clean up SBT buffers
     if (sbt.raygenRecord) {

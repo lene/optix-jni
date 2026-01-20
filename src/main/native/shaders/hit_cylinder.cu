@@ -2,101 +2,7 @@
 // Cylinder Ray Intersection Shader
 // Implements ray-cylinder intersection with caps for edge rendering
 //==============================================================================
-
-#include <optix.h>
-#include "OptiXData.h"
-
-using namespace RayTracingConstants;
-using namespace SBTConstants;
-
-// Forward declarations from helpers.cu
-extern "C" __device__ Params params;
-
-extern "C" __device__ void getInstanceMaterialPBR(
-    float4& color, float& ior, float& roughness, float& metallic, float& specular, float& emission
-);
-
-extern "C" __device__ void handleFullyOpaque(
-    const float3& hit_point,
-    const float3& normal,
-    const float4& material_color,
-    float emission
-);
-
-extern "C" __device__ void handleMetallicOpaque(
-    const float3& hit_point,
-    const float3& ray_direction,
-    const float3& normal,
-    const float4& material_color,
-    float metallic,
-    unsigned int depth,
-    float emission
-);
-
-extern "C" __device__ void blendFresnelColorsAndSetPayload(
-    float fresnel,
-    unsigned int reflect_r,
-    unsigned int reflect_g,
-    unsigned int reflect_b,
-    const float3& refract_color,
-    const float4& material_color,
-    float emission
-);
-
-extern "C" __device__ float computeFresnelReflectance(
-    const float3& ray_direction,
-    const float3& normal,
-    bool entering,
-    float material_ior
-);
-
-extern "C" __device__ void traceReflectedRay(
-    const float3& hit_point,
-    const float3& ray_direction,
-    const float3& normal,
-    unsigned int depth,
-    unsigned int& reflect_r,
-    unsigned int& reflect_g,
-    unsigned int& reflect_b
-);
-
-extern "C" __device__ bool traceRefractedRay(
-    const float3& hit_point,
-    const float3& ray_direction,
-    const float3& normal,
-    bool entering,
-    unsigned int depth,
-    float material_ior,
-    unsigned int& refract_r,
-    unsigned int& refract_g,
-    unsigned int& refract_b
-);
-
-extern "C" __device__ float3 payloadToFloat3(
-    unsigned int r,
-    unsigned int g,
-    unsigned int b
-);
-
-extern "C" __device__ float3 applyBeerLambertAbsorption(
-    const float3& refract_color,
-    float distance,
-    bool entering,
-    const float4& glass_color,
-    float distance_scale
-);
-
-extern "C" __device__ void handleFullyTransparent(
-    const float3& hit_point,
-    const float3& ray_direction,
-    unsigned int depth
-);
-
-extern "C" __device__ void traceFinalNonRecursiveRay(
-    const float3& hit_point,
-    const float3& ray_direction,
-    const float3& normal
-);
+// This file is included by sphere_combined.cu - do not compile separately
 
 //==============================================================================
 // Cylinder Intersection Program
@@ -116,10 +22,13 @@ extern "C" __device__ void traceFinalNonRecursiveRay(
  * - Caps: disk intersections at p0 and p1
  */
 extern "C" __global__ void __intersection__cylinder() {
-    // Get cylinder data from SBT (stored in aabb_buffer during instance creation)
-    const CylinderData* cylinder = reinterpret_cast<CylinderData*>(
-        optixGetSbtDataPointer()
-    );
+    // Get cylinder index from instance material's texture_index field
+    const unsigned int instanceId = optixGetInstanceId();
+    const InstanceMaterial& mat = params.instance_materials[instanceId];
+    const int cylinder_index = mat.texture_index;
+
+    // Get cylinder data from params buffer
+    const CylinderData* cylinder = &params.cylinder_data[cylinder_index];
 
     // Get ray parameters
     const float3 ray_orig = optixGetWorldRayOrigin();
@@ -399,6 +308,26 @@ extern "C" __global__ void __anyhit__cylinder() {
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission);
 
     // If fully transparent, ignore this hit and continue ray
+    if (material_color.w < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
+        optixIgnoreIntersection();
+    }
+}
+
+//==============================================================================
+// Cylinder Shadow Programs
+//==============================================================================
+
+extern "C" __global__ void __closesthit__cylinder_shadow() {
+    // Shadow ray hit - nothing to do, payload already set for blocked
+}
+
+extern "C" __global__ void __anyhit__cylinder_shadow() {
+    // Get material properties to check alpha
+    float4 material_color;
+    float material_ior, roughness, metallic, specular, emission;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission);
+
+    // If fully transparent, don't block light
     if (material_color.w < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
         optixIgnoreIntersection();
     }

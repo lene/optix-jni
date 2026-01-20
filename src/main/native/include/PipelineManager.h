@@ -57,6 +57,11 @@ private:
     OptixProgramGroup triangle_hitgroup_prog_group = nullptr;
     OptixProgramGroup triangle_shadow_hitgroup_prog_group = nullptr;
 
+    // Cylinder program groups
+    OptixProgramGroup cylinder_hitgroup_prog_group = nullptr;
+    OptixProgramGroup cylinder_shadow_hitgroup_prog_group = nullptr;
+    OptixModule cylinder_module = nullptr;
+
     // Caustics program groups
     OptixProgramGroup caustics_hitpoints_raygen = nullptr;
     OptixProgramGroup caustics_photons_raygen = nullptr;
