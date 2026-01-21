@@ -2,7 +2,7 @@
 // Cylinder Ray Intersection Shader
 // Implements ray-cylinder intersection with caps for edge rendering
 //==============================================================================
-// This file is included by sphere_combined.cu - do not compile separately
+// This file is included by optix_shaders.cu - do not compile separately
 
 //==============================================================================
 // Cylinder Intersection Program

@@ -555,12 +555,12 @@ object OptiXRenderer extends LazyLogging:
     copyLoop()
 
   private def extractPTX(platform: String): Try[Unit] = Try:
-    val ptxResourcePath = s"/native/$platform/sphere_combined.ptx"
+    val ptxResourcePath = s"/native/$platform/optix_shaders.ptx"
     Option(getClass.getResourceAsStream(ptxResourcePath)) match
       case Some(ptxStream) =>
         val ptxDir = new java.io.File("target/native/x86_64-linux/bin")
         ptxDir.mkdirs()
-        val ptxFile = new java.io.File(ptxDir, "sphere_combined.ptx")
+        val ptxFile = new java.io.File(ptxDir, "optix_shaders.ptx")
         val ptxOut = new FileOutputStream(ptxFile)
         try
           copyStreamToFile(ptxStream, ptxOut).get

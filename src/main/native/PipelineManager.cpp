@@ -39,9 +39,9 @@ OptixModule PipelineManager::loadPTXModules() {
     // 2. Build output directory (for sbt run / sbt test)
     // 3. Classes directory (for IntelliJ/IDE runs)
     std::vector<std::string> ptx_search_paths = {
-        "target/native/x86_64-linux/bin/sphere_combined.ptx",  // Extracted from JAR
-        "optix-jni/target/native/x86_64-linux/bin/sphere_combined.ptx",  // sbt build output
-        "optix-jni/target/classes/native/x86_64-linux/sphere_combined.ptx"  // sbt-jni managed
+        "target/native/x86_64-linux/bin/optix_shaders.ptx",  // Extracted from JAR
+        "optix-jni/target/native/x86_64-linux/bin/optix_shaders.ptx",  // sbt build output
+        "optix-jni/target/classes/native/x86_64-linux/optix_shaders.ptx"  // sbt-jni managed
     };
     std::string ptx_content = optix_utils::readPTXFile(ptx_search_paths);
 

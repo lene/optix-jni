@@ -33,9 +33,9 @@ public:
 // Helper to read PTX file for module tests - tries multiple locations
 static std::string readPTXFile() {
     std::vector<std::string> search_paths = {
-        "target/native/x86_64-linux/bin/sphere_combined.ptx",
-        "optix-jni/target/native/x86_64-linux/bin/sphere_combined.ptx",
-        "optix-jni/target/classes/native/x86_64-linux/sphere_combined.ptx"
+        "target/native/x86_64-linux/bin/optix_shaders.ptx",
+        "optix-jni/target/native/x86_64-linux/bin/optix_shaders.ptx",
+        "optix-jni/target/classes/native/x86_64-linux/optix_shaders.ptx"
     };
 
     try {

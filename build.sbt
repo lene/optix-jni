@@ -53,8 +53,8 @@ Compile / compile := {
 
   // Clean stale PTX copies before compile
   val stalePtxLocations = Seq(
-    (Compile / classDirectory).value / "native" / "x86_64-linux" / "sphere_combined.ptx",
-    baseDirectory.value.getParentFile / "target" / "native" / "x86_64-linux" / "bin" / "sphere_combined.ptx"
+    (Compile / classDirectory).value / "native" / "x86_64-linux" / "optix_shaders.ptx",
+    baseDirectory.value.getParentFile / "target" / "native" / "x86_64-linux" / "bin" / "optix_shaders.ptx"
   )
   stalePtxLocations.foreach { ptxFile =>
     if (ptxFile.exists()) {
@@ -66,8 +66,8 @@ Compile / compile := {
   val compileResult = (Compile / compile).value
 
   // Copy PTX file to classes directory (sbt-jni only copies .so/.dll/.dylib)
-  val ptxSource = target.value / "native" / "x86_64-linux" / "bin" / "sphere_combined.ptx"
-  val ptxDest = (Compile / classDirectory).value / "native" / "x86_64-linux" / "sphere_combined.ptx"
+  val ptxSource = target.value / "native" / "x86_64-linux" / "bin" / "optix_shaders.ptx"
+  val ptxDest = (Compile / classDirectory).value / "native" / "x86_64-linux" / "optix_shaders.ptx"
   if (ptxSource.exists()) {
     IO.copyFile(ptxSource, ptxDest)
     log.debug(s"Copied PTX file: $ptxSource -> $ptxDest")
