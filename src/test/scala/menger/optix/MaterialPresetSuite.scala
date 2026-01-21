@@ -50,6 +50,44 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
     Material.Copper.color.r should be > Material.Copper.color.g
     Material.Copper.color.g should be > Material.Copper.color.b
 
+  // ========== Film and Parchment Preset Tests ==========
+
+  "Material.Film" should "be highly transparent (alpha = 0.2)" in:
+    Material.Film.color.a shouldBe 0.2f
+
+  it should "have low IOR (1.1)" in:
+    Material.Film.ior shouldBe 1.1f
+
+  it should "be smooth (low roughness)" in:
+    Material.Film.roughness shouldBe 0.1f
+
+  it should "be non-metallic" in:
+    Material.Film.metallic shouldBe 0.0f
+
+  it should "have no default emission" in:
+    Material.Film.emission shouldBe 0.0f
+
+  "Material.Parchment" should "be semi-transparent (alpha = 0.4)" in:
+    Material.Parchment.color.a shouldBe 0.4f
+
+  it should "have low IOR (1.2)" in:
+    Material.Parchment.ior shouldBe 1.2f
+
+  it should "have moderate roughness" in:
+    Material.Parchment.roughness shouldBe 0.4f
+
+  it should "have beige/tan color (RGB ~245, 222, 179)" in:
+    // Allow small tolerance for float precision
+    Material.Parchment.color.r shouldBe (245f/255f) +- 0.01f
+    Material.Parchment.color.g shouldBe (222f/255f) +- 0.01f
+    Material.Parchment.color.b shouldBe (179f/255f) +- 0.01f
+
+  it should "be non-metallic" in:
+    Material.Parchment.metallic shouldBe 0.0f
+
+  it should "have no default emission" in:
+    Material.Parchment.emission shouldBe 0.0f
+
   // ========== Factory Method Tests ==========
 
   "Material.matte" should "create pure diffuse material" in:
@@ -96,6 +134,12 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
   it should "return Copper for 'copper'" in:
     Material.fromName("copper") shouldBe Some(Material.Copper)
 
+  it should "return Film for 'film'" in:
+    Material.fromName("film") shouldBe Some(Material.Film)
+
+  it should "return Parchment for 'parchment'" in:
+    Material.fromName("parchment") shouldBe Some(Material.Parchment)
+
   it should "return a metal for 'metal'" in:
     val mat = Material.fromName("metal")
     mat shouldBe defined
@@ -133,6 +177,8 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
     Material.presetNames should contain("chrome")
     Material.presetNames should contain("gold")
     Material.presetNames should contain("copper")
+    Material.presetNames should contain("film")
+    Material.presetNames should contain("parchment")
     Material.presetNames should contain("metal")
     Material.presetNames should contain("plastic")
     Material.presetNames should contain("matte")
