@@ -312,14 +312,17 @@ void PipelineManager::cleanup(bool includeCaustics) {
         destroyProgramGroupIfExists(caustics_radiance_raygen);
     }
 
+    // Check if cylinder_module is a separate module before destroying module
+    bool cylinder_is_separate = (cylinder_module && cylinder_module != module);
+
     if (module) {
         optix_context.destroyModule(module);
         module = nullptr;
     }
 
-    // Only destroy cylinder_module if it's a separate module (not same as module)
+    // Only destroy cylinder_module if it was a separate module
     // Currently cylinder programs are included in the main module, so this is a no-op
-    if (cylinder_module && cylinder_module != module) {
+    if (cylinder_is_separate) {
         optix_context.destroyModule(cylinder_module);
     }
     cylinder_module = nullptr;
