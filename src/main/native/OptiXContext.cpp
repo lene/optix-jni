@@ -252,6 +252,41 @@ OptixProgramGroup OptiXContext::createHitgroupProgramGroup(
     return program_group;
 }
 
+OptixProgramGroup OptiXContext::createHitgroupProgramGroup(
+    OptixModule module_ch,
+    const char* entry_ch,
+    OptixModule module_ah,
+    const char* entry_ah,
+    OptixModule module_is,
+    const char* entry_is)
+{
+    OptixProgramGroupOptions program_group_options = {};
+    OptixProgramGroupDesc hitgroup_desc = {};
+    hitgroup_desc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+    hitgroup_desc.hitgroup.moduleCH = module_ch;
+    hitgroup_desc.hitgroup.entryFunctionNameCH = entry_ch;
+    hitgroup_desc.hitgroup.moduleAH = module_ah;
+    hitgroup_desc.hitgroup.entryFunctionNameAH = entry_ah;
+    hitgroup_desc.hitgroup.moduleIS = module_is;
+    hitgroup_desc.hitgroup.entryFunctionNameIS = entry_is;
+
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
+    size_t log_size = sizeof(log);
+
+    OptixProgramGroup program_group = nullptr;
+    OPTIX_CHECK(optixProgramGroupCreate(
+        context_,
+        &hitgroup_desc,
+        1,
+        &program_group_options,
+        log,
+        &log_size,
+        &program_group
+    ));
+
+    return program_group;
+}
+
 OptixProgramGroup OptiXContext::createTriangleHitgroupProgramGroup(
     OptixModule module_ch,
     const char* entry_ch)

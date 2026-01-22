@@ -87,6 +87,9 @@ struct OptiXWrapper::Impl {
     std::vector<CylinderData> cylinder_data;
     CUdeviceptr d_cylinder_data = 0;          // Device array of CylinderData for Params
 
+    // Track cylinder GAS buffers for proper cleanup (each cylinder has its own GAS)
+    std::vector<GASData> cylinder_gas_buffers;
+
     Impl()
         : pipeline_manager(optix_context)
         , buffer_manager(optix_context)
@@ -553,6 +556,13 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         // Use IAS handle in multi-object mode, GAS handle in single-object mode
         if (impl->use_ias) {
+            if (impl->ias_handle == 0) {
+                throw std::runtime_error("[OptiX] IAS handle is null but use_ias is true");
+            }
+            if (!impl->d_instance_materials) {
+                throw std::runtime_error("[OptiX] Instance materials not uploaded to GPU");
+            }
+
             params.handle = impl->ias_handle;
             params.use_ias = true;
             params.instance_materials = reinterpret_cast<InstanceMaterial*>(impl->d_instance_materials);
@@ -913,11 +923,12 @@ int OptiXWrapper::addCylinderInstance(
     int cylinder_index = static_cast<int>(impl->cylinder_data.size());
     impl->cylinder_data.push_back(cyl_data);
 
-    // Store GAS data (no per-instance cylinder data upload - done in batch before render)
+    // Store GAS data in tracking vector for proper cleanup
     Impl::GASData gas_data;
     gas_data.handle = result.handle;
     gas_data.gas_buffer = result.gas_buffer;
     gas_data.aabb_buffer = 0;  // Cylinder data stored in params.cylinder_data instead
+    impl->cylinder_gas_buffers.push_back(gas_data);
 
     // Create instance
     Impl::ObjectInstance inst;
@@ -998,6 +1009,17 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
         impl->d_cylinder_data = 0;
     }
+
+    // Free cylinder GAS buffers
+    for (const auto& gas : impl->cylinder_gas_buffers) {
+        if (gas.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
+        }
+        if (gas.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
+        }
+    }
+    impl->cylinder_gas_buffers.clear();
 }
 
 int OptiXWrapper::getInstanceCount() const {
@@ -1129,6 +1151,15 @@ void OptiXWrapper::dispose() {
 
             // Clean up OptiX context
             impl->optix_context.destroy();
+
+            // Synchronize CUDA device to clear any pending errors
+            cudaError_t err = cudaDeviceSynchronize();
+            if (err != cudaSuccess) {
+                std::cerr << "[OptiX] CUDA synchronization warning during dispose: "
+                          << cudaGetErrorString(err) << std::endl;
+                // Clear the error
+                cudaGetLastError();
+            }
 
         } catch (const std::exception& e) {
             std::cerr << "[OptiX] Cleanup error: " << e.what() << std::endl;
