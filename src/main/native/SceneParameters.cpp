@@ -2,7 +2,6 @@
 #include "include/VectorMath.h"
 #include <cstring>
 #include <cmath>
-#include <iostream>
 
 SceneParameters::SceneParameters() {
     initializeDefaultLight();
@@ -24,9 +23,6 @@ void SceneParameters::initializeDefaultLight() {
 }
 
 void SceneParameters::setCamera(const float* eye, const float* lookAt, const float* up, float fov, int imageWidth, int imageHeight) {
-    std::cerr << "[SceneParameters::setCamera] Called with eye=(" << eye[0] << "," << eye[1] << "," << eye[2]
-              << "), fov=" << fov << ", dims=" << imageWidth << "x" << imageHeight << std::endl;
-
     // Store eye position and FOV
     std::memcpy(camera.eye, eye, 3 * sizeof(float));
     camera.fov = fov;
@@ -60,7 +56,6 @@ void SceneParameters::setCamera(const float* eye, const float* lookAt, const flo
     camera.v[1] = v[1] * vlen;
     camera.v[2] = v[2] * vlen;
 
-    std::cerr << "[SceneParameters::setCamera] Marking camera dirty" << std::endl;
     camera.dirty = true;
 }
 
@@ -138,17 +133,10 @@ void SceneParameters::clearTriangleMesh() {
 }
 
 bool SceneParameters::isAnyDirty() const {
-    bool result = camera.dirty || sphere.dirty || plane.dirty || triangle_mesh.dirty;
-    std::cerr << "[SceneParameters::isAnyDirty] camera=" << camera.dirty
-              << ", sphere=" << sphere.dirty << ", plane=" << plane.dirty
-              << ", triangle_mesh=" << triangle_mesh.dirty << " => " << result << std::endl;
-    return result;
+    return camera.dirty || sphere.dirty || plane.dirty || triangle_mesh.dirty;
 }
 
 void SceneParameters::clearDirtyFlags() {
-    std::cerr << "[SceneParameters::clearDirtyFlags] Clearing dirty flags (camera=" << camera.dirty
-              << ", sphere=" << sphere.dirty << ", plane=" << plane.dirty
-              << ", triangle_mesh=" << triangle_mesh.dirty << ")" << std::endl;
     camera.dirty = false;
     sphere.dirty = false;
     plane.dirty = false;

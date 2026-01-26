@@ -99,6 +99,11 @@ public:
     bool isAnyDirty() const;
     void clearDirtyFlags();
 
+    // Fine-grained dirty flag queries (for optimized pipeline rebuild)
+    bool isCameraDirty() const { return camera.dirty; }
+    bool isGeometryDirty() const { return sphere.dirty || plane.dirty || triangle_mesh.dirty; }
+    void clearCameraDirty() { camera.dirty = false; }
+
 private:
     CameraParams camera;
     SphereParams sphere;

@@ -127,7 +127,6 @@ void PipelineManager::createProgramGroups() {
 }
 
 void PipelineManager::createPipeline() {
-    std::cerr << "[PipelineManager::createPipeline] Assembling program groups array" << std::endl;
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -143,20 +142,10 @@ void PipelineManager::createPipeline() {
         caustics_radiance_raygen
     };
 
-    std::cerr << "[PipelineManager::createPipeline] Verifying program groups are non-null" << std::endl;
-    for (int i = 0; i < 12; i++) {
-        if (!program_groups[i]) {
-            std::cerr << "[PipelineManager::createPipeline] WARNING: Program group " << i << " is null!" << std::endl;
-        }
-    }
-
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
 
     OptixPipelineLinkOptions pipeline_link_options = {};
     pipeline_link_options.maxTraceDepth = MAX_TRACE_DEPTH;  // Defined in OptiXData.h
-
-    std::cerr << "[PipelineManager::createPipeline] Calling optixPipelineCreate..." << std::endl;
-    std::cerr << "[PipelineManager::createPipeline] Max trace depth: " << MAX_TRACE_DEPTH << std::endl;
 
     // Use OptiXContext to create pipeline
     pipeline = optix_context.createPipeline(
@@ -165,8 +154,6 @@ void PipelineManager::createPipeline() {
         program_groups,
         12  // Updated to include triangle, cylinder, and caustics program groups
     );
-
-    std::cerr << "[PipelineManager::createPipeline] optixPipelineCreate completed successfully" << std::endl;
 }
 
 void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, OptixTraversableHandle gasHandle) {
@@ -305,15 +292,11 @@ void PipelineManager::destroyProgramGroupIfExists(OptixProgramGroup& prog_group)
 }
 
 void PipelineManager::cleanup(bool includeCaustics) {
-    std::cerr << "[PipelineManager::cleanup] Starting cleanup" << std::endl;
-
     if (pipeline) {
-        std::cerr << "[PipelineManager::cleanup] Destroying pipeline" << std::endl;
         optix_context.destroyPipeline(pipeline);
         pipeline = nullptr;
     }
 
-    std::cerr << "[PipelineManager::cleanup] Destroying program groups" << std::endl;
     destroyProgramGroupIfExists(raygen_prog_group);
     destroyProgramGroupIfExists(miss_prog_group);
     destroyProgramGroupIfExists(shadow_miss_prog_group);
@@ -325,7 +308,6 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(cylinder_shadow_hitgroup_prog_group);
 
     if (includeCaustics) {
-        std::cerr << "[PipelineManager::cleanup] Destroying caustics program groups" << std::endl;
         destroyProgramGroupIfExists(caustics_hitpoints_raygen);
         destroyProgramGroupIfExists(caustics_photons_raygen);
         destroyProgramGroupIfExists(caustics_radiance_raygen);
@@ -335,7 +317,6 @@ void PipelineManager::cleanup(bool includeCaustics) {
     bool cylinder_is_separate = (cylinder_module && cylinder_module != module);
 
     if (module) {
-        std::cerr << "[PipelineManager::cleanup] Destroying module" << std::endl;
         optix_context.destroyModule(module);
         module = nullptr;
     }
@@ -343,13 +324,11 @@ void PipelineManager::cleanup(bool includeCaustics) {
     // Only destroy cylinder_module if it was a separate module
     // Currently cylinder programs are included in the main module, so this is a no-op
     if (cylinder_is_separate) {
-        std::cerr << "[PipelineManager::cleanup] Destroying separate cylinder module" << std::endl;
         optix_context.destroyModule(cylinder_module);
     }
     cylinder_module = nullptr;
 
     // Clean up SBT buffers
-    std::cerr << "[PipelineManager::cleanup] Freeing SBT buffers" << std::endl;
     if (sbt.raygenRecord) {
         optix_context.freeSBTRecord(sbt.raygenRecord);
         sbt.raygenRecord = 0;
@@ -365,13 +344,11 @@ void PipelineManager::cleanup(bool includeCaustics) {
 
     // Clean up params buffer
     if (d_params) {
-        std::cerr << "[PipelineManager::cleanup] Freeing params buffer" << std::endl;
         cudaFree(reinterpret_cast<void*>(d_params));
         d_params = 0;
     }
 
     // Synchronize CUDA to ensure all operations are complete
-    std::cerr << "[PipelineManager::cleanup] Synchronizing CUDA device" << std::endl;
     cudaError_t sync_err = cudaDeviceSynchronize();
     if (sync_err != cudaSuccess) {
         std::cerr << "[PipelineManager::cleanup] CUDA synchronization error: " << cudaGetErrorString(sync_err) << std::endl;
@@ -382,54 +359,50 @@ void PipelineManager::cleanup(bool includeCaustics) {
     if (final_err != cudaSuccess) {
         std::cerr << "[PipelineManager::cleanup] CUDA error after synchronization: " << cudaGetErrorString(final_err) << std::endl;
     }
-
-    std::cerr << "[PipelineManager::cleanup] Cleanup complete" << std::endl;
 }
 
 void PipelineManager::buildPipeline(const SceneParameters& scene, OptixTraversableHandle gasHandle) {
-    std::cerr << "[PipelineManager] Starting pipeline rebuild" << std::endl;
-
-    // Check CUDA state before cleanup
-    cudaError_t pre_cleanup_err = cudaGetLastError();
-    if (pre_cleanup_err != cudaSuccess) {
-        std::cerr << "[PipelineManager] CUDA error before cleanup: " << cudaGetErrorString(pre_cleanup_err) << std::endl;
-    }
-    std::cerr << "[PipelineManager] CUDA state before cleanup: OK" << std::endl;
-
     // Clean up old pipeline resources if they exist (for pipeline rebuild)
-    std::cerr << "[PipelineManager] Cleaning up old pipeline resources" << std::endl;
     cleanup(false);
-    std::cerr << "[PipelineManager] Cleanup complete" << std::endl;
 
-    // Check CUDA state after cleanup
-    cudaError_t post_cleanup_err = cudaGetLastError();
-    if (post_cleanup_err != cudaSuccess) {
-        std::cerr << "[PipelineManager] CUDA error after cleanup: " << cudaGetErrorString(post_cleanup_err) << std::endl;
-    }
-
-    std::cerr << "[PipelineManager] Loading PTX modules" << std::endl;
     loadPTXModules();
-    std::cerr << "[PipelineManager] PTX modules loaded successfully" << std::endl;
-
-    std::cerr << "[PipelineManager] Creating program groups" << std::endl;
     createProgramGroups();
-    std::cerr << "[PipelineManager] Program groups created successfully" << std::endl;
-
-    std::cerr << "[PipelineManager] Creating pipeline (linking program groups)" << std::endl;
     createPipeline();
-    std::cerr << "[PipelineManager] Pipeline created successfully" << std::endl;
-
-    std::cerr << "[PipelineManager] Setting up Shader Binding Table" << std::endl;
     setupShaderBindingTable(scene, gasHandle);
-    std::cerr << "[PipelineManager] SBT setup complete" << std::endl;
 
     // Allocate params buffer (only on first build)
     if (!d_params) {
         CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(Params)));
-        std::cerr << "[PipelineManager] Params buffer allocated" << std::endl;
+    }
+}
+
+void PipelineManager::updateCameraInSBT(const SceneParameters& scene) {
+    if (!sbt.raygenRecord) {
+        // No SBT record exists yet - need full pipeline build first
+        return;
     }
 
-    std::cerr << "[PipelineManager] Pipeline rebuild complete" << std::endl;
+    // Build camera data from scene parameters (same as createTempRaygenSBTRecord)
+    const auto& camera = scene.getCamera();
+    RayGenData rg_data;
+    std::memcpy(rg_data.cam_eye, camera.eye, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_u, camera.u, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_v, camera.v, sizeof(float) * 3);
+    std::memcpy(rg_data.camera_w, camera.w, sizeof(float) * 3);
+
+    // Build complete SBT record (header + data) on host
+    // Header is tied to program group but doesn't change between camera updates
+    RayGenSbtRecord sbt_record;
+    OPTIX_CHECK(optixSbtRecordPackHeader(raygen_prog_group, &sbt_record));
+    sbt_record.data = rg_data;
+
+    // Upload to existing GPU memory location (in-place update)
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(sbt.raygenRecord),
+        &sbt_record,
+        sizeof(RayGenSbtRecord),
+        cudaMemcpyHostToDevice
+    ));
 }
 
 CUdeviceptr PipelineManager::createTempRaygenSBTRecord(OptixProgramGroup raygen, const SceneParameters& scene) {

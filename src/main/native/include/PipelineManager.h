@@ -29,6 +29,9 @@ public:
     void buildPipeline(const SceneParameters& scene, OptixTraversableHandle gasHandle);
     void cleanup(bool includeCaustics);
 
+    // Lightweight camera-only update (avoids full pipeline rebuild)
+    void updateCameraInSBT(const SceneParameters& scene);
+
     // Accessors
     OptixPipeline getPipeline() const { return pipeline; }
     const OptixShaderBindingTable& getSBT() const { return sbt; }
