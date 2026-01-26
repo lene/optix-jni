@@ -10,6 +10,7 @@
 #include "include/VectorMath.h"
 #include <iostream>
 #include <cstring>
+#include <cmath>
 #include <vector>
 #include <map>
 #include <optix.h>
@@ -490,6 +491,9 @@ void OptiXWrapper::buildIAS() {
     // Free temp buffer
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
 
+    // Synchronize to ensure IAS build is complete before rendering
+    CUDA_CHECK(cudaDeviceSynchronize());
+
     impl->use_ias = true;
     impl->ias_dirty = false;
 }
@@ -520,15 +524,24 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
     try {
         // Build OptiX pipeline on first render call or when params change
         if (!impl->pipeline_built || impl->scene.isAnyDirty()) {
+            std::cerr << "[OptiXWrapper::render] Building pipeline (pipeline_built=" << impl->pipeline_built
+                     << ", scene_dirty=" << impl->scene.isAnyDirty() << ")" << std::endl;
             buildPipeline();
             impl->pipeline_built = true;
+            std::cerr << "[OptiXWrapper::render] About to clear dirty flags, dirty=" << impl->scene.isAnyDirty() << std::endl;
             impl->scene.clearDirtyFlags();
+            std::cerr << "[OptiXWrapper::render] Cleared dirty flags, dirty=" << impl->scene.isAnyDirty() << std::endl;
         }
 
         // Rebuild IAS if in IAS mode and dirty
         if (impl->use_ias && impl->ias_dirty) {
+            std::cerr << "[OptiXWrapper::render] Building IAS (num_instances=" << impl->instances.size()
+                      << ", num_cylinders=" << impl->cylinder_data.size() << ")" << std::endl;
             buildIAS();
         }
+
+        std::cerr << "[OptiXWrapper::render] Starting render (width=" << width << ", height=" << height
+                  << ", use_ias=" << impl->use_ias << ", ias_handle=" << impl->ias_handle << ")" << std::endl;
 
         // Ensure buffers are allocated
         impl->buffer_manager.ensureImageBuffer(width, height);
@@ -615,10 +628,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
                 params.cylinder_data = reinterpret_cast<CylinderData*>(impl->d_cylinder_data);
                 params.num_cylinders = static_cast<unsigned int>(impl->cylinder_data.size());
+                std::cerr << "[OptiXWrapper::render] Cylinder data uploaded: num_cylinders=" << params.num_cylinders
+                          << ", cylinder_data=" << params.cylinder_data << std::endl;
             } else {
                 params.cylinder_data = nullptr;
                 params.num_cylinders = 0;
             }
+
+            std::cerr << "[OptiXWrapper::render] Params configured: num_instances=" << params.num_instances
+                      << ", instance_materials=" << params.instance_materials
+                      << ", num_cylinders=" << params.num_cylinders << std::endl;
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -900,6 +919,16 @@ int OptiXWrapper::addCylinderInstance(
     aabb.maxY = max_y;
     aabb.maxZ = max_z;
 
+    // Validate AABB
+    if (!std::isfinite(aabb.minX) || !std::isfinite(aabb.minY) || !std::isfinite(aabb.minZ) ||
+        !std::isfinite(aabb.maxX) || !std::isfinite(aabb.maxY) || !std::isfinite(aabb.maxZ) ||
+        aabb.minX > aabb.maxX || aabb.minY > aabb.maxY || aabb.minZ > aabb.maxZ) {
+        std::cerr << "[OptiX][Cylinder] Invalid AABB: "
+                  << "min=(" << aabb.minX << "," << aabb.minY << "," << aabb.minZ << "), "
+                  << "max=(" << aabb.maxX << "," << aabb.maxY << "," << aabb.maxZ << ")" << std::endl;
+        return -1;
+    }
+
     OptixAccelBuildOptions accel_options = {};
     accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
     accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
@@ -908,6 +937,17 @@ int OptiXWrapper::addCylinderInstance(
         aabb,
         accel_options
     );
+
+    // Validate cylinder parameters
+    if (!std::isfinite(p0_x) || !std::isfinite(p0_y) || !std::isfinite(p0_z) ||
+        !std::isfinite(p1_x) || !std::isfinite(p1_y) || !std::isfinite(p1_z) ||
+        !std::isfinite(radius) || radius <= 0.0f) {
+        std::cerr << "[OptiX][Cylinder] Invalid cylinder parameters: "
+                  << "p0=(" << p0_x << "," << p0_y << "," << p0_z << "), "
+                  << "p1=(" << p1_x << "," << p1_y << "," << p1_z << "), "
+                  << "radius=" << radius << std::endl;
+        return -1;
+    }
 
     // Store CylinderData in host-side vector (will be uploaded to GPU before render)
     CylinderData cyl_data;
@@ -927,7 +967,7 @@ int OptiXWrapper::addCylinderInstance(
     Impl::GASData gas_data;
     gas_data.handle = result.handle;
     gas_data.gas_buffer = result.gas_buffer;
-    gas_data.aabb_buffer = 0;  // Cylinder data stored in params.cylinder_data instead
+    gas_data.aabb_buffer = result.aabb_buffer;  // Must free the AABB buffer allocated by buildCustomPrimitiveGAS
     impl->cylinder_gas_buffers.push_back(gas_data);
 
     // Create instance
@@ -983,12 +1023,18 @@ void OptiXWrapper::removeInstance(int instanceId) {
 }
 
 void OptiXWrapper::clearAllInstances() {
+    std::cerr << "[OptiXWrapper::clearAllInstances] Starting clearAllInstances" << std::endl;
+    std::cerr << "[OptiXWrapper::clearAllInstances] Number of instances: " << impl->instances.size() << std::endl;
+    std::cerr << "[OptiXWrapper::clearAllInstances] Number of cylinders: " << impl->cylinder_data.size() << std::endl;
+    std::cerr << "[OptiXWrapper::clearAllInstances] Number of cylinder GAS buffers: " << impl->cylinder_gas_buffers.size() << std::endl;
+
     impl->instances.clear();
     impl->ias_dirty = true;
     impl->use_ias = false;
     impl->max_instances_warning_shown = false;
 
     // Free IAS buffers
+    std::cerr << "[OptiXWrapper::clearAllInstances] Freeing IAS buffers" << std::endl;
     if (impl->d_ias_output_buffer) {
         cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
         impl->d_ias_output_buffer = 0;
@@ -1004,13 +1050,24 @@ void OptiXWrapper::clearAllInstances() {
     impl->ias_handle = 0;
 
     // Clear cylinder data
+    std::cerr << "[OptiXWrapper::clearAllInstances] Clearing cylinder data" << std::endl;
     impl->cylinder_data.clear();
     if (impl->d_cylinder_data) {
         cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
         impl->d_cylinder_data = 0;
     }
 
+    // CRITICAL: Synchronize CUDA before freeing GAS buffers
+    // The IAS may still have pending GPU operations referencing these buffers
+    std::cerr << "[OptiXWrapper::clearAllInstances] Synchronizing CUDA before freeing GAS buffers" << std::endl;
+    cudaError_t sync_err = cudaDeviceSynchronize();
+    if (sync_err != cudaSuccess) {
+        std::cerr << "[OptiXWrapper::clearAllInstances] CUDA sync error before GAS cleanup: " << cudaGetErrorString(sync_err) << std::endl;
+    }
+
     // Free cylinder GAS buffers
+    std::cerr << "[OptiXWrapper::clearAllInstances] Freeing " << impl->cylinder_gas_buffers.size() << " cylinder GAS buffers" << std::endl;
+    int gas_count = 0;
     for (const auto& gas : impl->cylinder_gas_buffers) {
         if (gas.gas_buffer) {
             cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
@@ -1018,8 +1075,26 @@ void OptiXWrapper::clearAllInstances() {
         if (gas.aabb_buffer) {
             cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
         }
+        gas_count++;
     }
+    std::cerr << "[OptiXWrapper::clearAllInstances] Freed " << gas_count << " cylinder GAS buffers" << std::endl;
     impl->cylinder_gas_buffers.clear();
+
+    // CRITICAL: Clear gas_registry to remove stale GAS handles
+    // The registry maps geometry types to GAS data, and after freeing the GAS buffers above,
+    // these handles are invalid. Not clearing this causes illegal memory access on rebuild.
+    std::cerr << "[OptiXWrapper::clearAllInstances] Clearing gas_registry (" << impl->gas_registry.size() << " entries)" << std::endl;
+    impl->gas_registry.clear();
+
+    // Check CUDA error state after freeing
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        std::cerr << "[OptiXWrapper::clearAllInstances] CUDA error after cleanup: " << cudaGetErrorString(err) << std::endl;
+    } else {
+        std::cerr << "[OptiXWrapper::clearAllInstances] CUDA state after cleanup: OK" << std::endl;
+    }
+
+    std::cerr << "[OptiXWrapper::clearAllInstances] clearAllInstances complete" << std::endl;
 }
 
 int OptiXWrapper::getInstanceCount() const {

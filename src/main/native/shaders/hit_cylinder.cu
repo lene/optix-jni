@@ -24,8 +24,29 @@
 extern "C" __global__ void __intersection__cylinder() {
     // Get cylinder index from instance material's texture_index field
     const unsigned int instanceId = optixGetInstanceId();
+
+    // Bounds check: ensure instanceId is valid
+    if (instanceId >= params.num_instances) {
+        return;  // Invalid instance ID, skip intersection
+    }
+
+    // Null pointer check: ensure instance_materials is valid
+    if (!params.instance_materials) {
+        return;  // No instance materials, skip intersection
+    }
+
     const InstanceMaterial& mat = params.instance_materials[instanceId];
     const int cylinder_index = mat.texture_index;
+
+    // Bounds check: ensure cylinder_index is valid
+    if (cylinder_index < 0 || cylinder_index >= static_cast<int>(params.num_cylinders)) {
+        return;  // Invalid cylinder index, skip intersection
+    }
+
+    // Null pointer check: ensure cylinder_data is valid
+    if (!params.cylinder_data) {
+        return;  // No cylinder data, skip intersection
+    }
 
     // Get cylinder data from params buffer
     const CylinderData* cylinder = &params.cylinder_data[cylinder_index];
@@ -207,7 +228,11 @@ extern "C" __global__ void __intersection__cylinder() {
 //==============================================================================
 
 extern "C" __global__ void __closesthit__cylinder() {
-    // Get hit point
+    // SIMPLIFIED VERSION: No recursive ray tracing to avoid stack overflow
+    // Uses direct lighting only - reflections/refractions not supported for cylinders
+    // This is a reasonable tradeoff for thin edge geometry
+
+    // Get hit point and normal
     const float t = optixGetRayTmax();
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
@@ -217,84 +242,47 @@ extern "C" __global__ void __closesthit__cylinder() {
         ray_origin.z + ray_direction.z * t
     );
 
-    // Get surface normal from intersection attributes
     const float3 normal = make_float3(
         __uint_as_float(optixGetAttribute_0()),
         __uint_as_float(optixGetAttribute_1()),
         __uint_as_float(optixGetAttribute_2())
     );
 
-    // Get current depth from payload
-    const unsigned int depth = optixGetPayload_3();
-
-    // Track depth statistics
-    if (params.stats) {
-        atomicMax(&params.stats->max_depth_reached, depth + 1);
-        atomicMin(&params.stats->min_depth_reached, depth + 1);
-    }
-
     // Get material properties
     float4 material_color;
     float material_ior, roughness, metallic, specular, emission;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission);
-    const float cylinder_alpha = material_color.w;
 
-    // Handle fully transparent cylinders
-    if (cylinder_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparent(hit_point, ray_direction, depth);
-        return;
+    // Simple diffuse shading WITHOUT shadow rays (to avoid recursion issues)
+    // Calculate lighting manually inline
+    float3 total_lighting = make_float3(0.0f, 0.0f, 0.0f);
+
+    for (int i = 0; i < params.num_lights; ++i) {
+        const Light& light = params.lights[i];
+        const float3 light_dir = make_float3(-light.direction[0], -light.direction[1], -light.direction[2]);
+        const float ndotl = fmaxf(0.0f, normal.x * light_dir.x + normal.y * light_dir.y + normal.z * light_dir.z);
+
+        const float3 light_color = make_float3(light.color[0], light.color[1], light.color[2]);
+        total_lighting = total_lighting + light_color * light.intensity * ndotl;
     }
 
-    // Handle fully opaque cylinders
-    if (cylinder_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
-        if (metallic > 0.0f) {
-            handleMetallicOpaque(hit_point, ray_direction, normal, material_color, metallic, depth, emission);
-            return;
-        } else {
-            handleFullyOpaque(hit_point, normal, material_color, emission);
-            return;
-        }
-    }
+    // Add ambient
+    const float3 ambient = make_float3(0.3f, 0.3f, 0.3f);
+    const float3 final_lighting = ambient + total_lighting * 0.7f;
 
-    // Handle semi-transparent cylinders (glass-like)
-    if (depth >= MAX_TRACE_DEPTH) {
-        traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
-        return;
-    }
+    // Apply to material color
+    const float final_r = material_color.x * final_lighting.x * 255.99f;
+    const float final_g = material_color.y * final_lighting.y * 255.99f;
+    const float final_b = material_color.z * final_lighting.z * 255.99f;
 
-    // Determine if ray is entering or exiting (for refraction)
-    const float dot_normal = ray_direction.x * normal.x + ray_direction.y * normal.y + ray_direction.z * normal.z;
-    const bool entering = dot_normal < 0.0f;
+    // Add emission
+    const float emissive_r = fminf(final_r + emission * material_color.x * 255.0f, 255.0f);
+    const float emissive_g = fminf(final_g + emission * material_color.y * 255.0f, 255.0f);
+    const float emissive_b = fminf(final_b + emission * material_color.z * 255.0f, 255.0f);
 
-    // Compute Fresnel reflectance
-    const float fresnel = computeFresnelReflectance(ray_direction, normal, entering, material_ior);
-
-    // Trace reflected ray
-    unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
-
-    // Trace refracted ray
-    unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
-    const bool refraction_occurred = traceRefractedRay(
-        hit_point, ray_direction, normal, entering, depth, material_ior,
-        refract_r, refract_g, refract_b
-    );
-
-    // Handle total internal reflection
-    if (!refraction_occurred) {
-        refract_r = reflect_r;
-        refract_g = reflect_g;
-        refract_b = reflect_b;
-    }
-
-    // Convert refracted color to float for absorption
-    float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
-
-    // Apply Beer-Lambert absorption (use cylinder length as distance scale)
-    refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color, 1.0f);
-
-    // Blend reflected and refracted colors using Fresnel
-    blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color, material_color, emission);
+    optixSetPayload_0(static_cast<unsigned int>(emissive_r));
+    optixSetPayload_1(static_cast<unsigned int>(emissive_g));
+    optixSetPayload_2(static_cast<unsigned int>(emissive_b));
 }
 
 //==============================================================================
