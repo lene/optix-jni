@@ -228,9 +228,8 @@ extern "C" __global__ void __intersection__cylinder() {
 //==============================================================================
 
 extern "C" __global__ void __closesthit__cylinder() {
-    // SIMPLIFIED VERSION: No recursive ray tracing to avoid stack overflow
-    // Uses direct lighting only - reflections/refractions not supported for cylinders
-    // This is a reasonable tradeoff for thin edge geometry
+    // OPTION B: Single-bounce metallic reflection for depth 0, diffuse fallback for depth > 0
+    // This avoids deep recursion while supporting metallic materials on cylinder edges
 
     // Get hit point and normal
     const float t = optixGetRayTmax();
@@ -248,11 +247,30 @@ extern "C" __global__ void __closesthit__cylinder() {
         __uint_as_float(optixGetAttribute_2())
     );
 
+    // Get current depth from payload
+    const unsigned int depth = optixGetPayload_3();
+
+    // Track depth statistics
+    if (params.stats) {
+        atomicMax(&params.stats->max_depth_reached, depth + 1);
+        atomicMin(&params.stats->min_depth_reached, depth + 1);
+    }
+
     // Get material properties
     float4 material_color;
     float material_ior, roughness, metallic, specular, emission;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission);
 
+    // Handle metallic reflection for depth 0 only (single bounce)
+    if (depth == 0 && metallic > 0.0f) {
+        // Use existing helper function for metallic opaque materials
+        // This traces ONE reflected ray, blends with diffuse, and sets payload
+        handleMetallicOpaque(hit_point, ray_direction, normal,
+                           material_color, metallic, depth, emission);
+        return;  // Early exit - handleMetallicOpaque sets payload
+    }
+
+    // FALLBACK: Diffuse shading for depth > 0 or non-metallic
     // Simple diffuse shading WITHOUT shadow rays (to avoid recursion issues)
     // Calculate lighting manually inline
     float3 total_lighting = make_float3(0.0f, 0.0f, 0.0f);

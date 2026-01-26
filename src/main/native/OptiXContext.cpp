@@ -372,8 +372,9 @@ OptixPipeline OptiXContext::createPipeline(
     // Increase continuation stack size for triangle and cylinder shaders with reflection/refraction
     // The triangle and cylinder closesthit shaders have many local variables and recursive optixTrace calls
     // that require more stack space than the utility function estimates
-    // Cylinder shaders need even more stack space due to complex intersection and hit logic
-    continuation_stack_size = std::max(continuation_stack_size, 32768u);
+    // Cylinder shaders with single-bounce metallic reflection need additional stack space
+    // for the handleMetallicOpaque() helper and one level of optixTrace recursion
+    continuation_stack_size = std::max(continuation_stack_size, 49152u);  // 48 KB (increased for metallic cylinders)
 
     OPTIX_CHECK(optixPipelineSetStackSize(
         pipeline,
