@@ -495,6 +495,16 @@ class OptiXRenderer extends LazyLogging:
         logger.error("Failed to initialize OptiX renderer")
       result
 
+  /**
+   * Reinitialize the renderer with a new maxInstances value.
+   * Disposes the current renderer and creates a new one.
+   * Use this when auto-adjustment determines a higher limit is needed.
+   */
+  def reinitialize(newMaxInstances: Int): Boolean =
+    if isInitialized then
+      dispose()
+    initialize(newMaxInstances)
+
   // Can be re-initialized after dispose by calling initialize() again
   def dispose(): Unit =
     if isInitialized then
