@@ -342,7 +342,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneCheckerColorsNati
  * @param numVertices Number of vertices
  * @param indices Triangle indices array (3 per triangle, as unsigned ints)
  * @param numTriangles Number of triangles
- * @param vertexStride Floats per vertex (6 for pos+normal, 8 for pos+normal+uv)
+ * @param vertexStride Floats per vertex (6 for pos+normal, 8 for pos+normal+uv, 9 for pos+normal+uv+alpha)
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
     JNIEnv* env, jobject obj,
@@ -361,10 +361,10 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
             return;
         }
 
-        // Validate vertex stride (6 or 8)
-        if (vertexStride != 6 && vertexStride != 8) {
+        // Validate vertex stride (6, 8, or 9)
+        if (vertexStride != 6 && vertexStride != 8 && vertexStride != 9) {
             jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-            env->ThrowNew(exception_class, "vertexStride must be 6 or 8");
+            env->ThrowNew(exception_class, "vertexStride must be 6, 8, or 9");
             return;
         }
 

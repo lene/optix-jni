@@ -12,6 +12,7 @@ struct TriangleGeometry {
     float2 uv_coords;
     float t;             // Ray parameter at hit
     bool entering;       // True if ray is entering the mesh (front face hit)
+    float vertex_alpha;  // Interpolated per-vertex alpha (1.0 if not present)
 };
 
 /**
@@ -71,6 +72,17 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
         );
     }
 
+    // Interpolate per-vertex alpha if available (stride >= 9)
+    // Alpha is at offset 8 within each vertex
+    // Default to 1.0 (fully opaque) if not present
+    float vertex_alpha = 1.0f;
+    if (stride >= 9) {
+        vertex_alpha = w * v0[8] + u * v1[8] + v * v2[8];
+    }
+    // Store in a global variable that material function can access
+    // Note: We'll pass this through the material function parameter
+    geom.vertex_alpha = vertex_alpha;
+
     // Determine if ray is entering or exiting (front face = entering)
     geom.entering = (dot(ray_direction, normal) < 0.0f);
 
@@ -90,7 +102,8 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
  * @param hit_data Triangle hit group data from SBT
  * @param uv_coords UV coordinates for texture sampling
  * @param vertex_stride Vertex stride (determines UV availability)
- * @param color Output: RGBA material color
+ * @param vertex_alpha Per-vertex alpha from interpolation (1.0 if not present)
+ * @param color Output: RGBA material color (alpha multiplied with vertex_alpha)
  * @param ior Output: Index of refraction
  * @param roughness Output: Roughness (0=mirror, 1=diffuse)
  * @param metallic Output: Metallic (0=dielectric, 1=metal)
@@ -100,6 +113,7 @@ __device__ void getTriangleMaterial(
     const TriangleHitGroupData* hit_data,
     const float2& uv_coords,
     unsigned int vertex_stride,
+    float vertex_alpha,
     float4& color,
     float& ior,
     float& roughness,
@@ -134,6 +148,11 @@ __device__ void getTriangleMaterial(
         metallic = MaterialDefaults::DEFAULT_METALLIC;
         specular = MaterialDefaults::DEFAULT_SPECULAR;
     }
+
+    // Multiply material alpha with per-vertex alpha (for fractional level rendering)
+    // vertex_alpha = 1.0 for vertices without alpha channel (stride < 9)
+    // For fractional levels: level N has vertex_alpha < 1.0, level N+1 has vertex_alpha = 1.0
+    color.w *= vertex_alpha;
 }
 
 //==============================================================================
@@ -159,7 +178,7 @@ extern "C" __global__ void __closesthit__triangle() {
     // Get material properties including PBR values (color, IOR, roughness, metallic, specular)
     float4 mesh_color;
     float mesh_ior, roughness, metallic, specular;
-    getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride,
+    getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride, geom.vertex_alpha,
                        mesh_color, mesh_ior, roughness, metallic, specular);
 
     const float mesh_alpha = mesh_color.w;
