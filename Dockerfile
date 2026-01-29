@@ -65,6 +65,7 @@ RUN echo "deb https://repo.scala-sbt.org/scalasbt/debian all main" > /etc/apt/so
 RUN apt-get update && apt-get install -y \
     bc \
     curl \
+    imagemagick \
     mesa-utils \
     time \
     unzip \
