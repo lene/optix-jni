@@ -110,7 +110,7 @@ extern "C" __global__ void __intersection__cylinder() {
     unsigned int hit_kind = 0;  // 0 = body, 1 = cap at p0, 2 = cap at p1
 
     // Check infinite cylinder intersection
-    if (discriminant >= 0.0f && fabsf(a) > 1e-8f) {
+    if (discriminant >= 0.0f && fabsf(a) > RayTracingConstants::CYLINDER_QUADRATIC_TOLERANCE) {
         const float sqrt_disc = sqrtf(discriminant);
         const float t1 = (-b - sqrt_disc) / (2.0f * a);
         const float t2 = (-b + sqrt_disc) / (2.0f * a);
@@ -162,7 +162,7 @@ extern "C" __global__ void __intersection__cylinder() {
     }
 
     // Check cap intersections (disks at p0 and p1)
-    if (fabsf(rd_dot_axis) > 1e-8f) {
+    if (fabsf(rd_dot_axis) > RayTracingConstants::CYLINDER_CAP_PARALLEL_THRESHOLD) {
         // Cap at p0
         const float t_p0 = -oc_dot_axis / rd_dot_axis;
         if (t_p0 > optixGetRayTmin() && t_p0 < optixGetRayTmax()) {
@@ -271,22 +271,8 @@ extern "C" __global__ void __closesthit__cylinder() {
     }
 
     // FALLBACK: Diffuse shading for depth > 0 or non-metallic
-    // Simple diffuse shading WITHOUT shadow rays (to avoid recursion issues)
-    // Calculate lighting manually inline
-    float3 total_lighting = make_float3(0.0f, 0.0f, 0.0f);
-
-    for (int i = 0; i < params.num_lights; ++i) {
-        const Light& light = params.lights[i];
-        const float3 light_dir = make_float3(-light.direction[0], -light.direction[1], -light.direction[2]);
-        const float ndotl = fmaxf(0.0f, normal.x * light_dir.x + normal.y * light_dir.y + normal.z * light_dir.z);
-
-        const float3 light_color = make_float3(light.color[0], light.color[1], light.color[2]);
-        total_lighting = total_lighting + light_color * light.intensity * ndotl;
-    }
-
-    // Add ambient
-    const float3 ambient = make_float3(0.3f, 0.3f, 0.3f);
-    const float3 final_lighting = ambient + total_lighting * 0.7f;
+    // Use calculateLighting() with skip_shadows=true to avoid recursion issues
+    const float3 final_lighting = calculateLighting(hit_point, normal, false, true);
 
     // Apply to material color
     const float final_r = material_color.x * final_lighting.x * 255.99f;

@@ -81,6 +81,8 @@ namespace RayTracingConstants {
     constexpr float RAY_PARALLEL_THRESHOLD = 1e-6f;    // Ray nearly parallel to surface (avoid div by zero)
     constexpr float FLUX_EPSILON = 1e-10f;             // Near-zero flux/area threshold for caustics
     constexpr float HIT_POINT_RAY_TMIN = 0.0001f;      // Hit point collection ray tmin (smaller than CONTINUATION_RAY_OFFSET)
+    constexpr float CYLINDER_QUADRATIC_TOLERANCE = 1e-8f;      // Cylinder quadratic equation validity threshold
+    constexpr float CYLINDER_CAP_PARALLEL_THRESHOLD = 1e-8f;   // Ray-cylinder axis parallel check threshold
 
     // Photon emission geometry
     constexpr float PHOTON_EMISSION_DISTANCE = 20.0f;      // Distance behind sphere for photon origin

@@ -142,12 +142,14 @@ __device__ float calculateDiffuseTerm(
  * @param hit_point Surface position to light
  * @param normal Surface normal (normalized)
  * @param double_sided If true, use absolute value of NdotL (for planes)
+ * @param skip_shadows If true, skip shadow ray tracing (for cylinder fallback to avoid recursion)
  * @return Total lighting color (RGB) including ambient term, range [0, ∞)
  */
 __device__ float3 calculateLighting(
     const float3& hit_point,
     const float3& normal,
-    bool double_sided = false
+    bool double_sided = false,
+    bool skip_shadows = false
 ) {
     float3 total_lighting = make_float3(RenderingConstants::COLOR_BLACK, RenderingConstants::COLOR_BLACK, RenderingConstants::COLOR_BLACK);
 
@@ -173,8 +175,8 @@ __device__ float3 calculateLighting(
             continue;
         }
 
-        // Trace shadow ray if shadows enabled
-        const float shadow_factor = params.shadows_enabled
+        // Trace shadow ray if shadows enabled (and not skipped for recursion avoidance)
+        const float shadow_factor = (params.shadows_enabled && !skip_shadows)
             ? traceShadowRay(hit_point, normal, light_dir)
             : SBTConstants::SHADOW_FACTOR_FULLY_LIT;
 
