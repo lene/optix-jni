@@ -86,9 +86,9 @@ __device__ void getDirectionalLightParams(
     float& attenuation
 ) {
     light_dir = normalize(make_float3(
-        light.direction[0],
-        light.direction[1],
-        light.direction[2]
+        -light.direction[0],
+        -light.direction[1],
+        -light.direction[2]
     ));
     attenuation = RenderingConstants::DISTANCE_FALLOFF_NONE;  // No distance falloff
 }
