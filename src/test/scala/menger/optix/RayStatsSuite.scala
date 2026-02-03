@@ -178,7 +178,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     result.totalRays should be >= (result.primaryRays + result.shadowRays)
 
   it should "not cast shadow rays for pixels facing away from light" in:
-    // Opaque sphere with light behind the camera (opposite direction)
+    // Opaque sphere with light pointing away from visible surface
     TestScenario.default()
       .withSphereRadius(0.5f)
       .withSphereColor(Color(1f, 0f, 0f, 1.0f))  // Opaque red
@@ -186,7 +186,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
       .withHorizontalFOV(60f)
       .applyTo(renderer)
     renderer.setLight(
-      Vector[3](0f, 0f, -1f),  // Light behind camera (away from sphere)
+      Vector[3](0f, 0f, -1f),  // Light from behind sphere, away from camera-facing front
       1.0f
     )
     renderer.setShadows(true)

@@ -85,10 +85,12 @@ __device__ void getDirectionalLightParams(
     float3& light_dir,
     float& attenuation
 ) {
+    // light.direction represents direction TO the light source
+    // Use as-is for both diffuse lighting (N·L) and shadow rays
     light_dir = normalize(make_float3(
-        -light.direction[0],
-        -light.direction[1],
-        -light.direction[2]
+        light.direction[0],
+        light.direction[1],
+        light.direction[2]
     ));
     attenuation = RenderingConstants::DISTANCE_FALLOFF_NONE;  // No distance falloff
 }
