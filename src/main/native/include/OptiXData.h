@@ -233,7 +233,7 @@ enum class LightType {
 // Light source definition
 struct Light {
     LightType type;       // Directional or point light
-    float direction[3];   // Light direction (normalized) for directional lights
+    float direction[3];   // Direction TO light source (where light comes from) for directional lights
     float position[3];    // Light position for point lights
     float color[3];       // RGB color (0.0-1.0)
     float intensity;      // Brightness multiplier
