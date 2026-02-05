@@ -70,11 +70,12 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
   "Material.Parchment" should "be semi-transparent (alpha = 0.4)" in:
     Material.Parchment.color.a shouldBe 0.4f
 
-  it should "have low IOR (1.2)" in:
-    Material.Parchment.ior shouldBe 1.2f
+  it should "have no refraction (IOR = 1.0)" in:
+    // Parchment is translucent but not refractive (light passes straight through)
+    Material.Parchment.ior shouldBe 1.0f
 
-  it should "have moderate roughness" in:
-    Material.Parchment.roughness shouldBe 0.4f
+  it should "have moderate roughness for diffuse appearance" in:
+    Material.Parchment.roughness shouldBe 0.5f
 
   it should "have beige/tan color (RGB ~245, 222, 179)" in:
     // Allow small tolerance for float precision
@@ -84,6 +85,9 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
 
   it should "be non-metallic" in:
     Material.Parchment.metallic shouldBe 0.0f
+
+  it should "have low specular for matte finish" in:
+    Material.Parchment.specular shouldBe 0.2f
 
   it should "have no default emission" in:
     Material.Parchment.emission shouldBe 0.0f

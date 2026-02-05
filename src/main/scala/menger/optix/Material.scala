@@ -81,6 +81,8 @@ object Material:
   )
 
   // Semi-transparent film/parchment materials
+  // TODO: Film should use proper thin-film physics with thickness parameter for interference effects
+  // Current IOR-based approach is a temporary approximation
   val Film = Material(
     color = White.copy(a = 0.2f),  // 20% opaque (80% transparent)
     ior = 1.1f,
@@ -90,12 +92,15 @@ object Material:
     emission = 0.0f
   )
 
+  // Parchment is translucent (light passes through) but NOT refractive
+  // IOR = 1.0 means no refraction - light passes straight through
+  // Alpha controls light attenuation via Beer-Lambert absorption
   val Parchment = Material(
     color = Color(245f/255f, 222f/255f, 179f/255f, 0.4f),  // Beige/tan, 40% opaque
-    ior = 1.2f,
-    roughness = 0.4f,
+    ior = 1.0f,  // No refraction (unlike glass/water)
+    roughness = 0.5f,  // Increased for more diffuse/matte appearance
     metallic = 0.0f,
-    specular = 0.3f,
+    specular = 0.2f,  // Reduced for matte finish
     emission = 0.0f
   )
 
