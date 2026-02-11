@@ -1,11 +1,11 @@
 package menger.optix
 
+import com.typesafe.scalalogging.LazyLogging
 import menger.common.Color
 import menger.common.Vector
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import com.typesafe.scalalogging.LazyLogging
-import org.scalatest.BeforeAndAfterAll
 
 class WindowResizeDiameterSuite extends AnyFlatSpec with Matchers with LazyLogging with BeforeAndAfterAll {
 

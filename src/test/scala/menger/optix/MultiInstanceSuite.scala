@@ -1,11 +1,14 @@
 package menger.optix
-import menger.common.{Color, ImageSize, Const, Vector}
+import com.typesafe.scalalogging.LazyLogging
+import menger.common.Color
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.Vector
 import menger.optix.Slow
+import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import com.typesafe.scalalogging.LazyLogging
-
-import ThresholdConstants.{TEST_IMAGE_SIZE, STANDARD_IMAGE_SIZE}
 
 
 class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {

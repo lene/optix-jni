@@ -1,9 +1,8 @@
 package menger.optix
 
+import menger.common.Color
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import menger.common.Color
 
 class MaterialPresetSuite extends AnyFlatSpec with Matchers:
 

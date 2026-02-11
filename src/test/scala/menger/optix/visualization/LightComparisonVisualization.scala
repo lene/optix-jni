@@ -106,5 +106,5 @@ object LightComparisonVisualization:
     println(f"setLight(0.5, 0.5, -0.5): $brightness2%.4f")
     println(f"setLight(0.577, 0.577, -0.577): $brightness3%.4f")
     println(f"EXACT test setup: $brightness4%.4f")
-    println(f"Expected (pure ambient): 60.0")
-    println(f"Test threshold: > 60.0")
+    println("Expected (pure ambient): 60.0")
+    println("Test threshold: > 60.0")

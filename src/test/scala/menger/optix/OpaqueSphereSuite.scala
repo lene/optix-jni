@@ -1,17 +1,22 @@
 package menger.optix
-import menger.common.Vector
-
 import com.typesafe.scalalogging.LazyLogging
+import menger.common.Vector
+import menger.optix.ColorConstants.OPAQUE_BLUE
+import menger.optix.ColorConstants.OPAQUE_GREEN
+import menger.optix.ColorConstants.OPAQUE_RED
+import menger.optix.ColorConstants.OPAQUE_WHITE
+import menger.optix.ImageValidation.detectSphereCenter
+import menger.optix.ImageValidation.dominantColorChannel
+import menger.optix.ImageValidation.spherePixelArea
+import menger.optix.ThresholdConstants.LARGE_SPHERE_MIN_AREA
+import menger.optix.ThresholdConstants.MEDIUM_SPHERE_MAX_AREA
+import menger.optix.ThresholdConstants.MEDIUM_SPHERE_MIN_AREA
+import menger.optix.ThresholdConstants.MIN_OFFSET_DETECTION
+import menger.optix.ThresholdConstants.SMALL_SPHERE_MAX_AREA
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.optix.ThresholdConstants.VERY_LARGE_SPHERE_MIN_AREA
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-// ImageValidation used for pixel analysis
-import ColorConstants.{OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_RED, OPAQUE_WHITE}
-import ImageValidation.{detectSphereCenter, dominantColorChannel, spherePixelArea}
-import ThresholdConstants.{
-  LARGE_SPHERE_MIN_AREA, MEDIUM_SPHERE_MAX_AREA, MEDIUM_SPHERE_MIN_AREA, MIN_OFFSET_DETECTION, SMALL_SPHERE_MAX_AREA,
-  TEST_IMAGE_SIZE, VERY_LARGE_SPHERE_MIN_AREA
-}
 
 
 class OpaqueSphereSuite extends AnyFlatSpec
@@ -32,7 +37,7 @@ class OpaqueSphereSuite extends AnyFlatSpec
     val imageData = renderer.render(TEST_IMAGE_SIZE).get
 
     // Verify
-    imageData should not be null
+    imageData shouldBe a[Array[Byte]]
     imageData.length shouldBe ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
 
     val area = ImageValidation.spherePixelArea(

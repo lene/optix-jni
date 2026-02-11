@@ -1,11 +1,23 @@
 package menger.optix.caustics
 
-import menger.common.{Color, ImageSize, Const, Vector}
-import menger.optix.{OptiXRenderer, RendererFixture, TestScenario, TestUtilities, ThresholdConstants}
+import scala.math.Pi
+import scala.math.abs
+import scala.math.asin
+import scala.math.cos
+import scala.math.sin
+import scala.math.sqrt
+
+import menger.common.Color
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.Vector
+import menger.optix.OptiXRenderer
+import menger.optix.RendererFixture
+import menger.optix.TestScenario
+import menger.optix.TestUtilities
+import menger.optix.ThresholdConstants
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import scala.math.{Pi, abs, asin, cos, sin, sqrt}
 
 /** Caustics validation tests implementing the test ladder (C1-C5).
   *

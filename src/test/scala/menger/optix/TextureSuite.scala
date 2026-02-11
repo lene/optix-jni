@@ -1,10 +1,10 @@
 package menger.optix
 
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
-
 import scala.util.Failure
 import scala.util.Success
+
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -92,7 +92,10 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   it should "reject null image data" in:
     an[IllegalArgumentException] should be thrownBy:
+      // scalafix:off DisableSyntax.null
+      // Note: Testing null parameter handling for Java interop boundary
       renderer.uploadTexture("test", null, 32, 32)
+      // scalafix:on DisableSyntax.null
 
   it should "reject zero width" in:
     val imageData = new Array[Byte](0)

@@ -1,17 +1,23 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
+import menger.optix.ColorConstants.BLUE_TINTED_GLASS
+import menger.optix.ColorConstants.GREEN_TINTED_GLASS
+import menger.optix.ColorConstants.HIGHLY_TRANSPARENT_GRAY
+import menger.optix.ColorConstants.HIGHLY_TRANSPARENT_WHITE
+import menger.optix.ColorConstants.RED_TINTED_GLASS
+import menger.optix.ColorConstants.REFRACTION_TEST_GRAY
+import menger.optix.ColorConstants.SEMI_TRANSPARENT_WHITE
+import menger.optix.ImageMatchers.beBlueDominant
+import menger.optix.ImageMatchers.beGreenDominant
+import menger.optix.ImageMatchers.beRedDominant
+import menger.optix.ImageMatchers.showDiamondRefraction
+import menger.optix.ImageMatchers.showGlassRefraction
+import menger.optix.ImageMatchers.showPlaneInRegion
+import menger.optix.ImageMatchers.showWaterRefraction
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import ColorConstants.{
-  BLUE_TINTED_GLASS, GREEN_TINTED_GLASS, HIGHLY_TRANSPARENT_GRAY, HIGHLY_TRANSPARENT_WHITE,
-  RED_TINTED_GLASS, REFRACTION_TEST_GRAY, SEMI_TRANSPARENT_WHITE
-}
-import ThresholdConstants.TEST_IMAGE_SIZE
-import ImageMatchers.{
-  beBlueDominant, beGreenDominant, beRedDominant, showDiamondRefraction, showGlassRefraction, showPlaneInRegion, showWaterRefraction
-}
 
 
 class RefractionSuite extends AnyFlatSpec

@@ -40,5 +40,5 @@ object MultipleLightsTestVisualization:
     )
 
     println(s"Center region brightness: $brightness")
-    println(s"Expected: > 60.0")
+    println("Expected: > 60.0")
     println(s"Test status: ${if (brightness > 60.0) "PASS" else "FAIL"}")

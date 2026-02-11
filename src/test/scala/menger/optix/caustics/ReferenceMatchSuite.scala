@@ -1,9 +1,9 @@
 package menger.optix.caustics
 
+import java.io.File
+
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import java.io.File
 
 /** C8 - Reference Match validation tests.
   *
@@ -86,7 +86,7 @@ object ReferenceMatchSpec:
     val referencePath = args(0)
     val testPath = args(1)
 
-    println(s"Comparing images:")
+    println("Comparing images:")
     println(s"  Reference: $referencePath")
     println(s"  Test: $testPath")
     println()

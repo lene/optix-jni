@@ -1,11 +1,18 @@
 package menger.optix
 
 import menger.common.ImageSize
-import org.scalatest.matchers.{BeMatcher, MatchResult, Matcher}
-import ThresholdConstants.{
-  GRAYSCALE_CHANNEL_TOLERANCE, LARGE_SPHERE_MIN_AREA, MEDIUM_SPHERE_MAX_AREA, MEDIUM_SPHERE_MIN_AREA, MIN_DIAMOND_REFRACTION_STDDEV,
-  MIN_GLASS_REFRACTION_STDDEV, MIN_WATER_REFRACTION_STDDEV, SMALL_SPHERE_MAX_AREA, SPHERE_CENTER_TOLERANCE
-}
+import menger.optix.ThresholdConstants.GRAYSCALE_CHANNEL_TOLERANCE
+import menger.optix.ThresholdConstants.LARGE_SPHERE_MIN_AREA
+import menger.optix.ThresholdConstants.MEDIUM_SPHERE_MAX_AREA
+import menger.optix.ThresholdConstants.MEDIUM_SPHERE_MIN_AREA
+import menger.optix.ThresholdConstants.MIN_DIAMOND_REFRACTION_STDDEV
+import menger.optix.ThresholdConstants.MIN_GLASS_REFRACTION_STDDEV
+import menger.optix.ThresholdConstants.MIN_WATER_REFRACTION_STDDEV
+import menger.optix.ThresholdConstants.SMALL_SPHERE_MAX_AREA
+import menger.optix.ThresholdConstants.SPHERE_CENTER_TOLERANCE
+import org.scalatest.matchers.BeMatcher
+import org.scalatest.matchers.MatchResult
+import org.scalatest.matchers.Matcher
 
 
 object ImageMatchers:

@@ -1,13 +1,17 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.{ImageSize, Const, Vector}
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.Vector
+import menger.optix.ColorConstants.HIGHLY_TRANSPARENT_WHITE
+import menger.optix.ColorConstants.PERFORMANCE_TEST_GREEN_CYAN
 import menger.optix.Slow
+import menger.optix.ThresholdConstants.MIN_FPS
+import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import ColorConstants.{HIGHLY_TRANSPARENT_WHITE, PERFORMANCE_TEST_GREEN_CYAN}
-import ThresholdConstants.{MIN_FPS, STANDARD_IMAGE_SIZE, TEST_IMAGE_SIZE}
 
 
 class PerformanceSuite extends AnyFlatSpec

@@ -1,14 +1,20 @@
 package menger.optix
 
+import com.typesafe.scalalogging.LazyLogging
 import menger.common.Color
 import menger.common.ImageSize
-import com.typesafe.scalalogging.LazyLogging
+import menger.optix.ColorConstants.BLUE_TINTED_GLASS
+import menger.optix.ColorConstants.Blue
+import menger.optix.ColorConstants.Green
+import menger.optix.ColorConstants.OPAQUE_BLUE
+import menger.optix.ColorConstants.OPAQUE_GREEN
+import menger.optix.ColorConstants.OPAQUE_RED
+import menger.optix.ColorConstants.Red
+import menger.optix.ColorConstants.White
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.tagobjects.Slow
-
-import ColorConstants.{BLUE_TINTED_GLASS, OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_RED, Red, Green, Blue, White}
-import ThresholdConstants.TEST_IMAGE_SIZE
 
 /**
  * Tests for cube-based sponge rendering using GPU instancing via IAS.

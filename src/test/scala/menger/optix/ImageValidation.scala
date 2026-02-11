@@ -1,8 +1,12 @@
 package menger.optix
 
+import scala.math.abs
+import scala.math.sqrt
+
 import menger.common.ImageSize
-import ThresholdConstants.{CHECKERED_PATTERN_MIN_VARIANCE, GRAYSCALE_CHANNEL_TOLERANCE, PLANE_PATTERN_MIN_VARIANCE}
-import scala.math.{abs, sqrt}
+import menger.optix.ThresholdConstants.CHECKERED_PATTERN_MIN_VARIANCE
+import menger.optix.ThresholdConstants.GRAYSCALE_CHANNEL_TOLERANCE
+import menger.optix.ThresholdConstants.PLANE_PATTERN_MIN_VARIANCE
 
 
 object ImageValidation:

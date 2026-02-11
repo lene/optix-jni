@@ -1,13 +1,11 @@
 package menger.optix
 
+import com.typesafe.scalalogging.LazyLogging
 import menger.common.ImageSize
 import menger.common.Vector
-
-import com.typesafe.scalalogging.LazyLogging
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import ThresholdConstants.TEST_IMAGE_SIZE
 
 
 class AntialiasingSuite extends AnyFlatSpec

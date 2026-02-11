@@ -1,9 +1,11 @@
 package menger.optix
 
-import menger.common.ImageSize
-import com.typesafe.scalalogging.LazyLogging
 import java.io.File
+
 import scala.util.Try
+
+import com.typesafe.scalalogging.LazyLogging
+import menger.common.ImageSize
 
 
 object TestUtilities extends LazyLogging:

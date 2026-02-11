@@ -1,11 +1,12 @@
 package menger.optix
-import menger.common.{ImageSize, Const, Vector}
-
+import com.typesafe.scalalogging.LazyLogging
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.Vector
+import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import com.typesafe.scalalogging.LazyLogging
-
-import ThresholdConstants.{STANDARD_IMAGE_SIZE, TEST_IMAGE_SIZE}
 
 
 class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {

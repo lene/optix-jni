@@ -1,20 +1,31 @@
 package menger.optix
-import menger.common.{Color, Const, Vector}
-import menger.optix.Slow
-
 import com.typesafe.scalalogging.LazyLogging
+import menger.common.Color
+import menger.common.Const
+import menger.common.Vector
+import menger.optix.ColorConstants.FULLY_TRANSPARENT_WHITE
+import menger.optix.ColorConstants.OPAQUE_BLUE
+import menger.optix.ColorConstants.OPAQUE_GREEN
+import menger.optix.ColorConstants.OPAQUE_LIGHT_GRAY
+import menger.optix.ColorConstants.OPAQUE_MEDIUM_GRAY
+import menger.optix.ColorConstants.OPAQUE_RED
+import menger.optix.ColorConstants.OPAQUE_WHITE
+import menger.optix.ColorConstants.SEMI_TRANSPARENT_WHITE
+import menger.optix.ImageMatchers.beBlueDominant
+import menger.optix.ImageMatchers.beGrayscale
+import menger.optix.ImageMatchers.beGreenDominant
+import menger.optix.ImageMatchers.beRedDominant
+import menger.optix.ImageMatchers.haveBrightnessStdDevGreaterThan
+import menger.optix.Slow
+import menger.optix.ThresholdConstants.BACKGROUND_GRAYSCALE_TOLERANCE
+import menger.optix.ThresholdConstants.GRAYSCALE_TOLERANCE
+import menger.optix.ThresholdConstants.MIN_BRIGHTNESS_VARIATION
+import menger.optix.ThresholdConstants.MIN_COLOR_CHANNEL_DIFFERENCE
+import menger.optix.ThresholdConstants.QUICK_TEST_SIZE
+import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import ColorConstants.{
-  FULLY_TRANSPARENT_WHITE, OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_LIGHT_GRAY, OPAQUE_MEDIUM_GRAY, OPAQUE_RED, OPAQUE_WHITE,
-  SEMI_TRANSPARENT_WHITE
-}
-import ThresholdConstants.{TEST_IMAGE_SIZE, 
-  BACKGROUND_GRAYSCALE_TOLERANCE, GRAYSCALE_TOLERANCE, MIN_BRIGHTNESS_VARIATION, MIN_COLOR_CHANNEL_DIFFERENCE, QUICK_TEST_SIZE,
-  STANDARD_IMAGE_SIZE
-}
-import ImageMatchers.{beBlueDominant, beGrayscale, beGreenDominant, beRedDominant, haveBrightnessStdDevGreaterThan}
 
 
 class RendererTest extends AnyFlatSpec
@@ -26,7 +37,7 @@ class RendererTest extends AnyFlatSpec
   OptiXRenderer.isLibraryLoaded shouldBe true
 
   "OptiXRenderer" should "be instantiable" in new OptiXRenderer:
-    this should not be null
+    this shouldBe a[OptiXRenderer]
 
   it should "load native library without error" in:
     noException should be thrownBy { new OptiXRenderer() }
@@ -61,7 +72,7 @@ class RendererTest extends AnyFlatSpec
         case (Some(d), Some(s)) =>
           if d != s then
             fail(s"OptiX version mismatch: Driver has v$d, SDK is v$s. " +
-                 s"Install matching SDK from https://developer.nvidia.com/optix")
+                 "Install matching SDK from https://developer.nvidia.com/optix")
           else
             info(s"✓ OptiX versions compatible: Driver v$d, SDK v$s")
         case (None, Some(s)) => info(s"⚠ Could not detect driver OptiX version (SDK: v$s)")

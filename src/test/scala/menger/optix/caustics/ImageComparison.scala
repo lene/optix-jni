@@ -3,6 +3,7 @@ package menger.optix.caustics
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+
 import scala.util.Try
 
 /** Image comparison utilities for caustics validation (C8 - Reference Match).
@@ -92,8 +93,11 @@ object ImageComparison:
     Try(ImageIO.read(new File(path))).toEither.left
       .map(e => s"Failed to load image $path: ${e.getMessage}")
       .flatMap { img =>
+        // scalafix:off DisableSyntax.null
+        // Note: ImageIO.read() returns null on failure (Java API)
         if img == null then Left(s"Failed to load image: $path")
         else Right(img)
+        // scalafix:on DisableSyntax.null
       }
 
   // Luminance formula: Y = 0.299*R + 0.587*G + 0.114*B

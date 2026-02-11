@@ -32,13 +32,13 @@ object GreenGlassVisualization:
     val avgG = rgbValues.map(_.g).sum.toDouble / count
     val avgB = rgbValues.map(_.b).sum.toDouble / count
 
-    println(f"\nCenter region analysis (50%% of image):")
+    println("\nCenter region analysis (50%% of image):")
     println(f"  Average R: $avgR%.2f")
     println(f"  Average G: $avgG%.2f")
     println(f"  Average B: $avgB%.2f")
     println(f"  Max - Min: ${math.max(avgR, math.max(avgG, avgB)) - math.min(avgR, math.min(avgG, avgB))}%.2f")
     println(f"  Dominant channel: $dominant")
-    println(f"  Expected: g")
+    println("  Expected: g")
     println(f"  Test status: ${if dominant == "g" then "PASS" else "FAIL"}")
 
   def main(args: Array[String]): Unit =

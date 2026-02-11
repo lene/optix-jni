@@ -1,11 +1,16 @@
 package menger.optix
 
-import menger.common.{Color, ImageSize, Vector}
+import menger.common.Color
+import menger.common.ImageSize
+import menger.common.Vector
+import menger.optix.ColorConstants.OPAQUE_BLUE
+import menger.optix.ColorConstants.OPAQUE_GREEN
+import menger.optix.ColorConstants.OPAQUE_RED
+import menger.optix.ColorConstants.OPAQUE_WHITE
+import menger.optix.ThresholdConstants.QUICK_TEST_SIZE
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import ColorConstants.{OPAQUE_GREEN, OPAQUE_RED, OPAQUE_BLUE, OPAQUE_WHITE}
-import ThresholdConstants.{TEST_IMAGE_SIZE, QUICK_TEST_SIZE}
 
 
 class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:

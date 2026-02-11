@@ -1,12 +1,12 @@
 package menger.optix
 
 import menger.common.Const
+import menger.optix.ColorConstants.OPAQUE_LIGHT_GRAY
+import menger.optix.ColorConstants.VERY_TRANSPARENT_WHITE
+import menger.optix.ImageMatchers.showPlaneInRegion
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import ColorConstants.{OPAQUE_LIGHT_GRAY, VERY_TRANSPARENT_WHITE}
-import ImageMatchers.showPlaneInRegion
-import ThresholdConstants.TEST_IMAGE_SIZE
 
 
 class PlaneSuite extends AnyFlatSpec with Matchers with RendererFixture:

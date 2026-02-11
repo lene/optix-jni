@@ -1,16 +1,19 @@
 package menger.optix
 
+import com.typesafe.scalalogging.LazyLogging
 import menger.common.Color
 import menger.common.Const
 import menger.common.Vector
-
-import com.typesafe.scalalogging.LazyLogging
+import menger.optix.ColorConstants.Green
+import menger.optix.ColorConstants.OPAQUE_BLUE
+import menger.optix.ColorConstants.OPAQUE_GREEN
+import menger.optix.ColorConstants.OPAQUE_RED
+import menger.optix.ColorConstants.Red
+import menger.optix.ThresholdConstants.MIN_FPS
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.tagobjects.Slow
-
-import ColorConstants.{OPAQUE_BLUE, OPAQUE_GREEN, OPAQUE_RED, Red, Green}
-import ThresholdConstants.{TEST_IMAGE_SIZE, MIN_FPS}
 
 /** Tests for Instance Acceleration Structure (IAS) multi-object support.
   */

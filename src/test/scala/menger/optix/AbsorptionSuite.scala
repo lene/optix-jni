@@ -1,12 +1,12 @@
 package menger.optix
 
-import menger.common.Const
 import com.typesafe.scalalogging.LazyLogging
+import menger.common.Const
+import menger.optix.ColorConstants.SEMI_TRANSPARENT_GRAY
+import menger.optix.ThresholdConstants.MIN_ABSORPTION_GRADIENT
+import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-
-import ColorConstants.SEMI_TRANSPARENT_GRAY
-import ThresholdConstants.{MIN_ABSORPTION_GRADIENT, TEST_IMAGE_SIZE}
 
 
 class AbsorptionSuite extends AnyFlatSpec
