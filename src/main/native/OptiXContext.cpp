@@ -374,7 +374,8 @@ OptixPipeline OptiXContext::createPipeline(
     // that require more stack space than the utility function estimates
     // Cylinder shaders with single-bounce metallic reflection need additional stack space
     // for the handleMetallicOpaque() helper and one level of optixTrace recursion
-    continuation_stack_size = std::max(continuation_stack_size, 49152u);  // 48 KB (increased for metallic cylinders)
+    constexpr unsigned int MIN_CONTINUATION_STACK_SIZE = 49152u;  // 48 KB minimum for metallic cylinders
+    continuation_stack_size = std::max(continuation_stack_size, MIN_CONTINUATION_STACK_SIZE);
 
     OPTIX_CHECK(optixPipelineSetStackSize(
         pipeline,

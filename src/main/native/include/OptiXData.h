@@ -223,6 +223,7 @@ constexpr unsigned int MAX_TEXTURES = 32;
 // Vertices can be either 6 floats (pos + normal) or 8 floats (pos + normal + uv)
 constexpr unsigned int VERTEX_STRIDE_NO_UV = 6;    // 6 floats: pos(3) + normal(3)
 constexpr unsigned int VERTEX_STRIDE_WITH_UV = 8;  // 8 floats: pos(3) + normal(3) + uv(2)
+constexpr unsigned int VERTEX_STRIDE_WITH_ALPHA = 9;  // 9 floats: pos(3) + normal(3) + uv(2) + alpha(1)
 
 // Light source types
 enum class LightType {

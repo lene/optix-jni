@@ -127,6 +127,7 @@ void PipelineManager::createProgramGroups() {
 }
 
 void PipelineManager::createPipeline() {
+    constexpr int NUM_PROGRAM_GROUPS = 12;  // raygen(1) + miss(2) + hitgroups: sphere(2)+tri(2)+cylinder(2)+caustics(3)
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -152,7 +153,7 @@ void PipelineManager::createPipeline() {
         pipeline_compile_options,
         pipeline_link_options,
         program_groups,
-        12  // Updated to include triangle, cylinder, and caustics program groups
+        NUM_PROGRAM_GROUPS
     );
 }
 

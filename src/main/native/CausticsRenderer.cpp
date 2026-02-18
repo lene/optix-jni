@@ -103,7 +103,8 @@ void CausticsRenderer::renderWithCaustics(
 
         // Calculate launch dimensions for photon tracing
         // Use a 2D grid that covers photons_per_iteration threads
-        int photon_grid_width = std::min(photons_per_iter, 1024);  // Max 1024 threads per row
+        constexpr int MAX_PHOTON_THREADS_PER_ROW = 1024;
+        int photon_grid_width = std::min(photons_per_iter, MAX_PHOTON_THREADS_PER_ROW);
         int photon_grid_height = (photons_per_iter + photon_grid_width - 1) / photon_grid_width;
 
         // Launch photon tracing

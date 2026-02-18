@@ -76,7 +76,7 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
     // Alpha is at offset 8 within each vertex
     // Default to 1.0 (fully opaque) if not present
     float vertex_alpha = 1.0f;
-    if (stride >= 9) {
+    if (stride >= VERTEX_STRIDE_WITH_ALPHA) {
         vertex_alpha = w * v0[8] + u * v1[8] + v * v2[8];
     }
     // Store in a global variable that material function can access
@@ -208,7 +208,7 @@ extern "C" __global__ void __closesthit__triangle() {
     // partially covers what is behind it, controlled by vertex_alpha.
     // (Without this, the Fresnel path treats the skin as glass, ignoring vertex_alpha
     // for blending and showing reflections/refractions instead of the expected opacity.)
-    if (hit_data->vertex_stride >= 9 && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) {
+    if (hit_data->vertex_stride >= VERTEX_STRIDE_WITH_ALPHA && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) {
         if (depth >= MAX_TRACE_DEPTH) {
             // At max depth, just render as opaque to avoid black cutoff
             handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);

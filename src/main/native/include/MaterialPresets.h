@@ -20,6 +20,8 @@
 
 namespace MaterialPresets {
 
+constexpr float DIELECTRIC_ALPHA = 0.02f;  // Near-transparent alpha for glass/water/diamond
+
 // Helper to create default material with all fields initialized
 inline MaterialProperties createDefault() {
     MaterialProperties mat{};
@@ -43,7 +45,7 @@ inline MaterialProperties createDefault() {
 // IOR 1.5 gives ~4% Fresnel reflection at perpendicular
 inline MaterialProperties glass() {
     MaterialProperties mat = createDefault();
-    mat.color[3] = 0.02f;  // Very transparent (alpha near 0)
+    mat.color[3] = DIELECTRIC_ALPHA;  // Very transparent (alpha near 0)
     mat.ior = 1.5f;
     mat.roughness = 0.0f;  // Perfect smooth surface
     mat.metallic = 0.0f;   // Dielectric
@@ -54,7 +56,7 @@ inline MaterialProperties glass() {
 // Water: Lower IOR than glass, ~2% Fresnel reflection
 inline MaterialProperties water() {
     MaterialProperties mat = createDefault();
-    mat.color[3] = 0.02f;  // Very transparent
+    mat.color[3] = DIELECTRIC_ALPHA;  // Very transparent
     mat.ior = 1.33f;
     mat.roughness = 0.0f;
     mat.metallic = 0.0f;
@@ -65,7 +67,7 @@ inline MaterialProperties water() {
 // Diamond: High IOR gives strong refraction and ~17% Fresnel reflection
 inline MaterialProperties diamond() {
     MaterialProperties mat = createDefault();
-    mat.color[3] = 0.02f;  // Very transparent
+    mat.color[3] = DIELECTRIC_ALPHA;  // Very transparent
     mat.ior = 2.42f;
     mat.roughness = 0.0f;
     mat.metallic = 0.0f;
