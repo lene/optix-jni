@@ -82,6 +82,11 @@ private:
 
     // Helper methods
     void destroyProgramGroupIfExists(OptixProgramGroup& prog_group);
+
+    // SBT section builders (called from setupShaderBindingTable)
+    void createRaygenRecord(const SceneParameters& scene);
+    void createMissRecords();
+    void createHitgroupRecords(const SceneParameters& scene);
 };
 
 #endif // PIPELINE_MANAGER_H

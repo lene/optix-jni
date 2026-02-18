@@ -157,22 +157,7 @@ void PipelineManager::createPipeline() {
     );
 }
 
-void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, OptixTraversableHandle gasHandle) {
-    // Clean up old SBT records if they exist (for pipeline rebuild)
-    if (sbt.raygenRecord) {
-        optix_context.freeSBTRecord(sbt.raygenRecord);
-        sbt.raygenRecord = 0;
-    }
-    if (sbt.missRecordBase) {
-        optix_context.freeSBTRecord(sbt.missRecordBase);
-        sbt.missRecordBase = 0;
-    }
-    if (sbt.hitgroupRecordBase) {
-        optix_context.freeSBTRecord(sbt.hitgroupRecordBase);
-        sbt.hitgroupRecordBase = 0;
-    }
-
-    // Ray generation record data
+void PipelineManager::createRaygenRecord(const SceneParameters& scene) {
     const auto& camera = scene.getCamera();
     RayGenData rg_data;
     std::memcpy(rg_data.cam_eye, camera.eye, sizeof(float) * 3);
@@ -180,18 +165,16 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     std::memcpy(rg_data.camera_v, camera.v, sizeof(float) * 3);
     std::memcpy(rg_data.camera_w, camera.w, sizeof(float) * 3);
 
-    sbt.raygenRecord = optix_context.createRaygenSBTRecord(
-        raygen_prog_group,
-        rg_data
-    );
+    sbt.raygenRecord = optix_context.createRaygenSBTRecord(raygen_prog_group, rg_data);
+}
 
+void PipelineManager::createMissRecords() {
     // Miss records: [0] = primary ray miss, [1] = shadow ray miss
     MissData ms_data;
     ms_data.r = OptiXConstants::DEFAULT_BG_R;
     ms_data.g = OptiXConstants::DEFAULT_BG_G;
     ms_data.b = OptiXConstants::DEFAULT_BG_B;
 
-    // Allocate array for 2 miss records
     MissSbtRecord miss_records[2];
     optixSbtRecordPackHeader(miss_prog_group, &miss_records[0]);
     miss_records[0].data = ms_data;
@@ -211,24 +194,18 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     sbt.missRecordBase = d_miss_records;
     sbt.missRecordStrideInBytes = sizeof(MissSbtRecord);
     sbt.missRecordCount = 2;
+}
 
-    // Hit group records for IAS mode need to support sphere, triangle, and cylinder geometry types
+void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     // SBT layout: [0]=sphere_primary, [1]=sphere_shadow, [2]=triangle_primary, [3]=triangle_shadow,
     //             [4]=cylinder_primary, [5]=cylinder_shadow
     // Offset calculation: geometry_type * 2 + ray_type (0=primary, 1=shadow)
-
-    // For IAS mode: always build unified 6-record SBT
-    // For single-object mode: build 2-record SBT (backward compatible)
-
-    // Maximum record size to ensure proper alignment
     constexpr size_t record_size = std::max(sizeof(HitGroupSbtRecord), sizeof(TriangleHitGroupSbtRecord));
-
-    // Allocate 6 records for IAS mode (3 geometry types * 2 ray types)
     constexpr int num_records = 6;  // 3 geometry types * 2 ray types
     char hitgroup_records[num_records * record_size];
     std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
 
-    // Build sphere hitgroup records [0]=primary, [1]=shadow
+    // Sphere hitgroup records [0]=primary, [1]=shadow
     const auto& sphere = scene.getSphere();
     HitGroupData sphere_data;
     std::memcpy(sphere_data.sphere_center, sphere.center, sizeof(float) * 3);
@@ -242,7 +219,7 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     optixSbtRecordPackHeader(shadow_hitgroup_prog_group, sphere_shadow);
     sphere_shadow->data = sphere_data;
 
-    // Build triangle hitgroup records [2]=primary, [3]=shadow
+    // Triangle hitgroup records [2]=primary, [3]=shadow
     if (scene.hasTriangleMesh()) {
         const auto& mesh = scene.getTriangleMesh();
         TriangleHitGroupData tri_data;
@@ -261,7 +238,7 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
         tri_shadow->data = tri_data;
     }
 
-    // Build cylinder hitgroup records [4]=primary, [5]=shadow
+    // Cylinder hitgroup records [4]=primary, [5]=shadow
     // Cylinder data is stored per-instance in the GAS, so SBT record just needs header
     HitGroupSbtRecord* cylinder_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 4 * record_size);
     optixSbtRecordPackHeader(cylinder_hitgroup_prog_group, cylinder_primary);
@@ -271,7 +248,6 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     optixSbtRecordPackHeader(cylinder_shadow_hitgroup_prog_group, cylinder_shadow);
     cylinder_shadow->data = sphere_data;  // Placeholder data (not used by cylinder shader)
 
-    // Upload unified SBT to GPU
     CUdeviceptr d_hitgroup_records;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
     CUDA_CHECK(cudaMemcpy(
@@ -283,6 +259,26 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
     sbt.hitgroupRecordBase = d_hitgroup_records;
     sbt.hitgroupRecordStrideInBytes = record_size;
     sbt.hitgroupRecordCount = num_records;
+}
+
+void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, OptixTraversableHandle gasHandle) {
+    // Clean up old SBT records if they exist (for pipeline rebuild)
+    if (sbt.raygenRecord) {
+        optix_context.freeSBTRecord(sbt.raygenRecord);
+        sbt.raygenRecord = 0;
+    }
+    if (sbt.missRecordBase) {
+        optix_context.freeSBTRecord(sbt.missRecordBase);
+        sbt.missRecordBase = 0;
+    }
+    if (sbt.hitgroupRecordBase) {
+        optix_context.freeSBTRecord(sbt.hitgroupRecordBase);
+        sbt.hitgroupRecordBase = 0;
+    }
+
+    createRaygenRecord(scene);
+    createMissRecords();
+    createHitgroupRecords(scene);
 }
 
 void PipelineManager::destroyProgramGroupIfExists(OptixProgramGroup& prog_group) {
