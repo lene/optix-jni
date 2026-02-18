@@ -487,6 +487,49 @@ __device__ void handleFullyTransparent(
 }
 
 /**
+ * Trace a continuation ray through a surface and return the color.
+ *
+ * Similar to handleFullyTransparent, but returns color via output parameters
+ * instead of setting payloads. Used for coverage alpha blending.
+ *
+ * @param hit_point Surface intersection point
+ * @param ray_direction Incoming ray direction
+ * @param depth Current recursion depth (not incremented for pass-through)
+ * @param r/g/b Output: color from continuation ray (0-255)
+ */
+// Small tmin for coverage-alpha continuation rays.
+// Must be smaller than the skin face offset (SKIN_NORMAL_OFFSET in SpongeByVolume) so the
+// continuation ray can reach the sponge face sitting just behind the skin face.
+// Using 0.0001f (10x smaller than CONTINUATION_RAY_OFFSET) to allow hitting the sponge
+// face at ~0.003 distance while still avoiding self-intersection on the skin face itself.
+constexpr float COVERAGE_CONTINUATION_OFFSET = 0.0001f;
+
+__device__ void traceContinuationRay(
+    const float3& hit_point,
+    const float3& ray_direction,
+    unsigned int depth,
+    unsigned int& r,
+    unsigned int& g,
+    unsigned int& b
+) {
+    const float3 continue_origin = hit_point + ray_direction * COVERAGE_CONTINUATION_OFFSET;
+    unsigned int next_depth = depth;  // Don't increment depth for transparent pass-through
+
+    optixTrace(
+        params.handle,
+        continue_origin,
+        ray_direction,
+        COVERAGE_CONTINUATION_OFFSET,
+        MAX_RAY_DISTANCE,
+        0.0f,
+        OptixVisibilityMask(255),
+        OPTIX_RAY_FLAG_NONE,
+        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
+        r, g, b, next_depth
+    );
+}
+
+/**
  * Compute diffuse lighting color for opaque surface.
  * Returns RGB color values (0-255 range) without setting payload.
  * Used for blending metallic and diffuse contributions.

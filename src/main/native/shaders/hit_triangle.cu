@@ -202,6 +202,39 @@ extern "C" __global__ void __closesthit__triangle() {
         }
     }
 
+    // Handle coverage alpha (fractional sponge rendering).
+    // When a face has per-vertex alpha (stride >= 9), use opacity blending instead of
+    // Fresnel refraction. This gives the correct "skin" effect: a diffuse face that
+    // partially covers what is behind it, controlled by vertex_alpha.
+    // (Without this, the Fresnel path treats the skin as glass, ignoring vertex_alpha
+    // for blending and showing reflections/refractions instead of the expected opacity.)
+    if (hit_data->vertex_stride >= 9 && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) {
+        if (depth >= MAX_TRACE_DEPTH) {
+            // At max depth, just render as opaque to avoid black cutoff
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
+            return;
+        }
+
+        // Compute diffuse shading for this face (as if fully opaque)
+        unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
+        computeDiffuseColor(geom.hit_point, geom.normal, mesh_color, diffuse_r, diffuse_g, diffuse_b);
+
+        // Trace continuation ray through the face to get what lies behind
+        unsigned int through_r = 0, through_g = 0, through_b = 0;
+        traceContinuationRay(geom.hit_point, ray_direction, depth, through_r, through_g, through_b);
+
+        // Coverage blend: vertex_alpha * diffuse + (1 - vertex_alpha) * through
+        const float a = geom.vertex_alpha;
+        const unsigned int r = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_r) + (1.0f - a) * static_cast<float>(through_r), RayTracingConstants::COLOR_BYTE_MAX));
+        const unsigned int g = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_g) + (1.0f - a) * static_cast<float>(through_g), RayTracingConstants::COLOR_BYTE_MAX));
+        const unsigned int b = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_b) + (1.0f - a) * static_cast<float>(through_b), RayTracingConstants::COLOR_BYTE_MAX));
+
+        optixSetPayload_0(r);
+        optixSetPayload_1(g);
+        optixSetPayload_2(b);
+        return;
+    }
+
     // If max depth reached, trace final non-recursive ray
     if (depth >= MAX_TRACE_DEPTH) {
         traceFinalNonRecursiveRay(geom.hit_point, ray_direction, geom.normal);
