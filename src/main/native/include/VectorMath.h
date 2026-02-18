@@ -21,6 +21,7 @@ __host__ __device__ inline float length(float3 v) {
 // Normalize a float3 vector
 __host__ __device__ inline float3 normalize(float3 v) {
     const float len = length(v);
+    if (len <= 0.0f) return make_float3(0.0f, 0.0f, 0.0f);
     return make_float3(v.x / len, v.y / len, v.z / len);
 }
 
@@ -73,6 +74,7 @@ namespace VectorMath {
     // Normalize a 3D vector in place (array version)
     inline void normalize3f(float v[3]) {
         const float len = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
+        if (len <= 0.0f) return;
         v[0] /= len;
         v[1] /= len;
         v[2] /= len;

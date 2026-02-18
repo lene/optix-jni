@@ -97,6 +97,7 @@ void SceneParameters::setLights(const Light* lightsArray, int count) {
         return;  // Invalid input
     }
 
+    if (count > RayTracingConstants::MAX_LIGHTS) count = RayTracingConstants::MAX_LIGHTS;  // defensive clamp
     num_lights = count;
     for (int i = 0; i < count; ++i) {
         lights[i] = lightsArray[i];
