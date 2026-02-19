@@ -41,8 +41,8 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Get material properties including PBR values (from IAS instance or global params)
     float4 material_color;
-    float material_ior, roughness, metallic, specular, emission;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission);
+    float material_ior, roughness, metallic, specular, emission, film_thickness;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
     const float sphere_alpha = material_color.w;
 
     // Handle fully transparent spheres
@@ -70,9 +70,6 @@ extern "C" __global__ void __closesthit__ch() {
         return;
     }
 
-    // Compute Fresnel reflectance
-    const float fresnel = computeFresnelReflectance(ray_direction, normal, entering, material_ior);
-
     // Trace reflected ray
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
     traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
@@ -97,6 +94,13 @@ extern "C" __global__ void __closesthit__ch() {
     // Apply Beer-Lambert absorption when exiting (sphere uses sphere_scale for distance)
     refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color, params.sphere_scale);
 
-    // Blend reflected and refracted colors using Fresnel and set output payloads
-    blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color, material_color, emission);
+    // Compute Fresnel reflectance (RGB for thin-film, scalar for standard)
+    if (film_thickness > 0.0f) {
+        const float cos_theta = fabsf(dot(ray_direction, normal));
+        const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, material_ior, film_thickness);
+        blendFresnelColorsRGBAndSetPayload(fresnel_rgb, reflect_r, reflect_g, reflect_b, refract_color, material_color, emission);
+    } else {
+        const float fresnel = computeFresnelReflectance(ray_direction, normal, entering, material_ior);
+        blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color, material_color, emission);
+    }
 }

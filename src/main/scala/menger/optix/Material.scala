@@ -9,6 +9,7 @@ case class Material(
     metallic: Float = 0.0f,
     specular: Float = 0.5f,
     emission: Float = 0.0f,
+    filmThickness: Float = 0.0f,
     baseColorTexture: Option[Int] = None,
     normalTexture: Option[Int] = None,
     roughnessTexture: Option[Int] = None
@@ -19,6 +20,7 @@ case class Material(
   def withMetallicOpt(m: Option[Float]): Material = m.fold(this)(v => copy(metallic = v))
   def withSpecularOpt(s: Option[Float]): Material = s.fold(this)(v => copy(specular = v))
   def withEmissionOpt(e: Option[Float]): Material = e.fold(this)(v => copy(emission = v))
+  def withFilmThicknessOpt(f: Option[Float]): Material = f.fold(this)(v => copy(filmThickness = v))
 
 object Material:
 
@@ -80,16 +82,16 @@ object Material:
     emission = 0.0f
   )
 
-  // Semi-transparent film/parchment materials
-  // TODO: Film should use proper thin-film physics with thickness parameter for interference effects
-  // Current IOR-based approach is a temporary approximation
+  // Thin-film interference material (soap bubbles, oil slicks, anti-reflective coatings)
+  // Uses Airy thin-film reflectance with wavelength-dependent Fresnel for iridescent colors
   val Film = Material(
     color = White.copy(a = 0.2f),  // 20% opaque (80% transparent)
-    ior = 1.1f,
+    ior = 1.33f,                   // Soap film IOR (similar to water)
     roughness = 0.1f,
     metallic = 0.0f,
     specular = 0.5f,
-    emission = 0.0f
+    emission = 0.0f,
+    filmThickness = 500.0f         // 500nm default thickness (green interference at normal incidence)
   )
 
   // Parchment is translucent (light passes through) but NOT refractive

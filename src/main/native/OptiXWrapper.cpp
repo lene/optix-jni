@@ -56,6 +56,7 @@ struct OptiXWrapper::Impl {
         float metallic;                       // 0=dielectric, 1=metal (default: 0.0)
         float specular;                       // Specular intensity (default: 0.5)
         float emission;                       // Emission intensity (default: 0.0)
+        float film_thickness;                 // Thin-film thickness in nm (0 = none)
         int texture_index;                    // Index into textures array (-1 = no texture)
         bool active;                          // True if instance is enabled
     };
@@ -419,6 +420,7 @@ void OptiXWrapper::buildIAS() {
         mat.emission = inst.emission;
         mat.geometry_type = inst.geometry_type;
         mat.texture_index = inst.texture_index;
+        mat.film_thickness = inst.film_thickness;
         materials.push_back(mat);
     }
 
@@ -744,7 +746,8 @@ bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
 
 int OptiXWrapper::addSphereInstance(
     const float* transform, float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular, float emission
+    float roughness, float metallic, float specular, float emission,
+    float film_thickness
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -798,6 +801,7 @@ int OptiXWrapper::addSphereInstance(
     inst.metallic = metallic;
     inst.specular = specular;
     inst.emission = emission;
+    inst.film_thickness = film_thickness;
     inst.texture_index = -1;  // Spheres don't support textures
     inst.active = true;
 
@@ -817,7 +821,8 @@ int OptiXWrapper::addSphereInstance(
 
 int OptiXWrapper::addTriangleMeshInstance(
     const float* transform, float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular, float emission, int textureIndex
+    float roughness, float metallic, float specular, float emission, int textureIndex,
+    float film_thickness
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -860,6 +865,7 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.metallic = metallic;
     inst.specular = specular;
     inst.emission = emission;
+    inst.film_thickness = film_thickness;
     inst.texture_index = textureIndex;
     inst.active = true;
 
@@ -882,7 +888,8 @@ int OptiXWrapper::addCylinderInstance(
     float p1_x, float p1_y, float p1_z,
     float radius,
     float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular, float emission
+    float roughness, float metallic, float specular, float emission,
+    float film_thickness
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -982,6 +989,7 @@ int OptiXWrapper::addCylinderInstance(
     inst.metallic = metallic;
     inst.specular = specular;
     inst.emission = emission;
+    inst.film_thickness = film_thickness;
     inst.texture_index = cylinder_index;  // For cylinders: index into cylinder_data array
     inst.active = true;
 

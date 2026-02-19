@@ -54,8 +54,8 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
   "Material.Film" should "be highly transparent (alpha = 0.2)" in:
     Material.Film.color.a shouldBe 0.2f
 
-  it should "have low IOR (1.1)" in:
-    Material.Film.ior shouldBe 1.1f
+  it should "have soap film IOR (1.33)" in:
+    Material.Film.ior shouldBe 1.33f
 
   it should "be smooth (low roughness)" in:
     Material.Film.roughness shouldBe 0.1f
@@ -65,6 +65,9 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
 
   it should "have no default emission" in:
     Material.Film.emission shouldBe 0.0f
+
+  it should "have 500nm film thickness for thin-film interference" in:
+    Material.Film.filmThickness shouldBe 500.0f
 
   "Material.Parchment" should "be semi-transparent (alpha = 0.4)" in:
     Material.Parchment.color.a shouldBe 0.4f
@@ -217,4 +220,15 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
     Material.presetNames.flatMap(Material.fromName).foreach { mat =>
       mat.specular should be >= 0.0f
       mat.specular should be <= 1.0f
+    }
+
+  they should "have non-negative film thickness" in:
+    Material.presetNames.flatMap(Material.fromName).foreach { mat =>
+      mat.filmThickness should be >= 0.0f
+    }
+
+  "Non-film presets" should "have zero film thickness" in:
+    val nonFilmPresets = List("glass", "water", "diamond", "chrome", "gold", "copper", "parchment", "metal", "plastic", "matte")
+    nonFilmPresets.flatMap(Material.fromName).foreach { mat =>
+      mat.filmThickness shouldBe 0.0f
     }

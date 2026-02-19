@@ -681,6 +681,184 @@ __device__ float computeFresnelReflectance(
     return R0 + RenderingConstants::FRESNEL_ONE_MINUS_R0 * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
 }
 
+//==============================================================================
+// Thin-Film Interference (Airy Reflectance)
+//==============================================================================
+
+// CIE 1931 2° observer XYZ color matching functions, sampled at 16 wavelengths
+// from 380nm to 780nm (26.67nm spacing). Used to convert spectral reflectance to RGB.
+__device__ __constant__ float CIE_WAVELENGTHS[16] = {
+    380.0f, 406.7f, 433.3f, 460.0f, 486.7f, 513.3f, 540.0f, 566.7f,
+    593.3f, 620.0f, 646.7f, 673.3f, 700.0f, 726.7f, 753.3f, 780.0f
+};
+
+__device__ __constant__ float CIE_X[16] = {
+    0.0014f, 0.0146f, 0.0913f, 0.2900f, 0.0966f, 0.0175f, 0.2080f, 0.5820f,
+    0.9163f, 1.0263f, 0.7570f, 0.4256f, 0.1842f, 0.0563f, 0.0152f, 0.0026f
+};
+
+__device__ __constant__ float CIE_Y[16] = {
+    0.0000f, 0.0004f, 0.0045f, 0.0380f, 0.1360f, 0.3240f, 0.6310f, 0.9149f,
+    0.9786f, 0.8310f, 0.5520f, 0.2990f, 0.1300f, 0.0392f, 0.0104f, 0.0017f
+};
+
+__device__ __constant__ float CIE_Z[16] = {
+    0.0065f, 0.0709f, 0.4652f, 1.5220f, 0.5688f, 0.0746f, 0.0087f, 0.0017f,
+    0.0008f, 0.0003f, 0.0001f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f
+};
+
+/**
+ * Convert CIE XYZ color to linear sRGB using D65 illuminant matrix.
+ */
+__device__ float3 xyzToLinearRGB(float X, float Y, float Z) {
+    return make_float3(
+         3.2406f * X - 1.5372f * Y - 0.4986f * Z,
+        -0.9689f * X + 1.8758f * Y + 0.0415f * Z,
+         0.0557f * X - 0.2040f * Y + 1.0570f * Z
+    );
+}
+
+/**
+ * Compute thin-film interference reflectance using the Airy formula.
+ *
+ * Models a free-standing film (air/film/air) producing wavelength-dependent
+ * Fresnel reflectance that creates iridescent colors (soap bubbles, oil slicks).
+ *
+ * Physics:
+ *   1. Snell's law: sin(θ_t) = sin(θ_i) / n_film
+ *   2. Phase difference: δ = 4π · n_film · d · cos(θ_t) / λ
+ *   3. Fresnel coefficient at air/film interface (averaged s+p polarizations)
+ *   4. Airy reflectance: R(λ) = 2r²(1 - cos δ) / (1 + r⁴ - 2r² cos δ)
+ *
+ * Samples 16 wavelengths across 380-780nm, converted to RGB via CIE 1931 XYZ.
+ *
+ * @param cos_theta_i Cosine of incidence angle (dot of ray with normal)
+ * @param film_ior Refractive index of the film
+ * @param thickness_nm Film thickness in nanometers
+ * @return RGB reflectance (each channel 0.0-1.0)
+ */
+__device__ float3 computeThinFilmReflectance(
+    float cos_theta_i,
+    float film_ior,
+    float thickness_nm
+) {
+    // Clamp cosine to valid range
+    cos_theta_i = fmaxf(cos_theta_i, 0.001f);
+
+    const float sin_theta_i = sqrtf(1.0f - cos_theta_i * cos_theta_i);
+
+    // Snell's law: sin(θ_t) = sin(θ_i) / n_film
+    const float sin_theta_t = sin_theta_i / film_ior;
+    // Check for total internal reflection (shouldn't happen for air→film, but be safe)
+    if (sin_theta_t >= 1.0f) {
+        return make_float3(1.0f, 1.0f, 1.0f);
+    }
+    const float cos_theta_t = sqrtf(1.0f - sin_theta_t * sin_theta_t);
+
+    // Fresnel coefficients at air/film interface (n1=1.0 air, n2=film_ior)
+    const float n1 = 1.0f;
+    const float n2 = film_ior;
+    const float rs = (n1 * cos_theta_i - n2 * cos_theta_t) / (n1 * cos_theta_i + n2 * cos_theta_t);
+    const float rp = (n2 * cos_theta_i - n1 * cos_theta_t) / (n2 * cos_theta_i + n1 * cos_theta_t);
+    // Average of s and p polarizations
+    const float r = 0.5f * (rs + rp);
+    const float r2 = r * r;
+    const float r4 = r2 * r2;
+
+    // Integrate spectral reflectance weighted by CIE color matching functions
+    float X = 0.0f, Y = 0.0f, Z = 0.0f;
+    const float delta_lambda = 26.67f;  // nm spacing between samples
+
+    for (int i = 0; i < 16; i++) {
+        const float lambda = CIE_WAVELENGTHS[i];
+
+        // Phase difference: δ = 4π · n_film · d · cos(θ_t) / λ
+        const float delta = 4.0f * M_PIf * film_ior * thickness_nm * cos_theta_t / lambda;
+        const float cos_delta = cosf(delta);
+
+        // Airy formula: R(λ) = 2r²(1 - cos δ) / (1 + r⁴ - 2r² cos δ)
+        const float denom = 1.0f + r4 - 2.0f * r2 * cos_delta;
+        const float R_lambda = (denom > 1e-8f)
+            ? 2.0f * r2 * (1.0f - cos_delta) / denom
+            : 0.0f;
+
+        // Accumulate XYZ weighted by spectral reflectance
+        X += R_lambda * CIE_X[i] * delta_lambda;
+        Y += R_lambda * CIE_Y[i] * delta_lambda;
+        Z += R_lambda * CIE_Z[i] * delta_lambda;
+    }
+
+    // Normalize: divide by integral of Y (luminance) over visible spectrum
+    // For our 16 CIE_Y samples × 26.67nm spacing, sum ≈ 106.5
+    const float Y_integral = 106.5f;
+    X /= Y_integral;
+    Y /= Y_integral;
+    Z /= Y_integral;
+
+    // Convert XYZ to linear sRGB
+    float3 rgb = xyzToLinearRGB(X, Y, Z);
+
+    // Clamp to [0, 1] — out-of-gamut colors get clamped
+    rgb.x = fmaxf(0.0f, fminf(1.0f, rgb.x));
+    rgb.y = fmaxf(0.0f, fminf(1.0f, rgb.y));
+    rgb.z = fmaxf(0.0f, fminf(1.0f, rgb.z));
+
+    return rgb;
+}
+
+//==============================================================================
+// RGB Fresnel Color Blending (for thin-film interference)
+//==============================================================================
+
+/**
+ * Blend reflected and refracted colors using per-channel RGB Fresnel and set payloads.
+ *
+ * Like blendFresnelColorsAndSetPayload but takes float3 fresnel_rgb instead of scalar,
+ * enabling wavelength-dependent reflectance from thin-film interference.
+ *
+ * @param fresnel_rgb Per-channel Fresnel reflectance [0, 1] per R/G/B
+ * @param reflect_r/g/b Reflected ray color (0-255)
+ * @param refract_color Refracted ray color after Beer-Lambert (0.0-1.0 per channel)
+ * @param material_color Material color for emission tinting
+ * @param emission Emission intensity (0.0-10.0)
+ */
+__device__ void blendFresnelColorsRGBAndSetPayload(
+    const float3& fresnel_rgb,
+    unsigned int reflect_r,
+    unsigned int reflect_g,
+    unsigned int reflect_b,
+    const float3& refract_color,
+    const float4& material_color = make_float4(1.0f, 1.0f, 1.0f, 1.0f),
+    float emission = 0.0f
+) {
+    // Convert reflected color to normalized float
+    const float3 reflect_color = make_float3(
+        static_cast<float>(reflect_r) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(reflect_g) / RayTracingConstants::COLOR_BYTE_MAX,
+        static_cast<float>(reflect_b) / RayTracingConstants::COLOR_BYTE_MAX
+    );
+
+    // Blend using per-channel Fresnel coefficients
+    const float3 final_color = make_float3(
+        fresnel_rgb.x * reflect_color.x + (1.0f - fresnel_rgb.x) * refract_color.x,
+        fresnel_rgb.y * reflect_color.y + (1.0f - fresnel_rgb.y) * refract_color.y,
+        fresnel_rgb.z * reflect_color.z + (1.0f - fresnel_rgb.z) * refract_color.z
+    );
+
+    // Convert to integer
+    unsigned int r = static_cast<unsigned int>(fminf(final_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int g = static_cast<unsigned int>(fminf(final_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int b = static_cast<unsigned int>(fminf(final_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+
+    // Add emission
+    addEmissionToColor(r, g, b, material_color, emission);
+
+    // Set payloads
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
+}
+
 /**
  * Trace reflected ray and return color components.
  *
@@ -1018,9 +1196,11 @@ __device__ void getInstanceMaterial(float4& color, float& ior) {
  * @param metallic Output: Metallic (0=dielectric, 1=metal)
  * @param specular Output: Specular intensity
  * @param emission Output: Emission intensity (0.0-10.0)
+ * @param film_thickness Output: Thin-film thickness in nm (0 = no thin-film)
  */
 __device__ void getInstanceMaterialPBR(
-    float4& color, float& ior, float& roughness, float& metallic, float& specular, float& emission
+    float4& color, float& ior, float& roughness, float& metallic, float& specular, float& emission,
+    float& film_thickness
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
@@ -1032,6 +1212,7 @@ __device__ void getInstanceMaterialPBR(
         metallic = mat.metallic;
         specular = mat.specular;
         emission = mat.emission;
+        film_thickness = mat.film_thickness;
     } else {
         // Single-object mode: use global sphere parameters with default PBR values
         color = make_float4(
@@ -1045,6 +1226,7 @@ __device__ void getInstanceMaterialPBR(
         metallic = MaterialDefaults::DEFAULT_METALLIC;    // Default non-metallic (dielectric)
         specular = MaterialDefaults::DEFAULT_SPECULAR;    // Default specular intensity
         emission = 0.0f;  // Default no emission
+        film_thickness = 0.0f;  // Default no thin-film
     }
 }
 

@@ -36,6 +36,7 @@ inline MaterialProperties createDefault() {
     mat.base_color_texture = -1;
     mat.normal_texture = -1;
     mat.roughness_texture = -1;
+    mat.film_thickness = 0.0f;
     mat.padding[0] = 0;
     mat.padding[1] = 0;
     return mat;
@@ -161,6 +162,19 @@ inline MaterialProperties matte(float r = 1.0f, float g = 1.0f, float b = 1.0f) 
     return mat;
 }
 
+// Film: Thin-film interference material (soap bubbles, oil slicks)
+// Uses Airy thin-film reflectance with 500nm thickness (green interference at normal incidence)
+inline MaterialProperties film() {
+    MaterialProperties mat = createDefault();
+    mat.color[3] = 0.2f;          // 20% opaque (transparent film)
+    mat.ior = 1.33f;              // Soap film IOR (similar to water)
+    mat.roughness = 0.1f;
+    mat.metallic = 0.0f;          // Dielectric
+    mat.specular = 0.5f;
+    mat.film_thickness = 500.0f;  // 500nm default thickness
+    return mat;
+}
+
 // Get preset by MaterialType enum
 inline MaterialProperties fromType(MaterialType type,
                                    float r = 1.0f, float g = 1.0f, float b = 1.0f) {
@@ -174,6 +188,7 @@ inline MaterialProperties fromType(MaterialType type,
         case MATERIAL_METAL:   return metal(r, g, b);
         case MATERIAL_PLASTIC: return plastic(r, g, b);
         case MATERIAL_MATTE:   return matte(r, g, b);
+        case MATERIAL_FILM:    return film();
         case MATERIAL_CUSTOM:
         default:               return createDefault();
     }

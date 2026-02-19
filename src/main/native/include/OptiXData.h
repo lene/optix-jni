@@ -177,7 +177,7 @@ struct InstanceMaterial {
     float emission;             // Emission intensity (0.0-10.0, default: 0.0)
     unsigned int geometry_type; // GeometryType enum value
     int texture_index;          // Index into Params.textures array (-1 = no texture)
-    unsigned int padding[1];    // Align to 48 bytes for GPU efficiency
+    float film_thickness;       // Thin-film thickness in nm (0 = no thin-film interference)
 };
 
 // Extended material properties for physically-based rendering (Sprint 7)
@@ -198,8 +198,11 @@ struct MaterialProperties {
     int normal_texture;          // Normal map texture index (future)
     int roughness_texture;       // Roughness map texture index (future)
 
+    // Thin-film interference
+    float film_thickness;        // Film thickness in nm (0 = no thin-film interference)
+
     // Padding for 16-byte alignment (64 bytes total)
-    unsigned int padding[3];
+    unsigned int padding[2];
 };
 
 // Material type for presets
@@ -213,7 +216,8 @@ enum MaterialType {
     MATERIAL_COPPER = 6,
     MATERIAL_METAL = 7,
     MATERIAL_PLASTIC = 8,
-    MATERIAL_MATTE = 9
+    MATERIAL_MATTE = 9,
+    MATERIAL_FILM = 10
 };
 
 // Maximum textures supported in a scene

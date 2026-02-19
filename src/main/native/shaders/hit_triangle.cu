@@ -118,7 +118,8 @@ __device__ void getTriangleMaterial(
     float& ior,
     float& roughness,
     float& metallic,
-    float& specular
+    float& specular,
+    float& film_thickness
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
@@ -129,6 +130,7 @@ __device__ void getTriangleMaterial(
         roughness = mat.roughness;
         metallic = mat.metallic;
         specular = mat.specular;
+        film_thickness = mat.film_thickness;
 
         // Apply texture if available (in IAS mode only)
         if (vertex_stride >= VERTEX_STRIDE_WITH_UV) {
@@ -147,6 +149,7 @@ __device__ void getTriangleMaterial(
         roughness = MaterialDefaults::DEFAULT_ROUGHNESS;
         metallic = MaterialDefaults::DEFAULT_METALLIC;
         specular = MaterialDefaults::DEFAULT_SPECULAR;
+        film_thickness = 0.0f;
     }
 
     // Multiply material alpha with per-vertex alpha (for fractional level rendering)
@@ -175,11 +178,11 @@ extern "C" __global__ void __closesthit__triangle() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get material properties including PBR values (color, IOR, roughness, metallic, specular)
+    // Get material properties including PBR values (color, IOR, roughness, metallic, specular, film_thickness)
     float4 mesh_color;
-    float mesh_ior, roughness, metallic, specular;
+    float mesh_ior, roughness, metallic, specular, film_thickness;
     getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride, geom.vertex_alpha,
-                       mesh_color, mesh_ior, roughness, metallic, specular);
+                       mesh_color, mesh_ior, roughness, metallic, specular, film_thickness);
 
     const float mesh_alpha = mesh_color.w;
 
@@ -241,9 +244,6 @@ extern "C" __global__ void __closesthit__triangle() {
         return;
     }
 
-    // Compute Fresnel reflectance
-    const float fresnel = computeFresnelReflectance(ray_direction, geom.normal, geom.entering, mesh_ior);
-
     // Trace reflected ray
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
     traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, reflect_r, reflect_g, reflect_b);
@@ -268,8 +268,15 @@ extern "C" __global__ void __closesthit__triangle() {
     // Apply Beer-Lambert absorption when exiting (triangles use default distance_scale=1.0)
     refract_color = applyBeerLambertAbsorption(refract_color, geom.t, geom.entering, mesh_color);
 
-    // Blend reflected and refracted colors using Fresnel and set output payloads
-    blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color);
+    // Compute Fresnel reflectance (RGB for thin-film, scalar for standard)
+    if (film_thickness > 0.0f) {
+        const float cos_theta = fabsf(dot(ray_direction, geom.normal));
+        const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, mesh_ior, film_thickness);
+        blendFresnelColorsRGBAndSetPayload(fresnel_rgb, reflect_r, reflect_g, reflect_b, refract_color, mesh_color);
+    } else {
+        const float fresnel = computeFresnelReflectance(ray_direction, geom.normal, geom.entering, mesh_ior);
+        blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color);
+    }
 }
 
 //==============================================================================

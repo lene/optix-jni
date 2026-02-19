@@ -641,7 +641,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_disposeNative(JNIEnv* env
 JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSphereInstanceNative(
     JNIEnv* env, jobject obj,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
-    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission) {
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jfloat filmThickness) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -665,7 +665,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSphereInstanceNative(
         }
 
         int instanceId = wrapper->addSphereInstance(
-            transformArr, r, g, b, a, ior, roughness, metallic, specular, emission
+            transformArr, r, g, b, a, ior, roughness, metallic, specular, emission, filmThickness
         );
 
         env->ReleaseFloatArrayElements(transform, transformArr, 0);
@@ -689,7 +689,8 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSphereInstanceNative(
 JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNative(
     JNIEnv* env, jobject obj,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
-    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jint textureIndex) {
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jint textureIndex,
+    jfloat filmThickness) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -713,7 +714,8 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNa
         }
 
         int instanceId = wrapper->addTriangleMeshInstance(
-            transformArr, r, g, b, a, ior, roughness, metallic, specular, emission, textureIndex
+            transformArr, r, g, b, a, ior, roughness, metallic, specular, emission, textureIndex,
+            filmThickness
         );
 
         env->ReleaseFloatArrayElements(transform, transformArr, 0);
@@ -747,7 +749,8 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addCylinderInstanceNative
     jfloat p1_x, jfloat p1_y, jfloat p1_z,
     jfloat radius,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
-    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission) {
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -759,7 +762,8 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addCylinderInstanceNative
             p1_x, p1_y, p1_z,
             radius,
             r, g, b, a, ior,
-            roughness, metallic, specular, emission
+            roughness, metallic, specular, emission,
+            filmThickness
         );
 
         return instanceId;

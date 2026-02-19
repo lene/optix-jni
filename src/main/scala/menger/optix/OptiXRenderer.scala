@@ -340,7 +340,8 @@ class OptiXRenderer extends LazyLogging:
     roughness: Float,
     metallic: Float,
     specular: Float,
-    emission: Float
+    emission: Float,
+    filmThickness: Float
   ): Int
 
   @native private def addTriangleMeshInstanceNative(
@@ -354,7 +355,8 @@ class OptiXRenderer extends LazyLogging:
     metallic: Float,
     specular: Float,
     emission: Float,
-    textureIndex: Int
+    textureIndex: Int,
+    filmThickness: Float
   ): Int
 
   @native private def addCylinderInstanceNative(
@@ -369,7 +371,8 @@ class OptiXRenderer extends LazyLogging:
     roughness: Float,
     metallic: Float,
     specular: Float,
-    emission: Float
+    emission: Float,
+    filmThickness: Float
   ): Int
 
   @native def removeInstance(instanceId: Int): Unit
@@ -387,7 +390,8 @@ class OptiXRenderer extends LazyLogging:
     val id = addSphereInstanceNative(
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
+      material.filmThickness
     )
     if id >= 0 then Some(id) else None
 
@@ -415,7 +419,7 @@ class OptiXRenderer extends LazyLogging:
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      textureIndex
+      textureIndex, material.filmThickness
     )
     if id >= 0 then Some(id) else None
 
@@ -469,7 +473,8 @@ class OptiXRenderer extends LazyLogging:
       p1.x, p1.y, p1.z,
       radius,
       material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
+      material.filmThickness
     )
     if id >= 0 then Some(id) else None
 

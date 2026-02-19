@@ -84,18 +84,21 @@ public:
     // where m03, m13, m23 are translation components
     int addSphereInstance(
         const float* transform, float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f
+        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float film_thickness = 0.0f
     );
     int addTriangleMeshInstance(
         const float* transform, float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f, int textureIndex = -1
+        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        int textureIndex = -1, float film_thickness = 0.0f
     );
     int addCylinderInstance(
         float p0_x, float p0_y, float p0_z,
         float p1_x, float p1_y, float p1_z,
         float radius,
         float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f
+        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float film_thickness = 0.0f
     );
     void removeInstance(int instanceId);
     void clearAllInstances();
