@@ -258,25 +258,28 @@ extern "C" __global__ void __raygen__hitpoints() {
     );
 
     // Re-compute plane intersection to determine if we have a diffuse hit
-    const int plane_axis = params.plane_axis;
-    const float plane_value = params.plane_value;
+    // Use the first active plane for caustic hit point collection
+    if (params.num_planes > 0) {
+        const int plane_axis = params.planes[0].axis;
+        const float plane_value = params.planes[0].value;
 
-    float ray_orig_comp, ray_dir_comp;
-    getRayPlaneComponents(cam_eye, ray_direction, plane_axis, ray_orig_comp, ray_dir_comp);
+        float ray_orig_comp, ray_dir_comp;
+        getRayPlaneComponents(cam_eye, ray_direction, plane_axis, ray_orig_comp, ray_dir_comp);
 
-    // Check for plane intersection
-    if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
-        const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
+        // Check for plane intersection
+        if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
+            const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
 
-        if (t_plane > 0.0f) {
-            const float3 plane_hit = cam_eye + ray_direction * t_plane;
+            if (t_plane > 0.0f) {
+                const float3 plane_hit = cam_eye + ray_direction * t_plane;
 
-            // Allocate hit point slot atomically
-            const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
+                // Allocate hit point slot atomically
+                const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
 
-            if (hp_idx < MAX_HIT_POINTS) {
-                HitPoint& hp = params.caustics.hit_points[hp_idx];
-                initializeHitPoint(hp, plane_hit, plane_axis, idx);
+                if (hp_idx < MAX_HIT_POINTS) {
+                    HitPoint& hp = params.caustics.hit_points[hp_idx];
+                    initializeHitPoint(hp, plane_hit, plane_axis, idx);
+                }
             }
         }
     }
@@ -514,8 +517,11 @@ __device__ bool checkPlaneIntersection(
     const float3& dir,
     const float3& flux
 ) {
-    const int plane_axis = params.plane_axis;
-    const float plane_value = params.plane_value;
+    // Use the first active plane for caustic deposition
+    if (params.num_planes <= 0) return false;
+
+    const int plane_axis = params.planes[0].axis;
+    const float plane_value = params.planes[0].value;
 
     float ray_orig_comp, ray_dir_comp;
     if (plane_axis == 0) {

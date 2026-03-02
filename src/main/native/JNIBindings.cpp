@@ -311,40 +311,53 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCaustics(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneSolidColorNative(
-    JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearPlanesNative(
+    JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
-            wrapper->setPlaneSolidColor(r, g, b);
+            wrapper->clearPlanes();
         }
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in setPlaneSolidColor: " << e.what() << std::endl;
+        std::cerr << "[JNI] Error in clearPlanes: " << e.what() << std::endl;
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlane(
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneNative(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
-            wrapper->setPlane(axis, positive == JNI_TRUE, value);
-        } else {
+            wrapper->addPlane(axis, positive == JNI_TRUE, value);
         }
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in setPlane: " << e.what() << std::endl;
+        std::cerr << "[JNI] Error in addPlane: " << e.what() << std::endl;
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setPlaneCheckerColorsNative(
-    JNIEnv* env, jobject obj, jfloat r1, jfloat g1, jfloat b1, jfloat r2, jfloat g2, jfloat b2) {
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneSolidColorNative(
+    JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
+    jfloat r, jfloat g, jfloat b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
-            wrapper->setPlaneCheckerColors(r1, g1, b1, r2, g2, b2);
+            wrapper->addPlaneSolidColor(axis, positive == JNI_TRUE, value, r, g, b);
         }
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in setPlaneCheckerColors: " << e.what() << std::endl;
+        std::cerr << "[JNI] Error in addPlaneSolidColor: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneCheckerColorsNative(
+    JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
+    jfloat r1, jfloat g1, jfloat b1, jfloat r2, jfloat g2, jfloat b2) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->addPlaneCheckerColors(axis, positive == JNI_TRUE, value, r1, g1, b1, r2, g2, b2);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addPlaneCheckerColors: " << e.what() << std::endl;
     }
 }
 

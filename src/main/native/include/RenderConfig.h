@@ -53,11 +53,14 @@ public:
     float getBackgroundB() const { return bg_b; }
 
     // Plane appearance configuration
-    void setPlaneSolidColor(float r, float g, float b);
-    void setPlaneCheckerColors(float r1, float g1, float b1, float r2, float g2, float b2);
-    bool isPlaneSolidColor() const { return plane_solid_color; }
-    const float* getPlaneColor1() const { return plane_color1; }
-    const float* getPlaneColor2() const { return plane_color2; }
+    void clearPlanes();
+    void addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b);
+    void addPlaneCheckerColors(int axis, bool positive, float value,
+                               float r1, float g1, float b1,
+                               float r2, float g2, float b2);
+    void addPlane(int axis, bool positive, float value);  // default gray checker
+    const PlaneParams* getPlanes() const { return planes; }
+    int getNumPlanes() const { return num_planes; }
 
 private:
     // Image dimensions
@@ -85,13 +88,8 @@ private:
     float bg_b = OptiXConstants::DEFAULT_BG_B;
 
     // Plane appearance
-    bool plane_solid_color = false;
-    float plane_color1[3] = {RayTracingConstants::PLANE_CHECKER_LIGHT_GRAY / 255.0f,
-                             RayTracingConstants::PLANE_CHECKER_LIGHT_GRAY / 255.0f,
-                             RayTracingConstants::PLANE_CHECKER_LIGHT_GRAY / 255.0f};
-    float plane_color2[3] = {RayTracingConstants::PLANE_CHECKER_DARK_GRAY / 255.0f,
-                             RayTracingConstants::PLANE_CHECKER_DARK_GRAY / 255.0f,
-                             RayTracingConstants::PLANE_CHECKER_DARK_GRAY / 255.0f};
+    PlaneParams planes[4] = {};
+    int num_planes = 0;
 };
 
 #endif // RENDER_CONFIG_H

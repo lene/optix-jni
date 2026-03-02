@@ -27,19 +27,38 @@ void RenderConfig::setCaustics(bool enabled, int photonsPerIter, int iterations,
     caustics_alpha = alpha;
 }
 
-void RenderConfig::setPlaneSolidColor(float r, float g, float b) {
-    plane_solid_color = true;
-    plane_color1[0] = r;
-    plane_color1[1] = g;
-    plane_color1[2] = b;
+void RenderConfig::clearPlanes() {
+    num_planes = 0;
 }
 
-void RenderConfig::setPlaneCheckerColors(float r1, float g1, float b1, float r2, float g2, float b2) {
-    plane_solid_color = false;
-    plane_color1[0] = r1;
-    plane_color1[1] = g1;
-    plane_color1[2] = b1;
-    plane_color2[0] = r2;
-    plane_color2[1] = g2;
-    plane_color2[2] = b2;
+void RenderConfig::addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b) {
+    if (num_planes >= 4) return;
+    PlaneParams& p = planes[num_planes++];
+    p.axis = axis;
+    p.positive = positive;
+    p.value = value;
+    p.solid_color = true;
+    p.color1[0] = r; p.color1[1] = g; p.color1[2] = b;
+    p.color2[0] = 0.0f; p.color2[1] = 0.0f; p.color2[2] = 0.0f;
+    p.enabled = true;
+}
+
+void RenderConfig::addPlaneCheckerColors(int axis, bool positive, float value,
+                                         float r1, float g1, float b1,
+                                         float r2, float g2, float b2) {
+    if (num_planes >= 4) return;
+    PlaneParams& p = planes[num_planes++];
+    p.axis = axis;
+    p.positive = positive;
+    p.value = value;
+    p.solid_color = false;
+    p.color1[0] = r1; p.color1[1] = g1; p.color1[2] = b1;
+    p.color2[0] = r2; p.color2[1] = g2; p.color2[2] = b2;
+    p.enabled = true;
+}
+
+void RenderConfig::addPlane(int axis, bool positive, float value) {
+    const float light = RayTracingConstants::PLANE_CHECKER_LIGHT_GRAY / 255.0f;
+    const float dark  = RayTracingConstants::PLANE_CHECKER_DARK_GRAY  / 255.0f;
+    addPlaneCheckerColors(axis, positive, value, light, light, light, dark, dark, dark);
 }

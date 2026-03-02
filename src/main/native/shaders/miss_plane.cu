@@ -46,15 +46,11 @@ __device__ void getCheckerboardCoordinates(
 }
 
 /**
- * Get plane color (solid or checkered pattern).
+ * Get plane color (solid or checkered pattern) for a specific PlaneParams entry.
  */
-__device__ float3 getPlaneColor(float checker_u, float checker_v) {
-    if (params.plane_solid_color) {
-        return make_float3(
-            params.plane_color1[0],
-            params.plane_color1[1],
-            params.plane_color1[2]
-        );
+__device__ float3 getPlaneColor(const PlaneParams& plane, float checker_u, float checker_v) {
+    if (plane.solid_color) {
+        return make_float3(plane.color1[0], plane.color1[1], plane.color1[2]);
     }
 
     const float checker_size = PLANE_CHECKER_SIZE;
@@ -63,17 +59,9 @@ __device__ float3 getPlaneColor(float checker_u, float checker_v) {
     const bool is_light = ((check_u + check_v) & 1) == 0;
 
     if (is_light) {
-        return make_float3(
-            params.plane_color1[0],
-            params.plane_color1[1],
-            params.plane_color1[2]
-        );
+        return make_float3(plane.color1[0], plane.color1[1], plane.color1[2]);
     } else {
-        return make_float3(
-            params.plane_color2[0],
-            params.plane_color2[1],
-            params.plane_color2[2]
-        );
+        return make_float3(plane.color2[0], plane.color2[1], plane.color2[2]);
     }
 }
 
@@ -110,36 +98,44 @@ extern "C" __global__ void __miss__ms() {
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
 
-    const int plane_axis = params.plane_axis;
-    const float plane_value = params.plane_value;
-
-    float ray_orig_comp, ray_dir_comp;
-    getRayPlaneComponents(ray_origin, ray_direction, plane_axis, ray_orig_comp, ray_dir_comp);
-
     unsigned int r, g, b;
 
-    if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
-        const float t = (plane_value - ray_orig_comp) / ray_dir_comp;
+    // Find the closest plane hit among all active planes
+    float best_t = -1.0f;
+    int   best_plane = -1;
 
-        if (t > 0.0f) {
-            const float3 hit_point = ray_origin + ray_direction * t;
+    for (int i = 0; i < params.num_planes; ++i) {
+        const PlaneParams& plane = params.planes[i];
 
-            float checker_u, checker_v;
-            getCheckerboardCoordinates(hit_point, plane_axis, checker_u, checker_v);
+        float ray_orig_comp, ray_dir_comp;
+        getRayPlaneComponents(ray_origin, ray_direction, plane.axis, ray_orig_comp, ray_dir_comp);
 
-            const float3 plane_rgb = getPlaneColor(checker_u, checker_v);
-            r = static_cast<unsigned int>(plane_rgb.x * COLOR_BYTE_MAX);
-            g = static_cast<unsigned int>(plane_rgb.y * COLOR_BYTE_MAX);
-            b = static_cast<unsigned int>(plane_rgb.z * COLOR_BYTE_MAX);
-
-            const float3 plane_normal = getPlaneNormal(plane_axis);
-            const float3 lighting = calculateLighting(hit_point, plane_normal, true);
-            r = static_cast<unsigned int>(r * lighting.x);
-            g = static_cast<unsigned int>(g * lighting.y);
-            b = static_cast<unsigned int>(b * lighting.z);
-        } else {
-            getBackgroundColor(r, g, b);
+        if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
+            const float t = (plane.value - ray_orig_comp) / ray_dir_comp;
+            if (t > 0.0f && (best_plane < 0 || t < best_t)) {
+                best_t = t;
+                best_plane = i;
+            }
         }
+    }
+
+    if (best_plane >= 0) {
+        const PlaneParams& plane = params.planes[best_plane];
+        const float3 hit_point = ray_origin + ray_direction * best_t;
+
+        float checker_u, checker_v;
+        getCheckerboardCoordinates(hit_point, plane.axis, checker_u, checker_v);
+
+        const float3 plane_rgb = getPlaneColor(plane, checker_u, checker_v);
+        r = static_cast<unsigned int>(plane_rgb.x * COLOR_BYTE_MAX);
+        g = static_cast<unsigned int>(plane_rgb.y * COLOR_BYTE_MAX);
+        b = static_cast<unsigned int>(plane_rgb.z * COLOR_BYTE_MAX);
+
+        const float3 plane_normal = getPlaneNormal(plane.axis);
+        const float3 lighting = calculateLighting(hit_point, plane_normal, true);
+        r = static_cast<unsigned int>(r * lighting.x);
+        g = static_cast<unsigned int>(g * lighting.y);
+        b = static_cast<unsigned int>(b * lighting.z);
     } else {
         getBackgroundColor(r, g, b);
     }

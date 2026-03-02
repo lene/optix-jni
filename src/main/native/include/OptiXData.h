@@ -387,6 +387,17 @@ struct RayStats {
     unsigned int min_depth_reached;     // Shallowest ray recursion (should be 1)
 };
 
+// Plane definition for miss shader (up to 4 simultaneous planes)
+struct PlaneParams {
+    int axis;        // 0=X, 1=Y, 2=Z
+    bool positive;   // which side the plane normal faces
+    float value;     // position along axis
+    bool solid_color;
+    float color1[3]; // primary or checker-A color
+    float color2[3]; // checker-B color (ignored for solid)
+    bool enabled;
+};
+
 // Cylinder geometry data for ray intersection
 // Stored in params.cylinder_data buffer, accessed in intersection shader via instance material's texture_index
 struct CylinderData {
@@ -421,12 +432,8 @@ struct Params {
     float sphere_scale;         // Physical scale (1.0 = meters, 0.01 = centimeters)
     Light lights[RayTracingConstants::MAX_LIGHTS];  // Array of light sources
     int   num_lights;           // Number of active lights
-    int   plane_axis;           // 0=X, 1=Y, 2=Z
-    bool  plane_positive;       // true=positive normal, false=negative normal
-    float plane_value;          // Plane position along axis
-    bool  plane_solid_color;    // true=solid color, false=checkerboard pattern
-    float plane_color1[3];      // RGB for solid color or light checker (0.0-1.0)
-    float plane_color2[3];      // RGB for dark checker (0.0-1.0, only used when !plane_solid_color)
+    PlaneParams planes[4];      // Up to 4 simultaneous planes
+    int   num_planes;           // Number of active planes (0 = no plane, show background)
     bool  shadows_enabled;      // Enable shadow ray tracing
     float bg_r, bg_g, bg_b;    // Background color (overrides MissData SBT)
 

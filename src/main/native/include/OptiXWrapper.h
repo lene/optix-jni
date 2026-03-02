@@ -63,9 +63,12 @@ public:
     void setBackgroundColor(float r, float g, float b);
 
     // Plane configuration
-    void setPlane(int axis, bool positive, float value);
-    void setPlaneSolidColor(float r, float g, float b);  // Set solid color mode with RGB 0.0-1.0
-    void setPlaneCheckerColors(float r1, float g1, float b1, float r2, float g2, float b2);  // RGB 0.0-1.0
+    void clearPlanes();
+    void addPlane(int axis, bool positive, float value);  // default gray checker
+    void addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b);
+    void addPlaneCheckerColors(int axis, bool positive, float value,
+                               float r1, float g1, float b1,
+                               float r2, float g2, float b2);
 
     // Texture management
     int uploadTexture(

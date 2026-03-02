@@ -202,12 +202,22 @@ void OptiXWrapper::setBackgroundColor(float r, float g, float b) {
     impl->config.setBackgroundColor(r, g, b);
 }
 
-void OptiXWrapper::setPlaneSolidColor(float r, float g, float b) {
-    impl->config.setPlaneSolidColor(r, g, b);
+void OptiXWrapper::clearPlanes() {
+    impl->config.clearPlanes();
 }
 
-void OptiXWrapper::setPlaneCheckerColors(float r1, float g1, float b1, float r2, float g2, float b2) {
-    impl->config.setPlaneCheckerColors(r1, g1, b1, r2, g2, b2);
+void OptiXWrapper::addPlane(int axis, bool positive, float value) {
+    impl->config.addPlane(axis, positive, value);
+}
+
+void OptiXWrapper::addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b) {
+    impl->config.addPlaneSolidColor(axis, positive, value, r, g, b);
+}
+
+void OptiXWrapper::addPlaneCheckerColors(int axis, bool positive, float value,
+                                         float r1, float g1, float b1,
+                                         float r2, float g2, float b2) {
+    impl->config.addPlaneCheckerColors(axis, positive, value, r1, g1, b1, r2, g2, b2);
 }
 
 void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) {
@@ -216,10 +226,6 @@ void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) 
 
 void OptiXWrapper::setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha) {
     impl->config.setCaustics(enabled, photonsPerIter, iterations, initialRadius, alpha);
-}
-
-void OptiXWrapper::setPlane(int axis, bool positive, float value) {
-    impl->scene.setPlane(axis, positive, value);
 }
 
 void OptiXWrapper::setTriangleMesh(
@@ -663,15 +669,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.bg_g = impl->config.getBackgroundG();
         params.bg_b = impl->config.getBackgroundB();
 
-        const auto& plane = impl->scene.getPlane();
-        params.plane_axis = plane.axis;
-        params.plane_positive = plane.positive;
-        params.plane_value = plane.value;
-        params.plane_solid_color = impl->config.isPlaneSolidColor();
-        for (int i = 0; i < 3; ++i) {
-            params.plane_color1[i] = impl->config.getPlaneColor1()[i];
-            params.plane_color2[i] = impl->config.getPlaneColor2()[i];
-        }
+        params.num_planes = impl->config.getNumPlanes();
+        std::memcpy(params.planes, impl->config.getPlanes(), sizeof(PlaneParams) * 4);
 
         // Adaptive antialiasing parameters
         params.aa_enabled = impl->config.getAAEnabled();
