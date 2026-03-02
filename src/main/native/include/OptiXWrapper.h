@@ -59,6 +59,9 @@ public:
     // Caustics (Progressive Photon Mapping) configuration
     void setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha);
 
+    // Background color configuration
+    void setBackgroundColor(float r, float g, float b);
+
     // Plane configuration
     void setPlane(int axis, bool positive, float value);
     void setPlaneSolidColor(float r, float g, float b);  // Set solid color mode with RGB 0.0-1.0

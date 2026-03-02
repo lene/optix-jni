@@ -198,6 +198,10 @@ void OptiXWrapper::setShadows(bool enabled) {
     impl->config.setShadows(enabled);
 }
 
+void OptiXWrapper::setBackgroundColor(float r, float g, float b) {
+    impl->config.setBackgroundColor(r, g, b);
+}
+
 void OptiXWrapper::setPlaneSolidColor(float r, float g, float b) {
     impl->config.setPlaneSolidColor(r, g, b);
 }
@@ -655,6 +659,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         // Rendering configuration
         params.shadows_enabled = impl->config.getShadowsEnabled();
+        params.bg_r = impl->config.getBackgroundR();
+        params.bg_g = impl->config.getBackgroundG();
+        params.bg_b = impl->config.getBackgroundB();
 
         const auto& plane = impl->scene.getPlane();
         params.plane_axis = plane.axis;

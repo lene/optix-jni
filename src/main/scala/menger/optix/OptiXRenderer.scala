@@ -213,6 +213,11 @@ class OptiXRenderer extends LazyLogging:
   
   @native def setShadows(enabled: Boolean): Unit
 
+  @native private def setBackgroundColorNative(r: Float, g: Float, b: Float): Unit
+
+  def setBackgroundColor(r: Float, g: Float, b: Float): Unit =
+    setBackgroundColorNative(r, g, b)
+
 
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 

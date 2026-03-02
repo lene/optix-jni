@@ -91,24 +91,22 @@ __device__ float3 getPlaneNormal(int plane_axis) {
 }
 
 /**
- * Convert miss data background color to RGB.
+ * Convert background color to RGB (reads from params, set per-scene).
  */
 __device__ void getBackgroundColor(
-    const MissData* miss_data,
     unsigned int& r,
     unsigned int& g,
     unsigned int& b
 ) {
-    r = static_cast<unsigned int>(miss_data->r * COLOR_SCALE_FACTOR);
-    g = static_cast<unsigned int>(miss_data->g * COLOR_SCALE_FACTOR);
-    b = static_cast<unsigned int>(miss_data->b * COLOR_SCALE_FACTOR);
+    r = static_cast<unsigned int>(params.bg_r * COLOR_SCALE_FACTOR);
+    g = static_cast<unsigned int>(params.bg_g * COLOR_SCALE_FACTOR);
+    b = static_cast<unsigned int>(params.bg_b * COLOR_SCALE_FACTOR);
 }
 
 //==============================================================================
 // Miss shader - returns checkered plane or background color when ray hits nothing
 //==============================================================================
 extern "C" __global__ void __miss__ms() {
-    const MissData* miss_data = reinterpret_cast<MissData*>(optixGetSbtDataPointer());
     const float3 ray_origin = optixGetWorldRayOrigin();
     const float3 ray_direction = optixGetWorldRayDirection();
 
@@ -140,10 +138,10 @@ extern "C" __global__ void __miss__ms() {
             g = static_cast<unsigned int>(g * lighting.y);
             b = static_cast<unsigned int>(b * lighting.z);
         } else {
-            getBackgroundColor(miss_data, r, g, b);
+            getBackgroundColor(r, g, b);
         }
     } else {
-        getBackgroundColor(miss_data, r, g, b);
+        getBackgroundColor(r, g, b);
     }
 
     optixSetPayload_0(r);

@@ -205,13 +205,26 @@ extern "C" __global__ void __closesthit__triangle() {
         }
     }
 
-    // Handle coverage alpha (fractional sponge rendering).
-    // When a face has per-vertex alpha (stride >= 9), use opacity blending instead of
-    // Fresnel refraction. This gives the correct "skin" effect: a diffuse face that
-    // partially covers what is behind it, controlled by vertex_alpha.
-    // (Without this, the Fresnel path treats the skin as glass, ignoring vertex_alpha
-    // for blending and showing reflections/refractions instead of the expected opacity.)
-    if (hit_data->vertex_stride >= VERTEX_STRIDE_WITH_ALPHA && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) {
+    // Handle coverage alpha (fractional transparency rendering).
+    // Two cases use this diffuse-blend path:
+    //
+    // 1. Per-vertex alpha channel in mesh (stride >= 9): merged fractional meshes for
+    //    sponge-volume, sponge-surface, and tesseract-sponge. Blend factor = vertex_alpha.
+    //
+    // 2. IAS mode with fractional material alpha: cube-sponge ghost instances whose base
+    //    cube mesh has stride=6 (no per-vertex alpha channel). The ghost alpha is stored in
+    //    the per-instance material color.w. Blend factor = mesh_alpha.
+    //
+    // Without this path, fractional-alpha surfaces fall through to the Fresnel/refraction
+    // path. At IOR=1.0 (matte material) that path produces Fresnel=0, so the ghost cubes
+    // appear fully transparent regardless of the material alpha value — which is wrong.
+    const bool has_vertex_alpha_channel = hit_data->vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
+    const float coverage_alpha = has_vertex_alpha_channel ? geom.vertex_alpha : mesh_alpha;
+    const bool use_coverage_blend =
+        (has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||
+        (!has_vertex_alpha_channel && params.use_ias && mesh_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD);
+
+    if (use_coverage_blend) {
         if (depth >= MAX_TRACE_DEPTH) {
             // At max depth, just render as opaque to avoid black cutoff
             handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
@@ -226,8 +239,8 @@ extern "C" __global__ void __closesthit__triangle() {
         unsigned int through_r = 0, through_g = 0, through_b = 0;
         traceContinuationRay(geom.hit_point, ray_direction, depth, through_r, through_g, through_b);
 
-        // Coverage blend: vertex_alpha * diffuse + (1 - vertex_alpha) * through
-        const float a = geom.vertex_alpha;
+        // Coverage blend: coverage_alpha * diffuse + (1 - coverage_alpha) * through
+        const float a = coverage_alpha;
         const unsigned int r = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_r) + (1.0f - a) * static_cast<float>(through_r), RayTracingConstants::COLOR_BYTE_MAX));
         const unsigned int g = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_g) + (1.0f - a) * static_cast<float>(through_g), RayTracingConstants::COLOR_BYTE_MAX));
         const unsigned int b = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_b) + (1.0f - a) * static_cast<float>(through_b), RayTracingConstants::COLOR_BYTE_MAX));

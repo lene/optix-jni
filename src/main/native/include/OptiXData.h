@@ -428,6 +428,7 @@ struct Params {
     float plane_color1[3];      // RGB for solid color or light checker (0.0-1.0)
     float plane_color2[3];      // RGB for dark checker (0.0-1.0, only used when !plane_solid_color)
     bool  shadows_enabled;      // Enable shadow ray tracing
+    float bg_r, bg_g, bg_b;    // Background color (overrides MissData SBT)
 
     // Ray statistics (GPU buffer)
     RayStats* stats;            // Pointer to GPU stats buffer

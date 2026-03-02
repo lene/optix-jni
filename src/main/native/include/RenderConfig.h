@@ -8,6 +8,7 @@
 #endif
 
 #include "OptiXData.h"
+#include "OptiXConstants.h"
 
 /**
  * Encapsulates all rendering configuration options.
@@ -45,6 +46,12 @@ public:
     float getCausticsInitialRadius() const { return caustics_initial_radius; }
     float getCausticsAlpha() const { return caustics_alpha; }
 
+    // Background color configuration
+    void setBackgroundColor(float r, float g, float b) { bg_r = r; bg_g = g; bg_b = b; }
+    float getBackgroundR() const { return bg_r; }
+    float getBackgroundG() const { return bg_g; }
+    float getBackgroundB() const { return bg_b; }
+
     // Plane appearance configuration
     void setPlaneSolidColor(float r, float g, float b);
     void setPlaneCheckerColors(float r1, float g1, float b1, float r2, float g2, float b2);
@@ -71,6 +78,11 @@ private:
     int caustics_iterations = RayTracingConstants::DEFAULT_CAUSTICS_ITERATIONS;
     float caustics_initial_radius = RayTracingConstants::DEFAULT_INITIAL_RADIUS;
     float caustics_alpha = RayTracingConstants::DEFAULT_PPM_ALPHA;
+
+    // Background color
+    float bg_r = OptiXConstants::DEFAULT_BG_R;
+    float bg_g = OptiXConstants::DEFAULT_BG_G;
+    float bg_b = OptiXConstants::DEFAULT_BG_B;
 
     // Plane appearance
     bool plane_solid_color = false;
