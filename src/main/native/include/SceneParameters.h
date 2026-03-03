@@ -14,7 +14,7 @@
 
 /**
  * Encapsulates all scene geometry and material parameters.
- * Manages camera, sphere, plane, and lighting configuration.
+ * Manages camera, sphere, and lighting configuration.
  *
  * Responsibilities:
  * - Store scene parameter values
@@ -38,13 +38,6 @@ public:
         float color[4] = {1.0f, 1.0f, 1.0f, 1.0f};  // white, fully opaque
         float ior = MaterialConstants::IOR_VACUUM;
         float scale = 1.0f;  // 1.0 = meters
-        bool dirty = false;
-    };
-
-    struct PlaneParams {
-        int axis = 1;          // 0=X, 1=Y, 2=Z
-        bool positive = true;  // true=positive normal, false=negative normal
-        float value = RayTracingConstants::DEFAULT_FLOOR_PLANE_Y;
         bool dirty = false;
     };
 
@@ -76,11 +69,6 @@ public:
     const SphereParams& getSphere() const { return sphere; }
     SphereParams& getSphereMutable() { return sphere; }
 
-    // Plane configuration
-    void setPlane(int axis, bool positive, float value);
-    const PlaneParams& getPlane() const { return plane; }
-    PlaneParams& getPlaneMutable() { return plane; }
-
     // Triangle mesh configuration
     void setTriangleMeshMeta(unsigned int numVertices, unsigned int numTriangles);
     void setTriangleMeshColor(float r, float g, float b, float a);
@@ -101,13 +89,12 @@ public:
 
     // Fine-grained dirty flag queries (for optimized pipeline rebuild)
     bool isCameraDirty() const { return camera.dirty; }
-    bool isGeometryDirty() const { return sphere.dirty || plane.dirty || triangle_mesh.dirty; }
+    bool isGeometryDirty() const { return sphere.dirty || triangle_mesh.dirty; }
     void clearCameraDirty() { camera.dirty = false; }
 
 private:
     CameraParams camera;
     SphereParams sphere;
-    PlaneParams plane;
     TriangleMeshParams triangle_mesh;
     Light lights[RayTracingConstants::MAX_LIGHTS];
     int num_lights = 1;  // Start with one default directional light

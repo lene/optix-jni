@@ -85,13 +85,6 @@ void SceneParameters::setScale(float scale) {
     sphere.dirty = true;
 }
 
-void SceneParameters::setPlane(int axis, bool positive, float value) {
-    plane.axis = axis;
-    plane.positive = positive;
-    plane.value = value;
-    plane.dirty = true;
-}
-
 void SceneParameters::setLights(const Light* lightsArray, int count) {
     if (lightsArray == nullptr && count > 0) {
         return;  // Invalid input
@@ -134,12 +127,11 @@ void SceneParameters::clearTriangleMesh() {
 }
 
 bool SceneParameters::isAnyDirty() const {
-    return camera.dirty || sphere.dirty || plane.dirty || triangle_mesh.dirty;
+    return camera.dirty || sphere.dirty || triangle_mesh.dirty;
 }
 
 void SceneParameters::clearDirtyFlags() {
     camera.dirty = false;
     sphere.dirty = false;
-    plane.dirty = false;
     triangle_mesh.dirty = false;
 }
