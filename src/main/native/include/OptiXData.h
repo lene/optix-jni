@@ -48,6 +48,9 @@ namespace RayTracingConstants {
     // Multiple light sources
     constexpr int MAX_LIGHTS = 8;  // Maximum number of simultaneous light sources
 
+    // Multiple planes (floor, walls, etc.)
+    constexpr int MAX_PLANES = 4;  // Maximum number of simultaneous planes
+
     // Instance Acceleration Structure (IAS) limits
     constexpr unsigned int MAX_INSTANCES = 64;  // Maximum object instances in scene
 
@@ -432,7 +435,7 @@ struct Params {
     float sphere_scale;         // Physical scale (1.0 = meters, 0.01 = centimeters)
     Light lights[RayTracingConstants::MAX_LIGHTS];  // Array of light sources
     int   num_lights;           // Number of active lights
-    PlaneParams planes[4];      // Up to 4 simultaneous planes
+    PlaneParams planes[RayTracingConstants::MAX_PLANES];  // Up to MAX_PLANES simultaneous planes
     int   num_planes;           // Number of active planes (0 = no plane, show background)
     bool  shadows_enabled;      // Enable shadow ray tracing
     float bg_r, bg_g, bg_b;    // Background color (overrides MissData SBT)

@@ -1,4 +1,5 @@
 #include "include/RenderConfig.h"
+#include <iostream>
 
 RenderConfig::RenderConfig() {
     // All members initialized via in-class initializers
@@ -32,7 +33,10 @@ void RenderConfig::clearPlanes() {
 }
 
 void RenderConfig::addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b) {
-    if (num_planes >= 4) return;
+    if (num_planes >= RayTracingConstants::MAX_PLANES) {
+        std::cerr << "[RenderConfig] Maximum planes (" << RayTracingConstants::MAX_PLANES << ") reached; plane ignored" << std::endl;
+        return;
+    }
     PlaneParams& p = planes[num_planes++];
     p.axis = axis;
     p.positive = positive;
@@ -46,7 +50,10 @@ void RenderConfig::addPlaneSolidColor(int axis, bool positive, float value, floa
 void RenderConfig::addPlaneCheckerColors(int axis, bool positive, float value,
                                          float r1, float g1, float b1,
                                          float r2, float g2, float b2) {
-    if (num_planes >= 4) return;
+    if (num_planes >= RayTracingConstants::MAX_PLANES) {
+        std::cerr << "[RenderConfig] Maximum planes (" << RayTracingConstants::MAX_PLANES << ") reached; plane ignored" << std::endl;
+        return;
+    }
     PlaneParams& p = planes[num_planes++];
     p.axis = axis;
     p.positive = positive;

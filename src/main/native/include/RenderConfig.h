@@ -88,7 +88,7 @@ private:
     float bg_b = OptiXConstants::DEFAULT_BG_B;
 
     // Plane appearance
-    PlaneParams planes[4] = {};
+    PlaneParams planes[RayTracingConstants::MAX_PLANES] = {};
     int num_planes = 0;
 };
 

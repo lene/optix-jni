@@ -670,7 +670,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.bg_b = impl->config.getBackgroundB();
 
         params.num_planes = impl->config.getNumPlanes();
-        std::memcpy(params.planes, impl->config.getPlanes(), sizeof(PlaneParams) * 4);
+        // Copy all MAX_PLANES slots (zero-initialized past num_planes) to avoid
+        // conditional logic; shader gates on num_planes.
+        std::memcpy(params.planes, impl->config.getPlanes(), sizeof(PlaneParams) * RayTracingConstants::MAX_PLANES);
 
         // Adaptive antialiasing parameters
         params.aa_enabled = impl->config.getAAEnabled();

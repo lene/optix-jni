@@ -258,8 +258,10 @@ extern "C" __global__ void __raygen__hitpoints() {
     );
 
     // Re-compute plane intersection to determine if we have a diffuse hit
-    // Use the first active plane for caustic hit point collection
-    if (params.num_planes > 0) {
+    // TODO: Multi-plane caustics: currently only planes[0] is used for caustic
+    // hit point collection and deposition. Supporting additional planes would
+    // require looping over all active planes and collecting/depositing on each.
+    if (params.num_planes > 0 && params.planes[0].enabled) {
         const int plane_axis = params.planes[0].axis;
         const float plane_value = params.planes[0].value;
 
@@ -518,7 +520,7 @@ __device__ bool checkPlaneIntersection(
     const float3& flux
 ) {
     // Use the first active plane for caustic deposition
-    if (params.num_planes <= 0) return false;
+    if (params.num_planes <= 0 || !params.planes[0].enabled) return false;
 
     const int plane_axis = params.planes[0].axis;
     const float plane_value = params.planes[0].value;

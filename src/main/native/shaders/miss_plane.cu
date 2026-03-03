@@ -66,16 +66,20 @@ __device__ float3 getPlaneColor(const PlaneParams& plane, float checker_u, float
 }
 
 /**
- * Get plane normal based on axis.
+ * Get plane normal based on axis and orientation.
+ * Negates the normal when positive=false so lighting is computed
+ * from the correct side of the plane.
  */
-__device__ float3 getPlaneNormal(int plane_axis) {
-    if (plane_axis == 0) {
-        return make_float3(1.0f, 0.0f, 0.0f);
-    } else if (plane_axis == 1) {
-        return make_float3(0.0f, 1.0f, 0.0f);
+__device__ float3 getPlaneNormal(const PlaneParams& plane) {
+    float3 n;
+    if (plane.axis == 0) {
+        n = make_float3(1.0f, 0.0f, 0.0f);
+    } else if (plane.axis == 1) {
+        n = make_float3(0.0f, 1.0f, 0.0f);
     } else {
-        return make_float3(0.0f, 0.0f, 1.0f);
+        n = make_float3(0.0f, 0.0f, 1.0f);
     }
+    return plane.positive ? n : make_float3(-n.x, -n.y, -n.z);
 }
 
 /**
@@ -106,6 +110,7 @@ extern "C" __global__ void __miss__ms() {
 
     for (int i = 0; i < params.num_planes; ++i) {
         const PlaneParams& plane = params.planes[i];
+        if (!plane.enabled) continue;
 
         float ray_orig_comp, ray_dir_comp;
         getRayPlaneComponents(ray_origin, ray_direction, plane.axis, ray_orig_comp, ray_dir_comp);
@@ -131,7 +136,7 @@ extern "C" __global__ void __miss__ms() {
         g = static_cast<unsigned int>(plane_rgb.y * COLOR_BYTE_MAX);
         b = static_cast<unsigned int>(plane_rgb.z * COLOR_BYTE_MAX);
 
-        const float3 plane_normal = getPlaneNormal(plane.axis);
+        const float3 plane_normal = getPlaneNormal(plane);
         const float3 lighting = calculateLighting(hit_point, plane_normal, true);
         r = static_cast<unsigned int>(r * lighting.x);
         g = static_cast<unsigned int>(g * lighting.y);
