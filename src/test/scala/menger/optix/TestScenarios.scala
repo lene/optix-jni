@@ -146,11 +146,13 @@ case class TestScenario(
     renderer.setSphereColor(sphere.color)
     renderer.setIOR(sphere.ior)
 
-    // Plane (optional)
-    plane.foreach { p =>
-      renderer.clearPlanes()
-      renderer.addPlane(p.axis, p.positive, p.value)
-    }
+    // Plane: always clear state first, then configure.
+    // When None, restore the default floor that the old code always rendered implicitly
+    // (SceneParameters defaulted to Y=-2 floor, which the miss shader always used).
+    renderer.clearPlanes()
+    plane match
+      case Some(p) => renderer.addPlane(p.axis, p.positive, p.value)
+      case None    => renderer.addPlane(1, positive = true, Const.defaultFloorPlaneY)
 
 
   def render(renderer: OptiXRenderer, size: ImageSize): Array[Byte] =

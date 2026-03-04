@@ -1,5 +1,6 @@
 package menger.optix
 import menger.common.Color
+import menger.common.Const
 import menger.common.ImageSize
 import menger.common.Vector
 import org.scalatest.BeforeAndAfterEach
@@ -59,6 +60,11 @@ trait RendererFixture extends BeforeAndAfterEach:
       Vector[3](0.0f, 0.0f, 0.0f),  // position
       0.5f                           // radius
     )
+
+    // Default floor plane (Y=-2), matching old C++ SceneParameters implicit default.
+    // Without this, the background color dominates and brightness variation tests fail.
+    renderer.clearPlanes()
+    renderer.addPlane(1, positive = true, Const.defaultFloorPlaneY)
 
 
   protected def setCameraEye(eye: Vector[3]): Unit =
