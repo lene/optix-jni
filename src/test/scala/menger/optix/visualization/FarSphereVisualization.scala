@@ -21,8 +21,8 @@ object FarSphereVisualization:
     renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, 1.0f))  // Opaque gray
     renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
-    renderer.setPlane(1, true, -1.0f)  // Y-axis plane at -1.0
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, -1.0f, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
 
     // Camera from setupShadowScene
     renderer.setCamera(

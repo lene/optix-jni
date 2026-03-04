@@ -249,22 +249,22 @@ class OptiXRenderer extends LazyLogging:
   def getCausticsStats: Option[CausticsStats] =
     Try(getCausticsStatsNative()).toOption.filter(_.photonsEmitted > 0)
 
-  // Set plane to solid color mode with RGB 0.0-1.0
-  @native private def setPlaneSolidColorNative(r: Float, g: Float, b: Float): Unit
+  @native private def clearPlanesNative(): Unit
+  @native private def addPlaneNative(axis: Int, positive: Boolean, value: Float): Unit
+  @native private def addPlaneSolidColorNative(axis: Int, positive: Boolean, value: Float, r: Float, g: Float, b: Float): Unit
+  @native private def addPlaneCheckerColorsNative(axis: Int, positive: Boolean, value: Float, r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Unit
 
-  def setPlaneSolidColor(color: Color): Unit =
-    setPlaneSolidColorNative(color.r, color.g, color.b)
+  def clearPlanes(): Unit = clearPlanesNative()
 
+  def addPlane(axis: Int, positive: Boolean, value: Float): Unit = addPlaneNative(axis, positive, value)
 
-  @native def setPlane(axis: Int, positive: Boolean, value: Float): Unit
+  def addPlaneSolidColor(axis: Int, positive: Boolean, value: Float, r: Float, g: Float, b: Float): Unit =
+    addPlaneSolidColorNative(axis, positive, value, r, g, b)
 
-  // Set plane checker colors - RGB values 0.0-1.0
-  // For solid color: both colors are the same
-  // For checkered: color1 is light squares, color2 is dark squares
-  @native private def setPlaneCheckerColorsNative(r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Unit
-
-  def setPlaneCheckerColors(color1: Color, color2: Color): Unit =
-    setPlaneCheckerColorsNative(color1.r, color1.g, color1.b, color2.r, color2.g, color2.b)
+  def addPlaneCheckerColors(axis: Int, positive: Boolean, value: Float,
+                            r1: Float, g1: Float, b1: Float,
+                            r2: Float, g2: Float, b2: Float): Unit =
+    addPlaneCheckerColorsNative(axis, positive, value, r1, g1, b1, r2, g2, b2)
 
   // Triangle mesh methods
   @native private def setTriangleMeshNative(

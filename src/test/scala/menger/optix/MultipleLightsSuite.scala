@@ -72,7 +72,8 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, -1.0f, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
 
     // Single light from above
     val singleLight = Light.Directional(
@@ -107,7 +108,8 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, -1.0f, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
     renderer.setShadows(true)
 
     // Light from right only
@@ -146,7 +148,8 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, -1.0f, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
 
     // Point light close to sphere (at position 0, 3, 0, sphere is at 0, 0, 0)
     val closeLight = Light.Point(
@@ -232,7 +235,8 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, -1.0f, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
     renderer.setShadows(true)
 
     // Two lights from different angles

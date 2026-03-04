@@ -51,8 +51,8 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, sphereAlpha))
     renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
-    renderer.setPlane(1, true, planeY)
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, planeY, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
     renderer.setCamera(
       Vector[3](0.0f, 0.0f, 5.0f),
       Vector[3](0.0f, -0.3f, 0.0f),
@@ -67,8 +67,8 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, 1.0f))  // Opaque sphere
     renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
-    renderer.setPlane(1, true, -0.6f)  // Y-axis plane below sphere
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, -0.6f, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
 
     val eye = Vector[3](0.0f, 0.0f, 5.0f)
     val lookAt = Vector[3](0.0f, -0.3f, 0.0f)
@@ -94,8 +94,8 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
     renderer.setIOR(Const.iorGlass)
     renderer.setScale(1.0f)
-    renderer.setPlane(1, true, -0.6f)
-    renderer.setPlaneSolidColor(Color.LIGHT_GRAY)
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColor(1, true, -0.6f, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
 
     val eye = Vector[3](0.0f, 0.0f, 5.0f)
     val lookAt = Vector[3](0.0f, -0.3f, 0.0f)

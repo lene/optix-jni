@@ -234,7 +234,8 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
   // ========== Cylinder with Plane ==========
 
   "Cylinder with ground plane" should "render shadows when enabled" in:
-    renderer.setPlane(1, true, -0.5f)  // Y-axis plane at y = -0.5
+    renderer.clearPlanes()
+    renderer.addPlane(1, true, -0.5f)  // Y-axis plane at y = -0.5
     renderer.setShadows(true)
 
     renderer.addCylinderInstance(

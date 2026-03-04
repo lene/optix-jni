@@ -148,7 +148,8 @@ case class TestScenario(
 
     // Plane (optional)
     plane.foreach { p =>
-      renderer.setPlane(p.axis, p.positive, p.value)
+      renderer.clearPlanes()
+      renderer.addPlane(p.axis, p.positive, p.value)
     }
 
 

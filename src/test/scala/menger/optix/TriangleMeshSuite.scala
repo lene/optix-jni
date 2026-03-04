@@ -146,7 +146,8 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMesh(cubeMesh())
     renderer.setTriangleMeshColor(Color(0.9f, 0.9f, 1.0f, 0.3f)) // Light blue glass
     renderer.setTriangleMeshIOR(1.5f) // Glass IOR
-    renderer.setPlane(1, true, -2.0f)
+    renderer.clearPlanes()
+    renderer.addPlane(1, true, -2.0f)
 
     val result = renderer.render(TEST_IMAGE_SIZE)
     result.isDefined shouldBe true
@@ -155,7 +156,8 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "look different with different IOR values" in:
     renderer.setTriangleMesh(cubeMesh())
     renderer.setTriangleMeshColor(Color(1.0f, 1.0f, 1.0f, 0.2f))
-    renderer.setPlane(1, true, -2.0f)
+    renderer.clearPlanes()
+    renderer.addPlane(1, true, -2.0f)
 
     renderer.setTriangleMeshIOR(1.0f) // No refraction
     val ior1 = renderer.render(TEST_IMAGE_SIZE).get
@@ -173,7 +175,8 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "show colored absorption for tinted glass cube" in:
     renderer.setTriangleMesh(cubeMesh())
     renderer.setTriangleMeshIOR(1.5f)
-    renderer.setPlane(1, true, -2.0f)
+    renderer.clearPlanes()
+    renderer.addPlane(1, true, -2.0f)
 
     // Clear glass
     renderer.setTriangleMeshColor(Color(1.0f, 1.0f, 1.0f, 0.3f))
@@ -199,7 +202,8 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMesh(cubeMesh(scale = 1.0f))
     renderer.setTriangleMeshColor(Color(0.8f, 0.8f, 0.8f)) // Opaque gray
     renderer.setTriangleMeshIOR(1.0f)
-    renderer.setPlane(1, true, -1.5f)
+    renderer.clearPlanes()
+    renderer.addPlane(1, true, -1.5f)
 
     renderer.setShadows(true)
     val withShadows = renderer.render(TEST_IMAGE_SIZE).get
@@ -241,7 +245,8 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMesh(complexMesh)
     renderer.setTriangleMeshColor(Color(1.0f, 0.7f, 0.7f, 0.5f)) // Semi-transparent pink
     renderer.setTriangleMeshIOR(1.5f)
-    renderer.setPlane(1, true, -2.0f)
+    renderer.clearPlanes()
+    renderer.addPlane(1, true, -2.0f)
 
     val result = renderer.render(TEST_IMAGE_SIZE)
     result.isDefined shouldBe true
