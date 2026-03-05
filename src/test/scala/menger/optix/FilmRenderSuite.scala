@@ -122,9 +122,6 @@ class FilmRenderSuite extends AnyFlatSpec
                                Seq(noFilmRatio.r, noFilmRatio.g, noFilmRatio.b).min
 
     logger.info(f"Film channel spread: $filmChannelSpread%.3f, no-film channel spread: $noFilmChannelSpread%.3f")
-    // Film should produce at least as much channel spread (usually more due to wavelength selection)
-    // Or simply, both images differ: already tested above; here we log the physics for observability
-    filmChannelSpread should be >= 0.0  // trivially true — really a logging/observability test
 
   it should "not affect glass sphere rendering (regression: filmThickness=0 unchanged)" taggedAs Slow in:
     // Glass sphere with no film should still show standard refraction characteristics
