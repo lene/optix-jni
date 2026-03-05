@@ -91,6 +91,11 @@ namespace RayTracingConstants {
     constexpr float PHOTON_EMISSION_DISTANCE = 20.0f;      // Distance behind sphere for photon origin
     constexpr float PHOTON_DISK_RADIUS_MULTIPLIER = 2.0f;  // Disk radius = multiplier * sphere_radius
 
+    // Thin-film interference constants (helpers.cu: computeThinFilmReflectance)
+    constexpr float THIN_FILM_COSINE_CLAMP_MIN = 0.001f;  // Prevents cos(θ) ≤ 0 in Airy formula
+    constexpr float THIN_FILM_AIRY_DENOM_GUARD = 1e-8f;   // Prevents divide-by-zero in Airy denominator
+    constexpr float CIE_Y_INTEGRAL_NORM        = 106.5f;  // CIE 1931 Y colour-matching integral (D65)
+
     // Mathematical constants
     constexpr float SQRT_3 = 1.732050808f;             // sqrt(3), RGB cube diagonal for color distance normalization
 

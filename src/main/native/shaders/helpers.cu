@@ -192,7 +192,7 @@ __device__ float3 calculateLighting(
         total_lighting = total_lighting + light_color * light.intensity * attenuation * ndotl * shadow_factor;
     }
 
-// Add ambient lighting (prevents pure black shadows)
+    // Add ambient lighting (prevents pure black shadows)
     const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
     
     // Combine: ambient + diffuse (energy conserving)
@@ -743,7 +743,7 @@ __device__ float3 computeThinFilmReflectance(
     float thickness_nm
 ) {
     // Clamp cosine to valid range
-    cos_theta_i = fmaxf(cos_theta_i, 0.001f);
+    cos_theta_i = fmaxf(cos_theta_i, RayTracingConstants::THIN_FILM_COSINE_CLAMP_MIN);
 
     const float sin_theta_i = sqrtf(1.0f - cos_theta_i * cos_theta_i);
 
@@ -778,7 +778,7 @@ __device__ float3 computeThinFilmReflectance(
 
         // Airy formula: R(λ) = 2r²(1 - cos δ) / (1 + r⁴ - 2r² cos δ)
         const float denom = 1.0f + r4 - 2.0f * r2 * cos_delta;
-        const float R_lambda = (denom > 1e-8f)
+        const float R_lambda = (denom > RayTracingConstants::THIN_FILM_AIRY_DENOM_GUARD)
             ? 2.0f * r2 * (1.0f - cos_delta) / denom
             : 0.0f;
 
@@ -790,7 +790,7 @@ __device__ float3 computeThinFilmReflectance(
 
     // Normalize: divide by integral of Y (luminance) over visible spectrum
     // For our 16 CIE_Y samples × 26.67nm spacing, sum ≈ 106.5
-    const float Y_integral = 106.5f;
+    const float Y_integral = RayTracingConstants::CIE_Y_INTEGRAL_NORM;
     X /= Y_integral;
     Y /= Y_integral;
     Z /= Y_integral;

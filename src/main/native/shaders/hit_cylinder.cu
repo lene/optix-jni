@@ -228,8 +228,8 @@ extern "C" __global__ void __intersection__cylinder() {
 //==============================================================================
 
 extern "C" __global__ void __closesthit__cylinder() {
-    // OPTION B: Single-bounce metallic reflection for depth 0, diffuse fallback for depth > 0
-    // This avoids deep recursion while supporting metallic materials on cylinder edges
+    // Single-bounce metallic reflection at ray depth 0, diffuse fallback for depth > 0.
+    // This avoids deep recursion while still supporting metallic appearance on cylinder edges.
 
     // Get hit point and normal
     const float t = optixGetRayTmax();
@@ -256,7 +256,9 @@ extern "C" __global__ void __closesthit__cylinder() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get material properties
+    // Note: film_thickness is retrieved here for API consistency, but cylinder shaders use
+    // a diffuse-only lighting model that does not implement thin-film interference.
+    // Thin-film support for cylinders is deferred to a future sprint.
     float4 material_color;
     float material_ior, roughness, metallic, specular, emission, film_thickness;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
@@ -275,14 +277,14 @@ extern "C" __global__ void __closesthit__cylinder() {
     const float3 final_lighting = calculateLighting(hit_point, normal, false, true);
 
     // Apply to material color
-    const float final_r = material_color.x * final_lighting.x * 255.99f;
-    const float final_g = material_color.y * final_lighting.y * 255.99f;
-    const float final_b = material_color.z * final_lighting.z * 255.99f;
+    const float final_r = material_color.x * final_lighting.x * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_g = material_color.y * final_lighting.y * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_b = material_color.z * final_lighting.z * RayTracingConstants::COLOR_SCALE_FACTOR;
 
     // Add emission
-    const float emissive_r = fminf(final_r + emission * material_color.x * 255.0f, 255.0f);
-    const float emissive_g = fminf(final_g + emission * material_color.y * 255.0f, 255.0f);
-    const float emissive_b = fminf(final_b + emission * material_color.z * 255.0f, 255.0f);
+    const float emissive_r = fminf(final_r + emission * material_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX);
+    const float emissive_g = fminf(final_g + emission * material_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX);
+    const float emissive_b = fminf(final_b + emission * material_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX);
 
     optixSetPayload_0(static_cast<unsigned int>(emissive_r));
     optixSetPayload_1(static_cast<unsigned int>(emissive_g));
@@ -310,7 +312,10 @@ extern "C" __global__ void __anyhit__cylinder() {
 //==============================================================================
 
 extern "C" __global__ void __closesthit__cylinder_shadow() {
-    // Shadow ray hit - nothing to do, payload already set for blocked
+    // Shadow closest-hit: no-op by design.
+    // The shadow payload (0.0 = shadowed) is set by the any-hit shader (__anyhit__cylinder_shadow)
+    // before this closest-hit runs. This function exists only to satisfy the OptiX program group
+    // requirements; it does not need to modify payload state.
 }
 
 extern "C" __global__ void __anyhit__cylinder_shadow() {
