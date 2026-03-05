@@ -106,6 +106,10 @@ object Material:
     emission = 0.0f
   )
 
+  // Opaque presets
+  val Plastic = plastic(White)   // ior=1.5, roughness=0.3, metallic=0, specular=0.5
+  val Matte   = matte(White)     // ior=1.0, roughness=1.0, metallic=0, specular=0.0
+
   // Factory methods for custom colors
   def matte(color: Color): Material =
     Material(color, ior = 1.0f, roughness = 1.0f, metallic = 0.0f, specular = 0.0f)
