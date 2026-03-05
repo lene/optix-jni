@@ -108,6 +108,7 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
  * @param roughness Output: Roughness (0=mirror, 1=diffuse)
  * @param metallic Output: Metallic (0=dielectric, 1=metal)
  * @param specular Output: Specular intensity
+ * @param out_emission Output: Emission intensity (0.0-10.0)
  */
 __device__ void getTriangleMaterial(
     const TriangleHitGroupData* hit_data,
@@ -119,7 +120,8 @@ __device__ void getTriangleMaterial(
     float& roughness,
     float& metallic,
     float& specular,
-    float& film_thickness
+    float& film_thickness,
+    float& out_emission         // NEW
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
@@ -131,6 +133,7 @@ __device__ void getTriangleMaterial(
         metallic = mat.metallic;
         specular = mat.specular;
         film_thickness = mat.film_thickness;
+        out_emission = mat.emission;
 
         // Apply texture if available (in IAS mode only)
         if (vertex_stride >= VERTEX_STRIDE_WITH_UV) {
@@ -150,6 +153,7 @@ __device__ void getTriangleMaterial(
         metallic = MaterialDefaults::DEFAULT_METALLIC;
         specular = MaterialDefaults::DEFAULT_SPECULAR;
         film_thickness = 0.0f;
+        out_emission = 0.0f;
     }
 
     // Multiply material alpha with per-vertex alpha (for fractional level rendering)
@@ -178,11 +182,11 @@ extern "C" __global__ void __closesthit__triangle() {
         atomicMin(&params.stats->min_depth_reached, depth + 1);
     }
 
-    // Get material properties including PBR values (color, IOR, roughness, metallic, specular, film_thickness)
+    // Get material properties including PBR values (color, IOR, roughness, metallic, specular, film_thickness, emission)
     float4 mesh_color;
-    float mesh_ior, roughness, metallic, specular, film_thickness;
+    float mesh_ior, roughness, metallic, specular, film_thickness, mesh_emission;
     getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride, geom.vertex_alpha,
-                       mesh_color, mesh_ior, roughness, metallic, specular, film_thickness);
+                       mesh_color, mesh_ior, roughness, metallic, specular, film_thickness, mesh_emission);
 
     const float mesh_alpha = mesh_color.w;
 
@@ -285,10 +289,10 @@ extern "C" __global__ void __closesthit__triangle() {
     if (film_thickness > 0.0f) {
         const float cos_theta = fabsf(dot(ray_direction, geom.normal));
         const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, mesh_ior, film_thickness);
-        blendFresnelColorsRGBAndSetPayload(fresnel_rgb, reflect_r, reflect_g, reflect_b, refract_color, mesh_color);
+        blendFresnelColorsRGBAndSetPayload(fresnel_rgb, reflect_r, reflect_g, reflect_b, refract_color, mesh_color, mesh_emission);
     } else {
         const float fresnel = computeFresnelReflectance(ray_direction, geom.normal, geom.entering, mesh_ior);
-        blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color);
+        blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b, refract_color, mesh_color, mesh_emission);
     }
 }
 
