@@ -361,6 +361,41 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneCheckerColorsNati
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneSolidColorWithMaterialNative(
+    JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
+    jfloat r, jfloat g, jfloat b,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jint textureIndex) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->addPlaneSolidColorWithMaterial(
+                axis, positive == JNI_TRUE, value, r, g, b,
+                roughness, metallic, specular, emission, textureIndex);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addPlaneSolidColorWithMaterial: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneCheckerColorsWithMaterialNative(
+    JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
+    jfloat r1, jfloat g1, jfloat b1, jfloat r2, jfloat g2, jfloat b2,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jint textureIndex) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->addPlaneCheckerColorsWithMaterial(
+                axis, positive == JNI_TRUE, value,
+                r1, g1, b1, r2, g2, b2,
+                roughness, metallic, specular, emission, textureIndex);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addPlaneCheckerColorsWithMaterial: " << e.what() << std::endl;
+    }
+}
+
 /**
  * Set triangle mesh geometry data.
  * @param vertices Interleaved float array: [px, py, pz, nx, ny, nz, u, v, ...] (stride floats/vertex)

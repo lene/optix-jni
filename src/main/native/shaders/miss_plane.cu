@@ -131,16 +131,64 @@ extern "C" __global__ void __miss__ms() {
         float checker_u, checker_v;
         getCheckerboardCoordinates(hit_point, plane.axis, checker_u, checker_v);
 
-        const float3 plane_rgb = getPlaneColor(plane, checker_u, checker_v);
-        r = static_cast<unsigned int>(plane_rgb.x * COLOR_BYTE_MAX);
-        g = static_cast<unsigned int>(plane_rgb.y * COLOR_BYTE_MAX);
-        b = static_cast<unsigned int>(plane_rgb.z * COLOR_BYTE_MAX);
+        float3 base_color = getPlaneColor(plane, checker_u, checker_v);
+
+        // Texture sampling (Sprint 13.1): override base_color when texture is bound
+        if (plane.texture_index >= 0 &&
+            static_cast<unsigned int>(plane.texture_index) < params.num_textures) {
+            float2 uv;
+            if (plane.axis == 0)      uv = make_float2(hit_point.y, hit_point.z);
+            else if (plane.axis == 1) uv = make_float2(hit_point.x, hit_point.z);
+            else                      uv = make_float2(hit_point.x, hit_point.y);
+            // Wrap UV to [0,1]
+            uv.x -= floorf(uv.x);
+            uv.y -= floorf(uv.y);
+            const float4 tex = tex2D<float4>(params.textures[plane.texture_index], uv.x, uv.y);
+            base_color = make_float3(tex.x, tex.y, tex.z);
+        }
 
         const float3 plane_normal = getPlaneNormal(plane);
         const float3 lighting = calculateLighting(hit_point, plane_normal, true);
-        r = static_cast<unsigned int>(r * lighting.x);
-        g = static_cast<unsigned int>(g * lighting.y);
-        b = static_cast<unsigned int>(b * lighting.z);
+
+        float3 total_color = base_color * lighting;
+
+        // Specular highlight (Phong, Sprint 13.1): add when specular > 0 and not fully rough
+        if (plane.specular > 0.0f && plane.roughness < 0.95f && params.num_lights > 0) {
+            // Use first directional/point light for specular highlight
+            const Light& light = params.lights[0];
+            float3 light_dir_normalized;
+            float  attenuation;
+            if (light.type == LightType::DIRECTIONAL) {
+                getDirectionalLightParams(light, light_dir_normalized, attenuation);
+            } else {
+                getPointLightParams(light, hit_point, light_dir_normalized, attenuation);
+            }
+            const float3 view_dir     = normalize(ray_origin - hit_point);
+            const float3 neg_light    = make_float3(-light_dir_normalized.x,
+                                                    -light_dir_normalized.y,
+                                                    -light_dir_normalized.z);
+            const float  ndotl2       = 2.0f * dot(neg_light, plane_normal);
+            const float3 reflect_dir  = make_float3(
+                neg_light.x - ndotl2 * plane_normal.x,
+                neg_light.y - ndotl2 * plane_normal.y,
+                neg_light.z - ndotl2 * plane_normal.z);
+            const float  spec_power   = 2.0f / (plane.roughness * plane.roughness + 0.001f);
+            const float  spec         = powf(fmaxf(0.0f, dot(view_dir, reflect_dir)), spec_power)
+                                        * plane.specular;
+            const float3 spec_color   = (plane.metallic > 0.5f)
+                                        ? base_color
+                                        : make_float3(spec, spec, spec);
+            total_color = total_color + spec_color * spec;
+        }
+
+        // Emission (Sprint 13.1): add self-illumination
+        total_color = total_color + base_color * plane.emission;
+
+        // Match original truncation semantics: no clamping here; the raygen output
+        // stage truncates via unsigned char cast, preserving backward compatibility.
+        r = static_cast<unsigned int>(total_color.x * COLOR_BYTE_MAX);
+        g = static_cast<unsigned int>(total_color.y * COLOR_BYTE_MAX);
+        b = static_cast<unsigned int>(total_color.z * COLOR_BYTE_MAX);
     } else {
         getBackgroundColor(r, g, b);
     }

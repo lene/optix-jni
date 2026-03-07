@@ -251,8 +251,21 @@ class OptiXRenderer extends LazyLogging:
 
   @native private def clearPlanesNative(): Unit
   @native private def addPlaneNative(axis: Int, positive: Boolean, value: Float): Unit
-  @native private def addPlaneSolidColorNative(axis: Int, positive: Boolean, value: Float, r: Float, g: Float, b: Float): Unit
-  @native private def addPlaneCheckerColorsNative(axis: Int, positive: Boolean, value: Float, r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Unit
+  @native private def addPlaneSolidColorNative(
+    axis: Int, positive: Boolean, value: Float, r: Float, g: Float, b: Float): Unit
+  @native private def addPlaneCheckerColorsNative(
+    axis: Int, positive: Boolean, value: Float,
+    r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Unit
+  @native private def addPlaneSolidColorWithMaterialNative(
+    axis: Int, positive: Boolean, value: Float,
+    r: Float, g: Float, b: Float,
+    roughness: Float, metallic: Float, specular: Float, emission: Float,
+    textureIndex: Int): Unit
+  @native private def addPlaneCheckerColorsWithMaterialNative(
+    axis: Int, positive: Boolean, value: Float,
+    r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float,
+    roughness: Float, metallic: Float, specular: Float, emission: Float,
+    textureIndex: Int): Unit
 
   def clearPlanes(): Unit = clearPlanesNative()
 
@@ -265,6 +278,25 @@ class OptiXRenderer extends LazyLogging:
                             r1: Float, g1: Float, b1: Float,
                             r2: Float, g2: Float, b2: Float): Unit =
     addPlaneCheckerColorsNative(axis, positive, value, r1, g1, b1, r2, g2, b2)
+
+  def addPlaneSolidColorWithMaterial(
+    axis: Int, positive: Boolean, value: Float,
+    color: Color, material: Material, textureIndex: Int = -1): Unit =
+    addPlaneSolidColorWithMaterialNative(
+      axis, positive, value,
+      color.r, color.g, color.b,
+      material.roughness, material.metallic, material.specular, material.emission,
+      textureIndex)
+
+  def addPlaneCheckerColorsWithMaterial(
+    axis: Int, positive: Boolean, value: Float,
+    color1: Color, color2: Color, material: Material, textureIndex: Int = -1): Unit =
+    addPlaneCheckerColorsWithMaterialNative(
+      axis, positive, value,
+      color1.r, color1.g, color1.b,
+      color2.r, color2.g, color2.b,
+      material.roughness, material.metallic, material.specular, material.emission,
+      textureIndex)
 
   // Triangle mesh methods
   @native private def setTriangleMeshNative(

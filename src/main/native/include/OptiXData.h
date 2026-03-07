@@ -404,6 +404,12 @@ struct PlaneParams {
     float color1[3]; // primary or checker-A color
     float color2[3]; // checker-B color (ignored for solid)
     bool enabled;
+    // Material properties (Sprint 13.1) — defaults give original matte behavior
+    float roughness;       // 0.0 (mirror-smooth) to 1.0 (fully diffuse)
+    float metallic;        // 0.0 (dielectric) to 1.0 (metallic)
+    float specular;        // specular reflectance at normal incidence
+    float emission;        // emissive brightness
+    int   texture_index;   // -1 = no texture, >= 0 = index into params.textures[]
 };
 
 // Cylinder geometry data for ray intersection

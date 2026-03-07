@@ -220,6 +220,28 @@ void OptiXWrapper::addPlaneCheckerColors(int axis, bool positive, float value,
     impl->config.addPlaneCheckerColors(axis, positive, value, r1, g1, b1, r2, g2, b2);
 }
 
+void OptiXWrapper::addPlaneSolidColorWithMaterial(
+    int axis, bool positive, float value,
+    float r, float g, float b,
+    float roughness, float metallic, float specular, float emission,
+    int texture_index
+) {
+    impl->config.addPlaneSolidColorWithMaterial(
+        axis, positive, value, r, g, b,
+        roughness, metallic, specular, emission, texture_index);
+}
+
+void OptiXWrapper::addPlaneCheckerColorsWithMaterial(
+    int axis, bool positive, float value,
+    float r1, float g1, float b1, float r2, float g2, float b2,
+    float roughness, float metallic, float specular, float emission,
+    int texture_index
+) {
+    impl->config.addPlaneCheckerColorsWithMaterial(
+        axis, positive, value, r1, g1, b1, r2, g2, b2,
+        roughness, metallic, specular, emission, texture_index);
+}
+
 void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) {
     impl->config.setAntialiasing(enabled, maxDepth, threshold);
 }
