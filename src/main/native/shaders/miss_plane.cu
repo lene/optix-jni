@@ -136,10 +136,9 @@ extern "C" __global__ void __miss__ms() {
         // Texture sampling (Sprint 13.1): override base_color when texture is bound
         if (plane.texture_index >= 0 &&
             static_cast<unsigned int>(plane.texture_index) < params.num_textures) {
-            float2 uv;
-            if (plane.axis == 0)      uv = make_float2(hit_point.y, hit_point.z);
-            else if (plane.axis == 1) uv = make_float2(hit_point.x, hit_point.z);
-            else                      uv = make_float2(hit_point.x, hit_point.y);
+            // Reuse checker_u/checker_v: getCheckerboardCoordinates() already extracted
+            // the two world-space coordinates that form the UV plane for this axis.
+            float2 uv = make_float2(checker_u, checker_v);
             // Wrap UV to [0,1]
             uv.x -= floorf(uv.x);
             uv.y -= floorf(uv.y);
@@ -153,6 +152,9 @@ extern "C" __global__ void __miss__ms() {
         float3 total_color = base_color * lighting;
 
         // Specular highlight (Phong, Sprint 13.1): add when specular > 0 and not fully rough
+        // NOTE: Specular highlight uses only the first light (lights[0]) as a simplification.
+        // calculateLighting() iterates all lights for diffuse, but multi-light specular
+        // for planes is out of scope for Sprint 13.1. TODO(Sprint 14+): iterate all lights.
         if (plane.specular > 0.0f && plane.roughness < 0.95f && params.num_lights > 0) {
             // Use first directional/point light for specular highlight
             const Light& light = params.lights[0];

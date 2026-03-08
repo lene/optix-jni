@@ -33,6 +33,9 @@ void RenderConfig::clearPlanes() {
 }
 
 // Default material constants for backward-compatible plane methods
+// 1.0 = fully diffuse/matte — preserves original plane appearance before Sprint 13.1.
+// This is intentionally different from MaterialDefaults::DEFAULT_ROUGHNESS (0.5)
+// because planes historically used Lambertian shading (fully diffuse, no specularity).
 static constexpr float PLANE_DEFAULT_ROUGHNESS     = 1.0f;
 static constexpr float PLANE_DEFAULT_METALLIC      = 0.0f;
 static constexpr float PLANE_DEFAULT_SPECULAR      = 0.5f;
