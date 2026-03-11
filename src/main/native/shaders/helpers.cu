@@ -50,49 +50,42 @@ __device__ void setShadowPayload(float alpha, const float4& color) {
  *
  * Casts a shadow ray from the surface toward the light source to check
  * for occlusion. Handles transparent surfaces with Beer-Lambert absorption.
+ * Returns per-channel (RGB) shadow factors for colored transparent shadows.
  *
  * @param hit_point Surface position where shadow ray originates
  * @param normal Surface normal (for offset to avoid self-intersection)
  * @param light_dir Direction to light source (normalized)
- * @return Shadow factor in range [0, 1] where 0=fully shadowed, 1=fully lit
+ * @return float3 per-channel shadow factors in range [0, 1] where 0=fully shadowed, 1=fully lit
  */
-__device__ float traceShadowRay(
+__device__ float3 traceShadowRay(
     const float3& hit_point,
     const float3& normal,
     const float3& light_dir
 ) {
-    // Offset origin along normal to avoid shadow acne (self-intersection)
     const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
-
-    // Payload: 0.0 if ray hits (shadowed), 1.0 if ray misses (lit)
-    // Transparent objects pack alpha-based attenuation
-    unsigned int shadow_payload = 0;
+    unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0;
 
     optixTrace(
         params.handle,
         shadow_origin,
         light_dir,
-        SHADOW_RAY_OFFSET,           // tmin (avoid immediate intersection)
-        SHADOW_RAY_MAX_DISTANCE,     // tmax (effectively infinite)
-        0.0f,                         // rayTime
+        SHADOW_RAY_OFFSET,
+        SHADOW_RAY_MAX_DISTANCE,
+        0.0f,
         OptixVisibilityMask(255),
-        OPTIX_RAY_FLAG_NONE,         // Need closest hit to get alpha value
-        params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,  // SBT offset (shadow ray type)
-        SBTConstants::STRIDE_RAY_TYPES,                          // SBT stride (number of ray types)
-        SBTConstants::MISS_SHADOW,                               // missSBTIndex (shadow miss)
-        shadow_payload
+        OPTIX_RAY_FLAG_NONE,
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
+        SBTConstants::STRIDE_RAY_TYPES,
+        SBTConstants::MISS_SHADOW,
+        shadow_p0, shadow_p1, shadow_p2
     );
 
-    // Unpack shadow attenuation
-    // shadow_attenuation: 0.0 = no occlusion (fully lit)
-    //                     1.0 = full occlusion (fully shadowed)
-    const float shadow_attenuation = __uint_as_float(shadow_payload);
+    const float3 shadow_factor = make_float3(
+        SBTConstants::SHADOW_FACTOR_FULLY_LIT - __uint_as_float(shadow_p0),
+        SBTConstants::SHADOW_FACTOR_FULLY_LIT - __uint_as_float(shadow_p1),
+        SBTConstants::SHADOW_FACTOR_FULLY_LIT - __uint_as_float(shadow_p2)
+    );
 
-    // Convert to shadow factor
-    // shadow_factor: 1.0 = fully lit, 0.0 = fully shadowed
-    const float shadow_factor = SBTConstants::SHADOW_FACTOR_FULLY_LIT - shadow_attenuation;
-
-    // Track shadow ray statistics
     if (params.stats) {
         atomicAdd(&params.stats->shadow_rays, 1ULL);
         atomicAdd(&params.stats->total_rays, 1ULL);
@@ -206,9 +199,11 @@ __device__ float3 calculateLighting(
         }
 
         // Trace shadow ray if shadows enabled (and not skipped for recursion avoidance)
-        const float shadow_factor = (params.shadows_enabled && !skip_shadows)
+        const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
             ? traceShadowRay(hit_point, normal, light_dir)
-            : SBTConstants::SHADOW_FACTOR_FULLY_LIT;
+            : make_float3(SBTConstants::SHADOW_FACTOR_FULLY_LIT,
+                          SBTConstants::SHADOW_FACTOR_FULLY_LIT,
+                          SBTConstants::SHADOW_FACTOR_FULLY_LIT);
 
         // Accumulate light contribution
         const float3 light_color = make_float3(
@@ -217,7 +212,13 @@ __device__ float3 calculateLighting(
             light.color[2]
         );
 
-        total_lighting = total_lighting + light_color * light.intensity * attenuation * ndotl * shadow_factor;
+        // Per-channel shadow attenuation: colored shadows tint the light contribution
+        const float3 shadowed_contribution = make_float3(
+            light_color.x * light.intensity * attenuation * ndotl * shadow_factor.x,
+            light_color.y * light.intensity * attenuation * ndotl * shadow_factor.y,
+            light_color.z * light.intensity * attenuation * ndotl * shadow_factor.z
+        );
+        total_lighting = total_lighting + shadowed_contribution;
     }
 
     // Add ambient lighting (prevents pure black shadows)
