@@ -104,7 +104,6 @@ void PipelineManager::createProgramGroups() {
     );
 
     // Cylinder hit groups (custom intersection from cylinder module)
-    // NOTE: Anyhit programs temporarily disabled to diagnose rotation crash
     cylinder_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
         cylinder_module, "__closesthit__cylinder",
         cylinder_module, "__intersection__cylinder"

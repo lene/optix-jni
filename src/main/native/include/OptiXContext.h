@@ -59,28 +59,10 @@ public:
         const char* entry_is
     );
 
-    // Create hitgroup with anyhit program support
-    OptixProgramGroup createHitgroupProgramGroup(
-        OptixModule module_ch,
-        const char* entry_ch,
-        OptixModule module_ah,
-        const char* entry_ah,
-        OptixModule module_is,
-        const char* entry_is
-    );
-
     // Create hitgroup for triangles (uses built-in intersection, no IS shader needed)
     OptixProgramGroup createTriangleHitgroupProgramGroup(
         OptixModule module_ch,
         const char* entry_ch
-    );
-
-    // Create hitgroup for triangles with anyhit program
-    OptixProgramGroup createTriangleHitgroupProgramGroup(
-        OptixModule module_ch,
-        const char* entry_ch,
-        OptixModule module_ah,
-        const char* entry_ah
     );
 
     void destroyProgramGroup(OptixProgramGroup program_group);

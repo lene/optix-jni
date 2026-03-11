@@ -292,22 +292,6 @@ extern "C" __global__ void __closesthit__cylinder() {
 }
 
 //==============================================================================
-// Cylinder Any Hit Program (for transparency)
-//==============================================================================
-
-extern "C" __global__ void __anyhit__cylinder() {
-    // Get material properties to check alpha
-    float4 material_color;
-    float material_ior, roughness, metallic, specular, emission, film_thickness;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
-
-    // If fully transparent, ignore this hit and continue ray
-    if (material_color.w < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        optixIgnoreIntersection();
-    }
-}
-
-//==============================================================================
 // Cylinder Shadow Programs
 //==============================================================================
 
@@ -316,16 +300,4 @@ extern "C" __global__ void __closesthit__cylinder_shadow() {
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
     setShadowPayload(material_color.w, material_color);
-}
-
-extern "C" __global__ void __anyhit__cylinder_shadow() {
-    // Get material properties to check alpha
-    float4 material_color;
-    float material_ior, roughness, metallic, specular, emission, film_thickness;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
-
-    // If fully transparent, don't block light
-    if (material_color.w < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        optixIgnoreIntersection();
-    }
 }
