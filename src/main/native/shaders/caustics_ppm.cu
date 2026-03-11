@@ -251,9 +251,9 @@ extern "C" __global__ void __raygen__hitpoints() {
         0.0f,                        // rayTime
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        0,                           // SBT offset (primary ray type)
-        2,                           // SBT stride
-        0,                           // missSBTIndex
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY,  // SBT offset (primary ray type)
+        SBTConstants::STRIDE_RAY_TYPES,                           // SBT stride
+        SBTConstants::MISS_PRIMARY,                               // missSBTIndex
         p0, p1, p2, p3
     );
 

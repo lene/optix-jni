@@ -213,6 +213,11 @@ class OptiXRenderer extends LazyLogging:
   
   @native def setShadows(enabled: Boolean): Unit
 
+  @native private def setTransparentShadowsNative(enabled: Boolean): Unit
+
+  def setTransparentShadows(enabled: Boolean): Unit =
+    setTransparentShadowsNative(enabled)
+
   @native private def setBackgroundColorNative(r: Float, g: Float, b: Float): Unit
 
   def setBackgroundColor(r: Float, g: Float, b: Float): Unit =
@@ -223,6 +228,7 @@ class OptiXRenderer extends LazyLogging:
 
   def setRenderConfig(config: RenderConfig): Unit =
     setShadows(config.shadows)
+    setTransparentShadows(config.transparentShadows)
     setAntialiasing(config.antialiasing, config.aaMaxDepth, config.aaThreshold)
 
   @native def setCaustics(enabled: Boolean, photonsPerIter: Int, iterations: Int, initialRadius: Float, alpha: Float): Unit

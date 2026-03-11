@@ -49,9 +49,9 @@ __device__ float traceShadowRay(
         0.0f,                         // rayTime
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,         // Need closest hit to get alpha value
-        1,                            // SBT offset (shadow ray type)
-        2,                            // SBT stride (number of ray types)
-        1,                            // missSBTIndex (shadow miss)
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,  // SBT offset (shadow ray type)
+        SBTConstants::STRIDE_RAY_TYPES,                          // SBT stride (number of ray types)
+        SBTConstants::MISS_SHADOW,                               // missSBTIndex (shadow miss)
         shadow_payload
     );
 
@@ -263,7 +263,7 @@ __device__ void traceRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         r, g, b, depth
     );
 
@@ -477,7 +477,7 @@ __device__ void handleFullyTransparent(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         continue_r, continue_g, continue_b, next_depth
     );
 
@@ -524,7 +524,7 @@ __device__ void traceContinuationRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
         r, g, b, next_depth
     );
 }
@@ -648,7 +648,7 @@ __device__ void traceFinalNonRecursiveRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         final_r, final_g, final_b, final_depth
     );
 
@@ -903,7 +903,7 @@ __device__ void traceReflectedRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         reflect_r, reflect_g, reflect_b, next_depth
     );
 }
@@ -966,7 +966,7 @@ __device__ bool traceRefractedRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
         refract_r, refract_g, refract_b, next_depth
     );
 

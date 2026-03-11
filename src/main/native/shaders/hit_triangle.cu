@@ -300,6 +300,13 @@ extern "C" __global__ void __closesthit__triangle() {
 // Triangle shadow ray closest hit - marks ray as occluded
 //==============================================================================
 extern "C" __global__ void __closesthit__triangle_shadow() {
-    // Mark ray as occluded (payload_0 = 1 means hit something)
-    optixSetPayload_0(1);
+    // Get material alpha for transparency-aware shadows
+    float4 material_color;
+    float material_ior;
+    getInstanceMaterial(material_color, material_ior);
+    const float alpha = material_color.w;
+
+    // Pack alpha as float bits (consistent with __closesthit__shadow in shadows.cu)
+    // alpha=0.0 (transparent) → no shadow, alpha=1.0 (opaque) → full shadow
+    optixSetPayload_0(__float_as_uint(alpha));
 }

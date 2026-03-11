@@ -433,6 +433,8 @@ struct Params {
 
     // Instance Acceleration Structure (IAS) support
     bool use_ias;                           // true = multi-object mode (use IAS), false = single GAS
+    unsigned int sbt_base_offset;           // SBT hitgroup base offset for single-object mode
+                                            // = geometry_type * STRIDE_RAY_TYPES (0 in IAS mode)
     InstanceMaterial* instance_materials;   // Device pointer to per-instance material array
     unsigned int num_instances;             // Number of active instances
 
@@ -448,7 +450,8 @@ struct Params {
     int   num_lights;           // Number of active lights
     PlaneParams planes[RayTracingConstants::MAX_PLANES];  // Up to MAX_PLANES simultaneous planes
     int   num_planes;           // Number of active planes (0 = no plane, show background)
-    bool  shadows_enabled;      // Enable shadow ray tracing
+    bool  shadows_enabled;             // Enable shadow ray tracing
+    bool  transparent_shadows_enabled; // Enable colored shadows through transparent objects (Sprint 13.2)
     float bg_r, bg_g, bg_b;    // Background color (overrides MissData SBT)
 
     // Ray statistics (GPU buffer)

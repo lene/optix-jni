@@ -75,6 +75,14 @@ public:
         const char* entry_ch
     );
 
+    // Create hitgroup for triangles with anyhit program
+    OptixProgramGroup createTriangleHitgroupProgramGroup(
+        OptixModule module_ch,
+        const char* entry_ch,
+        OptixModule module_ah,
+        const char* entry_ah
+    );
+
     void destroyProgramGroup(OptixProgramGroup program_group);
 
     // Pipeline management

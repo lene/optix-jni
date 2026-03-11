@@ -198,6 +198,10 @@ void OptiXWrapper::setShadows(bool enabled) {
     impl->config.setShadows(enabled);
 }
 
+void OptiXWrapper::setTransparentShadows(bool enabled) {
+    impl->config.setTransparentShadows(enabled);
+}
+
 void OptiXWrapper::setBackgroundColor(float r, float g, float b) {
     impl->config.setBackgroundColor(r, g, b);
 }
@@ -608,6 +612,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             params.handle = impl->ias_handle;
             params.use_ias = true;
+            params.sbt_base_offset = 0;  // IAS instances carry their own sbtOffset
             params.instance_materials = reinterpret_cast<InstanceMaterial*>(impl->d_instance_materials);
             params.num_instances = getInstanceCount();
 
@@ -665,6 +670,10 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
+            // Route SBT to correct geometry type's hitgroup records
+            params.sbt_base_offset = impl->scene.hasTriangleMesh()
+                ? GEOMETRY_TYPE_TRIANGLE * SBTConstants::STRIDE_RAY_TYPES
+                : GEOMETRY_TYPE_SPHERE * SBTConstants::STRIDE_RAY_TYPES;
             params.instance_materials = nullptr;
             params.num_instances = 0;
             params.textures = nullptr;
@@ -687,6 +696,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         // Rendering configuration
         params.shadows_enabled = impl->config.getShadowsEnabled();
+        params.transparent_shadows_enabled = impl->config.getTransparentShadowsEnabled();
         params.bg_r = impl->config.getBackgroundR();
         params.bg_g = impl->config.getBackgroundG();
         params.bg_b = impl->config.getBackgroundB();

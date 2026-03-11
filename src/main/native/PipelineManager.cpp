@@ -98,6 +98,7 @@ void PipelineManager::createProgramGroups() {
         module, "__closesthit__triangle"
     );
 
+    // Triangle shadow hit group
     triangle_shadow_hitgroup_prog_group = optix_context.createTriangleHitgroupProgramGroup(
         module, "__closesthit__triangle_shadow"
     );
@@ -109,6 +110,7 @@ void PipelineManager::createProgramGroups() {
         cylinder_module, "__intersection__cylinder"
     );
 
+    // Cylinder shadow hit group
     cylinder_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
         cylinder_module, "__closesthit__cylinder_shadow",
         cylinder_module, "__intersection__cylinder"

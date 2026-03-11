@@ -52,6 +52,7 @@ public:
 
     // Shadow configuration
     void setShadows(bool enabled);
+    void setTransparentShadows(bool enabled);  // Sprint 13.2
 
     // Antialiasing configuration
     void setAntialiasing(bool enabled, int maxDepth, float threshold);

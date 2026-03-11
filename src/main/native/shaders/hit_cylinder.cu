@@ -312,10 +312,15 @@ extern "C" __global__ void __anyhit__cylinder() {
 //==============================================================================
 
 extern "C" __global__ void __closesthit__cylinder_shadow() {
-    // Shadow closest-hit: no-op by design.
-    // The shadow payload (0.0 = shadowed) is set by the any-hit shader (__anyhit__cylinder_shadow)
-    // before this closest-hit runs. This function exists only to satisfy the OptiX program group
-    // requirements; it does not need to modify payload state.
+    // Get material alpha for transparency-aware shadows
+    float4 material_color;
+    float material_ior, roughness, metallic, specular, emission, film_thickness;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
+    const float alpha = material_color.w;
+
+    // Pack alpha as float bits (consistent with __closesthit__shadow in shadows.cu)
+    // alpha=0.0 (transparent) → no shadow, alpha=1.0 (opaque) → full shadow
+    optixSetPayload_0(__float_as_uint(alpha));
 }
 
 extern "C" __global__ void __anyhit__cylinder_shadow() {

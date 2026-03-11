@@ -3,6 +3,7 @@ package menger.optix
 // Configuration for render quality options
 case class RenderConfig(
   shadows: Boolean = false,
+  transparentShadows: Boolean = false,  // Sprint 13.2: colored shadows through transparent objects
   antialiasing: Boolean = false,
   aaMaxDepth: Int = 2,
   aaThreshold: Float = 0.1f

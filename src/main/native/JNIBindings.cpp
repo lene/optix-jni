@@ -274,6 +274,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setShadows(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTransparentShadowsNative(
+    JNIEnv* env, jobject obj, jboolean enabled) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setTransparentShadows(enabled == JNI_TRUE);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setTransparentShadows: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setBackgroundColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
     try {

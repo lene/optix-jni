@@ -31,6 +31,8 @@ public:
     // Shadow configuration
     void setShadows(bool enabled);
     bool getShadowsEnabled() const { return shadows_enabled; }
+    void setTransparentShadows(bool enabled) { transparent_shadows_enabled = enabled; }
+    bool getTransparentShadowsEnabled() const { return transparent_shadows_enabled; }
 
     // Antialiasing configuration
     void setAntialiasing(bool enabled, int maxDepth, float threshold);
@@ -80,6 +82,7 @@ private:
 
     // Shadow configuration
     bool shadows_enabled = false;
+    bool transparent_shadows_enabled = false;  // Sprint 13.2
 
     // Antialiasing configuration
     bool aa_enabled = false;

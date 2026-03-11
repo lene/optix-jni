@@ -73,7 +73,7 @@ extern "C" __global__ void __raygen__rg() {
             0.0f,
             OptixVisibilityMask(255),
             OPTIX_RAY_FLAG_NONE,
-            SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
+            params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
             r, g, b, p3
         );
     }
