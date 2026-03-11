@@ -14,6 +14,34 @@
 //   RGB(1,0,0) → absorbs green/blue, shows red (red tinted when opaque)
 
 //==============================================================================
+// Shadow Payload Helper
+//==============================================================================
+
+/**
+ * Set shadow ray payload with per-channel attenuation.
+ *
+ * When colored shadows are enabled, each RGB channel is attenuated independently
+ * based on the material color: a red object passes red light through but blocks
+ * green and blue. When disabled, all channels carry uniform scalar alpha.
+ *
+ * Attenuation semantics: 0.0 = channel passes through, 1.0 = channel fully blocked.
+ *
+ * @param alpha Material opacity [0,1] (0=transparent, 1=opaque)
+ * @param color Material RGBA color (RGB channels used for per-wavelength attenuation)
+ */
+__device__ void setShadowPayload(float alpha, const float4& color) {
+    if (params.transparent_shadows_enabled) {
+        optixSetPayload_0(__float_as_uint(alpha * (1.0f - color.x)));
+        optixSetPayload_1(__float_as_uint(alpha * (1.0f - color.y)));
+        optixSetPayload_2(__float_as_uint(alpha * (1.0f - color.z)));
+    } else {
+        optixSetPayload_0(__float_as_uint(alpha));
+        optixSetPayload_1(__float_as_uint(alpha));
+        optixSetPayload_2(__float_as_uint(alpha));
+    }
+}
+
+//==============================================================================
 // Shadow Ray Tracing Helper
 //==============================================================================
 
