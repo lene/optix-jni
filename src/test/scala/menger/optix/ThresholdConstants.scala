@@ -77,9 +77,11 @@ object ThresholdConstants:
 
   // ========== Shadow Comparison Ratios ==========
 
-  val TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO = 1.3  // Transparent shadow should be 1.3x brighter than opaque
+  // Transparent shadow should be 1.3x brighter than opaque
+  val TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO = 1.3
   val MAX_SHADOW_DARKENING_RATIO = 0.65          // Shadow can darken to 65% of lit brightness
-  val MODERATE_SHADOW_RATIO = 0.8                // Moderate shadow darkening (80% of lit brightness)
+  // Moderate shadow darkening (80% of lit brightness)
+  val MODERATE_SHADOW_RATIO = 0.8
   val MIN_SHADOW_CONTRAST_RATIO = 0.85           // Minimum shadow contrast (85% as bright)
   val ALPHA_TOLERANCE_LOWER_RATIO = 0.90         // Alpha comparison tolerance (90% of expected)
   val ALPHA_TOLERANCE_UPPER_RATIO = 1.10         // Alpha comparison tolerance (110% of expected)
@@ -105,3 +107,11 @@ object ThresholdConstants:
   // ========== Shadow Brightness Comparison Tolerance ==========
 
   val BRIGHTNESS_TOLERANCE = 1.0                 // ±1 brightness unit for floating-point variance
+
+  // ========== Colored Shadow Thresholds ==========
+
+  // Minimum per-channel difference to confirm color tinting in shadow region
+  val MIN_COLOR_TINT_DIFFERENCE = 5.0
+
+  // Maximum per-channel spread for "achromatic" (no color tint) assertion
+  val ACHROMATIC_CHANNEL_TOLERANCE = 3.0
