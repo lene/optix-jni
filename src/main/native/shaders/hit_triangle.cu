@@ -306,7 +306,15 @@ extern "C" __global__ void __closesthit__triangle_shadow() {
     getInstanceMaterial(material_color, material_ior);
     const float alpha = material_color.w;
 
-    // Pack alpha as float bits (consistent with __closesthit__shadow in shadows.cu)
-    // alpha=0.0 (transparent) → no shadow, alpha=1.0 (opaque) → full shadow
-    optixSetPayload_0(__float_as_uint(alpha));
+    if (params.transparent_shadows_enabled) {
+        // Colored attenuation: how much of each channel is BLOCKED
+        optixSetPayload_0(__float_as_uint(alpha * (1.0f - material_color.x)));
+        optixSetPayload_1(__float_as_uint(alpha * (1.0f - material_color.y)));
+        optixSetPayload_2(__float_as_uint(alpha * (1.0f - material_color.z)));
+    } else {
+        // Scalar mode: uniform attenuation across all channels (backward-compatible)
+        optixSetPayload_0(__float_as_uint(alpha));
+        optixSetPayload_1(__float_as_uint(alpha));
+        optixSetPayload_2(__float_as_uint(alpha));
+    }
 }
