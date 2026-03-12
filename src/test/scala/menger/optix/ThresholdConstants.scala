@@ -13,16 +13,16 @@ object ThresholdConstants:
   val MIN_BRIGHTNESS_VARIATION = 10.0
 
   // ========== Sphere Area Thresholds (pixels) ==========
-  // All thresholds for 400x300 viewport (120,000 total pixels)
+  // All thresholds for 320x240 viewport (76,800 total pixels)
 
-  val SMALL_SPHERE_MAX_AREA = 500
-  val MEDIUM_SPHERE_MIN_AREA = 500
-  val MEDIUM_SPHERE_MAX_AREA = 15000
-  val LARGE_SPHERE_MIN_AREA = 5000
-  val VERY_LARGE_SPHERE_MIN_AREA = 10000
-  val MIN_VISIBLE_SPHERE_AREA = 500
-  val MAX_TRANSPARENT_COMPARISON_AREA = 10000  // Transparent has fewer colored pixels than opaque
-  val MIN_SEMI_TRANSPARENT_AREA = 100
+  val SMALL_SPHERE_MAX_AREA = 320
+  val MEDIUM_SPHERE_MIN_AREA = 320
+  val MEDIUM_SPHERE_MAX_AREA = 9600
+  val LARGE_SPHERE_MIN_AREA = 3200
+  val VERY_LARGE_SPHERE_MIN_AREA = 6400
+  val MIN_VISIBLE_SPHERE_AREA = 320
+  val MAX_TRANSPARENT_COMPARISON_AREA = 6400   // Transparent has fewer colored pixels than opaque
+  val MIN_SEMI_TRANSPARENT_AREA = 64
 
   // ========== Position and Centering Thresholds ==========
 
@@ -60,9 +60,9 @@ object ThresholdConstants:
 
   // ========== Test Image Sizes ==========
 
-  val QUICK_TEST_SIZE = ImageSize(120, 80)      // Fast basic tests (4:3 aspect)
-  val TEST_IMAGE_SIZE = ImageSize(400, 300)     // Most integration tests (4:3 aspect)
-  val STANDARD_IMAGE_SIZE = ImageSize(800, 600) // Visual validation (4:3 aspect)
+  val QUICK_TEST_SIZE = ImageSize(100, 75)      // Fast basic tests (4:3 aspect)
+  val TEST_IMAGE_SIZE = ImageSize(320, 240)     // Most integration tests (4:3 aspect)
+  val STANDARD_IMAGE_SIZE = ImageSize(640, 480) // Visual validation (4:3 aspect)
 
   // ========== Shadow Detection Grid Sizes ==========
 

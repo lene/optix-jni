@@ -331,7 +331,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     noException should be thrownBy {
       val image = renderer.render(imageSize).get
-      image.length shouldBe 800 * 600 * 4
+      image.length shouldBe imageSize.width * imageSize.height * 4
     }
 
   it should "handle light from below gracefully (degenerate case)" in:
@@ -340,7 +340,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     noException should be thrownBy {
       val image = renderer.render(imageSize).get
-      image.length shouldBe 800 * 600 * 4
+      image.length shouldBe imageSize.width * imageSize.height * 4
     }
 
   // ========== GEOMETRIC VALIDATION TESTS ==========
@@ -477,7 +477,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     noException should be thrownBy {
       val image = renderer.render(imageSize).get
-      image.length shouldBe 800 * 600 * 4
+      image.length shouldBe imageSize.width * imageSize.height * 4
     }
 
   it should "produce consistent results across multiple renders" in:
