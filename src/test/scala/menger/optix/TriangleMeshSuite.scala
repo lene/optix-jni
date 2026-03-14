@@ -297,4 +297,4 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val v2 = makeVertex(uMax, vMax)
     val v3 = makeVertex(uMin, vMax)
 
-    TriangleMeshData(v0 ++ v1 ++ v2 ++ v3, Array(0, 1, 2, 0, 2, 3))
+    TriangleMeshData(v0 ++ v1 ++ v2 ++ v3, Array(0, 1, 2, 0, 2, 3), TriangleMeshData.LegacyVertexStride)
