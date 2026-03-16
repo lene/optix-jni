@@ -2,7 +2,7 @@ import com.github.sbt.jni.build.CMakeWithoutVersionBug
 
 name := "optix-jni"
 version := "0.4.1"
-scalaVersion := "3.7.4"
+scalaVersion := "3.8.2"
 
 organization := "io.github.lilacashes"
 description := "JNI bindings for NVIDIA OptiX ray tracing"
@@ -15,6 +15,8 @@ scmInfo := Some(ScmInfo(
 developers := List(
   Developer("lene", "Lene Preuss", "lene.preuss@gmail.com", url("https://gitlab.com/lilacashes"))
 )
+
+scalacOptions ++= Seq("-deprecation", "-explain", "-feature", "-Wunused:imports")
 
 Compile / semanticdbEnabled := true
 
@@ -120,7 +122,7 @@ Test / fork := true
 
 libraryDependencies ++= Seq(
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
-  "ch.qos.logback" % "logback-classic" % "1.5.24",
+  "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.scalatest" %% "scalatest" % "3.2.19" % Test,
   "org.scalatestplus" %% "scalacheck-1-18" % "3.2.19.0" % Test
 )
