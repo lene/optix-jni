@@ -128,7 +128,6 @@ namespace RenderingConstants {
     // Color and conversion constants
     constexpr float COLOR_BLACK = 0.0f;                   // Black RGB value
     constexpr float COLOR_WHITE = 1.0f;                   // White RGB value
-    constexpr float COLOR_BYTE_MAX = 255.0f;              // Maximum color component for output
     constexpr float UNIT_CONVERSION_FACTOR = 1.0f;        // Base conversion factor
     
     // Physics and ray tracing

@@ -1050,9 +1050,9 @@ __device__ void handleMetallicOpaque(
     computeDiffuseColor(hit_point, normal, material_color, diffuse_r, diffuse_g, diffuse_b);
 
     // Blend: final = metallic * reflection + (1 - metallic) * diffuse
-    unsigned int r = static_cast<unsigned int>(fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), RenderingConstants::COLOR_BYTE_MAX));
-    unsigned int g = static_cast<unsigned int>(fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), RenderingConstants::COLOR_BYTE_MAX));
-    unsigned int b = static_cast<unsigned int>(fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), RenderingConstants::COLOR_BYTE_MAX));
+    unsigned int r = static_cast<unsigned int>(fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int g = static_cast<unsigned int>(fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int b = static_cast<unsigned int>(fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), RayTracingConstants::COLOR_BYTE_MAX));
 
     // Add emission
     addEmissionToColor(r, g, b, material_color, emission);
