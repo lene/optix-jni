@@ -36,8 +36,8 @@ extern "C" __global__ void __raygen__rg() {
         unsigned int sample_count = 0;
 
         // Calculate pixel half-size in NDC (for initial subdivision)
-        const float pixel_half_width = RenderingConstants::UNIT_CONVERSION_FACTOR / static_cast<float>(dim.x);
-        const float pixel_half_height = RenderingConstants::UNIT_CONVERSION_FACTOR / static_cast<float>(dim.y);
+        const float pixel_half_width = 1.0f / static_cast<float>(dim.x);
+        const float pixel_half_height = 1.0f / static_cast<float>(dim.y);
         const float pixel_half_size = fmaxf(pixel_half_width, pixel_half_height);
 
         // Start recursive subdivision at depth 0

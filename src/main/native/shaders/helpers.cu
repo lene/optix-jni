@@ -113,7 +113,7 @@ __device__ void getDirectionalLightParams(
         light.direction[1],
         light.direction[2]
     ));
-    attenuation = RenderingConstants::DISTANCE_FALLOFF_NONE;  // No distance falloff
+    attenuation = 1.0f;  // No distance falloff for directional lights
 }
 
 /**
@@ -135,7 +135,7 @@ __device__ void getPointLightParams(
     light_dir = to_light / distance;  // Normalize
 
     // Inverse-square law: I = I₀ / (1 + d²)
-    attenuation = RenderingConstants::DISTANCE_FALLOFF_BASE / (RenderingConstants::DISTANCE_FALLOFF_BASE + distance * distance);
+    attenuation = 1.0f / (1.0f + distance * distance);
 }
 
 /**
@@ -152,7 +152,7 @@ __device__ float calculateDiffuseTerm(
         return fabsf(raw_ndotl);
     } else {
         // Single-sided surface (e.g., sphere): clamp to [0, ∞)
-        return fmaxf(RenderingConstants::DOT_PRODUCT_ZERO_THRESHOLD, dot(normal, light_dir));
+        return fmaxf(0.0f, dot(normal, light_dir));
     }
 }
 
@@ -174,7 +174,7 @@ __device__ float3 calculateLighting(
     bool double_sided = false,
     bool skip_shadows = false
 ) {
-    float3 total_lighting = make_float3(RenderingConstants::COLOR_BLACK, RenderingConstants::COLOR_BLACK, RenderingConstants::COLOR_BLACK);
+    float3 total_lighting = make_float3(0.f, 0.f, 0.f);
 
     // Accumulate contribution from each light
     for (int light_idx = 0; light_idx < params.num_lights; ++light_idx) {
@@ -701,13 +701,13 @@ __device__ float computeFresnelReflectance(
     bool entering,
     float material_ior
 ) {
-    const float n1 = entering ? RenderingConstants::VACUUM_IOR : material_ior;
-    const float n2 = entering ? material_ior : RenderingConstants::VACUUM_IOR;
+    const float n1 = entering ? MaterialConstants::IOR_VACUUM : material_ior;
+    const float n2 = entering ? material_ior : MaterialConstants::IOR_VACUUM;
     const float r0 = (n1 - n2) / (n1 + n2);
     const float R0 = r0 * r0;
     const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float one_minus_cos = RenderingConstants::FRESNEL_ONE_MINUS_COS - cos_theta;
-    return R0 + RenderingConstants::FRESNEL_ONE_MINUS_R0 * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+    const float one_minus_cos = 1.0f - cos_theta;
+    return R0 + one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
 }
 
 //==============================================================================

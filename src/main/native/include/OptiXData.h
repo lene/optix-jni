@@ -125,26 +125,9 @@ namespace RenderingConstants {
     constexpr float NDC_SCALE = 2.0f;                    // Scale factor for NDC [-1,1] range
     constexpr float NDC_OFFSET = 1.0f;                   // Offset for NDC calculation
     
-    // Color and conversion constants
-    constexpr float COLOR_BLACK = 0.0f;                   // Black RGB value
-    constexpr float COLOR_WHITE = 1.0f;                   // White RGB value
-    constexpr float UNIT_CONVERSION_FACTOR = 1.0f;        // Base conversion factor
-    
     // Physics and ray tracing
-    constexpr float VACUUM_IOR = 1.0f;                   // Index of refraction for vacuum/air
     constexpr float REFLECTION_SCALE = 2.0f;                 // Scale factor for reflection calculation
-    constexpr float FRESNEL_BASE = 1.0f;                    // Base value for Fresnel equations
-    constexpr float METALLIC_THRESHOLD = 0.0f;              // Threshold for metallic material detection
-    constexpr float DOT_PRODUCT_ZERO_THRESHOLD = 0.0f;        // Zero threshold for dot product
-    constexpr float DISTANCE_FALLOFF_NONE = 1.0f;        // No distance attenuation factor
-    constexpr float DISTANCE_FALLOFF_BASE = 1.0f;        // Base for inverse-square law
-    constexpr float DOT_PRODUCT_CLAMP_MIN = 0.0f;          // Minimum clamp for diffuse term
-    constexpr float DOT_PRODUCT_CLAMP_MIN_SINGLE = 0.0f;   // Single-sided clamp minimum
     constexpr float DIFFUSE_BLEND_FACTOR = 1.0f - RayTracingConstants::AMBIENT_LIGHT_FACTOR;  // Diffuse contribution (energy conservation: ambient + diffuse = 1.0)
-    
-    // Fresnel calculation terms
-    constexpr float FRESNEL_ONE_MINUS_R0 = 1.0f;          // (1 - R0) term for Fresnel equations
-    constexpr float FRESNEL_ONE_MINUS_COS = 1.0f;          // (1 - cosθ) term for Fresnel calculations
 }
 
 // Shader Binding Table (SBT) parameters
