@@ -778,25 +778,27 @@ extern "C" __global__ void __raygen__update_radii() {
 
     // Only update if we received photons this iteration
     if (hp.new_photons > 0) {
-        const float alpha = params.caustics.alpha;
         const float N = static_cast<float>(hp.n);
         const float M = static_cast<float>(hp.new_photons);
 
-        // PPM radius reduction
-        const float new_N = N + alpha * M;
-        const float ratio = new_N / (N + M);
+        if (N > 0.0f) {
+            // PPM progressive radius reduction (iterations 1+)
+            // Only apply when we have history from previous iterations
+            const float alpha = params.caustics.alpha;
+            const float new_N = N + alpha * M;
+            const float ratio = new_N / (N + M);
 
-        // Update radius
-        hp.radius *= sqrtf(ratio);
+            hp.radius *= sqrtf(ratio);
+            hp.n = static_cast<unsigned int>(new_N);
 
-        // Update photon count
-        hp.n = static_cast<unsigned int>(new_N);
-
-        // Scale flux to account for reduced radius
-        // (maintains energy conservation)
-        hp.flux[0] *= ratio;
-        hp.flux[1] *= ratio;
-        hp.flux[2] *= ratio;
+            // Scale flux to account for reduced radius
+            hp.flux[0] *= ratio;
+            hp.flux[1] *= ratio;
+            hp.flux[2] *= ratio;
+        } else {
+            // First iteration: initialize photon count, keep flux and radius as-is
+            hp.n = static_cast<unsigned int>(M);
+        }
     }
 
     // Reset new photon counter for next iteration
