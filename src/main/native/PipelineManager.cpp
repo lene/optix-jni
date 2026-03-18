@@ -125,10 +125,13 @@ void PipelineManager::createProgramGroups() {
     caustics_radiance_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__caustics_radiance"
     );
+    caustics_update_radii_raygen = optix_context.createRaygenProgramGroup(
+        module, "__raygen__update_radii"
+    );
 }
 
 void PipelineManager::createPipeline() {
-    constexpr int NUM_PROGRAM_GROUPS = 12;  // raygen(1) + miss(2) + hitgroups: sphere(2)+tri(2)+cylinder(2)+caustics(3)
+    constexpr int NUM_PROGRAM_GROUPS = 13;  // raygen(1) + miss(2) + hitgroups: sphere(2)+tri(2)+cylinder(2)+caustics(4)
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -141,7 +144,8 @@ void PipelineManager::createPipeline() {
         cylinder_shadow_hitgroup_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
-        caustics_radiance_raygen
+        caustics_radiance_raygen,
+        caustics_update_radii_raygen
     };
 
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
@@ -309,6 +313,7 @@ void PipelineManager::cleanup(bool includeCaustics) {
         destroyProgramGroupIfExists(caustics_hitpoints_raygen);
         destroyProgramGroupIfExists(caustics_photons_raygen);
         destroyProgramGroupIfExists(caustics_radiance_raygen);
+        destroyProgramGroupIfExists(caustics_update_radii_raygen);
     }
 
     // Check if cylinder_module is a separate module before destroying module

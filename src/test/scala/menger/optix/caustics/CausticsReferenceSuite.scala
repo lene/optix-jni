@@ -243,10 +243,33 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
     peak should be > 0.3
 
   it should "compare caustic brightness within 50% of reference (relaxed initial target)" taggedAs (Slow) in:
-    pending // Requires reference image at 400x300 resolution (TEST_IMAGE_SIZE)
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+
+    // Load reference and measure its caustic brightness
+    val refImage = loadReferenceImage("pbrt-reference.png")
+    val refBytes = imageToByteArray(refImage)
+    val refSize = ImageSize(refImage.getWidth, refImage.getHeight)
+    val (refX, refY, refW, refH) = detectCausticRegion(refBytes, refSize)
+    val refBrightness = regionBrightness(refBytes, refSize, refX, refY, refW, refH)
+
+    // Render our caustics at test size
+    setupReferenceScene()
+    renderer.enableCaustics(photonsPerIter = 10000, iterations = 3)
+    val result = renderer.renderWithStats(ReferenceScene.imageSize)
+
+    val (ourX, ourY, ourW, ourH) = detectCausticRegion(result.image, ReferenceScene.imageSize)
+    val ourBrightness = regionBrightness(result.image, ReferenceScene.imageSize, ourX, ourY, ourW, ourH)
+
+    info(s"Reference caustic brightness: $refBrightness")
+    info(s"Our caustic brightness: $ourBrightness")
+    info(s"Ratio: ${ourBrightness / refBrightness}")
+
+    // Our caustic brightness should be within 50% of reference
+    ourBrightness should be > (refBrightness * 0.5)
+    ourBrightness should be < (refBrightness * 1.5)
 
   it should "eventually match reference brightness within 20% (Phase 2 target)" taggedAs (Slow) in:
-    pending // This is our Phase 2 goal after improvements
+    pending // Requires grid-accelerated deposition (Step 6) and higher photon counts
 
   // ===========================================================================
   // Improvement Tracking Tests - Will pass after each Phase 2 step

@@ -36,6 +36,7 @@ public:
     // Initialize buffers before render
     void zeroStatsBuffer();
     void zeroCausticsBuffers();
+    void zeroCausticsGridCounts();
 
     // Access buffers
     CUdeviceptr getImageBuffer() const { return image_buffer.get(); }

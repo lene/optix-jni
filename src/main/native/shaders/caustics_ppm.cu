@@ -21,7 +21,7 @@
 //   Beer-Lambert absorption. When photons hit the diffuse plane, deposit
 //   their energy at nearby hit points (depositPhoton).
 //
-// Phase 4 - Radiance Computation (__raygen__caustics_radiance, __caustics_update_radii):
+// Phase 4 - Radiance Computation (__raygen__caustics_radiance, __raygen__update_radii):
 //   Convert accumulated flux to radiance: L = Flux / (pi * R^2)
 //   Progressively reduce search radius using PPM formula:
 //     R_new = R_old * sqrt((N + alpha*M) / (N + M))
@@ -770,8 +770,8 @@ extern "C" __global__ void __raygen__photons() {
  *
  * This causes the radius to shrink over iterations, improving estimate quality.
  */
-extern "C" __global__ void __caustics_update_radii() {
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+extern "C" __global__ void __raygen__update_radii() {
+    const unsigned int idx = optixGetLaunchIndex().x;
     if (idx >= *params.caustics.num_hit_points) return;
 
     HitPoint& hp = params.caustics.hit_points[idx];

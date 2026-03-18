@@ -118,6 +118,16 @@ void CausticsRenderer::renderWithCaustics(
         );
         CUDA_CHECK(cudaDeviceSynchronize());
 
+        // PPM progressive radius reduction
+        if (num_hit_points > 0) {
+            launchCausticsPass(
+                scene, width, height,
+                pipeline_manager.getCausticsUpdateRadiiRaygen(),
+                num_hit_points, 1
+            );
+            CUDA_CHECK(cudaDeviceSynchronize());
+        }
+
         std::cout << "[Caustics]   Iteration " << (iter + 1) << "/" << iterations
                   << " complete" << std::endl;
     }

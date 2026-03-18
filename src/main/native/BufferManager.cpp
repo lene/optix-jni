@@ -86,6 +86,19 @@ void BufferManager::zeroCausticsBuffers() {
     if (caustics_stats_buffer.isAllocated()) {
         caustics_stats_buffer.zero(1);
     }
+    zeroCausticsGridCounts();
+}
+
+void BufferManager::zeroCausticsGridCounts() {
+    const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
+                            RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
+                            RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
+    if (caustics_grid_counts_buffer.isAllocated()) {
+        caustics_grid_counts_buffer.zero(grid_size);
+    }
+    if (caustics_grid_offsets_buffer.isAllocated()) {
+        caustics_grid_offsets_buffer.zero(grid_size);
+    }
 }
 
 void BufferManager::downloadImage(unsigned char* output, int width, int height) {
