@@ -382,10 +382,17 @@ __device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir
                         const float cos_theta = fmaxf(0.0f, dot(make_float3(-photon_dir.x, -photon_dir.y, -photon_dir.z), hp_normal));
 
                         if (cos_theta > 0.0f) {
-                            // Atomic accumulation of flux
-                            atomicAdd(&hp.flux[0], flux.x * cos_theta);
-                            atomicAdd(&hp.flux[1], flux.y * cos_theta);
-                            atomicAdd(&hp.flux[2], flux.z * cos_theta);
+                            // Gaussian kernel: weight photons by distance.
+                            // Nearby photons contribute strongly, distant ones weakly.
+                            // sigma = radius/4, so weight ≈ 0 at the radius boundary.
+                            const float sigma_sq = radius_sq / 16.0f;
+                            const float kernel_weight = expf(-dist_sq / (2.0f * sigma_sq));
+
+                            // Atomic accumulation of flux (Gaussian-weighted)
+                            const float w = cos_theta * kernel_weight;
+                            atomicAdd(&hp.flux[0], flux.x * w);
+                            atomicAdd(&hp.flux[1], flux.y * w);
+                            atomicAdd(&hp.flux[2], flux.z * w);
 
                             // Count photons for this hit point (this iteration)
                             atomicAdd(&hp.new_photons, 1);
@@ -394,7 +401,7 @@ __device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir
                             if (params.caustics.stats) {
                                 atomicAdd(&params.caustics.stats->photons_deposited, 1ULL);
                                 const double deposited_flux = static_cast<double>(
-                                    (flux.x + flux.y + flux.z) * cos_theta
+                                    (flux.x + flux.y + flux.z) * w
                                 );
                                 atomicAdd(&params.caustics.stats->total_flux_deposited, deposited_flux);
                             }
@@ -870,7 +877,7 @@ extern "C" __global__ void __raygen__update_radii() {
             const float new_N = N + alpha * M;
             const float ratio = new_N / (N + M);
 
-            hp.radius = fmaxf(hp.radius * sqrtf(ratio), params.caustics.initial_radius * 0.5f);
+            hp.radius *= sqrtf(ratio);
             hp.n = static_cast<unsigned int>(new_N);
 
             // Scale flux to account for reduced radius
@@ -941,18 +948,15 @@ extern "C" __global__ void __raygen__caustics_radiance() {
         hp.flux[2] / area
     );
 
-    // Tone-map caustic radiance using Reinhard operator: L / (1 + L).
-    // The focal point has extreme dynamic range (center radiance >> edge radiance).
-    // Linear scaling cannot fix this — it either clips the center or dims the edges.
-    // Reinhard compresses highlights while preserving smooth falloff.
-    // caustic_exposure controls how bright mid-range caustics appear (higher = brighter).
-    const float caustic_exposure = 0.1f;
-    const float scaled_r = radiance.x * caustic_exposure;
-    const float scaled_g = radiance.y * caustic_exposure;
-    const float scaled_b = radiance.z * caustic_exposure;
-    const float mapped_r = scaled_r / (1.0f + scaled_r);
-    const float mapped_g = scaled_g / (1.0f + scaled_g);
-    const float mapped_b = scaled_b / (1.0f + scaled_b);
+    // Exponential tone mapping: 1 - exp(-L * exposure).
+    // Preserves more center-to-edge contrast than Reinhard (which flattens
+    // everything above a threshold to near-uniform brightness). The exponential
+    // curve maps low radiance nearly linearly, producing a smooth polynomial-like
+    // falloff from the bright focal center to the dim outer ring.
+    const float caustic_exposure = 0.06f;
+    const float mapped_r = 1.0f - expf(-radiance.x * caustic_exposure);
+    const float mapped_g = 1.0f - expf(-radiance.y * caustic_exposure);
+    const float mapped_b = 1.0f - expf(-radiance.z * caustic_exposure);
 
     // Add caustic radiance to the pixel (additive blending)
     const unsigned int pixel_idx = (hp.pixel_y * params.image_width + hp.pixel_x) * 4;
