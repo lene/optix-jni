@@ -128,10 +128,16 @@ void PipelineManager::createProgramGroups() {
     caustics_update_radii_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__update_radii"
     );
+    caustics_grid_count_raygen = optix_context.createRaygenProgramGroup(
+        module, "__raygen__grid_count"
+    );
+    caustics_grid_scatter_raygen = optix_context.createRaygenProgramGroup(
+        module, "__raygen__grid_scatter"
+    );
 }
 
 void PipelineManager::createPipeline() {
-    constexpr int NUM_PROGRAM_GROUPS = 13;  // raygen(1) + miss(2) + hitgroups: sphere(2)+tri(2)+cylinder(2)+caustics(4)
+    constexpr int NUM_PROGRAM_GROUPS = 15;  // raygen(1) + miss(2) + hitgroups: sphere(2)+tri(2)+cylinder(2)+caustics(6)
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -145,7 +151,9 @@ void PipelineManager::createPipeline() {
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
         caustics_radiance_raygen,
-        caustics_update_radii_raygen
+        caustics_update_radii_raygen,
+        caustics_grid_count_raygen,
+        caustics_grid_scatter_raygen
     };
 
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
@@ -314,6 +322,8 @@ void PipelineManager::cleanup(bool includeCaustics) {
         destroyProgramGroupIfExists(caustics_photons_raygen);
         destroyProgramGroupIfExists(caustics_radiance_raygen);
         destroyProgramGroupIfExists(caustics_update_radii_raygen);
+        destroyProgramGroupIfExists(caustics_grid_count_raygen);
+        destroyProgramGroupIfExists(caustics_grid_scatter_raygen);
     }
 
     // Check if cylinder_module is a separate module before destroying module

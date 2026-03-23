@@ -292,11 +292,12 @@ extern "C" __global__ void __raygen__hitpoints() {
 //==============================================================================
 
 /**
- * CUDA kernel to count hit points per grid cell.
+ * OptiX raygen program to count hit points per grid cell.
  * Called after hit point generation to build spatial hash grid.
+ * Launch with dimensions = (num_hit_points, 1).
  */
-extern "C" __global__ void __caustics_count_grid_cells() {
-    const unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+extern "C" __global__ void __raygen__grid_count() {
+    const unsigned int idx = optixGetLaunchIndex().x;
     if (idx >= *params.caustics.num_hit_points) return;
 
     const HitPoint& hp = params.caustics.hit_points[idx];
@@ -306,6 +307,31 @@ extern "C" __global__ void __caustics_count_grid_cells() {
     const unsigned int cell_idx = getCausticsGridIndex(cell);
 
     atomicAdd(&params.caustics.grid_counts[cell_idx], 1);
+}
+
+/**
+ * OptiX raygen program to scatter hit point indices into grid-sorted order.
+ * After grid_count fills grid_counts and host computes prefix sum (grid_offsets),
+ * this kernel places each hit point's index into the sorted grid array.
+ * grid_counts is zeroed before this pass and refilled during scatter.
+ * Launch with dimensions = (num_hit_points, 1).
+ */
+extern "C" __global__ void __raygen__grid_scatter() {
+    const unsigned int idx = optixGetLaunchIndex().x;
+    if (idx >= *params.caustics.num_hit_points) return;
+
+    const HitPoint& hp = params.caustics.hit_points[idx];
+    const float3 pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
+
+    const uint3 cell = getCausticsGridCell(pos);
+    const unsigned int cell_idx = getCausticsGridIndex(cell);
+
+    // Atomically claim a slot within this cell's range
+    const unsigned int slot = atomicAdd(&params.caustics.grid_counts[cell_idx], 1);
+    const unsigned int sorted_pos = params.caustics.grid_offsets[cell_idx] + slot;
+
+    // Store hit point index in sorted position
+    params.caustics.grid[sorted_pos] = idx;
 }
 
 //==============================================================================
@@ -324,42 +350,56 @@ extern "C" __global__ void __caustics_count_grid_cells() {
  * @param flux RGB energy carried by photon
  */
 __device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir, const float3& flux) {
-    // Simple brute-force search through all hit points
-    // TODO: Use spatial hash grid for efficiency once grid building is implemented
-    const unsigned int num_hp = *params.caustics.num_hit_points;
+    // Grid-accelerated search: check only hit points in 3x3x3 cell neighborhood
+    const uint3 cell = getCausticsGridCell(photon_pos);
+    const int grid_res = static_cast<int>(params.caustics.grid_resolution);
 
-    // Check all hit points (slow but accurate for debugging)
-    for (unsigned int hp_idx = 0; hp_idx < num_hp; hp_idx += 1) {
-        HitPoint& hp = params.caustics.hit_points[hp_idx];
+    for (int dz = -1; dz <= 1; ++dz) {
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                const int nx = min(max(static_cast<int>(cell.x) + dx, 0), grid_res - 1);
+                const int ny = min(max(static_cast<int>(cell.y) + dy, 0), grid_res - 1);
+                const int nz = min(max(static_cast<int>(cell.z) + dz, 0), grid_res - 1);
+                const uint3 neighbor = make_uint3(nx, ny, nz);
+                const unsigned int ci = getCausticsGridIndex(neighbor);
+                const unsigned int start = params.caustics.grid_offsets[ci];
+                const unsigned int count = params.caustics.grid_counts[ci];
 
-        // Compute distance from photon to hit point
-        const float3 hp_pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
-        const float3 diff = photon_pos - hp_pos;
-        const float dist_sq = dot(diff, diff);
-        const float radius_sq = hp.radius * hp.radius;
+                for (unsigned int i = start; i < start + count; ++i) {
+                    const unsigned int hp_idx = params.caustics.grid[i];
+                    HitPoint& hp = params.caustics.hit_points[hp_idx];
 
-        // Check if photon is within hit point's gather radius
-        if (dist_sq < radius_sq) {
-            // Weight by cosine of angle (Lambertian BRDF)
-            const float3 hp_normal = make_float3(hp.normal[0], hp.normal[1], hp.normal[2]);
-            const float cos_theta = fmaxf(0.0f, dot(make_float3(-photon_dir.x, -photon_dir.y, -photon_dir.z), hp_normal));
+                    // Compute distance from photon to hit point
+                    const float3 hp_pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
+                    const float3 diff = photon_pos - hp_pos;
+                    const float dist_sq = dot(diff, diff);
+                    const float radius_sq = hp.radius * hp.radius;
 
-            if (cos_theta > 0.0f) {
-                // Atomic accumulation of flux
-                atomicAdd(&hp.flux[0], flux.x * cos_theta);
-                atomicAdd(&hp.flux[1], flux.y * cos_theta);
-                atomicAdd(&hp.flux[2], flux.z * cos_theta);
+                    // Check if photon is within hit point's gather radius
+                    if (dist_sq < radius_sq) {
+                        // Weight by cosine of angle (Lambertian BRDF)
+                        const float3 hp_normal = make_float3(hp.normal[0], hp.normal[1], hp.normal[2]);
+                        const float cos_theta = fmaxf(0.0f, dot(make_float3(-photon_dir.x, -photon_dir.y, -photon_dir.z), hp_normal));
 
-                // Count photons for this hit point (this iteration)
-                atomicAdd(&hp.new_photons, 1);
+                        if (cos_theta > 0.0f) {
+                            // Atomic accumulation of flux
+                            atomicAdd(&hp.flux[0], flux.x * cos_theta);
+                            atomicAdd(&hp.flux[1], flux.y * cos_theta);
+                            atomicAdd(&hp.flux[2], flux.z * cos_theta);
 
-                // C4: Track deposition statistics
-                if (params.caustics.stats) {
-                    atomicAdd(&params.caustics.stats->photons_deposited, 1ULL);
-                    const double deposited_flux = static_cast<double>(
-                        (flux.x + flux.y + flux.z) * cos_theta
-                    );
-                    atomicAdd(&params.caustics.stats->total_flux_deposited, deposited_flux);
+                            // Count photons for this hit point (this iteration)
+                            atomicAdd(&hp.new_photons, 1);
+
+                            // C4: Track deposition statistics
+                            if (params.caustics.stats) {
+                                atomicAdd(&params.caustics.stats->photons_deposited, 1ULL);
+                                const double deposited_flux = static_cast<double>(
+                                    (flux.x + flux.y + flux.z) * cos_theta
+                                );
+                                atomicAdd(&params.caustics.stats->total_flux_deposited, deposited_flux);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -477,6 +517,8 @@ __device__ bool handlePhotonSphereHit(
     const float sin_theta_i_sq = 1.0f - cos_theta_i * cos_theta_i;
     const float sin_theta_t_sq = eta * eta * sin_theta_i_sq;
 
+
+
     // Apply Beer-Lambert absorption when exiting
     applyPhotonBeerLambert(flux, t, entering);
 
@@ -497,6 +539,16 @@ __device__ bool handlePhotonSphereHit(
         if (params.caustics.stats) {
             atomicAdd(&params.caustics.stats->refraction_events, 1ULL);
         }
+
+        // Schlick's Fresnel approximation: attenuate transmitted photon flux.
+        // Marginal rays (steep angles) lose more energy to reflection.
+        const float r0 = (n1 - n2) / (n1 + n2);
+        const float R0 = r0 * r0;  // ~0.04 for glass IOR 1.5
+        const float one_minus_cos = 1.0f - cos_theta_i;
+        const float one_minus_cos5 = one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+        const float fresnel = R0 + (1.0f - R0) * one_minus_cos5;
+        flux = make_float3(flux.x * (1.0f - fresnel), flux.y * (1.0f - fresnel), flux.z * (1.0f - fresnel));
+
         const float cos_theta_t = sqrtf(1.0f - sin_theta_t_sq);
         const float3 refract_dir = make_float3(
             eta * dir.x + (eta * cos_theta_i - cos_theta_t) * normal.x,
@@ -581,18 +633,21 @@ __device__ void tracePhoton(
     );
     const float sphere_radius = params.caustics.sphere_radius;
 
+    bool hit_sphere = false;
+
     for (int bounce = 0; bounce < max_bounces; ++bounce) {
         // Check sphere intersection
         const float t = intersectSphere(origin, dir, sphere_center, sphere_radius);
 
         if (t > 0.0f) {
             // Photon hits sphere - apply refraction/reflection
+            hit_sphere = true;
             handlePhotonSphereHit(origin, dir, flux, t, sphere_center);
             continue;
         }
 
-        // Sphere missed - check plane intersection
-        if (checkPlaneIntersection(origin, dir, flux)) {
+        // Sphere missed - only deposit if photon has refracted through sphere
+        if (hit_sphere && checkPlaneIntersection(origin, dir, flux)) {
             return;  // Photon deposited on plane
         }
 
@@ -601,7 +656,7 @@ __device__ void tracePhoton(
             atomicAdd(&params.caustics.stats->sphere_misses, 1ULL);
         }
 
-        return;  // Photon escaped scene
+        return;  // Photon escaped scene (or missed sphere entirely)
     }
 }
 
@@ -656,15 +711,16 @@ __device__ void emitDirectionalPhoton(
 }
 
 /**
- * Emit a photon from a point light source.
+ * Emit a photon from a point light source toward the glass sphere.
  *
- * Generates a ray in a random direction from the light position
- * using uniform sphere sampling.
+ * Uses importance sampling: samples directions within a cone subtending
+ * the sphere (with margin), so most photons hit the sphere rather than
+ * being wasted in random directions.
  *
  * @param light The point light source
  * @param seed RNG seed (modified in place)
  * @param photon_origin Output: photon starting position (light position)
- * @param photon_dir Output: photon direction (normalized, random)
+ * @param photon_dir Output: photon direction (normalized, toward sphere)
  */
 __device__ void emitPointPhoton(
     const Light& light,
@@ -677,7 +733,33 @@ __device__ void emitPointPhoton(
         light.position[1],
         light.position[2]
     );
-    photon_dir = sampleSphere(rnd(seed), rnd(seed));
+
+    const float3 sphere_center = make_float3(
+        params.caustics.sphere_center[0],
+        params.caustics.sphere_center[1],
+        params.caustics.sphere_center[2]
+    );
+    const float3 to_sphere = sphere_center - photon_origin;
+    const float dist = length(to_sphere);
+    const float3 axis = to_sphere / dist;
+
+    // Cone half-angle covering the sphere with margin for edge rays
+    const float target_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.sphere_radius;
+    const float sin_theta_max = fminf(target_radius / dist, 1.0f);
+    const float cos_theta_max = sqrtf(1.0f - sin_theta_max * sin_theta_max);
+
+    // Uniform sampling within cone
+    const float cos_theta = 1.0f - rnd(seed) * (1.0f - cos_theta_max);
+    const float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
+    const float phi = 2.0f * M_PIf * rnd(seed);
+
+    // Build local frame around axis to sphere
+    float3 tangent, bitangent;
+    createONB(axis, tangent, bitangent);
+
+    photon_dir = normalize(
+        axis * cos_theta + tangent * (sin_theta * cosf(phi)) + bitangent * (sin_theta * sinf(phi))
+    );
 }
 
 /**
@@ -788,7 +870,7 @@ extern "C" __global__ void __raygen__update_radii() {
             const float new_N = N + alpha * M;
             const float ratio = new_N / (N + M);
 
-            hp.radius *= sqrtf(ratio);
+            hp.radius = fmaxf(hp.radius * sqrtf(ratio), params.caustics.initial_radius * 0.5f);
             hp.n = static_cast<unsigned int>(new_N);
 
             // Scale flux to account for reduced radius
@@ -859,13 +941,18 @@ extern "C" __global__ void __raygen__caustics_radiance() {
         hp.flux[2] / area
     );
 
-    // Scale caustic contribution
-    // With the corrected formula (no double-normalization), values should be
-    // in a reasonable range. A small scale may still be needed to account for:
-    // - Light intensity calibration differences
-    // - Scene-specific exposure adjustment
-    // Start with 1.0 (physics-based), adjust if caustics are too dim/bright.
-    const float caustic_scale = 1.0f;
+    // Tone-map caustic radiance using Reinhard operator: L / (1 + L).
+    // The focal point has extreme dynamic range (center radiance >> edge radiance).
+    // Linear scaling cannot fix this — it either clips the center or dims the edges.
+    // Reinhard compresses highlights while preserving smooth falloff.
+    // caustic_exposure controls how bright mid-range caustics appear (higher = brighter).
+    const float caustic_exposure = 0.1f;
+    const float scaled_r = radiance.x * caustic_exposure;
+    const float scaled_g = radiance.y * caustic_exposure;
+    const float scaled_b = radiance.z * caustic_exposure;
+    const float mapped_r = scaled_r / (1.0f + scaled_r);
+    const float mapped_g = scaled_g / (1.0f + scaled_g);
+    const float mapped_b = scaled_b / (1.0f + scaled_b);
 
     // Add caustic radiance to the pixel (additive blending)
     const unsigned int pixel_idx = (hp.pixel_y * params.image_width + hp.pixel_x) * 4;
@@ -875,14 +962,16 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     const float cur_g = static_cast<float>(params.image[pixel_idx + 1]) / COLOR_BYTE_MAX;
     const float cur_b = static_cast<float>(params.image[pixel_idx + 2]) / COLOR_BYTE_MAX;
 
-    // Add caustic contribution (with clamping)
-    const float new_r = fminf(cur_r + radiance.x * caustic_scale, 1.0f);
-    const float new_g = fminf(cur_g + radiance.y * caustic_scale, 1.0f);
-    const float new_b = fminf(cur_b + radiance.z * caustic_scale, 1.0f);
+    // Screen blend: 1 - (1-base)*(1-caustic). Naturally approaches 1.0
+    // without hard clipping, preserving smooth falloff even when both
+    // the base floor and caustic center are bright.
+    const float new_r = 1.0f - (1.0f - cur_r) * (1.0f - mapped_r);
+    const float new_g = 1.0f - (1.0f - cur_g) * (1.0f - mapped_g);
+    const float new_b = 1.0f - (1.0f - cur_b) * (1.0f - mapped_b);
 
     // C7: Track brightness metrics
     if (params.caustics.stats) {
-        const float caustic_brightness = (radiance.x + radiance.y + radiance.z) * caustic_scale / 3.0f;
+        const float caustic_brightness = (mapped_r + mapped_g + mapped_b) / 3.0f;
         // Atomic max for non-negative floats: This is a standard CUDA idiom.
         // IEEE 754 guarantees that for non-negative floats, the bit representation
         // preserves ordering (larger float = larger unsigned int when interpreted as bits).

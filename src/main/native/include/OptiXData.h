@@ -75,9 +75,9 @@ namespace RayTracingConstants {
     constexpr int MAX_HIT_POINTS = 2000000;         // Maximum stored hit points for caustics
     constexpr int DEFAULT_PHOTONS_PER_ITER = 100000; // Photons emitted per PPM iteration
     constexpr int DEFAULT_CAUSTICS_ITERATIONS = 10;  // Number of PPM iterations
-    constexpr float DEFAULT_INITIAL_RADIUS = 0.1f;   // Initial photon gather radius
+    constexpr float DEFAULT_INITIAL_RADIUS = 1.0f;   // Initial photon gather radius
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
-    constexpr int CAUSTICS_GRID_RESOLUTION = 128;    // Spatial hash grid resolution (128^3 cells)
+    constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
     constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
 
     // Numerical thresholds

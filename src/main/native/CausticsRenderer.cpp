@@ -1,8 +1,10 @@
 #include "include/CausticsRenderer.h"
 #include "include/SceneParameters.h"
 #include "include/OptiXErrorChecking.h"
+#include "include/OptiXData.h"
 #include <iostream>
 #include <algorithm>
+#include <vector>
 
 CausticsRenderer::CausticsRenderer(
     OptiXContext& context,
@@ -86,6 +88,13 @@ void CausticsRenderer::renderWithCaustics(
         cudaMemcpyDeviceToHost
     ));
     std::cout << "[Caustics] Phase 1: Collected " << num_hit_points << " hit points" << std::endl;
+
+    // =====================================
+    // Grid Building: Spatial acceleration for photon deposition
+    // =====================================
+    if (num_hit_points > 0) {
+        buildGrid(num_hit_points, scene, width, height, params);
+    }
 
     // =====================================
     // Pass 2-N: Photon Tracing Iterations
@@ -175,4 +184,73 @@ void CausticsRenderer::renderWithCaustics(
 
     // Download caustics stats for validation
     buffer_manager.downloadCausticsStats(&last_caustics_stats);
+}
+
+void CausticsRenderer::buildGrid(
+    unsigned int num_hit_points,
+    const SceneParameters& scene,
+    int width,
+    int height,
+    Params& params
+) {
+    // Step 1: Zero grid counts
+    buffer_manager.zeroCausticsGridCounts();
+    buffer_manager.uploadParams(params);
+
+    // Step 2: Count hit points per cell
+    launchCausticsPass(
+        scene, width, height,
+        pipeline_manager.getCausticsGridCountRaygen(),
+        num_hit_points, 1
+    );
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    // Step 3: CPU-side exclusive prefix sum → grid_offsets
+    const unsigned int grid_res = params.caustics.grid_resolution;
+    const size_t grid_cells = static_cast<size_t>(grid_res) * grid_res * grid_res;
+
+    std::vector<unsigned int> counts(grid_cells);
+    CUDA_CHECK(cudaMemcpy(
+        counts.data(),
+        reinterpret_cast<void*>(buffer_manager.getCausticsGridCountsBuffer()),
+        grid_cells * sizeof(unsigned int),
+        cudaMemcpyDeviceToHost
+    ));
+
+    std::vector<unsigned int> offsets(grid_cells);
+    unsigned int running_sum = 0;
+    for (size_t i = 0; i < grid_cells; ++i) {
+        offsets[i] = running_sum;
+        running_sum += counts[i];
+    }
+
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(buffer_manager.getCausticsGridOffsetsBuffer()),
+        offsets.data(),
+        grid_cells * sizeof(unsigned int),
+        cudaMemcpyHostToDevice
+    ));
+
+    // Step 4: Zero only grid_counts (reused as insertion counters during scatter)
+    // Don't call zeroCausticsGridCounts() since that also zeros grid_offsets
+    CUDA_CHECK(cudaMemset(
+        reinterpret_cast<void*>(buffer_manager.getCausticsGridCountsBuffer()),
+        0,
+        grid_cells * sizeof(unsigned int)
+    ));
+
+    // Step 5: Scatter hit point indices into sorted grid array
+    launchCausticsPass(
+        scene, width, height,
+        pipeline_manager.getCausticsGridScatterRaygen(),
+        num_hit_points, 1
+    );
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    // After scatter, grid_counts is restored to original values (each hit point
+    // does exactly one atomicAdd on its cell). grid_offsets + grid_counts define
+    // the range of hit point indices per cell in the grid[] array.
+
+    std::cout << "[Caustics] Grid built: " << grid_res << "^3 cells, "
+              << num_hit_points << " entries" << std::endl;
 }

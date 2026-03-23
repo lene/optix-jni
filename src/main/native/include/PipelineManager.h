@@ -40,6 +40,8 @@ public:
     OptixProgramGroup getCausticsPhotonsRaygen() const { return caustics_photons_raygen; }
     OptixProgramGroup getCausticsRadianceRaygen() const { return caustics_radiance_raygen; }
     OptixProgramGroup getCausticsUpdateRadiiRaygen() const { return caustics_update_radii_raygen; }
+    OptixProgramGroup getCausticsGridCountRaygen() const { return caustics_grid_count_raygen; }
+    OptixProgramGroup getCausticsGridScatterRaygen() const { return caustics_grid_scatter_raygen; }
 
     // Temporary SBT for caustics passes
     CUdeviceptr createTempRaygenSBTRecord(OptixProgramGroup raygen, const SceneParameters& scene);
@@ -71,6 +73,8 @@ private:
     OptixProgramGroup caustics_photons_raygen = nullptr;
     OptixProgramGroup caustics_radiance_raygen = nullptr;
     OptixProgramGroup caustics_update_radii_raygen = nullptr;
+    OptixProgramGroup caustics_grid_count_raygen = nullptr;
+    OptixProgramGroup caustics_grid_scatter_raygen = nullptr;
 
     // Shader Binding Table and params buffer
     OptixShaderBindingTable sbt = {};

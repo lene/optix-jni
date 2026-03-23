@@ -10,6 +10,7 @@
 #include "include/VectorMath.h"
 #include <iostream>
 #include <cstring>
+#include <algorithm>
 #include <cmath>
 #include <vector>
 #include <map>
@@ -688,6 +689,15 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.sphere_ior = sphere.ior;
         params.sphere_scale = sphere.scale;
 
+        // Multi-object scenes store IOR per-instance, not in legacy sphere params.
+        // Override sphere_ior from first sphere instance so caustics shader gets correct IOR.
+        for (const auto& inst : impl->instances) {
+            if (inst.geometry_type == GEOMETRY_TYPE_SPHERE) {
+                params.sphere_ior = inst.ior;
+                break;
+            }
+        }
+
         // Copy lights array
         params.num_lights = impl->scene.getNumLights();
         for (int i = 0; i < impl->scene.getNumLights(); ++i) {
@@ -725,7 +735,24 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.caustics.grid = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridBuffer());
         params.caustics.grid_counts = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridCountsBuffer());
         params.caustics.grid_offsets = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridOffsetsBuffer());
-        params.caustics.grid_resolution = RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
+
+        // Spatial grid: fixed bounds covering canonical scene geometry
+        params.caustics.grid_min[0] = -3.0f;
+        params.caustics.grid_min[1] = -3.0f;
+        params.caustics.grid_min[2] = -3.0f;
+        params.caustics.grid_max[0] = 3.0f;
+        params.caustics.grid_max[1] = 3.0f;
+        params.caustics.grid_max[2] = 3.0f;
+        // Cell size = initial radius so 3x3x3 neighborhood covers gather radius
+        params.caustics.cell_size = params.caustics.initial_radius;
+        const float grid_extent = params.caustics.grid_max[0] - params.caustics.grid_min[0];
+        const unsigned int computed_res = static_cast<unsigned int>(
+            std::ceil(grid_extent / params.caustics.cell_size)
+        );
+        params.caustics.grid_resolution = std::min(
+            computed_res,
+            static_cast<unsigned int>(RayTracingConstants::CAUSTICS_GRID_RESOLUTION)
+        );
         params.caustics.total_photons_traced = 0;
         params.caustics.stats = reinterpret_cast<CausticsStats*>(impl->buffer_manager.getCausticsStatsBuffer());
 

@@ -20,7 +20,7 @@ case class CausticsConfig(
   enabled: Boolean = false,
   photonsPerIteration: Int = 100000,
   iterations: Int = 10,
-  initialRadius: Float = 0.1f,
+  initialRadius: Float = 1.0f,
   alpha: Float = 0.7f
 ):
   require(photonsPerIteration > 0 && photonsPerIteration <= 10000000, s"photonsPerIteration must be 1-10000000, got $photonsPerIteration")

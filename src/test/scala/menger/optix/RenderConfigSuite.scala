@@ -46,7 +46,7 @@ class RenderConfigSuite extends AnyFlatSpec with Matchers:
     config.enabled shouldBe false
     config.photonsPerIteration shouldBe 100000
     config.iterations shouldBe 10
-    config.initialRadius shouldBe 0.1f
+    config.initialRadius shouldBe 1.0f
     config.alpha shouldBe 0.7f
 
   it should "create Disabled preset correctly" in:

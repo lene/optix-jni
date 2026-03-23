@@ -53,6 +53,15 @@ private:
         int launch_width,
         int launch_height
     );
+
+    // Build spatial grid for accelerated photon deposition
+    void buildGrid(
+        unsigned int num_hit_points,
+        const SceneParameters& scene,
+        int width,
+        int height,
+        Params& params
+    );
 };
 
 #endif // CAUSTICS_RENDERER_H

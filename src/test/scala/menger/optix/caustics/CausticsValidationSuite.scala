@@ -235,7 +235,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
     val withoutCaustics = renderer.renderWithStats(CanonicalScene.imageSize)
 
     // Render with caustics
-    renderer.enableCaustics(photonsPerIter = 5000, iterations = 1)
+    renderer.enableCaustics(photonsPerIter = 10000, iterations = 2)
     val withCaustics = renderer.renderWithStats(CanonicalScene.imageSize)
 
     // Images should differ

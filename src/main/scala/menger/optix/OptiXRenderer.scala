@@ -240,7 +240,7 @@ class OptiXRenderer extends LazyLogging:
   def enableCaustics(
     photonsPerIter: Int = 100000,
     iterations: Int = 10,
-    initialRadius: Float = 0.1f,
+    initialRadius: Float = 1.0f,
     alpha: Float = 0.7f
   ): Unit =
     setCaustics(true, photonsPerIter, iterations, initialRadius, alpha)
