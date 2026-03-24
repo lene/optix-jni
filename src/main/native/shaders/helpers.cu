@@ -29,6 +29,32 @@
  * @param alpha Material opacity [0,1] (0=transparent, 1=opaque)
  * @param color Material RGBA color (RGB channels used for per-wavelength attenuation)
  */
+/**
+ * Accumulate shadow attenuation through a transparent object using screen blend.
+ *
+ * Called from anyhit programs when a shadow ray passes through a transparent surface.
+ * Each transparent hit multiplies the remaining transmission by that object's transmission.
+ *
+ * Formula (per channel): new_atten = 1 - (1 - old_atten) * (1 - alpha * (1 - color_ch))
+ *
+ * Attenuation semantics: 0.0 = channel passes through, 1.0 = channel fully blocked.
+ * Payloads initialized to 0.0 by traceShadowRay().
+ *
+ * @param alpha Material opacity [0,1]
+ * @param color Material RGBA color (RGB used for per-wavelength attenuation)
+ */
+__device__ void accumulateShadowAttenuation(float alpha, const float4& color) {
+    const float old_r = __uint_as_float(optixGetPayload_0());
+    const float old_g = __uint_as_float(optixGetPayload_1());
+    const float old_b = __uint_as_float(optixGetPayload_2());
+    const float new_r = 1.0f - (1.0f - old_r) * (1.0f - alpha * (1.0f - color.x));
+    const float new_g = 1.0f - (1.0f - old_g) * (1.0f - alpha * (1.0f - color.y));
+    const float new_b = 1.0f - (1.0f - old_b) * (1.0f - alpha * (1.0f - color.z));
+    optixSetPayload_0(__float_as_uint(new_r));
+    optixSetPayload_1(__float_as_uint(new_g));
+    optixSetPayload_2(__float_as_uint(new_b));
+}
+
 __device__ void setShadowPayload(float alpha, const float4& color) {
     if (params.transparent_shadows_enabled) {
         optixSetPayload_0(__float_as_uint(alpha * (1.0f - color.x)));

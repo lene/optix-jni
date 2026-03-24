@@ -297,6 +297,29 @@ extern "C" __global__ void __closesthit__triangle() {
 }
 
 //==============================================================================
+// Triangle shadow ray anyhit - accumulates attenuation through transparent meshes
+//==============================================================================
+extern "C" __global__ void __anyhit__triangle_shadow() {
+    if (!params.transparent_shadows_enabled) return;
+
+    // Back-face hits indicate ray exiting the mesh — ignore to count each object once.
+    if (optixGetHitKind() == OPTIX_HIT_KIND_TRIANGLE_BACK_FACE) {
+        optixIgnoreIntersection();
+        return;
+    }
+
+    float4 material_color;
+    float material_ior;
+    getInstanceMaterial(material_color, material_ior);
+
+    const float alpha = material_color.w;
+    if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
+
+    accumulateShadowAttenuation(alpha, material_color);
+    optixIgnoreIntersection();
+}
+
+//==============================================================================
 // Triangle shadow ray closest hit - marks ray as occluded
 //==============================================================================
 extern "C" __global__ void __closesthit__triangle_shadow() {

@@ -87,9 +87,10 @@ void PipelineManager::createProgramGroups() {
         module, "__intersection__sphere"
     );
 
-    // Shadow ray hit group (only closest hit, same intersection program)
-    shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
+    // Shadow ray hit group — with anyhit for multi-object transparent accumulation
+    shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
         module, "__closesthit__shadow",
+        module, "__anyhit__shadow",
         module, "__intersection__sphere"
     );
 
@@ -98,9 +99,10 @@ void PipelineManager::createProgramGroups() {
         module, "__closesthit__triangle"
     );
 
-    // Triangle shadow hit group
-    triangle_shadow_hitgroup_prog_group = optix_context.createTriangleHitgroupProgramGroup(
-        module, "__closesthit__triangle_shadow"
+    // Triangle shadow hit group — with anyhit for multi-object transparent accumulation
+    triangle_shadow_hitgroup_prog_group = optix_context.createTriangleHitgroupProgramGroupWithAH(
+        module, "__closesthit__triangle_shadow",
+        module, "__anyhit__triangle_shadow"
     );
 
     // Cylinder hit groups (custom intersection from cylinder module)
@@ -109,9 +111,10 @@ void PipelineManager::createProgramGroups() {
         cylinder_module, "__intersection__cylinder"
     );
 
-    // Cylinder shadow hit group
-    cylinder_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
+    // Cylinder shadow hit group — with anyhit for multi-object transparent accumulation
+    cylinder_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
         cylinder_module, "__closesthit__cylinder_shadow",
+        cylinder_module, "__anyhit__cylinder_shadow",
         cylinder_module, "__intersection__cylinder"
     );
 

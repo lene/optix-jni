@@ -295,6 +295,20 @@ extern "C" __global__ void __closesthit__cylinder() {
 // Cylinder Shadow Programs
 //==============================================================================
 
+extern "C" __global__ void __anyhit__cylinder_shadow() {
+    if (!params.transparent_shadows_enabled) return;
+
+    float4 material_color;
+    float material_ior;
+    getInstanceMaterial(material_color, material_ior);
+
+    const float alpha = material_color.w;
+    if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
+
+    accumulateShadowAttenuation(alpha, material_color);
+    optixIgnoreIntersection();
+}
+
 extern "C" __global__ void __closesthit__cylinder_shadow() {
     float4 material_color;
     float material_ior;

@@ -65,6 +65,18 @@ public:
         const char* entry_ch
     );
 
+    // Create hitgroup with anyhit program (for shadow accumulation through multiple transparent objects)
+    OptixProgramGroup createHitgroupProgramGroupWithAH(
+        OptixModule module_ch, const char* entry_ch,
+        OptixModule module_ah, const char* entry_ah,
+        OptixModule module_is, const char* entry_is
+    );
+
+    OptixProgramGroup createTriangleHitgroupProgramGroupWithAH(
+        OptixModule module_ch, const char* entry_ch,
+        OptixModule module_ah, const char* entry_ah
+    );
+
     void destroyProgramGroup(OptixProgramGroup program_group);
 
     // Pipeline management
