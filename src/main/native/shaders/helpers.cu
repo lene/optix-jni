@@ -125,6 +125,91 @@ __device__ float3 traceShadowRay(
 //==============================================================================
 
 /**
+ * Create an orthonormal tangent basis from a surface normal.
+ * Used to sample points on area light disks.
+ *
+ * @param n  Input normal (must be normalized)
+ * @param t  Output tangent vector
+ * @param b  Output bitangent vector
+ */
+__device__ void createONBFromNormal(const float3& n, float3& t, float3& b) {
+    if (fabsf(n.x) > fabsf(n.z))
+        t = normalize(make_float3(-n.y, n.x, 0.0f));
+    else
+        t = normalize(make_float3(0.0f, -n.z, n.y));
+    b = cross(n, t);
+}
+
+/**
+ * Sample a point on an area light disk using stratified + pixel-hash jitter.
+ *
+ * Divides the disk into equal-area radial strata (one per sample), then applies
+ * a per-pixel hash so adjacent pixels get different jitter — no structured noise.
+ * Deterministic: same pixel + same sample index always returns the same point.
+ *
+ * @param center       Disk center in world space
+ * @param t            Disk tangent vector (from createONBFromNormal)
+ * @param b            Disk bitangent vector
+ * @param radius       Disk radius in world units
+ * @param sample_idx   Sample index [0, total_samples)
+ * @param total_samples Total number of samples
+ * @param pixel        Launch index (pixel coordinates) used as hash seed
+ * @return             Sampled world-space point on the disk
+ */
+__device__ float3 sampleDiskPoint(
+    const float3& center, const float3& t, const float3& b,
+    float radius, int sample_idx, int total_samples, uint2 pixel
+) {
+    const unsigned int seed = pixel.x * 1973u + pixel.y * 9277u
+                            + static_cast<unsigned int>(sample_idx) * 26699u;
+    const float u = static_cast<float>(seed ^ (seed >> 16)) / 4294967296.0f;
+    const float v = static_cast<float>((seed * 2654435761u) ^ (seed >> 13)) / 4294967296.0f;
+    // Equal-area stratification: sqrt maps uniform-in-area to radius
+    const float r = radius * sqrtf((static_cast<float>(sample_idx) + u)
+                                   / static_cast<float>(total_samples));
+    const float theta = 2.0f * M_PI * v;
+    return center + r * (cosf(theta) * t + sinf(theta) * b);
+}
+
+/**
+ * Trace multiple shadow rays to a disk area light and return the per-channel average.
+ *
+ * Each ray is cast to a stratified sample on the disk surface. Shadow factors are
+ * accumulated via the full anyhit chain (colored shadows remain intact) and averaged
+ * per-channel across all samples.
+ *
+ * @param hit_point  Shaded surface point
+ * @param normal     Surface normal at hit_point
+ * @param light      Area light (must have type == AREA, shape == DISK)
+ * @return           Per-channel average shadow factor (0=fully shadowed, 1=fully lit)
+ */
+__device__ float3 traceAreaLightShadow(
+    const float3& hit_point,
+    const float3& normal,
+    const Light& light
+) {
+    const float3 disk_center = make_float3(light.position[0], light.position[1], light.position[2]);
+    const float3 disk_normal = make_float3(light.normal[0], light.normal[1], light.normal[2]);
+    float3 t, b;
+    createONBFromNormal(disk_normal, t, b);
+
+    const uint2 pixel = make_uint2(optixGetLaunchIndex().x, optixGetLaunchIndex().y);
+    float3 total_shadow = make_float3(0.0f, 0.0f, 0.0f);
+    const int n = light.shadow_samples;
+
+    for (int s = 0; s < n; ++s) {
+        const float3 sample_pt = sampleDiskPoint(disk_center, t, b, light.radius, s, n, pixel);
+        const float3 to_sample = sample_pt - hit_point;
+        const float dist = length(to_sample);
+        if (dist < RayTracingConstants::RAY_PARALLEL_THRESHOLD) continue;
+        const float3 dir = to_sample / dist;
+        total_shadow = total_shadow + traceShadowRay(hit_point, normal, dir);
+    }
+    // Per-channel average — preserves colored shadow tinting
+    return total_shadow / static_cast<float>(n);
+}
+
+/**
  * Calculate light direction and attenuation for directional light.
  */
 __device__ void getDirectionalLightParams(
@@ -214,6 +299,15 @@ __device__ float3 calculateLighting(
             getDirectionalLightParams(light, light_dir, attenuation);
         } else if (light.type == LightType::POINT) {
             getPointLightParams(light, hit_point, light_dir, attenuation);
+        } else if (light.type == LightType::AREA) {
+            // Direction and attenuation use disk center (N·L diffuse term only).
+            // The actual shadow sampling is stratified over the disk surface below.
+            const float3 to_center = make_float3(
+                light.position[0], light.position[1], light.position[2]
+            ) - hit_point;
+            const float dist = length(to_center);
+            light_dir = to_center / dist;
+            attenuation = 1.0f / (1.0f + dist * dist);  // Inverse-square to disk center
         }
 
         // Calculate diffuse term (Lambertian: N · L)
@@ -224,12 +318,16 @@ __device__ float3 calculateLighting(
             continue;
         }
 
-        // Trace shadow ray if shadows enabled (and not skipped for recursion avoidance)
+        // Trace shadow ray(s).
+        // Area lights cast N stratified rays to the disk surface; others cast one ray.
+        const float3 fully_lit = make_float3(SBTConstants::SHADOW_FACTOR_FULLY_LIT,
+                                             SBTConstants::SHADOW_FACTOR_FULLY_LIT,
+                                             SBTConstants::SHADOW_FACTOR_FULLY_LIT);
         const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
-            ? traceShadowRay(hit_point, normal, light_dir)
-            : make_float3(SBTConstants::SHADOW_FACTOR_FULLY_LIT,
-                          SBTConstants::SHADOW_FACTOR_FULLY_LIT,
-                          SBTConstants::SHADOW_FACTOR_FULLY_LIT);
+            ? (light.type == LightType::AREA
+                ? traceAreaLightShadow(hit_point, normal, light)
+                : traceShadowRay(hit_point, normal, light_dir))
+            : fully_lit;
 
         // Accumulate light contribution
         const float3 light_color = make_float3(

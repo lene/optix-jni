@@ -201,14 +201,20 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
             return;
         }
 
-        jfieldID typeField = env->GetFieldID(lightClass, "lightType", "I");
-        jfieldID directionField = env->GetFieldID(lightClass, "direction", "[F");
-        jfieldID positionField = env->GetFieldID(lightClass, "position", "[F");
-        jfieldID colorField = env->GetFieldID(lightClass, "color", "[F");
-        jfieldID intensityField = env->GetFieldID(lightClass, "intensity", "F");
+        jfieldID typeField      = env->GetFieldID(lightClass, "lightType",      "I");
+        jfieldID directionField = env->GetFieldID(lightClass, "direction",      "[F");
+        jfieldID positionField  = env->GetFieldID(lightClass, "position",       "[F");
+        jfieldID colorField     = env->GetFieldID(lightClass, "color",          "[F");
+        jfieldID intensityField = env->GetFieldID(lightClass, "intensity",      "F");
+        jfieldID shapeField     = env->GetFieldID(lightClass, "shape",          "I");
+        jfieldID normalField    = env->GetFieldID(lightClass, "normal",         "[F");
+        jfieldID radiusField    = env->GetFieldID(lightClass, "radius",         "F");
+        jfieldID samplesField   = env->GetFieldID(lightClass, "shadowSamples",  "I");
 
         if (typeField == nullptr || directionField == nullptr || positionField == nullptr ||
-            colorField == nullptr || intensityField == nullptr) {
+            colorField == nullptr || intensityField == nullptr ||
+            shapeField == nullptr || normalField == nullptr ||
+            radiusField == nullptr || samplesField == nullptr) {
             jclass exception_class = env->FindClass("java/lang/RuntimeException");
             env->ThrowNew(exception_class, "Failed to find Light fields");
             return;
@@ -243,6 +249,17 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
             env->ReleaseFloatArrayElements(colArray, colArr, 0);
 
             lights[i].intensity = env->GetFloatField(lightObj, intensityField);
+
+            // Area light fields (harmlessly ignored for DIRECTIONAL/POINT)
+            lights[i].shape = static_cast<AreaLightShape>(env->GetIntField(lightObj, shapeField));
+
+            jfloatArray normalArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, normalField));
+            jfloat* normalArr = env->GetFloatArrayElements(normalArray, nullptr);
+            std::memcpy(lights[i].normal, normalArr, 3 * sizeof(float));
+            env->ReleaseFloatArrayElements(normalArray, normalArr, 0);
+
+            lights[i].radius = env->GetFloatField(lightObj, radiusField);
+            lights[i].shadow_samples = env->GetIntField(lightObj, samplesField);
 
             env->DeleteLocalRef(lightObj);
         }

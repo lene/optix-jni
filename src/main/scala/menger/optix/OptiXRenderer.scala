@@ -25,6 +25,11 @@ import menger.common.{Light => CommonLight}
 private object LightTypeJNI:
   val DIRECTIONAL: Int = 0  // Parallel rays from infinity (sun-like), no distance attenuation
   val POINT: Int = 1         // Radiate from position, inverse-square falloff
+  val AREA: Int = 2          // Finite-size disk emitter, soft shadows via multi-sample
+
+// Area light shape (must match C++ AreaLightShape enum)
+object AreaLightShape:
+  val DISK: Int = 0  // Circular disk emitter (only shape currently supported)
 
 // Package-private case class for JNI boundary (matches C++ expectations)
 // Must be accessible to JNI (not private) but kept in menger.optix package
@@ -34,7 +39,11 @@ case class Light(
   direction: Array[Float],
   position: Array[Float],
   color: Array[Float],
-  intensity: Float
+  intensity: Float,
+  shape: Int = AreaLightShape.DISK,
+  normal: Array[Float] = Array(0f, -1f, 0f),
+  radius: Float = 1.0f,
+  shadowSamples: Int = 4
 )
 
 // Private helper to convert common.Light to JNI representation
@@ -55,6 +64,18 @@ private def toJNILight(light: CommonLight): Light =
         position = pos.toArray,
         color = color.toRGBArray,
         intensity = intensity
+      )
+    case CommonLight.Area(pos, norm, radius, shape, color, intensity, samples) =>
+      Light(
+        lightType = LightTypeJNI.AREA,
+        direction = Array(0f, 0f, 0f),  // Unused for area
+        position = pos.toArray,
+        color = color.toRGBArray,
+        intensity = intensity,
+        shape = shape.id,
+        normal = norm.toArray,
+        radius = radius,
+        shadowSamples = samples
       )
 
 // Ray statistics from OptiX rendering

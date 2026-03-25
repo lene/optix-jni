@@ -46,7 +46,8 @@ namespace RayTracingConstants {
     constexpr unsigned int PLANE_SOLID_LIGHT_GRAY = 200;    // Solid plane color (good for shadow visibility)
 
     // Multiple light sources
-    constexpr int MAX_LIGHTS = 8;  // Maximum number of simultaneous light sources
+    constexpr int MAX_LIGHTS = 8;         // Maximum number of simultaneous light sources
+    constexpr int MAX_SHADOW_SAMPLES = 16; // Maximum shadow samples per area light
 
     // Multiple planes (floor, walls, etc.)
     constexpr int MAX_PLANES = 4;  // Maximum number of simultaneous planes
@@ -222,16 +223,29 @@ constexpr unsigned int VERTEX_STRIDE_WITH_ALPHA = 9;  // 9 floats: pos(3) + norm
 // Light source types
 enum class LightType {
     DIRECTIONAL = 0,  // Parallel rays from infinity (sun-like), no distance attenuation
-    POINT = 1         // Radiate from position, inverse-square falloff
+    POINT = 1,        // Radiate from position, inverse-square falloff
+    AREA = 2          // Finite-size disk emitter; produces soft shadow penumbra via multi-sample tracing
+};
+
+// Area light emitter shapes — currently only DISK is implemented.
+// Enum is present at all layers (C++, JNI Scala, DSL) so future shapes (RECT=1, SPHERE=2)
+// can be added without changing any interface.
+enum class AreaLightShape {
+    DISK = 0   // Circular disk defined by position, normal, and radius
 };
 
 // Light source definition
 struct Light {
-    LightType type;       // Directional or point light
-    float direction[3];   // Direction TO light source (where light comes from) for directional lights
-    float position[3];    // Light position for point lights
+    LightType type;       // Directional, point, or area light
+    float direction[3];   // Direction TO light source (for DIRECTIONAL only)
+    float position[3];    // Light position (for POINT and AREA)
     float color[3];       // RGB color (0.0-1.0)
     float intensity;      // Brightness multiplier
+    // Area light fields — ignored for DIRECTIONAL and POINT:
+    AreaLightShape shape;  // Emitter shape (DISK only currently)
+    float normal[3];       // Disk facing direction, normalized, pointing toward scene
+    float radius;          // Disk radius in world units
+    int   shadow_samples;  // Number of shadow rays cast per shaded point (1–MAX_SHADOW_SAMPLES)
 };
 
 // Triangle mesh data for rendering arbitrary geometry (host-side)
