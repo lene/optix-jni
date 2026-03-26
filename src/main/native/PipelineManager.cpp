@@ -16,7 +16,7 @@ static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     // Allow both single GAS (backward compatible) and single-level instancing (IAS)
     options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS |
                                     OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
-    options.numPayloadValues = 4;  // RGB color + depth (optixSetPayload_0/1/2/3)
+    options.numPayloadValues = 10;  // Primary: RGB+depth (4), Photon: flux+origin+dir+flags (10)
     options.numAttributeValues = 4;  // Normal x, y, z + radius from SDK intersection
     options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     options.pipelineLaunchParamsVariableName = "params";
@@ -118,6 +118,19 @@ void PipelineManager::createProgramGroups() {
         cylinder_module, "__intersection__cylinder"
     );
 
+    // Photon ray hit groups (for caustics RAY_TYPE_PHOTON)
+    photon_sphere_hitgroup = optix_context.createHitgroupProgramGroup(
+        module, "__closesthit__photon",
+        module, "__intersection__sphere");
+    photon_triangle_hitgroup = optix_context.createTriangleHitgroupProgramGroup(
+        module, "__closesthit__photon");
+    photon_cylinder_hitgroup = optix_context.createHitgroupProgramGroup(
+        cylinder_module, "__closesthit__photon",
+        cylinder_module, "__intersection__cylinder");
+    // Photon miss program
+    photon_miss_prog_group = optix_context.createMissProgramGroup(
+        module, "__miss__photon");
+
     // Caustics raygen programs (for Progressive Photon Mapping)
     caustics_hitpoints_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__hitpoints"
@@ -140,7 +153,7 @@ void PipelineManager::createProgramGroups() {
 }
 
 void PipelineManager::createPipeline() {
-    constexpr int NUM_PROGRAM_GROUPS = 15;  // raygen(1) + miss(2) + hitgroups: sphere(2)+tri(2)+cylinder(2)+caustics(6)
+    constexpr int NUM_PROGRAM_GROUPS = 19;  // raygen(1) + miss(3) + hitgroups: sphere(3)+tri(3)+cylinder(3)+caustics(6)
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -151,6 +164,10 @@ void PipelineManager::createPipeline() {
         triangle_shadow_hitgroup_prog_group,
         cylinder_hitgroup_prog_group,
         cylinder_shadow_hitgroup_prog_group,
+        photon_sphere_hitgroup,
+        photon_triangle_hitgroup,
+        photon_cylinder_hitgroup,
+        photon_miss_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
         caustics_radiance_raygen,
@@ -191,13 +208,17 @@ void PipelineManager::createMissRecords() {
     ms_data.g = OptiXConstants::DEFAULT_BG_G;
     ms_data.b = OptiXConstants::DEFAULT_BG_B;
 
-    MissSbtRecord miss_records[2];
+    MissSbtRecord miss_records[3];
     optixSbtRecordPackHeader(miss_prog_group, &miss_records[0]);
     miss_records[0].data = ms_data;
 
     // Shadow miss has no data (just marks as not occluded)
     optixSbtRecordPackHeader(shadow_miss_prog_group, &miss_records[1]);
     miss_records[1].data = ms_data;  // Reuse same data (not used by shadow miss)
+
+    // Photon miss program
+    optixSbtRecordPackHeader(photon_miss_prog_group, &miss_records[2]);
+    miss_records[2].data = ms_data;  // Reuse same data (not used by photon miss)
 
     CUdeviceptr d_miss_records;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_miss_records), sizeof(miss_records)));
@@ -209,19 +230,20 @@ void PipelineManager::createMissRecords() {
     ));
     sbt.missRecordBase = d_miss_records;
     sbt.missRecordStrideInBytes = sizeof(MissSbtRecord);
-    sbt.missRecordCount = 2;
+    sbt.missRecordCount = 3;
 }
 
 void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
-    // SBT layout: [0]=sphere_primary, [1]=sphere_shadow, [2]=triangle_primary, [3]=triangle_shadow,
-    //             [4]=cylinder_primary, [5]=cylinder_shadow
-    // Offset calculation: geometry_type * 2 + ray_type (0=primary, 1=shadow)
+    // SBT layout: [0]=sphere_primary, [1]=sphere_shadow, [2]=sphere_photon,
+    //             [3]=triangle_primary, [4]=triangle_shadow, [5]=triangle_photon,
+    //             [6]=cylinder_primary, [7]=cylinder_shadow, [8]=cylinder_photon
+    // Offset calculation: geometry_type * 3 + ray_type (0=primary, 1=shadow, 2=photon)
     constexpr size_t record_size = std::max(sizeof(HitGroupSbtRecord), sizeof(TriangleHitGroupSbtRecord));
-    constexpr int num_records = 6;  // 3 geometry types * 2 ray types
+    constexpr int num_records = 9;  // 3 geometry types * 3 ray types
     char hitgroup_records[num_records * record_size];
     std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
 
-    // Sphere hitgroup records [0]=primary, [1]=shadow
+    // Sphere hitgroup records [0]=primary, [1]=shadow, [2]=photon
     const auto& sphere = scene.getSphere();
     HitGroupData sphere_data;
     std::memcpy(sphere_data.sphere_center, sphere.center, sizeof(float) * 3);
@@ -235,7 +257,11 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     optixSbtRecordPackHeader(shadow_hitgroup_prog_group, sphere_shadow);
     sphere_shadow->data = sphere_data;
 
-    // Triangle hitgroup records [2]=primary, [3]=shadow
+    HitGroupSbtRecord* sphere_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 2 * record_size);
+    optixSbtRecordPackHeader(photon_sphere_hitgroup, sphere_photon);
+    sphere_photon->data = sphere_data;
+
+    // Triangle hitgroup records [3]=primary, [4]=shadow, [5]=photon
     if (scene.hasTriangleMesh()) {
         const auto& mesh = scene.getTriangleMesh();
         TriangleHitGroupData tri_data;
@@ -245,24 +271,32 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
         std::memcpy(tri_data.color, mesh.color, sizeof(float) * 4);
         tri_data.ior = mesh.ior;
 
-        TriangleHitGroupSbtRecord* tri_primary = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 2 * record_size);
+        TriangleHitGroupSbtRecord* tri_primary = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 3 * record_size);
         optixSbtRecordPackHeader(triangle_hitgroup_prog_group, tri_primary);
         tri_primary->data = tri_data;
 
-        TriangleHitGroupSbtRecord* tri_shadow = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 3 * record_size);
+        TriangleHitGroupSbtRecord* tri_shadow = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 4 * record_size);
         optixSbtRecordPackHeader(triangle_shadow_hitgroup_prog_group, tri_shadow);
         tri_shadow->data = tri_data;
+
+        TriangleHitGroupSbtRecord* tri_photon = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 5 * record_size);
+        optixSbtRecordPackHeader(photon_triangle_hitgroup, tri_photon);
+        tri_photon->data = tri_data;
     }
 
-    // Cylinder hitgroup records [4]=primary, [5]=shadow
+    // Cylinder hitgroup records [6]=primary, [7]=shadow, [8]=photon
     // Cylinder data is stored per-instance in the GAS, so SBT record just needs header
-    HitGroupSbtRecord* cylinder_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 4 * record_size);
+    HitGroupSbtRecord* cylinder_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 6 * record_size);
     optixSbtRecordPackHeader(cylinder_hitgroup_prog_group, cylinder_primary);
     cylinder_primary->data = sphere_data;  // Placeholder data (not used by cylinder shader)
 
-    HitGroupSbtRecord* cylinder_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 5 * record_size);
+    HitGroupSbtRecord* cylinder_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 7 * record_size);
     optixSbtRecordPackHeader(cylinder_shadow_hitgroup_prog_group, cylinder_shadow);
     cylinder_shadow->data = sphere_data;  // Placeholder data (not used by cylinder shader)
+
+    HitGroupSbtRecord* cylinder_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 8 * record_size);
+    optixSbtRecordPackHeader(photon_cylinder_hitgroup, cylinder_photon);
+    cylinder_photon->data = sphere_data;  // Placeholder data (not used by cylinder shader)
 
     CUdeviceptr d_hitgroup_records;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
@@ -319,6 +353,10 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(triangle_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(cylinder_hitgroup_prog_group);
     destroyProgramGroupIfExists(cylinder_shadow_hitgroup_prog_group);
+    destroyProgramGroupIfExists(photon_sphere_hitgroup);
+    destroyProgramGroupIfExists(photon_triangle_hitgroup);
+    destroyProgramGroupIfExists(photon_cylinder_hitgroup);
+    destroyProgramGroupIfExists(photon_miss_prog_group);
 
     if (includeCaustics) {
         destroyProgramGroupIfExists(caustics_hitpoints_raygen);

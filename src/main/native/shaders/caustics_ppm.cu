@@ -417,67 +417,38 @@ __device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir
 // Progressive Photon Mapping - Photon Tracing Helpers (Phase 3)
 //==============================================================================
 
-/**
- * Intersect ray with sphere and return distance to nearest hit.
- * Returns -1.0f if no valid intersection.
- */
-__device__ float intersectSphere(
-    const float3& origin,
-    const float3& dir,
-    const float3& sphere_center,
-    float sphere_radius
-) {
-    const float3 oc = origin - sphere_center;
-    const float a = dot(dir, dir);
-    const float half_b = dot(oc, dir);
-    const float c = dot(oc, oc) - sphere_radius * sphere_radius;
-    const float discriminant = half_b * half_b - a * c;
-
-    if (discriminant <= 0.0f) {
-        return -1.0f;  // No intersection
-    }
-
-    const float sqrt_d = sqrtf(discriminant);
-    float t = (-half_b - sqrt_d) / a;  // Near intersection
-
-    if (t < CONTINUATION_RAY_OFFSET) {
-        t = (-half_b + sqrt_d) / a;  // Try far intersection
-    }
-
-    return (t > CONTINUATION_RAY_OFFSET) ? t : -1.0f;
-}
+// intersectSphere() removed — photon tracing now uses optixTrace(RAY_TYPE_PHOTON)
 
 /**
- * Apply Beer-Lambert absorption to photon flux when exiting the sphere.
+ * Apply Beer-Lambert absorption to photon flux when exiting refractive geometry.
  *
  * Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
  * Where α is derived from glass color and opacity.
  *
  * @param flux Photon flux (modified in place)
  * @param distance Distance traveled through the medium
- * @param entering True if photon is entering the sphere (no absorption)
+ * @param entering True if photon is entering the geometry (no absorption)
+ * @param glass_color RGBA material color array
+ * @param glass_alpha Material alpha (opacity)
+ * @param glass_scale Physical scale factor for absorption distance
  */
-__device__ void applyPhotonBeerLambert(float3& flux, float distance, bool entering) {
+__device__ void applyPhotonBeerLambert(float3& flux, float distance, bool entering,
+                                        const float* glass_color, float glass_alpha, float glass_scale) {
     if (entering) return;  // No absorption when entering
 
-    const float3 glass_color = make_float3(
-        params.sphere_color[0],
-        params.sphere_color[1],
-        params.sphere_color[2]
-    );
-    const float glass_alpha = params.sphere_color[3];
+    const float3 color = make_float3(glass_color[0], glass_color[1], glass_color[2]);
 
     const float absorption_scale = BEER_LAMBERT_ABSORPTION_SCALE;
     const float3 extinction = make_float3(
-        -logf(fmaxf(glass_color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
-        -logf(fmaxf(glass_color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
-        -logf(fmaxf(glass_color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale
+        -logf(fmaxf(color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+        -logf(fmaxf(color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale,
+        -logf(fmaxf(color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * glass_alpha * absorption_scale
     );
 
     const float3 attenuation = make_float3(
-        expf(-extinction.x * distance * params.sphere_scale),
-        expf(-extinction.y * distance * params.sphere_scale),
-        expf(-extinction.z * distance * params.sphere_scale)
+        expf(-extinction.x * distance * glass_scale),
+        expf(-extinction.y * distance * glass_scale),
+        expf(-extinction.z * distance * glass_scale)
     );
 
     // Track absorbed flux in statistics
@@ -493,81 +464,7 @@ __device__ void applyPhotonBeerLambert(float3& flux, float distance, bool enteri
     flux = make_float3(flux.x * attenuation.x, flux.y * attenuation.y, flux.z * attenuation.z);
 }
 
-/**
- * Handle photon interaction with sphere surface.
- * Applies Beer-Lambert absorption when exiting, then refracts or reflects photon.
- * Updates origin and dir for the next bounce.
- * Returns false if photon should terminate (absorbed).
- */
-__device__ bool handlePhotonSphereHit(
-    float3& origin,
-    float3& dir,
-    float3& flux,
-    float t,
-    const float3& sphere_center
-) {
-    const float3 hit_point = origin + dir * t;
-    const float3 outward_normal = normalize(hit_point - sphere_center);
-
-    if (params.caustics.stats) {
-        atomicAdd(&params.caustics.stats->sphere_hits, 1ULL);
-    }
-
-    const bool entering = dot(dir, outward_normal) < 0.0f;
-    const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
-
-    const float n1 = entering ? 1.0f : params.sphere_ior;
-    const float n2 = entering ? params.sphere_ior : 1.0f;
-    const float eta = n1 / n2;
-
-    const float cos_theta_i = fabsf(dot(dir, normal));
-    const float sin_theta_i_sq = 1.0f - cos_theta_i * cos_theta_i;
-    const float sin_theta_t_sq = eta * eta * sin_theta_i_sq;
-
-
-
-    // Apply Beer-Lambert absorption when exiting
-    applyPhotonBeerLambert(flux, t, entering);
-
-    // Check for total internal reflection
-    if (sin_theta_t_sq > 1.0f) {
-        if (params.caustics.stats) {
-            atomicAdd(&params.caustics.stats->tir_events, 1ULL);
-        }
-        const float3 reflect_dir = make_float3(
-            dir.x - 2.0f * cos_theta_i * normal.x,
-            dir.y - 2.0f * cos_theta_i * normal.y,
-            dir.z - 2.0f * cos_theta_i * normal.z
-        );
-        origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
-        dir = normalize(reflect_dir);
-    } else {
-        // Refraction using Snell's law
-        if (params.caustics.stats) {
-            atomicAdd(&params.caustics.stats->refraction_events, 1ULL);
-        }
-
-        // Schlick's Fresnel approximation: attenuate transmitted photon flux.
-        // Marginal rays (steep angles) lose more energy to reflection.
-        const float r0 = (n1 - n2) / (n1 + n2);
-        const float R0 = r0 * r0;  // ~0.04 for glass IOR 1.5
-        const float one_minus_cos = 1.0f - cos_theta_i;
-        const float one_minus_cos5 = one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
-        const float fresnel = R0 + (1.0f - R0) * one_minus_cos5;
-        flux = make_float3(flux.x * (1.0f - fresnel), flux.y * (1.0f - fresnel), flux.z * (1.0f - fresnel));
-
-        const float cos_theta_t = sqrtf(1.0f - sin_theta_t_sq);
-        const float3 refract_dir = make_float3(
-            eta * dir.x + (eta * cos_theta_i - cos_theta_t) * normal.x,
-            eta * dir.y + (eta * cos_theta_i - cos_theta_t) * normal.y,
-            eta * dir.z + (eta * cos_theta_i - cos_theta_t) * normal.z
-        );
-        origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
-        dir = normalize(refract_dir);
-    }
-
-    return true;  // Continue tracing
-}
+// handlePhotonSphereHit() removed — logic moved to __closesthit__photon()
 
 /**
  * Check if photon hits the plane and deposit energy if so.
@@ -614,10 +511,11 @@ __device__ bool checkPlaneIntersection(
 //==============================================================================
 
 /**
- * Trace a single photon through the scene.
+ * Trace a single photon through the scene using optixTrace(RAY_TYPE_PHOTON).
  *
- * - If photon hits the sphere, apply refraction (Snell's law) and Beer-Lambert absorption
- * - If photon hits the diffuse plane, deposit its energy at nearby hit points
+ * - If photon hits refractive geometry, __closesthit__photon applies Snell's law
+ *   and Beer-Lambert absorption, returning new origin/direction via payload
+ * - If photon misses geometry, __miss__photon checks plane intersection and deposits
  * - Continues tracing until max bounces or photon escapes/is absorbed
  *
  * @param origin Starting position of photon
@@ -633,37 +531,36 @@ __device__ void tracePhoton(
     unsigned int& seed,
     int max_bounces
 ) {
-    const float3 sphere_center = make_float3(
-        params.caustics.sphere_center[0],
-        params.caustics.sphere_center[1],
-        params.caustics.sphere_center[2]
-    );
-    const float sphere_radius = params.caustics.sphere_radius;
-
-    bool hit_sphere = false;
-
     for (int bounce = 0; bounce < max_bounces; ++bounce) {
-        // Check sphere intersection
-        const float t = intersectSphere(origin, dir, sphere_center, sphere_radius);
+        // Pack payload into 10 uint32 registers
+        unsigned int p0 = __float_as_uint(flux.x);
+        unsigned int p1 = __float_as_uint(flux.y);
+        unsigned int p2 = __float_as_uint(flux.z);
+        unsigned int p3 = 0, p4 = 0, p5 = 0;  // new_origin (set by closesthit)
+        unsigned int p6 = 0, p7 = 0, p8 = 0;  // new_dir (set by closesthit)
+        unsigned int p9 = 0;  // flags: 0 = alive=false, deposited=false initially
 
-        if (t > 0.0f) {
-            // Photon hits sphere - apply refraction/reflection
-            hit_sphere = true;
-            handlePhotonSphereHit(origin, dir, flux, t, sphere_center);
-            continue;
-        }
+        using namespace SBTConstants;
+        optixTrace(
+            params.handle,
+            origin, dir,
+            CONTINUATION_RAY_OFFSET, MAX_RAY_DISTANCE, 0.f,
+            OptixVisibilityMask(255), OPTIX_RAY_FLAG_NONE,
+            RAY_TYPE_PHOTON, STRIDE_RAY_TYPES, MISS_PHOTON,
+            p0, p1, p2, p3, p4, p5, p6, p7, p8, p9
+        );
 
-        // Sphere missed - only deposit if photon has refracted through sphere
-        if (hit_sphere && checkPlaneIntersection(origin, dir, flux)) {
-            return;  // Photon deposited on plane
-        }
+        // Unpack results
+        flux = make_float3(__uint_as_float(p0), __uint_as_float(p1), __uint_as_float(p2));
+        const bool alive    = (p9 & 1u) != 0;
+        const bool deposited = (p9 & 2u) != 0;
 
-        // Track sphere miss on first bounce
-        if (params.caustics.stats && bounce == 0) {
-            atomicAdd(&params.caustics.stats->sphere_misses, 1ULL);
-        }
+        if (deposited) return;
+        if (!alive) return;
 
-        return;  // Photon escaped scene (or missed sphere entirely)
+        // closesthit set new_origin/new_dir — advance photon
+        origin = make_float3(__uint_as_float(p3), __uint_as_float(p4), __uint_as_float(p5));
+        dir    = make_float3(__uint_as_float(p6), __uint_as_float(p7), __uint_as_float(p8));
     }
 }
 
@@ -700,14 +597,14 @@ __device__ void emitDirectionalPhoton(
     createONB(light_dir, tangent, bitangent);
 
     // Sample disk with radius large enough to cover sphere
-    const float disk_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.sphere_radius;
+    const float disk_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.caustic_target_radius;
     const float2 disk_sample = sampleDisk(rnd(seed), rnd(seed));
 
     // Photon starts from disk behind the sphere
     const float3 sphere_center = make_float3(
-        params.caustics.sphere_center[0],
-        params.caustics.sphere_center[1],
-        params.caustics.sphere_center[2]
+        params.caustics.caustic_target_center[0],
+        params.caustics.caustic_target_center[1],
+        params.caustics.caustic_target_center[2]
     );
     photon_origin = sphere_center
                    + tangent * (disk_sample.x * disk_radius)
@@ -742,16 +639,16 @@ __device__ void emitPointPhoton(
     );
 
     const float3 sphere_center = make_float3(
-        params.caustics.sphere_center[0],
-        params.caustics.sphere_center[1],
-        params.caustics.sphere_center[2]
+        params.caustics.caustic_target_center[0],
+        params.caustics.caustic_target_center[1],
+        params.caustics.caustic_target_center[2]
     );
     const float3 to_sphere = sphere_center - photon_origin;
     const float dist = length(to_sphere);
     const float3 axis = to_sphere / dist;
 
     // Cone half-angle covering the sphere with margin for edge rays
-    const float target_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.sphere_radius;
+    const float target_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.caustic_target_radius;
     const float sin_theta_max = fminf(target_radius / dist, 1.0f);
     const float cos_theta_max = sqrtf(1.0f - sin_theta_max * sin_theta_max);
 
@@ -784,6 +681,155 @@ __device__ float3 calculatePhotonFlux(const Light& light, float total_photons) {
         light.color[1] * light.intensity / total_photons,
         light.color[2] * light.intensity / total_photons
     );
+}
+
+//==============================================================================
+// Progressive Photon Mapping - Photon Hit/Miss Programs (RAY_TYPE_PHOTON)
+//==============================================================================
+
+/**
+ * Closest hit program for photon rays.
+ *
+ * Handles photon interaction with any geometry type (sphere, triangle, cylinder).
+ * Applies Beer-Lambert absorption when exiting, then refracts or reflects the photon.
+ * Results are communicated back to tracePhoton() via the 10-register payload.
+ */
+extern "C" __global__ void __closesthit__photon() {
+    // Get ray info
+    const float3 ray_dir    = optixGetWorldRayDirection();
+    const float  t          = optixGetRayTmax();
+    const float3 ray_origin = optixGetWorldRayOrigin();
+    const float3 hit_point  = ray_origin + ray_dir * t;
+
+    // Get outward normal (geometry-type dependent)
+    float3 outward_normal;
+    float ior_material;
+    float glass_color[4];
+    float glass_scale;
+
+    if (optixGetPrimitiveType() == OPTIX_PRIMITIVE_TYPE_TRIANGLE) {
+        // Triangle mesh: interpolate normal from vertex data
+        const TriangleHitGroupData* hit_data =
+            reinterpret_cast<const TriangleHitGroupData*>(optixGetSbtDataPointer());
+        const TriangleGeometry geom = getTriangleGeometry(hit_data);
+        outward_normal = geom.entering ? geom.normal : make_float3(-geom.normal.x, -geom.normal.y, -geom.normal.z);
+        // IOR from instance material (IAS mode)
+        const unsigned int id = optixGetInstanceId();
+        ior_material = params.instance_materials[id].ior;
+        for (int i = 0; i < 4; i++) glass_color[i] = params.instance_materials[id].color[i];
+        glass_scale = 1.0f;
+    } else {
+        // Sphere or cylinder: normal from intersection attributes
+        outward_normal = normalize(make_float3(
+            __uint_as_float(optixGetAttribute_0()),
+            __uint_as_float(optixGetAttribute_1()),
+            __uint_as_float(optixGetAttribute_2())
+        ));
+        if (params.use_ias) {
+            const unsigned int id = optixGetInstanceId();
+            ior_material = params.instance_materials[id].ior;
+            for (int i = 0; i < 4; i++) glass_color[i] = params.instance_materials[id].color[i];
+            glass_scale = 1.0f;
+        } else {
+            // Legacy single-object mode
+            ior_material = params.sphere_ior;
+            for (int i = 0; i < 4; i++) glass_color[i] = params.sphere_color[i];
+            glass_scale = params.sphere_scale;
+        }
+    }
+
+    // Unpack photon flux from payload
+    float3 flux = make_float3(
+        __uint_as_float(optixGetPayload_0()),
+        __uint_as_float(optixGetPayload_1()),
+        __uint_as_float(optixGetPayload_2())
+    );
+
+    // Determine entering vs exiting
+    const bool entering = dot(ray_dir, outward_normal) < 0.0f;
+    const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
+    const float n1 = entering ? 1.0f : ior_material;
+    const float n2 = entering ? ior_material : 1.0f;
+    const float eta = n1 / n2;
+    const float cos_theta_i = fabsf(dot(ray_dir, normal));
+    const float sin_theta_i_sq = 1.0f - cos_theta_i * cos_theta_i;
+    const float sin_theta_t_sq = eta * eta * sin_theta_i_sq;
+
+    // Track stats
+    if (params.caustics.stats) {
+        atomicAdd(&params.caustics.stats->sphere_hits, 1ULL);
+    }
+
+    // Apply Beer-Lambert absorption on exit
+    applyPhotonBeerLambert(flux, t, entering, glass_color, glass_color[3], glass_scale);
+
+    float3 new_dir;
+    if (sin_theta_t_sq > 1.0f) {
+        // Total internal reflection
+        if (params.caustics.stats) atomicAdd(&params.caustics.stats->tir_events, 1ULL);
+        new_dir = normalize(make_float3(
+            ray_dir.x - 2.0f * cos_theta_i * normal.x,
+            ray_dir.y - 2.0f * cos_theta_i * normal.y,
+            ray_dir.z - 2.0f * cos_theta_i * normal.z
+        ));
+    } else {
+        // Refraction (Snell's law) with Schlick Fresnel
+        if (params.caustics.stats) atomicAdd(&params.caustics.stats->refraction_events, 1ULL);
+        const float r0 = (n1 - n2) / (n1 + n2);
+        const float R0 = r0 * r0;
+        const float one_minus_cos = 1.0f - cos_theta_i;
+        const float one_minus_cos5 = one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+        const float fresnel = R0 + (1.0f - R0) * one_minus_cos5;
+        flux = make_float3(flux.x * (1.0f - fresnel), flux.y * (1.0f - fresnel), flux.z * (1.0f - fresnel));
+        const float cos_theta_t = sqrtf(1.0f - sin_theta_t_sq);
+        new_dir = normalize(make_float3(
+            eta * ray_dir.x + (eta * cos_theta_i - cos_theta_t) * normal.x,
+            eta * ray_dir.y + (eta * cos_theta_i - cos_theta_t) * normal.y,
+            eta * ray_dir.z + (eta * cos_theta_i - cos_theta_t) * normal.z
+        ));
+    }
+
+    const float3 new_origin = hit_point + new_dir * CONTINUATION_RAY_OFFSET;
+
+    // Set payload: updated flux, new_origin, new_dir, alive=true, deposited=false
+    optixSetPayload_0(__float_as_uint(flux.x));
+    optixSetPayload_1(__float_as_uint(flux.y));
+    optixSetPayload_2(__float_as_uint(flux.z));
+    optixSetPayload_3(__float_as_uint(new_origin.x));
+    optixSetPayload_4(__float_as_uint(new_origin.y));
+    optixSetPayload_5(__float_as_uint(new_origin.z));
+    optixSetPayload_6(__float_as_uint(new_dir.x));
+    optixSetPayload_7(__float_as_uint(new_dir.y));
+    optixSetPayload_8(__float_as_uint(new_dir.z));
+    optixSetPayload_9(1u);  // alive=true, deposited=false
+}
+
+/**
+ * Miss program for photon rays.
+ *
+ * When a photon misses all geometry, check if it hits the diffuse plane
+ * for energy deposition. Sets payload flags accordingly.
+ */
+extern "C" __global__ void __miss__photon() {
+    const float3 origin = optixGetWorldRayOrigin();
+    const float3 dir    = optixGetWorldRayDirection();
+    const float3 flux   = make_float3(
+        __uint_as_float(optixGetPayload_0()),
+        __uint_as_float(optixGetPayload_1()),
+        __uint_as_float(optixGetPayload_2())
+    );
+
+    if (checkPlaneIntersection(origin, dir, flux)) {
+        // Deposited on plane
+        optixSetPayload_9(2u);  // alive=false, deposited=true
+    } else {
+        // Escaped scene
+        optixSetPayload_9(0u);  // alive=false, deposited=false
+    }
+    // Track miss stats
+    if (params.caustics.stats) {
+        atomicAdd(&params.caustics.stats->sphere_misses, 1ULL);
+    }
 }
 
 //==============================================================================

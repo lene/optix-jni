@@ -72,12 +72,13 @@ protected:
     OptixPipelineCompileOptions createDefaultPipelineOptions() {
         OptixPipelineCompileOptions pipeline_options = {};
         pipeline_options.usesMotionBlur = false;
-        pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-        pipeline_options.numPayloadValues = 4;
+        pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS |
+                                                  OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
+        pipeline_options.numPayloadValues = 10;
         pipeline_options.numAttributeValues = 4;
         pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
         pipeline_options.pipelineLaunchParamsVariableName = "params";
-        pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM;
+        pipeline_options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM | OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
         return pipeline_options;
     }
 

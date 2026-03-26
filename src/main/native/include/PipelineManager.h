@@ -68,6 +68,12 @@ private:
     OptixProgramGroup cylinder_shadow_hitgroup_prog_group = nullptr;
     OptixModule cylinder_module = nullptr;
 
+    // Photon ray program groups (for caustics RAY_TYPE_PHOTON)
+    OptixProgramGroup photon_sphere_hitgroup = nullptr;
+    OptixProgramGroup photon_triangle_hitgroup = nullptr;
+    OptixProgramGroup photon_cylinder_hitgroup = nullptr;
+    OptixProgramGroup photon_miss_prog_group = nullptr;
+
     // Caustics program groups
     OptixProgramGroup caustics_hitpoints_raygen = nullptr;
     OptixProgramGroup caustics_photons_raygen = nullptr;

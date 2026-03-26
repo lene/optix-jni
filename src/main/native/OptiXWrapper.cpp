@@ -12,6 +12,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <cfloat>
 #include <vector>
 #include <map>
 #include <optix.h>
@@ -45,6 +46,10 @@ struct OptiXWrapper::Impl {
         CUdeviceptr d_gas_output_buffer = 0;  // GAS memory
         bool gas_built = false;               // True if GAS is ready
     } triangle_mesh_gpu;
+
+    // Triangle mesh AABB (computed in setTriangleMesh for caustic target)
+    float3 mesh_aabb_min = {0, 0, 0};
+    float3 mesh_aabb_max = {0, 0, 0};
 
     // Instance Acceleration Structure (IAS) state for multi-object scenes
     struct ObjectInstance {
@@ -292,6 +297,19 @@ void OptiXWrapper::setTriangleMesh(
         cudaMemcpyHostToDevice
     );
 
+    // Compute mesh AABB from vertex positions (vertex_stride floats per vertex, position at [0,1,2])
+    impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
+    impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    for (unsigned int i = 0; i < num_vertices; ++i) {
+        const float* v = vertices + i * vertex_stride;
+        impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
+        impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
+        impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
+        impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
+        impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
+        impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
+    }
+
     // Update scene parameters
     impl->scene.setTriangleMeshMeta(num_vertices, num_triangles);
     // Store device pointers and stride in scene for SBT setup
@@ -439,7 +457,7 @@ void OptiXWrapper::buildIAS() {
         oi.instanceId = static_cast<unsigned int>(optix_instances.size());
 
         // SBT offset: 2 ray types (primary + shadow) per geometry type
-        oi.sbtOffset = inst.geometry_type * 2;
+        oi.sbtOffset = inst.geometry_type * SBTConstants::STRIDE_RAY_TYPES;
 
         oi.visibilityMask = 255;
         oi.flags = OPTIX_INSTANCE_FLAG_NONE;
@@ -728,8 +746,58 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.caustics.initial_radius = impl->config.getCausticsInitialRadius();
         params.caustics.alpha = impl->config.getCausticsAlpha();
         params.caustics.current_iteration = 0;
-        std::memcpy(params.caustics.sphere_center, sphere.center, sizeof(float) * 3);
-        params.caustics.sphere_radius = sphere.radius;
+        // Compute caustic target from AABB of all refractive instances
+        {
+            float3 cmin = {FLT_MAX, FLT_MAX, FLT_MAX};
+            float3 cmax = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+            bool found = false;
+
+            for (const auto& inst : impl->instances) {
+                if (!inst.active || inst.ior <= 1.05f) continue;
+                found = true;
+
+                if (inst.geometry_type == GEOMETRY_TYPE_SPHERE) {
+                    const float cx = inst.transform[3];
+                    const float cy = inst.transform[7];
+                    const float cz = inst.transform[11];
+                    const float s = sqrtf(inst.transform[0]*inst.transform[0] +
+                                          inst.transform[1]*inst.transform[1] +
+                                          inst.transform[2]*inst.transform[2]);
+                    const float r = sphere.radius * s;
+                    cmin.x = fminf(cmin.x, cx - r); cmin.y = fminf(cmin.y, cy - r); cmin.z = fminf(cmin.z, cz - r);
+                    cmax.x = fmaxf(cmax.x, cx + r); cmax.y = fmaxf(cmax.y, cy + r); cmax.z = fmaxf(cmax.z, cz + r);
+                } else if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE) {
+                    const float3 lo = impl->mesh_aabb_min;
+                    const float3 hi = impl->mesh_aabb_max;
+                    const float corners[8][3] = {
+                        {lo.x,lo.y,lo.z},{hi.x,lo.y,lo.z},{lo.x,hi.y,lo.z},{hi.x,hi.y,lo.z},
+                        {lo.x,lo.y,hi.z},{hi.x,lo.y,hi.z},{lo.x,hi.y,hi.z},{hi.x,hi.y,hi.z}
+                    };
+                    for (int c = 0; c < 8; ++c) {
+                        const float wx = inst.transform[0]*corners[c][0] + inst.transform[1]*corners[c][1] + inst.transform[2]*corners[c][2] + inst.transform[3];
+                        const float wy = inst.transform[4]*corners[c][0] + inst.transform[5]*corners[c][1] + inst.transform[6]*corners[c][2] + inst.transform[7];
+                        const float wz = inst.transform[8]*corners[c][0] + inst.transform[9]*corners[c][1] + inst.transform[10]*corners[c][2] + inst.transform[11];
+                        cmin.x = fminf(cmin.x, wx); cmin.y = fminf(cmin.y, wy); cmin.z = fminf(cmin.z, wz);
+                        cmax.x = fmaxf(cmax.x, wx); cmax.y = fmaxf(cmax.y, wy); cmax.z = fmaxf(cmax.z, wz);
+                    }
+                }
+                // Cylinder: fall through (not a typical caustic material)
+            }
+
+            if (found) {
+                params.caustics.caustic_target_center[0] = (cmin.x + cmax.x) * 0.5f;
+                params.caustics.caustic_target_center[1] = (cmin.y + cmax.y) * 0.5f;
+                params.caustics.caustic_target_center[2] = (cmin.z + cmax.z) * 0.5f;
+                const float dx = cmax.x - cmin.x;
+                const float dy = cmax.y - cmin.y;
+                const float dz = cmax.z - cmin.z;
+                params.caustics.caustic_target_radius = 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
+            } else {
+                // Fallback: use scene sphere (backward compat with non-IAS mode)
+                std::memcpy(params.caustics.caustic_target_center, sphere.center, sizeof(float) * 3);
+                params.caustics.caustic_target_radius = sphere.radius;
+            }
+        }
         params.caustics.hit_points = reinterpret_cast<HitPoint*>(impl->buffer_manager.getHitPointsBuffer());
         params.caustics.num_hit_points = reinterpret_cast<unsigned int*>(impl->buffer_manager.getNumHitPointsBuffer());
         params.caustics.grid = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridBuffer());

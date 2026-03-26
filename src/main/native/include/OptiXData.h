@@ -136,12 +136,14 @@ namespace SBTConstants {
     // Ray types
     constexpr unsigned int RAY_TYPE_PRIMARY = 0;           // Primary camera ray
     constexpr unsigned int RAY_TYPE_SHADOW = 1;            // Shadow ray
-    
+    constexpr unsigned int RAY_TYPE_PHOTON = 2;            // Photon ray (caustics)
+
     // SBT indices
     constexpr unsigned int MISS_PRIMARY = 0;               // Primary ray miss shader
     constexpr unsigned int MISS_SHADOW = 1;                // Shadow ray miss shader
+    constexpr unsigned int MISS_PHOTON = 2;                // Photon ray miss shader
     constexpr unsigned int OFFSET_SHADOW = 1;                // SBT offset for shadow rays
-    constexpr unsigned int STRIDE_RAY_TYPES = 2;            // SBT stride (number of ray types)
+    constexpr unsigned int STRIDE_RAY_TYPES = 3;            // SBT stride (number of ray types)
     
     // Common ray parameters
     constexpr unsigned int PAYLOAD_SHADOW_FACTOR = 0;        // Payload index for shadow attenuation
@@ -304,6 +306,15 @@ struct HitPoint {
     float pad;            // Alignment padding
 };
 
+// Photon payload for RAY_TYPE_PHOTON traces
+// Packed into 10 uint32_t registers for optixTrace
+struct PhotonPayload {
+    float flux[3];        // [p0-p2] photon energy (in: initial flux; out: updated after Fresnel/Beer-Lambert)
+    float new_origin[3];  // [p3-p5] next bounce origin (out: set by closesthit)
+    float new_dir[3];     // [p6-p8] refracted direction (out: set by closesthit)
+    unsigned int flags;   // [p9] bit 0 = alive, bit 1 = deposited
+};
+
 // Caustics statistics for validation (C1-C8 test ladder)
 // Tracks energy flow and convergence metrics for PPM implementation
 struct CausticsStats {
@@ -354,9 +365,9 @@ struct CausticsParams {
     float alpha;                     // Radius reduction factor (0.7 typical)
     int current_iteration;           // Current iteration (for RNG seeding)
 
-    // Sphere geometry for photon tracing (must match HitGroupData)
-    float sphere_center[3];          // Sphere center position
-    float sphere_radius;             // Sphere radius
+    // Target geometry bounding sphere for photon emission aiming
+    float caustic_target_center[3];  // Bounding sphere center of refractive geometry
+    float caustic_target_radius;     // Bounding sphere radius of refractive geometry
 
     // GPU buffers (set by host before launch)
     HitPoint* hit_points;            // Array of hit points on diffuse surfaces
