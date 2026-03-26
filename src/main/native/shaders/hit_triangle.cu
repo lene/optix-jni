@@ -222,11 +222,19 @@ extern "C" __global__ void __closesthit__triangle() {
     // Without this path, fractional-alpha surfaces fall through to the Fresnel/refraction
     // path. At IOR=1.0 (matte material) that path produces Fresnel=0, so the ghost cubes
     // appear fully transparent regardless of the material alpha value — which is wrong.
+    // Refractive materials (IOR > 1.05) must always use the Fresnel/refraction path below,
+    // even when their material alpha is low (e.g. glass alpha=0.02). Coverage blend is only
+    // for coverage-alpha geometry (fractional sponges, cube-sponge ghosts).
+    // Refractive materials (IOR > 1.05) must not use coverage blend when triggered by material
+    // alpha alone — glass has alpha=0.02 by design (Beer-Lambert), not to indicate coverage.
+    // However, per-vertex alpha (fractional sponge meshes) still uses coverage blend regardless
+    // of IOR: a fractional glass sponge needs the fade effect on dissolving-in triangles.
+    const bool is_refractive = mesh_ior > 1.05f;  // same threshold used in caustics and IAS setup
     const bool has_vertex_alpha_channel = hit_data->vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
     const float coverage_alpha = has_vertex_alpha_channel ? geom.vertex_alpha : mesh_alpha;
     const bool use_coverage_blend =
         (has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||
-        (!has_vertex_alpha_channel && params.use_ias && mesh_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD);
+        (!has_vertex_alpha_channel && !is_refractive && params.use_ias && mesh_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD);
 
     if (use_coverage_blend) {
         if (depth >= MAX_TRACE_DEPTH) {
