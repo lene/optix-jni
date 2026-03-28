@@ -48,6 +48,22 @@ docker push registry.gitlab.com/lilacashes/menger/optix-cuda:latest
 
 **After pushing a new version**, update `OPTIX_DOCKER_VERSION` in `.gitlab-ci.yml` to match.
 
+#### Building the CUDA 13 variant
+
+The Dockerfile accepts a `CUDA_VERSION` build arg (default `12.8.0`):
+
+```bash
+export VERSION13=13.2-9.0-25-1.12.0
+
+docker build --build-arg CUDA_VERSION=13.2.0 \
+  -t registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION13 \
+  -f optix-jni/Dockerfile optix-jni/
+
+docker push registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION13
+```
+
+After pushing, update `OPTIX_DOCKER_VERSION_CUDA13` in `.gitlab-ci.yml` if the tag changed.
+
 ### Updating the Image
 
 When you need to update components (e.g., new CUDA/Java/sbt version):
