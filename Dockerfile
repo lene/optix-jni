@@ -11,8 +11,10 @@
 #
 # Image tag format: {CUDA}-{OptiX}-{Java}-{sbt}
 # Example: registry.gitlab.com/lilacashes/menger/optix-cuda:12.8-9.0-25-1.12.0
+# To build for CUDA 13: docker build --build-arg CUDA_VERSION=13.2.0 ...
 #
-FROM nvidia/cuda:12.8.0-devel-ubuntu24.04
+ARG CUDA_VERSION=12.8.0
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
