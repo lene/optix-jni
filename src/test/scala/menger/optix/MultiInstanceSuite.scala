@@ -5,7 +5,6 @@ import menger.common.Const
 import menger.common.ImageSize
 import menger.common.Vector
 import menger.optix.Slow
-import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -229,17 +228,14 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
 
     val instanceCount = 10
-    val handles = collection.mutable.Set[Long]()
 
     for (i <- 0 until instanceCount) {
       val renderer = new OptiXRenderer()
       try {
         renderer.initialize() should be (true)
-        val handle = renderer.nativeHandle
-
-        // Each instance should have unique handle
-        handles should not contain handle
-        handles.add(handle)
+        // Handle must be non-zero while initialized (address reuse across
+        // sequential create/dispose cycles is valid allocator behaviour)
+        renderer.nativeHandle should not be (0L)
 
         // Verify it works
         val size = ImageSize(200, 200)
@@ -251,8 +247,6 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
         renderer.dispose()
       }
     }
-
-    handles.size should be (instanceCount)
   }
 
   it should "reject operations on uninitialized instance" in {
