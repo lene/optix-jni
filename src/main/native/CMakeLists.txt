@@ -158,12 +158,13 @@ target_include_directories(optix_shaders PRIVATE
 # OptiX PTX shaders can only target ONE architecture at a time
 # Use virtual architecture (PTX) for forward compatibility
 #
-# Using virtual architecture 86 for PTX intermediate representation
-# JIT-compiled at runtime for forward compatibility with any GPU >= sm_86
+# Using virtual architecture 75 for PTX intermediate representation
+# JIT-compiled at runtime for forward compatibility with any GPU >= sm_75
+# (covers T4/g4dn=sm_75, A10G/g5=sm_86, H100=sm_90, etc.)
 set_target_properties(optix_shaders PROPERTIES
     CUDA_PTX_COMPILATION ON
     CUDA_SEPARABLE_COMPILATION ON
-    CUDA_ARCHITECTURES "86-virtual"
+    CUDA_ARCHITECTURES "75-virtual"
 )
 
 #=============================================================================
