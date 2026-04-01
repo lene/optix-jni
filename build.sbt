@@ -53,30 +53,28 @@ Compile / compile := {
     }
   }
 
-  // Clean stale PTX copies before compile
-  val stalePtxLocations = Seq(
-    (Compile / classDirectory).value / "native" / "x86_64-linux" / "optix_shaders.ptx",
-    baseDirectory.value.getParentFile / "target" / "native" / "x86_64-linux" / "bin" / "optix_shaders.ptx"
-  )
-  stalePtxLocations.foreach { ptxFile =>
-    if (ptxFile.exists()) {
-      IO.delete(ptxFile)
-      log.info(s"Cleaned stale PTX copy: $ptxFile")
-    }
-  }
-
-  val compileResult = (Compile / compile).value
-
-  // Copy PTX file to classes directory (sbt-jni only copies .so/.dll/.dylib)
-  val ptxSource = target.value / "native" / "x86_64-linux" / "bin" / "optix_shaders.ptx"
-  val ptxDest = (Compile / classDirectory).value / "native" / "x86_64-linux" / "optix_shaders.ptx"
-  if (ptxSource.exists()) {
-    IO.copyFile(ptxSource, ptxDest)
-    log.debug(s"Copied PTX file: $ptxSource -> $ptxDest")
-  }
-
-  compileResult
+  (Compile / compile).value
 }
+
+// Bundle the PTX shader into the JAR as a managed resource, alongside the .so.
+// nativeCompile must run first (it produces the PTX); this mirrors how JniPackage
+// bundles the .so via resourceGenerators so the ordering is guaranteed correct.
+Compile / resourceGenerators += Def.task {
+  val log = streams.value.log
+  val platform = "x86_64-linux"
+  val ptxSource = target.value / "native" / platform / "bin" / "optix_shaders.ptx"
+  // Trigger the native build first so the PTX file exists
+  nativeCompile.value
+  if (ptxSource.exists()) {
+    val ptxResource = (Compile / resourceManaged).value / "native" / platform / "optix_shaders.ptx"
+    IO.copyFile(ptxSource, ptxResource)
+    log.debug(s"Bundled PTX into managed resources: $ptxResource")
+    Seq(ptxResource)
+  } else {
+    log.warn(s"PTX file not found after nativeCompile: $ptxSource")
+    Seq.empty
+  }
+}.taskValue
 
 // Native test task to run C++ Google Test suite
 lazy val nativeTest = taskKey[Unit]("Run native C++ tests")
