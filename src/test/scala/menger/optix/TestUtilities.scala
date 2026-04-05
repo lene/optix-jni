@@ -181,3 +181,91 @@ object TestUtilities extends LazyLogging:
     )
 
     TriangleMeshData(vertexData, indexData, 8)
+
+  def createSubdividedCubeMesh(subdivisions: Int): menger.common.TriangleMeshData =
+    import menger.common.TriangleMeshData
+    val n = math.max(1, subdivisions)
+    val step = 1.0f / n
+
+    val vertexBuffer = scala.collection.mutable.ArrayBuffer[Float]()
+    val indexBuffer = scala.collection.mutable.ArrayBuffer[Int]()
+
+    def addQuadFace(
+        origin: (Float, Float, Float),
+        uAxis: (Float, Float, Float),
+        vAxis: (Float, Float, Float),
+        normal: (Float, Float, Float)
+    ): Unit =
+      val baseIdx = vertexBuffer.length / 8
+      for j <- 0 to n; i <- 0 to n do
+        val u = i * step
+        val v = j * step
+        val px = origin._1 + u * uAxis._1 + v * vAxis._1
+        val py = origin._2 + u * uAxis._2 + v * vAxis._2
+        val pz = origin._3 + u * uAxis._3 + v * vAxis._3
+        vertexBuffer ++= Seq(px, py, pz, normal._1, normal._2, normal._3, u, v)
+
+      for j <- 0 until n; i <- 0 until n do
+        val v0 = baseIdx + j * (n + 1) + i
+        val v1 = v0 + 1
+        val v2 = v0 + (n + 1)
+        val v3 = v2 + 1
+        indexBuffer ++= Seq(v0, v1, v3, v0, v3, v2)
+
+    addQuadFace((-0.5f, -0.5f, 0.5f), (1f, 0f, 0f), (0f, 1f, 0f), (0f, 0f, 1f))
+    addQuadFace((0.5f, -0.5f, -0.5f), (-1f, 0f, 0f), (0f, 1f, 0f), (0f, 0f, -1f))
+    addQuadFace((-0.5f, 0.5f, 0.5f), (1f, 0f, 0f), (0f, 0f, -1f), (0f, 1f, 0f))
+    addQuadFace((-0.5f, -0.5f, -0.5f), (1f, 0f, 0f), (0f, 0f, 1f), (0f, -1f, 0f))
+    addQuadFace((0.5f, -0.5f, 0.5f), (0f, 0f, -1f), (0f, 1f, 0f), (1f, 0f, 0f))
+    addQuadFace((-0.5f, -0.5f, -0.5f), (0f, 0f, 1f), (0f, 1f, 0f), (-1f, 0f, 0f))
+
+    TriangleMeshData(vertexBuffer.toArray, indexBuffer.toArray, 8)
+
+  def createScaledCubeMesh(scale: Float): menger.common.TriangleMeshData =
+    import menger.common.TriangleMeshData
+    val s = scale * 0.5f
+    val vertexData = Array[Float](
+      // Front face (z=+s, normal +Z)
+      -s, -s, s,  0f, 0f, 1f,  0f, 0f,
+       s, -s, s,  0f, 0f, 1f,  1f, 0f,
+       s,  s, s,  0f, 0f, 1f,  1f, 1f,
+      -s,  s, s,  0f, 0f, 1f,  0f, 1f,
+      // Back face (z=-s, normal -Z)
+       s, -s, -s,  0f, 0f, -1f,  0f, 0f,
+      -s, -s, -s,  0f, 0f, -1f,  1f, 0f,
+      -s,  s, -s,  0f, 0f, -1f,  1f, 1f,
+       s,  s, -s,  0f, 0f, -1f,  0f, 1f,
+      // Top face (y=+s, normal +Y)
+      -s, s,  s,  0f, 1f, 0f,  0f, 0f,
+       s, s,  s,  0f, 1f, 0f,  1f, 0f,
+       s, s, -s,  0f, 1f, 0f,  1f, 1f,
+      -s, s, -s,  0f, 1f, 0f,  0f, 1f,
+      // Bottom face (y=-s, normal -Y)
+      -s, -s, -s,  0f, -1f, 0f,  0f, 0f,
+       s, -s, -s,  0f, -1f, 0f,  1f, 0f,
+       s, -s,  s,  0f, -1f, 0f,  1f, 1f,
+      -s, -s,  s,  0f, -1f, 0f,  0f, 1f,
+      // Right face (x=+s, normal +X)
+      s, -s,  s,  1f, 0f, 0f,  0f, 0f,
+      s, -s, -s,  1f, 0f, 0f,  1f, 0f,
+      s,  s, -s,  1f, 0f, 0f,  1f, 1f,
+      s,  s,  s,  1f, 0f, 0f,  0f, 1f,
+      // Left face (x=-s, normal -X)
+      -s, -s, -s,  -1f, 0f, 0f,  0f, 0f,
+      -s, -s,  s,  -1f, 0f, 0f,  1f, 0f,
+      -s,  s,  s,  -1f, 0f, 0f,  1f, 1f,
+      -s,  s, -s,  -1f, 0f, 0f,  0f, 1f
+    )
+    val indexData = Array[Int](
+      0, 1, 2,  0, 2, 3,
+      4, 5, 6,  4, 6, 7,
+      8, 9, 10, 8, 10, 11,
+      12, 13, 14, 12, 14, 15,
+      16, 17, 18, 16, 18, 19,
+      20, 21, 22, 20, 22, 23
+    )
+    TriangleMeshData(vertexData, indexData, 8)
+
+  def createLargeSubdividedCubeMesh()
+      : menger.common.TriangleMeshData =
+    createSubdividedCubeMesh(5)

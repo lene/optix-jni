@@ -708,15 +708,36 @@ extern "C" __global__ void __closesthit__photon() {
     float glass_scale;
 
     if (optixGetPrimitiveType() == OPTIX_PRIMITIVE_TYPE_TRIANGLE) {
-        // Triangle mesh: interpolate normal from vertex data
         const TriangleHitGroupData* hit_data =
-            reinterpret_cast<const TriangleHitGroupData*>(optixGetSbtDataPointer());
-        const TriangleGeometry geom = getTriangleGeometry(hit_data);
-        outward_normal = geom.entering ? geom.normal : make_float3(-geom.normal.x, -geom.normal.y, -geom.normal.z);
-        // IOR from instance material (IAS mode)
-        const unsigned int id = optixGetInstanceId();
-        ior_material = params.instance_materials[id].ior;
-        for (int i = 0; i < 4; i++) glass_color[i] = params.instance_materials[id].color[i];
+            reinterpret_cast<const TriangleHitGroupData*>(
+                optixGetSbtDataPointer());
+        const unsigned int inst_id = optixGetInstanceId();
+        // In IAS mode, use per-instance buffer pointers
+        TriangleGeometry geom;
+        if (params.use_ias && params.instance_materials) {
+            const InstanceMaterial& mat =
+                params.instance_materials[inst_id];
+            if (mat.vertices && mat.indices) {
+                geom = getTriangleGeometry(
+                    mat.vertices, mat.indices,
+                    mat.vertex_stride);
+            } else {
+                geom = getTriangleGeometry(hit_data);
+            }
+        } else {
+            geom = getTriangleGeometry(hit_data);
+        }
+        outward_normal = geom.entering
+            ? geom.normal
+            : make_float3(
+                -geom.normal.x, -geom.normal.y,
+                -geom.normal.z);
+        ior_material =
+            params.instance_materials[inst_id].ior;
+        for (int i = 0; i < 4; i++)
+            glass_color[i] =
+                params.instance_materials[inst_id]
+                    .color[i];
         glass_scale = 1.0f;
     } else {
         // Sphere or cylinder: normal from intersection attributes

@@ -171,6 +171,11 @@ struct InstanceMaterial {
     unsigned int geometry_type; // GeometryType enum value
     int texture_index;          // Index into Params.textures array (-1 = no texture)
     float film_thickness;       // Thin-film thickness in nm (0 = no thin-film interference)
+    // Per-mesh triangle buffer pointers (IAS mode only)
+    // Populated for triangle instances; nullptr/0 for spheres/cylinders
+    float* vertices;            // Device pointer to vertex data
+    unsigned int* indices;      // Device pointer to index data
+    unsigned int vertex_stride; // Floats per vertex (6, 8, or 9)
 };
 
 // Extended material properties for physically-based rendering (Sprint 7)

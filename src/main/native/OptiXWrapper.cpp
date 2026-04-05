@@ -45,7 +45,11 @@ struct OptiXWrapper::Impl {
         OptixTraversableHandle gas_handle = 0; // Triangle GAS
         CUdeviceptr d_gas_output_buffer = 0;  // GAS memory
         bool gas_built = false;               // True if GAS is ready
-    } triangle_mesh_gpu;
+        unsigned int num_vertices = 0;
+        unsigned int num_triangles = 0;
+        unsigned int vertex_stride = 8;
+    };
+    std::vector<TriangleMeshGPU> triangle_meshes;
 
     // Triangle mesh AABB (computed in setTriangleMesh for caustic target)
     float3 mesh_aabb_min = {0, 0, 0};
@@ -65,6 +69,7 @@ struct OptiXWrapper::Impl {
         float film_thickness;                 // Thin-film thickness in nm (0 = none)
         int texture_index;                    // Index into textures array (-1 = no texture)
         bool active;                          // True if instance is enabled
+        size_t mesh_index;                    // Index into triangle_meshes (SIZE_MAX = not a triangle)
     };
 
     std::vector<ObjectInstance> instances;    // All object instances
@@ -267,57 +272,68 @@ void OptiXWrapper::setTriangleMesh(
     unsigned int num_triangles,
     unsigned int vertex_stride
 ) {
-    // Free existing GPU buffers if any
-    if (impl->triangle_mesh_gpu.d_vertices) {
-        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_vertices));
-        impl->triangle_mesh_gpu.d_vertices = 0;
-    }
-    if (impl->triangle_mesh_gpu.d_indices) {
-        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_indices));
-        impl->triangle_mesh_gpu.d_indices = 0;
-    }
+    Impl::TriangleMeshGPU mesh_entry;
 
-    // Allocate and copy vertex buffer (vertex_stride floats per vertex)
-    size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
-    cudaMalloc(reinterpret_cast<void**>(&impl->triangle_mesh_gpu.d_vertices), vertex_size);
+    // Allocate and copy vertex buffer
+    size_t vertex_size =
+        num_vertices * vertex_stride * sizeof(float);
+    cudaMalloc(
+        reinterpret_cast<void**>(&mesh_entry.d_vertices),
+        vertex_size
+    );
     cudaMemcpy(
-        reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_vertices),
-        vertices,
-        vertex_size,
-        cudaMemcpyHostToDevice
+        reinterpret_cast<void*>(mesh_entry.d_vertices),
+        vertices, vertex_size, cudaMemcpyHostToDevice
     );
 
     // Allocate and copy index buffer (3 indices per triangle)
-    size_t index_size = num_triangles * 3 * sizeof(unsigned int);
-    cudaMalloc(reinterpret_cast<void**>(&impl->triangle_mesh_gpu.d_indices), index_size);
+    size_t index_size =
+        num_triangles * 3 * sizeof(unsigned int);
+    cudaMalloc(
+        reinterpret_cast<void**>(&mesh_entry.d_indices),
+        index_size
+    );
     cudaMemcpy(
-        reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_indices),
-        indices,
-        index_size,
-        cudaMemcpyHostToDevice
+        reinterpret_cast<void*>(mesh_entry.d_indices),
+        indices, index_size, cudaMemcpyHostToDevice
     );
 
-    // Compute mesh AABB from vertex positions (vertex_stride floats per vertex, position at [0,1,2])
+    // Store mesh metadata for GAS building
+    mesh_entry.num_vertices = num_vertices;
+    mesh_entry.num_triangles = num_triangles;
+    mesh_entry.vertex_stride = vertex_stride;
+    mesh_entry.gas_built = false;
+
+    impl->triangle_meshes.push_back(mesh_entry);
+
+    // Compute mesh AABB from vertex positions (for caustic target)
     impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
     impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
     for (unsigned int i = 0; i < num_vertices; ++i) {
         const float* v = vertices + i * vertex_stride;
-        impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
-        impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
-        impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
-        impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
-        impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
-        impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
+        impl->mesh_aabb_min.x =
+            fminf(impl->mesh_aabb_min.x, v[0]);
+        impl->mesh_aabb_min.y =
+            fminf(impl->mesh_aabb_min.y, v[1]);
+        impl->mesh_aabb_min.z =
+            fminf(impl->mesh_aabb_min.z, v[2]);
+        impl->mesh_aabb_max.x =
+            fmaxf(impl->mesh_aabb_max.x, v[0]);
+        impl->mesh_aabb_max.y =
+            fmaxf(impl->mesh_aabb_max.y, v[1]);
+        impl->mesh_aabb_max.z =
+            fmaxf(impl->mesh_aabb_max.z, v[2]);
     }
 
-    // Update scene parameters
-    impl->scene.setTriangleMeshMeta(num_vertices, num_triangles);
-    // Store device pointers and stride in scene for SBT setup
-    auto& mesh_params = impl->scene.getTriangleMeshMutable();
-    mesh_params.d_vertices = impl->triangle_mesh_gpu.d_vertices;
-    mesh_params.d_indices = impl->triangle_mesh_gpu.d_indices;
+    // Update scene parameters (latest mesh metadata)
+    impl->scene.setTriangleMeshMeta(
+        num_vertices, num_triangles
+    );
+    auto& mesh_params =
+        impl->scene.getTriangleMeshMutable();
+    mesh_params.d_vertices = mesh_entry.d_vertices;
+    mesh_params.d_indices = mesh_entry.d_indices;
     mesh_params.vertex_stride = vertex_stride;
-    impl->triangle_mesh_gpu.gas_built = false;  // Need to rebuild GAS
 }
 
 void OptiXWrapper::setTriangleMeshColor(float r, float g, float b, float a) {
@@ -329,22 +345,27 @@ void OptiXWrapper::setTriangleMeshIOR(float ior) {
 }
 
 void OptiXWrapper::clearTriangleMesh() {
-    // Free GPU buffers
-    if (impl->triangle_mesh_gpu.d_vertices) {
-        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_vertices));
-        impl->triangle_mesh_gpu.d_vertices = 0;
+    // Free GPU buffers for all mesh entries
+    for (auto& mesh : impl->triangle_meshes) {
+        if (mesh.d_vertices) {
+            cudaFree(
+                reinterpret_cast<void*>(mesh.d_vertices)
+            );
+        }
+        if (mesh.d_indices) {
+            cudaFree(
+                reinterpret_cast<void*>(mesh.d_indices)
+            );
+        }
+        if (mesh.d_gas_output_buffer) {
+            cudaFree(
+                reinterpret_cast<void*>(
+                    mesh.d_gas_output_buffer
+                )
+            );
+        }
     }
-    if (impl->triangle_mesh_gpu.d_indices) {
-        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_indices));
-        impl->triangle_mesh_gpu.d_indices = 0;
-    }
-    if (impl->triangle_mesh_gpu.d_gas_output_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_gas_output_buffer));
-        impl->triangle_mesh_gpu.d_gas_output_buffer = 0;
-    }
-
-    impl->triangle_mesh_gpu.gas_handle = 0;
-    impl->triangle_mesh_gpu.gas_built = false;
+    impl->triangle_meshes.clear();
 
     impl->scene.clearTriangleMesh();
 }
@@ -382,41 +403,56 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
     impl->gas_handle = result.handle;
 }
 
-void OptiXWrapper::buildTriangleMeshGAS() {
-    // Free existing GAS if any
-    if (impl->triangle_mesh_gpu.d_gas_output_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->triangle_mesh_gpu.d_gas_output_buffer));
-        impl->triangle_mesh_gpu.d_gas_output_buffer = 0;
-    }
-
-    if (!impl->scene.hasTriangleMesh()) {
-        impl->triangle_mesh_gpu.gas_handle = 0;
-        impl->triangle_mesh_gpu.gas_built = false;
+void OptiXWrapper::buildTriangleMeshGAS(size_t mesh_index) {
+    if (mesh_index >= impl->triangle_meshes.size()) {
+        std::cerr
+            << "[OptiX] buildTriangleMeshGAS: invalid index "
+            << mesh_index << " (have "
+            << impl->triangle_meshes.size() << " meshes)"
+            << std::endl;
         return;
     }
 
-    const auto& mesh_params = impl->scene.getTriangleMesh();
+    auto& mesh = impl->triangle_meshes[mesh_index];
+
+    // Free existing GAS if any
+    if (mesh.d_gas_output_buffer) {
+        cudaFree(
+            reinterpret_cast<void*>(
+                mesh.d_gas_output_buffer
+            )
+        );
+        mesh.d_gas_output_buffer = 0;
+    }
+
+    if (mesh.num_triangles == 0) {
+        mesh.gas_handle = 0;
+        mesh.gas_built = false;
+        return;
+    }
 
     // Configure acceleration structure build
-    // PREFER_FAST_TRACE: Optimizes BVH for ray traversal speed (critical for complex sponge meshes)
-    // ALLOW_COMPACTION: Enables memory compaction for smaller footprint
+    // PREFER_FAST_TRACE: Optimizes BVH for ray traversal speed
+    // ALLOW_COMPACTION: Enables memory compaction
     OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.buildFlags =
+        OPTIX_BUILD_FLAG_PREFER_FAST_TRACE
+        | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
     accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
-    // Use OptiXContext to build triangle GAS
-    OptiXContext::GASBuildResult result = impl->optix_context.buildTriangleGAS(
-        impl->triangle_mesh_gpu.d_vertices,
-        mesh_params.num_vertices,
-        impl->triangle_mesh_gpu.d_indices,
-        mesh_params.num_triangles,
-        accel_options,
-        mesh_params.vertex_stride
-    );
+    OptiXContext::GASBuildResult result =
+        impl->optix_context.buildTriangleGAS(
+            mesh.d_vertices,
+            mesh.num_vertices,
+            mesh.d_indices,
+            mesh.num_triangles,
+            accel_options,
+            mesh.vertex_stride
+        );
 
-    impl->triangle_mesh_gpu.d_gas_output_buffer = result.gas_buffer;
-    impl->triangle_mesh_gpu.gas_handle = result.handle;
-    impl->triangle_mesh_gpu.gas_built = true;
+    mesh.d_gas_output_buffer = result.gas_buffer;
+    mesh.gas_handle = result.handle;
+    mesh.gas_built = true;
 }
 
 void OptiXWrapper::buildIAS() {
@@ -476,6 +512,22 @@ void OptiXWrapper::buildIAS() {
         mat.geometry_type = inst.geometry_type;
         mat.texture_index = inst.texture_index;
         mat.film_thickness = inst.film_thickness;
+        // Per-mesh triangle buffer pointers for IAS mode
+        if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
+            && inst.mesh_index < impl->triangle_meshes.size()) {
+            const auto& mesh =
+                impl->triangle_meshes[inst.mesh_index];
+            mat.vertices =
+                reinterpret_cast<float*>(mesh.d_vertices);
+            mat.indices =
+                reinterpret_cast<unsigned int*>(
+                    mesh.d_indices);
+            mat.vertex_stride = mesh.vertex_stride;
+        } else {
+            mat.vertices = nullptr;
+            mat.indices = nullptr;
+            mat.vertex_stride = 0;
+        }
         materials.push_back(mat);
     }
 
@@ -560,9 +612,13 @@ void OptiXWrapper::buildPipeline() {
     // SBT still needs scene data for default values (used when building unified SBT)
     if (!impl->use_ias) {
         // Single-object mode: build GAS for whichever geometry type is active
-        if (impl->scene.hasTriangleMesh()) {
-            buildTriangleMeshGAS();
-            impl->gas_handle = impl->triangle_mesh_gpu.gas_handle;
+        if (impl->scene.hasTriangleMesh()
+            && !impl->triangle_meshes.empty()) {
+            size_t idx =
+                impl->triangle_meshes.size() - 1;
+            buildTriangleMeshGAS(idx);
+            impl->gas_handle =
+                impl->triangle_meshes[idx].gas_handle;
         } else {
             buildGeometryAccelerationStructure();
         }
@@ -939,6 +995,7 @@ int OptiXWrapper::addSphereInstance(
     inst.film_thickness = film_thickness;
     inst.texture_index = -1;  // Spheres don't support textures
     inst.active = true;
+    inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
@@ -961,36 +1018,39 @@ int OptiXWrapper::addTriangleMeshInstance(
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][TriangleMesh] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            std::cerr
+                << "[OptiX][TriangleMesh] Maximum instances ("
+                << impl->max_instances << ") reached"
+                << std::endl;
             impl->max_instances_warning_shown = true;
         }
         return -1;
     }
 
-    // Check if mesh data exists
-    if (!impl->scene.hasTriangleMesh()) {
-        std::cerr << "[OptiX] Cannot add triangle mesh instance: no mesh set (call setTriangleMesh first)" << std::endl;
+    if (impl->triangle_meshes.empty()) {
+        std::cerr
+            << "[OptiX] Cannot add triangle mesh instance:"
+            << " no mesh set"
+            << " (call setTriangleMesh first)" << std::endl;
         return -1;
     }
 
-    // Auto-build triangle GAS if mesh data exists but GAS isn't built yet
-    if (!impl->triangle_mesh_gpu.gas_built) {
-        buildTriangleMeshGAS();
-    }
+    // Use the latest mesh entry
+    size_t mesh_index =
+        impl->triangle_meshes.size() - 1;
+    auto& mesh = impl->triangle_meshes[mesh_index];
 
-    // Register triangle GAS if not already in registry
-    if (impl->gas_registry.find(GEOMETRY_TYPE_TRIANGLE) == impl->gas_registry.end()) {
-        Impl::GASData gas_data;
-        gas_data.handle = impl->triangle_mesh_gpu.gas_handle;
-        gas_data.gas_buffer = impl->triangle_mesh_gpu.d_gas_output_buffer;
-        gas_data.aabb_buffer = 0;  // Triangle meshes don't use custom AABBs
-        impl->gas_registry[GEOMETRY_TYPE_TRIANGLE] = gas_data;
+    // Auto-build triangle GAS if not built yet
+    if (!mesh.gas_built) {
+        buildTriangleMeshGAS(mesh_index);
     }
 
     Impl::ObjectInstance inst;
     inst.geometry_type = GEOMETRY_TYPE_TRIANGLE;
-    inst.gas_handle = impl->gas_registry[GEOMETRY_TYPE_TRIANGLE].handle;
-    std::memcpy(inst.transform, transform, 12 * sizeof(float));
+    inst.gas_handle = mesh.gas_handle;
+    std::memcpy(
+        inst.transform, transform, 12 * sizeof(float)
+    );
     inst.color[0] = r;
     inst.color[1] = g;
     inst.color[2] = b;
@@ -1003,13 +1063,13 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.film_thickness = film_thickness;
     inst.texture_index = textureIndex;
     inst.active = true;
+    inst.mesh_index = mesh_index;
 
-    int instanceId = static_cast<int>(impl->instances.size());
+    int instanceId =
+        static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
     impl->ias_dirty = true;
 
-    // Force pipeline rebuild when entering IAS mode for first time
-    // Pipeline SBT needs to include both sphere and triangle hit programs for IAS
     if (!impl->use_ias) {
         impl->pipeline_built = false;
     }
@@ -1127,6 +1187,7 @@ int OptiXWrapper::addCylinderInstance(
     inst.film_thickness = film_thickness;
     inst.texture_index = cylinder_index;  // For cylinders: index into cylinder_data array
     inst.active = true;
+    inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
@@ -1200,6 +1261,28 @@ void OptiXWrapper::clearAllInstances() {
         }
     }
     impl->cylinder_gas_buffers.clear();
+
+    // Free triangle mesh GPU resources
+    for (auto& mesh : impl->triangle_meshes) {
+        if (mesh.d_vertices) {
+            cudaFree(
+                reinterpret_cast<void*>(mesh.d_vertices)
+            );
+        }
+        if (mesh.d_indices) {
+            cudaFree(
+                reinterpret_cast<void*>(mesh.d_indices)
+            );
+        }
+        if (mesh.d_gas_output_buffer) {
+            cudaFree(
+                reinterpret_cast<void*>(
+                    mesh.d_gas_output_buffer
+                )
+            );
+        }
+    }
+    impl->triangle_meshes.clear();
 
     // CRITICAL: Clear gas_registry to remove stale GAS handles
     // The registry maps geometry types to GAS data, and after freeing the GAS buffers above,

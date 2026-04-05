@@ -93,6 +93,75 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
 }
 
 /**
+ * Get interpolated geometry using explicit buffer pointers.
+ *
+ * Used in IAS mode where per-instance buffer pointers are stored
+ * in InstanceMaterial instead of the SBT hit group data.
+ *
+ * @param vertices  Per-instance vertex buffer
+ * @param indices   Per-instance index buffer
+ * @param vertex_stride  Floats per vertex in the buffer
+ * @return Interpolated geometry at hit point
+ */
+__device__ TriangleGeometry getTriangleGeometry(
+    const float* vertices,
+    const unsigned int* indices,
+    unsigned int vertex_stride
+) {
+    TriangleGeometry geom;
+
+    geom.t = optixGetRayTmax();
+    const float3 ray_origin = optixGetWorldRayOrigin();
+    const float3 ray_direction = optixGetWorldRayDirection();
+    geom.hit_point = ray_origin + ray_direction * geom.t;
+
+    const unsigned int prim_idx = optixGetPrimitiveIndex();
+    const float2 barycentrics = optixGetTriangleBarycentrics();
+    const float u = barycentrics.x;
+    const float v = barycentrics.y;
+    const float w = 1.0f - u - v;
+
+    const unsigned int idx0 = indices[prim_idx * 3 + 0];
+    const unsigned int idx1 = indices[prim_idx * 3 + 1];
+    const unsigned int idx2 = indices[prim_idx * 3 + 2];
+
+    const unsigned int stride = vertex_stride;
+
+    const float* v0 = &vertices[idx0 * stride];
+    const float* v1 = &vertices[idx1 * stride];
+    const float* v2 = &vertices[idx2 * stride];
+
+    float3 normal = make_float3(
+        w * v0[3] + u * v1[3] + v * v2[3],
+        w * v0[4] + u * v1[4] + v * v2[4],
+        w * v0[5] + u * v1[5] + v * v2[5]
+    );
+    normal = normalize(normal);
+
+    geom.uv_coords = make_float2(0.0f, 0.0f);
+    if (stride >= VERTEX_STRIDE_WITH_UV) {
+        geom.uv_coords = make_float2(
+            w * v0[6] + u * v1[6] + v * v2[6],
+            w * v0[7] + u * v1[7] + v * v2[7]
+        );
+    }
+
+    float vertex_alpha = 1.0f;
+    if (stride >= VERTEX_STRIDE_WITH_ALPHA) {
+        vertex_alpha =
+            w * v0[8] + u * v1[8] + v * v2[8];
+    }
+    geom.vertex_alpha = vertex_alpha;
+
+    geom.entering = (dot(ray_direction, normal) < 0.0f);
+    geom.normal = geom.entering
+        ? normal
+        : make_float3(-normal.x, -normal.y, -normal.z);
+
+    return geom;
+}
+
+/**
  * Get material properties for triangle mesh including PBR values.
  *
  * In IAS mode, reads from per-instance materials array.
@@ -167,26 +236,58 @@ __device__ void getTriangleMaterial(
 //==============================================================================
 extern "C" __global__ void __closesthit__triangle() {
     // Get triangle hit group data from SBT
-    const TriangleHitGroupData* hit_data = reinterpret_cast<TriangleHitGroupData*>(optixGetSbtDataPointer());
+    const TriangleHitGroupData* hit_data =
+        reinterpret_cast<TriangleHitGroupData*>(
+            optixGetSbtDataPointer());
 
-    // Get interpolated geometry (hit point, normal, UVs)
-    const TriangleGeometry geom = getTriangleGeometry(hit_data);
-    const float3 ray_direction = optixGetWorldRayDirection();
+    // In IAS mode, use per-instance buffer pointers
+    // In single-object mode, use SBT hit group data
+    TriangleGeometry geom;
+    unsigned int active_vertex_stride;
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id =
+            optixGetInstanceId();
+        const InstanceMaterial& mat =
+            params.instance_materials[instance_id];
+        if (mat.vertices && mat.indices) {
+            geom = getTriangleGeometry(
+                mat.vertices, mat.indices,
+                mat.vertex_stride);
+            active_vertex_stride = mat.vertex_stride;
+        } else {
+            geom = getTriangleGeometry(hit_data);
+            active_vertex_stride =
+                hit_data->vertex_stride;
+        }
+    } else {
+        geom = getTriangleGeometry(hit_data);
+        active_vertex_stride = hit_data->vertex_stride;
+    }
+    const float3 ray_direction =
+        optixGetWorldRayDirection();
 
     // Get current depth from payload
     const unsigned int depth = optixGetPayload_3();
 
     // Track depth statistics
     if (params.stats) {
-        atomicMax(&params.stats->max_depth_reached, depth + 1);
-        atomicMin(&params.stats->min_depth_reached, depth + 1);
+        atomicMax(
+            &params.stats->max_depth_reached,
+            depth + 1);
+        atomicMin(
+            &params.stats->min_depth_reached,
+            depth + 1);
     }
 
-    // Get material properties including PBR values (color, IOR, roughness, metallic, specular, film_thickness, emission)
+    // Get material properties including PBR values
     float4 mesh_color;
-    float mesh_ior, roughness, metallic, specular, film_thickness, mesh_emission;
-    getTriangleMaterial(hit_data, geom.uv_coords, hit_data->vertex_stride, geom.vertex_alpha,
-                       mesh_color, mesh_ior, roughness, metallic, specular, film_thickness, mesh_emission);
+    float mesh_ior, roughness, metallic, specular,
+        film_thickness, mesh_emission;
+    getTriangleMaterial(
+        hit_data, geom.uv_coords,
+        active_vertex_stride, geom.vertex_alpha,
+        mesh_color, mesh_ior, roughness, metallic,
+        specular, film_thickness, mesh_emission);
 
     const float mesh_alpha = mesh_color.w;
 
@@ -230,7 +331,7 @@ extern "C" __global__ void __closesthit__triangle() {
     // However, per-vertex alpha (fractional sponge meshes) still uses coverage blend regardless
     // of IOR: a fractional glass sponge needs the fade effect on dissolving-in triangles.
     const bool is_refractive = mesh_ior > 1.05f;  // same threshold used in caustics and IAS setup
-    const bool has_vertex_alpha_channel = hit_data->vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
+    const bool has_vertex_alpha_channel = active_vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
     const float coverage_alpha = has_vertex_alpha_channel ? geom.vertex_alpha : mesh_alpha;
     const bool use_coverage_blend =
         (has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||

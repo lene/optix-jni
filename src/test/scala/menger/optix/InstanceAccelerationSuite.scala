@@ -217,6 +217,137 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     renderer.addTriangleMeshInstance(Vector[3](2.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
     renderer.getInstanceCount() shouldBe 3
 
+  // ================================================
+  // Sequential setTriangleMesh + addInstance Tests
+  // ================================================
+
+  "Sequential setTriangleMesh" should
+    "render after replacing mesh without clearing instances" taggedAs (Slow) in:
+      // First mesh: unit cube (24 vertices, 12 triangles)
+      val mesh1 = TestUtilities.createUnitCubeMesh()
+      renderer.setTriangleMesh(mesh1)
+      renderer.addTriangleMeshInstance(
+        Vector[3](-1.5f, 0.0f, 0.0f), OPAQUE_RED, 1.5f
+      )
+
+      // Second mesh: subdivided cube (much more vertices/triangles)
+      // Different buffer sizes force CUDA to allocate at different addresses,
+      // exposing stale GAS handles in gas_registry
+      val mesh2 = TestUtilities.createSubdividedCubeMesh(10)
+      renderer.setTriangleMesh(mesh2)
+      renderer.addTriangleMeshInstance(
+        Vector[3](1.5f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f
+      )
+
+      // This should not crash with CUDA error 700
+      val img = renderImage(TEST_IMAGE_SIZE)
+      img.length shouldBe ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
+      img.count(_ != 0) should be > 0
+
+  it should
+    "render after clear and re-setup with different mesh" taggedAs (Slow) in:
+      // First mesh setup
+      val mesh1 = TestUtilities.createUnitCubeMesh()
+      renderer.setTriangleMesh(mesh1)
+      renderer.addTriangleMeshInstance(
+        Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f
+      )
+      val img1 = renderImage(TEST_IMAGE_SIZE)
+      img1.count(_ != 0) should be > 0
+
+      // Clear and set up with different mesh
+      renderer.clearAllInstances()
+      val mesh2 = TestUtilities.createScaledCubeMesh(0.5f)
+      renderer.setTriangleMesh(mesh2)
+      renderer.addTriangleMeshInstance(
+        Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f
+      )
+
+      // Should render cleanly with new mesh
+      val img2 = renderImage(TEST_IMAGE_SIZE)
+      img2.length shouldBe ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
+      img2.count(_ != 0) should be > 0
+
+  // ================================================
+  // Mixed Triangle Mesh Type Tests (per-instance buffers)
+  // ================================================
+
+  "Mixed triangle mesh types" should
+    "render two instances from different meshes" taggedAs
+      (Slow) in:
+      val meshA = TestUtilities.createUnitCubeMesh()
+      renderer.setTriangleMesh(meshA)
+      renderer.addTriangleMeshInstance(
+        Vector[3](-1.5f, 0.0f, 0.0f), OPAQUE_RED, 1.5f
+      )
+
+      val meshB =
+        TestUtilities.createLargeSubdividedCubeMesh()
+      renderer.setTriangleMesh(meshB)
+      renderer.addTriangleMeshInstance(
+        Vector[3](1.5f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f
+      )
+
+      val img = renderImage(TEST_IMAGE_SIZE)
+      img.length shouldBe
+        ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
+      img.count(_ != 0) should be > 0
+
+  it should
+    "render three instances from two meshes" taggedAs
+      (Slow) in:
+      val meshA = TestUtilities.createUnitCubeMesh()
+      renderer.setTriangleMesh(meshA)
+      renderer.addTriangleMeshInstance(
+        Vector[3](-2.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f
+      )
+      renderer.addTriangleMeshInstance(
+        Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f
+      )
+
+      val meshB =
+        TestUtilities.createLargeSubdividedCubeMesh()
+      renderer.setTriangleMesh(meshB)
+      renderer.addTriangleMeshInstance(
+        Vector[3](2.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f
+      )
+
+      val img = renderImage(TEST_IMAGE_SIZE)
+      img.length shouldBe
+        ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
+      img.count(_ != 0) should be > 0
+
+  it should
+    "render mixed meshes with sphere instances" taggedAs
+      (Slow) in:
+      renderer.addSphereInstance(
+        Vector[3](-2.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f
+      )
+
+      val meshA = TestUtilities.createUnitCubeMesh()
+      renderer.setTriangleMesh(meshA)
+      renderer.addTriangleMeshInstance(
+        Vector[3](0.0f, 0.0f, 0.0f),
+        OPAQUE_GREEN,
+        1.5f
+      )
+
+      val meshB =
+        TestUtilities.createLargeSubdividedCubeMesh()
+      renderer.setTriangleMesh(meshB)
+      renderer.addTriangleMeshInstance(
+        Vector[3](2.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f
+      )
+
+      val img = renderImage(TEST_IMAGE_SIZE)
+      img.length shouldBe
+        ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
+      img.count(_ != 0) should be > 0
+
+  // ================================
+  // Mixed Instance Tests
+  // ================================
+
   "clearAllInstances" should "clear both sphere and triangle mesh instances" in:
     renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
 

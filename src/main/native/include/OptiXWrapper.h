@@ -134,7 +134,7 @@ private:
     // Internal pipeline build helpers
     void buildPipeline();
     void buildGeometryAccelerationStructure();
-    void buildTriangleMeshGAS();  // Build GAS for triangle mesh
+    void buildTriangleMeshGAS(size_t mesh_index);
     void buildIAS();              // Build Instance Acceleration Structure for multi-object scenes
 };
 
