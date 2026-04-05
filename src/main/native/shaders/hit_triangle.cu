@@ -328,13 +328,22 @@ extern "C" __global__ void __closesthit__triangle() {
     // for coverage-alpha geometry (fractional sponges, cube-sponge ghosts).
     // Refractive materials (IOR > 1.05) must not use coverage blend when triggered by material
     // alpha alone — glass has alpha=0.02 by design (Beer-Lambert), not to indicate coverage.
-    // However, per-vertex alpha (fractional sponge meshes) still uses coverage blend regardless
-    // of IOR: a fractional glass sponge needs the fade effect on dissolving-in triangles.
+    // Per-vertex alpha (fractional sponge meshes) uses coverage blend for non-refractive materials:
+    // the fade effect blends diffuse shading with the continuation ray using vertex_alpha.
+    // For refractive materials (glass, water, diamond) with per-vertex alpha, a different blend
+    // is needed: glass_output blended with continuation ray using vertex_alpha. This preserves
+    // refraction on dissolving-in glass faces rather than replacing it with diffuse shading.
     const bool is_refractive = mesh_ior > 1.05f;  // same threshold used in caustics and IAS setup
     const bool has_vertex_alpha_channel = active_vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
     const float coverage_alpha = has_vertex_alpha_channel ? geom.vertex_alpha : mesh_alpha;
+
+    // Refractive materials with per-vertex alpha use a separate blend: glass output blended
+    // with continuation ray. This prevents skin faces from using diffuse shading (banding).
+    const bool use_refractive_coverage_blend =
+        is_refractive && has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD;
+
     const bool use_coverage_blend =
-        (has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||
+        (!use_refractive_coverage_blend && has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||
         (!has_vertex_alpha_channel && !is_refractive && params.use_ias && mesh_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD);
 
     if (use_coverage_blend) {
@@ -361,6 +370,81 @@ extern "C" __global__ void __closesthit__triangle() {
         optixSetPayload_0(r);
         optixSetPayload_1(g);
         optixSetPayload_2(b);
+        return;
+    }
+
+    // Refractive material with per-vertex alpha (e.g. fractional glass sponge skin faces).
+    // Blend: vertex_alpha * glass_output + (1 - vertex_alpha) * continuation_ray.
+    // This preserves full Fresnel/refraction on skin faces instead of diffuse coverage blend.
+    if (use_refractive_coverage_blend) {
+        if (depth >= MAX_TRACE_DEPTH) {
+            traceFinalNonRecursiveRay(geom.hit_point, ray_direction, geom.normal);
+            return;
+        }
+
+        // Compute full Fresnel glass output for this face
+        unsigned int refl_r = 0, refl_g = 0, refl_b = 0;
+        traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, refl_r, refl_g, refl_b);
+
+        unsigned int refr_r = 0, refr_g = 0, refr_b = 0;
+        const bool refr_occurred = traceRefractedRay(
+            geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
+            refr_r, refr_g, refr_b
+        );
+        if (!refr_occurred) {
+            refr_r = refl_r;
+            refr_g = refl_g;
+            refr_b = refl_b;
+        }
+
+        float3 refr_color = payloadToFloat3(refr_r, refr_g, refr_b);
+        refr_color = applyBeerLambertAbsorption(refr_color, geom.t, geom.entering, mesh_color);
+
+        // Compute glass output (Fresnel-blended reflect + refract)
+        float3 glass_output;
+        if (film_thickness > 0.0f) {
+            const float cos_theta = fabsf(dot(ray_direction, geom.normal));
+            const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, mesh_ior, film_thickness);
+            const float3 refl_color = payloadToFloat3(refl_r, refl_g, refl_b);
+            glass_output = make_float3(
+                fresnel_rgb.x * refl_color.x + (1.0f - fresnel_rgb.x) * refr_color.x,
+                fresnel_rgb.y * refl_color.y + (1.0f - fresnel_rgb.y) * refr_color.y,
+                fresnel_rgb.z * refl_color.z + (1.0f - fresnel_rgb.z) * refr_color.z
+            );
+        } else {
+            const float fresnel = computeFresnelReflectance(
+                ray_direction, geom.normal, geom.entering, mesh_ior
+            );
+            const float3 refl_color = payloadToFloat3(refl_r, refl_g, refl_b);
+            glass_output = make_float3(
+                fresnel * refl_color.x + (1.0f - fresnel) * refr_color.x,
+                fresnel * refl_color.y + (1.0f - fresnel) * refr_color.y,
+                fresnel * refl_color.z + (1.0f - fresnel) * refr_color.z
+            );
+        }
+
+        // Trace continuation ray (what lies behind this skin face)
+        unsigned int through_r = 0, through_g = 0, through_b = 0;
+        traceContinuationRay(geom.hit_point, ray_direction, depth, through_r, through_g, through_b);
+        const float3 through_color = payloadToFloat3(through_r, through_g, through_b);
+
+        // Blend: vertex_alpha * glass + (1 - vertex_alpha) * continuation
+        const float va = geom.vertex_alpha;
+        const unsigned int out_r = static_cast<unsigned int>(fminf(
+            (va * glass_output.x + (1.0f - va) * through_color.x) * RayTracingConstants::COLOR_BYTE_MAX,
+            RayTracingConstants::COLOR_BYTE_MAX
+        ));
+        const unsigned int out_g = static_cast<unsigned int>(fminf(
+            (va * glass_output.y + (1.0f - va) * through_color.y) * RayTracingConstants::COLOR_BYTE_MAX,
+            RayTracingConstants::COLOR_BYTE_MAX
+        ));
+        const unsigned int out_b = static_cast<unsigned int>(fminf(
+            (va * glass_output.z + (1.0f - va) * through_color.z) * RayTracingConstants::COLOR_BYTE_MAX,
+            RayTracingConstants::COLOR_BYTE_MAX
+        ));
+        optixSetPayload_0(out_r);
+        optixSetPayload_1(out_g);
+        optixSetPayload_2(out_b);
         return;
     }
 

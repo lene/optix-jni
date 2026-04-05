@@ -2,10 +2,10 @@ package menger.optix
 
 import menger.common.Color
 import menger.common.TriangleMeshData
-import menger.optix.ThresholdConstants.MIN_FPS
 import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.tagobjects.Slow
 
 class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -251,6 +251,39 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val result = renderer.render(TEST_IMAGE_SIZE)
     result.isDefined shouldBe true
     result.get.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
+
+  // Regression test: fractional glass sponge skin faces must use Fresnel/refraction,
+  // not coverage blend (which renders them as dark diffuse bands instead of glass).
+  // With coverage blend, IOR has no effect (the path doesn't use it).
+  // With proper glass/refraction, different IOR values produce visually different outputs.
+  "Fractional glass mesh with per-vertex alpha" should
+      "show IOR-dependent refraction for partially-transparent skin faces" taggedAs Slow in:
+    val cubeMesh = TestUtilities.createUnitCubeMesh()  // stride=8
+
+    // Simulate skin faces only (vertex_alpha=0.5): these are the faces that trigger the bug.
+    val skinOnlyMesh = TriangleMeshData.withAlpha(cubeMesh, 0.5f)
+    skinOnlyMesh.vertexStride shouldBe 9
+
+    renderer.clearPlanes()
+    renderer.addPlane(1, true, -2.0f)
+    renderer.setTriangleMesh(skinOnlyMesh)
+    renderer.setTriangleMeshColor(Color(1.0f, 1.0f, 1.0f, 0.02f))  // Glass: very low alpha
+
+    // Render with no refraction (IOR=1.0)
+    renderer.setTriangleMeshIOR(1.0f)
+    val renderIOR1 = renderer.render(TEST_IMAGE_SIZE).get
+
+    // Render with glass refraction (IOR=1.5)
+    renderer.setTriangleMeshIOR(1.5f)
+    val renderIOR15 = renderer.render(TEST_IMAGE_SIZE).get
+
+    val stdDevIOR1 = ImageValidation.brightnessStdDev(renderIOR1, TEST_IMAGE_SIZE)
+    val stdDevIOR15 = ImageValidation.brightnessStdDev(renderIOR15, TEST_IMAGE_SIZE)
+    info(s"Std dev IOR=1.0: $stdDevIOR1, IOR=1.5: $stdDevIOR15")
+
+    // With coverage blend (bug): IOR is ignored → renders are identical
+    // With proper Fresnel/refraction: IOR changes refraction angle → renders differ
+    renderIOR1 should not equal renderIOR15
 
   // Helper to create a mesh with many triangles by subdividing a cube
   private def createComplexMesh(subdivisions: Int): TriangleMeshData =
