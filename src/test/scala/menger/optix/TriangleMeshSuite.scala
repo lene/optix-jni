@@ -2,7 +2,6 @@ package menger.optix
 
 import menger.common.Color
 import menger.common.TriangleMeshData
-import menger.optix.ThresholdConstants.MIN_FPS
 import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
