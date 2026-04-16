@@ -2,18 +2,21 @@
 # Pre-installs CUDA, OptiX, Java, sbt, and common CI tools to speed up CI jobs
 #
 # Layer structure (optimized for caching):
-#   1. CUDA 12.8 (from NVIDIA base image, ~9GB)
+#   1. CUDA (from NVIDIA base image, ~9GB)
 #   2. Build tools (cmake, g++, ~200MB)
-#   3. OptiX SDK 9.0 (~500MB)
+#   3. OptiX SDK (~500MB)
 #   4. Java 25 (~400MB)
 #   5. sbt 1.12.0 (~100MB)
 #   6. CI tools (xvfb, valgrind, curl, etc., ~150MB)
 #
 # Image tag format: {CUDA}-{OptiX}-{Java}-{sbt}
 # Example: registry.gitlab.com/lilacashes/menger/optix-cuda:12.8-9.0-25-1.12.0
-# To build for CUDA 13: docker build --build-arg CUDA_VERSION=13.2.0 ...
+# Build args:
+#   CUDA_VERSION   (default: 12.8.0)
+#   OPTIX_VERSION  (default: 9.0.0) — must match installer filename in build context
 #
 ARG CUDA_VERSION=12.8.0
+ARG OPTIX_VERSION=9.0.0
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04
 
 # Avoid interactive prompts during package installation
@@ -31,13 +34,14 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Layer 3: OptiX SDK 9.0
+# Layer 3: OptiX SDK
 # Create target directory explicitly and install there, then create symlink
-COPY NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64.sh /tmp/optix-installer.sh
+ARG OPTIX_VERSION
+COPY NVIDIA-OptiX-SDK-${OPTIX_VERSION}-linux64-x86_64.sh /tmp/optix-installer.sh
 RUN chmod +x /tmp/optix-installer.sh ; \
-    mkdir -p /usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64 ; \
-    /tmp/optix-installer.sh --skip-license --prefix=/usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64 ; \
-    ln -s /usr/local/NVIDIA-OptiX-SDK-9.0.0-linux64-x86_64 /usr/local/optix ; \
+    mkdir -p /usr/local/NVIDIA-OptiX-SDK-${OPTIX_VERSION}-linux64-x86_64 ; \
+    /tmp/optix-installer.sh --skip-license --prefix=/usr/local/NVIDIA-OptiX-SDK-${OPTIX_VERSION}-linux64-x86_64 ; \
+    ln -s /usr/local/NVIDIA-OptiX-SDK-${OPTIX_VERSION}-linux64-x86_64 /usr/local/optix ; \
     rm /tmp/optix-installer.sh
 
 # Set OptiX and CUDA environment variables for CMake auto-detection
