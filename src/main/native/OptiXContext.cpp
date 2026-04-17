@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <pwd.h>
 
+#include <cuda.h>
 #include <optix_stubs.h>
 #include <optix_stack_size.h>
 
@@ -91,19 +92,55 @@ OptiXContext::~OptiXContext() {
 
 bool OptiXContext::initialize() {
     try {
-        // Initialize CUDA runtime
+        // Step 1: Initialize CUDA Driver API explicitly.
+        // libnvoptix.so is a driver component and uses driver API internally.
+        // On systems with a CUDA 12.x-era libnvoptix.so running inside a CUDA 13.x
+        // container, optixDeviceContextCreate() can hang if the CUDA runtime creates
+        // the context first (runtime context initialization differs between versions).
+        // Initializing via the driver API first avoids this incompatibility.
+        CUresult cu_result = cuInit(0);
+        if (cu_result != CUDA_SUCCESS) {
+            const char* err_str = nullptr;
+            cuGetErrorString(cu_result, &err_str);
+            std::cerr << "[OptiXContext] cuInit failed: "
+                      << (err_str ? err_str : "unknown") << std::endl;
+            return false;
+        }
+
+        CUdevice cu_device = 0;
+        cu_result = cuDeviceGet(&cu_device, 0);
+        if (cu_result != CUDA_SUCCESS) {
+            std::cerr << "[OptiXContext] cuDeviceGet failed" << std::endl;
+            return false;
+        }
+
+        // Retain the primary context via driver API. This is the same context
+        // that the CUDA runtime uses, ensuring both APIs share one context.
+        CUcontext cu_ctx = nullptr;
+        cu_result = cuDevicePrimaryCtxRetain(&cu_ctx, cu_device);
+        if (cu_result != CUDA_SUCCESS || cu_ctx == nullptr) {
+            std::cerr << "[OptiXContext] cuDevicePrimaryCtxRetain failed" << std::endl;
+            return false;
+        }
+
+        cu_result = cuCtxSetCurrent(cu_ctx);
+        if (cu_result != CUDA_SUCCESS) {
+            std::cerr << "[OptiXContext] cuCtxSetCurrent failed" << std::endl;
+            return false;
+        }
+
+        // Step 2: Initialize CUDA runtime (shares the primary context above)
         CUDA_CHECK(cudaFree(0));
 
-        // Initialize OptiX
+        // Step 3: Initialize OptiX
         OPTIX_CHECK(optixInit());
 
-        // Create OptiX device context
-        CUcontext cuCtx = 0;  // 0 = use current CUDA context
+        // Step 4: Create OptiX device context with the explicit driver-API context
         OptixDeviceContextOptions options = {};
         options.logCallbackFunction = &optixLogCallback;
         options.logCallbackLevel = OptiXConstants::OPTIX_LOG_LEVEL_INFO;
 
-        OPTIX_CHECK(optixDeviceContextCreate(cuCtx, &options, &context_));
+        OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &context_));
 
         // Configure OptiX disk cache
         // Allow custom cache location via MENGER_OPTIX_CACHE environment variable
@@ -141,6 +178,9 @@ OptixModule OptiXContext::createModuleFromPTX(
     const OptixModuleCompileOptions& module_options,
     const OptixPipelineCompileOptions& pipeline_options)
 {
+    if (!initialized_ || !context_)
+        throw std::runtime_error("OptiXContext: not initialized");
+
     char log[OptiXConstants::LOG_BUFFER_SIZE];
     size_t log_size = sizeof(log);
 
