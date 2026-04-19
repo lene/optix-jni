@@ -31,12 +31,19 @@ case class CausticsConfig(
   initialRadius: Float = 1.0f,
   alpha: Float = 0.7f
 ):
-  require(photonsPerIteration > 0 && photonsPerIteration <= 10000000, s"photonsPerIteration must be 1-10000000, got $photonsPerIteration")
-  require(iterations > 0 && iterations <= 1000, s"iterations must be 1-1000, got $iterations")
-  require(initialRadius > 0.0f && initialRadius <= 10.0f, s"initialRadius must be 0.0-10.0, got $initialRadius")
+  require(photonsPerIteration > 0 && photonsPerIteration <= CausticsConfig.MaxPhotonsPerIteration,
+    s"photonsPerIteration must be 1-${CausticsConfig.MaxPhotonsPerIteration}, got $photonsPerIteration")
+  require(iterations > 0 && iterations <= CausticsConfig.MaxIterations,
+    s"iterations must be 1-${CausticsConfig.MaxIterations}, got $iterations")
+  require(initialRadius > 0.0f && initialRadius <= CausticsConfig.MaxInitialRadius,
+    s"initialRadius must be 0.0-${CausticsConfig.MaxInitialRadius}, got $initialRadius")
   require(alpha > 0.0f && alpha < 1.0f, s"alpha must be 0.0-1.0 exclusive, got $alpha")
 
 object CausticsConfig:
+  val MaxPhotonsPerIteration: Int   = 10000000
+  val MaxIterations: Int            = 1000
+  val MaxInitialRadius: Float       = 10.0f
+
   val Disabled: CausticsConfig = CausticsConfig()
   val Default: CausticsConfig = CausticsConfig(enabled = true)
   val HighQuality: CausticsConfig = CausticsConfig(enabled = true, photonsPerIteration = 500000, iterations = 20, alpha = 0.8f)
