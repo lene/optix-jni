@@ -163,10 +163,6 @@ case class RenderResult(
   )
 
 // JNI interface to OptiX ray tracing renderer
-// Phase 1: Basic structure with placeholder implementations
-// Phase 2: Actual OptiX context and data structure implementation
-// Phase 3: Full pipeline and shader implementation
-// Phase 4: Complete integration and testing
 class OptiXRenderer extends LazyLogging:
 
   // Native handle to the C++ OptiXWrapper instance (0 = not initialized)
@@ -194,10 +190,7 @@ class OptiXRenderer extends LazyLogging:
   def setSphereColor(color: Color): Unit =
     setSphereColorNative(color.r, color.g, color.b, color.a)
 
-  private def setSphereColor(r: Float, g: Float, b: Float, a: Float): Unit =
-    setSphereColorNative(r, g, b, a)
 
-  
   @native def setIOR(ior: Float): Unit
 
   
