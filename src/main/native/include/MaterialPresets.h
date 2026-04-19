@@ -34,8 +34,6 @@ inline MaterialProperties createDefault() {
     mat.metallic = 0.0f;
     mat.specular = 0.5f;
     mat.base_color_texture = -1;
-    mat.normal_texture = -1;
-    mat.roughness_texture = -1;
     mat.film_thickness = 0.0f;
     mat.padding[0] = 0;
     mat.padding[1] = 0;

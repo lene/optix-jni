@@ -43,8 +43,6 @@ namespace RayTracingConstants {
     constexpr float PLANE_CHECKER_SIZE = 1.0f;            // Size of checker squares
     constexpr unsigned int PLANE_CHECKER_LIGHT_GRAY = 120;  // Light gray checker RGB value
     constexpr unsigned int PLANE_CHECKER_DARK_GRAY = 20;    // Dark gray checker RGB value
-    constexpr unsigned int PLANE_SOLID_LIGHT_GRAY = 200;    // Solid plane color (good for shadow visibility)
-
     // Multiple light sources
     constexpr int MAX_LIGHTS = 8;         // Maximum number of simultaneous light sources
     constexpr int MAX_SHADOW_SAMPLES = 16; // Maximum shadow samples per area light
@@ -193,14 +191,12 @@ struct MaterialProperties {
 
     // Texture indices (-1 = no texture)
     int base_color_texture;      // Albedo/diffuse texture index
-    int normal_texture;          // Normal map texture index (future)
-    int roughness_texture;       // Roughness map texture index (future)
 
     // Thin-film interference
     float film_thickness;        // Film thickness in nm (0 = no thin-film interference)
 
-    // Padding for 16-byte alignment (64 bytes total)
-    unsigned int padding[2];
+    // Padding to maintain 60-byte struct size
+    unsigned int padding[4];
 };
 
 // Material type for presets

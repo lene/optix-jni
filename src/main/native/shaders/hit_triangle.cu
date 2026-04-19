@@ -190,7 +190,7 @@ __device__ void getTriangleMaterial(
     float& metallic,
     float& specular,
     float& film_thickness,
-    float& out_emission         // NEW
+    float& out_emission
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
