@@ -326,19 +326,24 @@ extern "C" __global__ void __closesthit__triangle() {
     // Refractive materials (IOR > 1.05) must always use the Fresnel/refraction path below,
     // even when their material alpha is low (e.g. glass alpha=0.02). Coverage blend is only
     // for coverage-alpha geometry (fractional sponges, cube-sponge ghosts).
-    // Refractive materials (IOR > 1.05) must not use coverage blend when triggered by material
-    // alpha alone — glass has alpha=0.02 by design (Beer-Lambert), not to indicate coverage.
-    // However, per-vertex alpha (fractional sponge meshes) still uses coverage blend regardless
-    // of IOR: a fractional glass sponge needs the fade effect on dissolving-in triangles.
+    // Refractive materials (IOR > 1.05) must not use coverage blend — neither for material
+    // alpha (glass alpha=0.02 is Beer-Lambert, not coverage) nor for per-vertex alpha (glass
+    // sponge skin faces must use the Fresnel/refraction path, not diffuse blend).
     const bool is_refractive = mesh_ior > 1.05f;  // same threshold used in caustics and IAS setup
     const bool has_vertex_alpha_channel = active_vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
     const float coverage_alpha = has_vertex_alpha_channel ? geom.vertex_alpha : mesh_alpha;
     const bool use_coverage_blend =
-        (has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||
+        (!is_refractive && has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||
         (!has_vertex_alpha_channel && !is_refractive && params.use_ias && mesh_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD);
 
+    // Refractive skin faces (glass sponge fractional level boundaries): blend Fresnel result
+    // with a straight-through continuation ray weighted by vertex_alpha.  vertex_alpha * fresnel
+    // + (1 - vertex_alpha) * through gives correct partial-presence glass appearance.
+    const bool use_refractive_coverage_blend = is_refractive && has_vertex_alpha_channel
+        && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD;
+
     if (use_coverage_blend) {
-        if (depth >= MAX_TRACE_DEPTH) {
+        if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
             // At max depth, just render as opaque to avoid black cutoff
             handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
             return;
@@ -364,8 +369,71 @@ extern "C" __global__ void __closesthit__triangle() {
         return;
     }
 
+    if (use_refractive_coverage_blend) {
+        if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
+            return;
+        }
+
+        // Compute full Fresnel/refraction result for this face
+        unsigned int refl_r = 0, refl_g = 0, refl_b = 0;
+        traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, refl_r, refl_g, refl_b);
+
+        unsigned int refr_r = 0, refr_g = 0, refr_b = 0;
+        const bool refr_ok = traceRefractedRay(
+            geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
+            refr_r, refr_g, refr_b
+        );
+        if (!refr_ok) { refr_r = refl_r; refr_g = refl_g; refr_b = refl_b; }
+
+        float3 refr_color = payloadToFloat3(refr_r, refr_g, refr_b);
+        refr_color = applyBeerLambertAbsorption(refr_color, geom.t, geom.entering, mesh_color);
+
+        const float3 refl_color = payloadToFloat3(refl_r, refl_g, refl_b);
+        float3 fresnel_color;
+        if (film_thickness > 0.0f) {
+            const float cos_theta = fabsf(dot(ray_direction, geom.normal));
+            const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, mesh_ior, film_thickness);
+            fresnel_color = make_float3(
+                fresnel_rgb.x * refl_color.x + (1.0f - fresnel_rgb.x) * refr_color.x,
+                fresnel_rgb.y * refl_color.y + (1.0f - fresnel_rgb.y) * refr_color.y,
+                fresnel_rgb.z * refl_color.z + (1.0f - fresnel_rgb.z) * refr_color.z
+            );
+        } else {
+            const float fresnel = computeFresnelReflectance(ray_direction, geom.normal, geom.entering, mesh_ior);
+            fresnel_color = make_float3(
+                fresnel * refl_color.x + (1.0f - fresnel) * refr_color.x,
+                fresnel * refl_color.y + (1.0f - fresnel) * refr_color.y,
+                fresnel * refl_color.z + (1.0f - fresnel) * refr_color.z
+            );
+        }
+        // Emission contribution
+        if (mesh_emission > 0.0f) {
+            fresnel_color.x += mesh_emission * mesh_color.x * RayTracingConstants::COLOR_SCALE_FACTOR / RayTracingConstants::COLOR_BYTE_MAX;
+            fresnel_color.y += mesh_emission * mesh_color.y * RayTracingConstants::COLOR_SCALE_FACTOR / RayTracingConstants::COLOR_BYTE_MAX;
+            fresnel_color.z += mesh_emission * mesh_color.z * RayTracingConstants::COLOR_SCALE_FACTOR / RayTracingConstants::COLOR_BYTE_MAX;
+        }
+
+        // Trace continuation ray (straight through — what lies behind the face)
+        unsigned int thru_r = 0, thru_g = 0, thru_b = 0;
+        traceContinuationRay(geom.hit_point, ray_direction, depth, thru_r, thru_g, thru_b);
+        const float3 thru_color = payloadToFloat3(thru_r, thru_g, thru_b);
+
+        // Blend: vertex_alpha * fresnel + (1 - vertex_alpha) * through
+        const float a = geom.vertex_alpha;
+        const float3 blended = make_float3(
+            fminf(a * fresnel_color.x + (1.0f - a) * thru_color.x, 1.0f),
+            fminf(a * fresnel_color.y + (1.0f - a) * thru_color.y, 1.0f),
+            fminf(a * fresnel_color.z + (1.0f - a) * thru_color.z, 1.0f)
+        );
+        optixSetPayload_0(static_cast<unsigned int>(blended.x * RayTracingConstants::COLOR_BYTE_MAX));
+        optixSetPayload_1(static_cast<unsigned int>(blended.y * RayTracingConstants::COLOR_BYTE_MAX));
+        optixSetPayload_2(static_cast<unsigned int>(blended.z * RayTracingConstants::COLOR_BYTE_MAX));
+        return;
+    }
+
     // If max depth reached, trace final non-recursive ray
-    if (depth >= MAX_TRACE_DEPTH) {
+    if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
         traceFinalNonRecursiveRay(geom.hit_point, ray_direction, geom.normal);
         return;
     }

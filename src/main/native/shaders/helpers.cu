@@ -789,7 +789,7 @@ __device__ void traceFinalNonRecursiveRay(
     );
 
     unsigned int final_r = 0, final_g = 0, final_b = 0;
-    unsigned int final_depth = MAX_TRACE_DEPTH;  // Keep at max depth to prevent recursion
+    unsigned int final_depth = static_cast<unsigned int>(params.max_ray_depth);  // Keep at max depth to prevent recursion
     const float3 final_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
 
     optixTrace(
@@ -1154,7 +1154,7 @@ __device__ void handleMetallicOpaque(
     float emission = 0.0f
 ) {
     // If at max depth, trace final non-recursive ray
-    if (depth >= MAX_TRACE_DEPTH) {
+    if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
         traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
         return;
     }

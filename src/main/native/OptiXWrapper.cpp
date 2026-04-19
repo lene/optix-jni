@@ -261,6 +261,10 @@ void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) 
     impl->config.setAntialiasing(enabled, maxDepth, threshold);
 }
 
+void OptiXWrapper::setMaxRayDepth(int depth) {
+    impl->config.setMaxRayDepth(depth);
+}
+
 void OptiXWrapper::setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha) {
     impl->config.setCaustics(enabled, photonsPerIter, iterations, initialRadius, alpha);
 }
@@ -794,6 +798,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.aa_enabled = impl->config.getAAEnabled();
         params.aa_max_depth = impl->config.getAAMaxDepth();
         params.aa_threshold = impl->config.getAAThreshold();
+
+        // Ray depth
+        params.max_ray_depth = impl->config.getMaxRayDepth();
 
         // Caustics (Progressive Photon Mapping) parameters
         params.caustics.enabled = impl->config.getCausticsEnabled();

@@ -41,6 +41,18 @@ class RenderConfigSuite extends AnyFlatSpec with Matchers:
     an[IllegalArgumentException] shouldBe thrownBy { RenderConfig(aaThreshold = -0.1f) }
     an[IllegalArgumentException] shouldBe thrownBy { RenderConfig(aaThreshold = 1.1f) }
 
+  it should "default maxRayDepth to the pipeline ceiling" in:
+    RenderConfig().maxRayDepth shouldBe RenderLimits.MaxRayDepth
+
+  it should "accept valid maxRayDepth values" in:
+    noException shouldBe thrownBy { RenderConfig(maxRayDepth = 1) }
+    noException shouldBe thrownBy { RenderConfig(maxRayDepth = 3) }
+    noException shouldBe thrownBy { RenderConfig(maxRayDepth = RenderLimits.MaxRayDepth) }
+
+  it should "reject maxRayDepth below 1 or above pipeline ceiling" in:
+    an[IllegalArgumentException] shouldBe thrownBy { RenderConfig(maxRayDepth = 0) }
+    an[IllegalArgumentException] shouldBe thrownBy { RenderConfig(maxRayDepth = RenderLimits.MaxRayDepth + 1) }
+
   "CausticsConfig" should "have sensible defaults" in:
     val config = CausticsConfig()
     config.enabled shouldBe false

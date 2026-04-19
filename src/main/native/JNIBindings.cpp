@@ -327,6 +327,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setMaxRayDepth(
+    JNIEnv* env, jobject obj, jint depth) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setMaxRayDepth(depth);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setMaxRayDepth: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCaustics(
     JNIEnv* env, jobject obj, jboolean enabled, jint photonsPerIter, jint iterations,
     jfloat initialRadius, jfloat alpha) {

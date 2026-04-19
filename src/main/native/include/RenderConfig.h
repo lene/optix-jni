@@ -40,6 +40,10 @@ public:
     int getAAMaxDepth() const { return aa_max_depth; }
     float getAAThreshold() const { return aa_threshold; }
 
+    // Ray depth configuration
+    void setMaxRayDepth(int depth) { max_ray_depth = depth; }
+    int getMaxRayDepth() const { return max_ray_depth; }
+
     // Caustics (Progressive Photon Mapping) configuration
     void setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha);
     bool getCausticsEnabled() const { return caustics_enabled; }
@@ -88,6 +92,9 @@ private:
     bool aa_enabled = false;
     int aa_max_depth = 2;
     float aa_threshold = RayTracingConstants::AA_DEFAULT_THRESHOLD;
+
+    // Ray depth
+    int max_ray_depth = MAX_TRACE_DEPTH;
 
     // Caustics configuration
     bool caustics_enabled = false;

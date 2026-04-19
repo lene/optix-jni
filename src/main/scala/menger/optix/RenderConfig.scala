@@ -1,15 +1,23 @@
 package menger.optix
 
+object RenderLimits:
+  /** Pipeline-level ray trace depth ceiling, matching MAX_TRACE_DEPTH in OptiXData.h.
+   *  Increasing this requires recompiling the native library with a matching C++ change. */
+  val MaxRayDepth: Int = 5
+
 // Configuration for render quality options
 case class RenderConfig(
   shadows: Boolean = false,
   transparentShadows: Boolean = false,  // Sprint 13.2: colored shadows through transparent objects
   antialiasing: Boolean = false,
   aaMaxDepth: Int = 2,
-  aaThreshold: Float = 0.1f
+  aaThreshold: Float = 0.1f,
+  maxRayDepth: Int = RenderLimits.MaxRayDepth
 ):
   require(aaMaxDepth >= 1 && aaMaxDepth <= 4, s"aaMaxDepth must be 1-4, got $aaMaxDepth")
   require(aaThreshold >= 0.0f && aaThreshold <= 1.0f, s"aaThreshold must be 0.0-1.0, got $aaThreshold")
+  require(maxRayDepth >= 1 && maxRayDepth <= RenderLimits.MaxRayDepth,
+    s"maxRayDepth must be 1-${RenderLimits.MaxRayDepth} (pipeline ceiling), got $maxRayDepth")
 
 object RenderConfig:
   val Default: RenderConfig = RenderConfig()

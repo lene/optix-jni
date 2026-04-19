@@ -240,10 +240,13 @@ class OptiXRenderer extends LazyLogging:
 
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 
+  @native def setMaxRayDepth(depth: Int): Unit
+
   def setRenderConfig(config: RenderConfig): Unit =
     setShadows(config.shadows)
     setTransparentShadows(config.transparentShadows)
     setAntialiasing(config.antialiasing, config.aaMaxDepth, config.aaThreshold)
+    setMaxRayDepth(config.maxRayDepth)
 
   @native def setCaustics(enabled: Boolean, photonsPerIter: Int, iterations: Int, initialRadius: Float, alpha: Float): Unit
 

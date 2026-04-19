@@ -479,6 +479,9 @@ struct Params {
     int   aa_max_depth;         // Maximum recursion depth (1-4)
     float aa_threshold;         // Color difference threshold for edge detection (0.0-1.0)
 
+    // Ray depth
+    int   max_ray_depth;        // Maximum ray bounce depth (must be <= MAX_TRACE_DEPTH)
+
     // Progressive Photon Mapping (Caustics)
     CausticsParams caustics;    // Caustics rendering parameters and GPU buffers
 };
