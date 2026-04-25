@@ -121,6 +121,21 @@ public:
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
         float film_thickness = 0.0f
     );
+
+    // Recursive-IAS Menger sponge (Sprint 18.4).
+    // Wraps the most-recently-uploaded triangle mesh (call setTriangleMesh first with a
+    // unit cube) in `level` nested IAS layers using the 20 Menger generator transforms.
+    // VRAM grows O(level * 20) instead of O(20^level). The scaling factor halves the
+    // sponge per recursion (each generator scales by 1/3 and translates by ±1/3 along
+    // the Menger keep-positions). Constraint: do not deactivate any instance between
+    // this call and render(); the leaf-IAS instances embed the predicted instanceId.
+    int addRecursiveIASSpongeInstance(
+        int level,
+        const float* transform, float r, float g, float b, float a, float ior,
+        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        int textureIndex = -1, float film_thickness = 0.0f
+    );
+
     void removeInstance(int instanceId);
     void clearAllInstances();
     int getInstanceCount() const;
@@ -139,6 +154,16 @@ private:
     void buildGeometryAccelerationStructure();
     void buildTriangleMeshGAS(size_t mesh_index);
     void buildIAS();              // Build Instance Acceleration Structure for multi-object scenes
+
+    // Build a sub-IAS owning `num_transforms` instances, all pointing to `child_handle`,
+    // each tagged with `inherited_instance_id` (so the leaf hit shader resolves to the
+    // outer recursive-sponge material slot). Caller retains lifetime ownership; the
+    // returned handle is valid until clearAllInstances() / dispose().
+    OptixTraversableHandle buildSubIAS(
+        OptixTraversableHandle child_handle,
+        const float (*transforms)[12],
+        unsigned int num_transforms,
+        unsigned int inherited_instance_id);
 };
 
 #endif // OPTIX_WRAPPER_H

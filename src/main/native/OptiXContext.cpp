@@ -446,12 +446,20 @@ OptixPipeline OptiXContext::createPipeline(
     constexpr unsigned int MIN_CONTINUATION_STACK_SIZE = 49152u;  // 48 KB minimum for metallic cylinders
     continuation_stack_size = std::max(continuation_stack_size, MIN_CONTINUATION_STACK_SIZE);
 
+    // maxTraversableGraphDepth: depth of the deepest traversal chain.
+    //   2 covers main-IAS -> GAS (the original mixed-geometry path).
+    //   Recursive-IAS Menger sponges (Sprint 18.4) chain main-IAS ->
+    //   N nested sub-IASes -> cube GAS, requiring depth >= N + 2.
+    //   Setting to 16 supports up to level-14 recursive sponges; higher
+    //   values cost a small amount of pipeline stack but no measurable
+    //   runtime overhead until the depth is actually used.
+    constexpr unsigned int MAX_TRAVERSABLE_GRAPH_DEPTH = 16u;
     OPTIX_CHECK(optixPipelineSetStackSize(
         pipeline,
         direct_callable_stack_size_from_traversal,
         direct_callable_stack_size_from_state,
         continuation_stack_size,
-        2  // maxTraversableGraphDepth (2 for IAS->GAS traversal)
+        MAX_TRAVERSABLE_GRAPH_DEPTH
     ));
 
     return pipeline;

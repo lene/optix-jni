@@ -72,8 +72,9 @@ protected:
     OptixPipelineCompileOptions createDefaultPipelineOptions() {
         OptixPipelineCompileOptions pipeline_options = {};
         pipeline_options.usesMotionBlur = false;
-        pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS |
-                                                  OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
+        // ALLOW_ANY: matches the production PipelineManager (Sprint 18.4
+        // requires multi-level instancing for recursive IAS Menger sponges).
+        pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
         pipeline_options.numPayloadValues = 10;
         pipeline_options.numAttributeValues = 4;
         pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;

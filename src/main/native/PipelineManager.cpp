@@ -13,9 +13,12 @@
 static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     OptixPipelineCompileOptions options = {};
     options.usesMotionBlur = false;
-    // Allow both single GAS (backward compatible) and single-level instancing (IAS)
-    options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS |
-                                    OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
+    // Allow arbitrary traversable graphs: single GAS (backward compatible),
+    // single-level instancing (IAS->GAS), and multi-level instancing (recursive
+    // IAS-of-IAS, used by Sprint 18.4 recursive Menger sponge). ALLOW_ANY is
+    // required whenever maxTraversableGraphDepth > 2; the small per-traversal
+    // cost vs SINGLE_LEVEL is accepted to support the recursive case.
+    options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
     options.numPayloadValues = 10;  // Primary: RGB+depth (4), Photon: flux+origin+dir+flags (10)
     options.numAttributeValues = 4;  // Normal x, y, z + radius from SDK intersection
     options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;

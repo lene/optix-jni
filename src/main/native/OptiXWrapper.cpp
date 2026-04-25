@@ -103,6 +103,15 @@ struct OptiXWrapper::Impl {
     // Track cylinder GAS buffers for proper cleanup (each cylinder has its own GAS)
     std::vector<GASData> cylinder_gas_buffers;
 
+    // Sub-IAS lifetime storage for recursive-IAS Menger sponges (Sprint 18.4).
+    // Each entry owns one nested IAS layer's instance buffer + IAS output buffer.
+    struct SubIASData {
+        OptixTraversableHandle handle = 0;
+        CUdeviceptr d_output_buffer = 0;
+        CUdeviceptr d_instances_buffer = 0;
+    };
+    std::vector<SubIASData> sub_ias_buffers;
+
     Impl()
         : pipeline_manager(optix_context)
         , buffer_manager(optix_context)
@@ -1085,6 +1094,36 @@ int OptiXWrapper::addTriangleMeshInstance(
     return instanceId;
 }
 
+// ============================================================================
+// Recursive-IAS Menger sponge (Sprint 18.4)
+// ============================================================================
+//
+// CUT A1 (this commit): declarations, storage, depth-ceiling raise, cleanup.
+// Bodies stubbed to return -1 / 0 — Cut A2 fills them in.
+//
+// The 20 Menger generator offsets (sub-cube positions that are kept at each
+// recursion level) live next to the implementation in Cut A2.
+
+OptixTraversableHandle OptiXWrapper::buildSubIAS(
+    OptixTraversableHandle /*child_handle*/,
+    const float (*/*transforms*/)[12],
+    unsigned int /*num_transforms*/,
+    unsigned int /*inherited_instance_id*/) {
+    // TODO(Sprint 18.4 Cut A2): build a 20-instance IAS pointing at child_handle.
+    return 0;
+}
+
+int OptiXWrapper::addRecursiveIASSpongeInstance(
+    int /*level*/,
+    const float* /*transform*/, float /*r*/, float /*g*/, float /*b*/, float /*a*/, float /*ior*/,
+    float /*roughness*/, float /*metallic*/, float /*specular*/, float /*emission*/,
+    int /*textureIndex*/, float /*film_thickness*/) {
+    // TODO(Sprint 18.4 Cut A2): chain `level` sub-IASes around the latest triangle mesh
+    // and register a single instance into impl->instances.
+    std::cerr << "[OptiX] addRecursiveIASSpongeInstance: not yet implemented (Cut A1 stub)" << std::endl;
+    return -1;
+}
+
 int OptiXWrapper::addCylinderInstance(
     float p0_x, float p0_y, float p0_z,
     float p1_x, float p1_y, float p1_z,
@@ -1268,6 +1307,17 @@ void OptiXWrapper::clearAllInstances() {
         }
     }
     impl->cylinder_gas_buffers.clear();
+
+    // Free recursive-IAS sponge sub-IAS buffers (Sprint 18.4)
+    for (const auto& sub : impl->sub_ias_buffers) {
+        if (sub.d_output_buffer) {
+            cudaFree(reinterpret_cast<void*>(sub.d_output_buffer));
+        }
+        if (sub.d_instances_buffer) {
+            cudaFree(reinterpret_cast<void*>(sub.d_instances_buffer));
+        }
+    }
+    impl->sub_ias_buffers.clear();
 
     // Free triangle mesh GPU resources
     for (auto& mesh : impl->triangle_meshes) {
