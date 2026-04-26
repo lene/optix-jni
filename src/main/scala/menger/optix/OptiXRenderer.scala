@@ -330,6 +330,21 @@ class OptiXRenderer extends LazyLogging:
     vertexStride: Int
   ): Unit
 
+  // Sprint 18.3 Cut A: GPU-side 4D rotation + projection. Returns mesh index.
+  @native private def setTriangleMesh4DQuadsNative(
+    quads4D: Array[Float],
+    numQuads: Int,
+    uvs: Array[Float],         // null permitted for default unit-square UVs
+    eyeW: Float,
+    screenW: Float,
+    rotXW: Float,
+    rotYW: Float,
+    rotZW: Float,
+    centerX: Float,
+    centerY: Float,
+    centerZ: Float
+  ): Int
+
   @native private def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
 
   @native def setTriangleMeshIOR(ior: Float): Unit
@@ -375,6 +390,35 @@ class OptiXRenderer extends LazyLogging:
       mesh.indices,
       mesh.numTriangles,
       mesh.vertexStride
+    )
+
+  /** Upload a 4D quad mesh; the GPU does rotation + perspective projection at
+    * upload time (and on Cut F's update path). Returns the mesh index slot in
+    * triangle_meshes[], or throws on validation failure.
+    *
+    * @param quads4D length 16 * numQuads — N quads × 4 corners × (x,y,z,w)
+    * @param uvs optional length 8 * numQuads — N quads × 4 corners × (u,v);
+    *   None falls back to default unit-square UVs matching Mesh4DProjection.
+    */
+  def setTriangleMesh4DQuads(
+    quads4D: Array[Float],
+    uvs: Option[Array[Float]],
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float,
+    centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
+  ): Int =
+    require(quads4D != null && quads4D.length % 16 == 0,  // scalafix:ok DisableSyntax.null
+      s"quads4D length must be a positive multiple of 16, got ${if quads4D == null then "null" else quads4D.length.toString}")  // scalafix:ok DisableSyntax.null
+    require(quads4D.length > 0, "quads4D must not be empty")
+    val numQuads = quads4D.length / 16
+    uvs.foreach { u =>
+      require(u.length == numQuads * 8,
+        s"uvs length (${u.length}) must equal numQuads*8 (${numQuads * 8})")
+    }
+    setTriangleMesh4DQuadsNative(
+      quads4D, numQuads, uvs.orNull,
+      eyeW, screenW, rotXW, rotYW, rotZW,
+      centerX, centerY, centerZ
     )
 
   def setTriangleMeshColor(color: Color): Unit =
