@@ -832,6 +832,57 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNa
 }
 
 /**
+ * Add a recursive-IAS Menger sponge instance (Sprint 18.4).
+ * The most-recently-uploaded triangle mesh is used as the leaf cube; caller
+ * must call setTriangleMesh with a unit-cube mesh before this method.
+ * Builds `level` nested IAS layers around that GAS using the 20 Menger
+ * generators. Returns instance ID (>= 0) on success, -1 on failure.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addRecursiveIASSpongeInstanceNative(
+    JNIEnv* env, jobject obj,
+    jint level,
+    jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jint textureIndex, jfloat filmThickness) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        jsize transformLen = env->GetArrayLength(transform);
+        if (transformLen != 12) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "Transform array must have 12 elements (4x3 matrix), got " +
+                std::to_string(transformLen);
+            env->ThrowNew(exception_class, msg.c_str());
+            return -1;
+        }
+
+        jfloat* transformArr = env->GetFloatArrayElements(transform, nullptr);
+        if (transformArr == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get transform array elements");
+            return -1;
+        }
+
+        int instanceId = wrapper->addRecursiveIASSpongeInstance(
+            level, transformArr, r, g, b, a, ior,
+            roughness, metallic, specular, emission, textureIndex, filmThickness
+        );
+
+        env->ReleaseFloatArrayElements(transform, transformArr, 0);
+        return instanceId;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addRecursiveIASSpongeInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Add a cylinder instance to the scene.
  * @param p0_x/y/z Start point coordinates
  * @param p1_x/y/z End point coordinates

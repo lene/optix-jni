@@ -12,6 +12,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cfloat>
 #include <vector>
 #include <map>
@@ -1097,31 +1098,192 @@ int OptiXWrapper::addTriangleMeshInstance(
 // ============================================================================
 // Recursive-IAS Menger sponge (Sprint 18.4)
 // ============================================================================
-//
-// CUT A1 (this commit): declarations, storage, depth-ceiling raise, cleanup.
-// Bodies stubbed to return -1 / 0 — Cut A2 fills them in.
-//
-// The 20 Menger generator offsets (sub-cube positions that are kept at each
-// recursion level) live next to the implementation in Cut A2.
+
+namespace {
+
+// 20 Menger generator transforms relative to a unit-extent parent.
+// Each scales by 1/3 and translates to one of the 20 sub-cube keep-positions
+// (the cells where |xx|+|yy|+|zz| > 1 in the 3x3x3 subdivision).
+// Layout: 20 instances of a 4x3 row-major matrix (3 rows of 4 floats).
+const float (*getMengerGenerators())[12] {
+    static float generators[20][12];
+    static bool initialized = false;
+    if (initialized) return generators;
+    constexpr float s = 1.0f / 3.0f;
+    int idx = 0;
+    for (int xx = -1; xx <= 1; ++xx) {
+        for (int yy = -1; yy <= 1; ++yy) {
+            for (int zz = -1; zz <= 1; ++zz) {
+                if (std::abs(xx) + std::abs(yy) + std::abs(zz) <= 1) continue;
+                float* t = generators[idx];
+                t[0]  = s; t[1]  = 0; t[2]  = 0; t[3]  = xx * s;
+                t[4]  = 0; t[5]  = s; t[6]  = 0; t[7]  = yy * s;
+                t[8]  = 0; t[9]  = 0; t[10] = s; t[11] = zz * s;
+                ++idx;
+            }
+        }
+    }
+    initialized = true;
+    return generators;
+}
+
+constexpr int MENGER_GENERATOR_COUNT = 20;
+constexpr int MAX_RECURSIVE_IAS_LEVEL = 14;  // matches MAX_TRAVERSABLE_GRAPH_DEPTH = 16
+
+}  // namespace
 
 OptixTraversableHandle OptiXWrapper::buildSubIAS(
-    OptixTraversableHandle /*child_handle*/,
-    const float (*/*transforms*/)[12],
-    unsigned int /*num_transforms*/,
-    unsigned int /*inherited_instance_id*/) {
-    // TODO(Sprint 18.4 Cut A2): build a 20-instance IAS pointing at child_handle.
-    return 0;
+    OptixTraversableHandle child_handle,
+    const float (*transforms)[12],
+    unsigned int num_transforms,
+    unsigned int inherited_instance_id) {
+
+    if (child_handle == 0 || num_transforms == 0) {
+        std::cerr << "[OptiX] buildSubIAS: invalid input (child=" << child_handle
+                  << ", num=" << num_transforms << ")" << std::endl;
+        return 0;
+    }
+
+    // Build host-side OptixInstance array. All sub-IAS instances share the same
+    // child handle and the same inherited instanceId so the leaf hit shader
+    // resolves to the outer recursive-sponge material slot. sbtOffset is 0
+    // because the outer (top-level main-IAS) instance already carries the
+    // geometry-type offset; sbtOffsets accumulate along the traversal path.
+    std::vector<OptixInstance> instances(num_transforms);
+    for (unsigned int i = 0; i < num_transforms; ++i) {
+        OptixInstance& oi = instances[i];
+        std::memset(&oi, 0, sizeof(OptixInstance));
+        std::memcpy(oi.transform, transforms[i], 12 * sizeof(float));
+        oi.instanceId = inherited_instance_id;
+        oi.sbtOffset = 0;
+        oi.visibilityMask = 255;
+        oi.flags = OPTIX_INSTANCE_FLAG_NONE;
+        oi.traversableHandle = child_handle;
+    }
+
+    Impl::SubIASData sub;
+
+    size_t inst_size = num_transforms * sizeof(OptixInstance);
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&sub.d_instances_buffer), inst_size));
+    CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(sub.d_instances_buffer),
+                          instances.data(), inst_size, cudaMemcpyHostToDevice));
+
+    OptixBuildInput build_input = {};
+    build_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+    build_input.instanceArray.instances = sub.d_instances_buffer;
+    build_input.instanceArray.numInstances = num_transforms;
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptixAccelBufferSizes sizes;
+    OPTIX_CHECK(optixAccelComputeMemoryUsage(
+        impl->optix_context.getContext(), &accel_options, &build_input, 1, &sizes));
+
+    CUdeviceptr d_temp = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp), sizes.tempSizeInBytes));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&sub.d_output_buffer), sizes.outputSizeInBytes));
+
+    OPTIX_CHECK(optixAccelBuild(
+        impl->optix_context.getContext(), 0,
+        &accel_options, &build_input, 1,
+        d_temp, sizes.tempSizeInBytes,
+        sub.d_output_buffer, sizes.outputSizeInBytes,
+        &sub.handle, nullptr, 0));
+
+    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp)));
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    impl->sub_ias_buffers.push_back(sub);
+    return sub.handle;
 }
 
 int OptiXWrapper::addRecursiveIASSpongeInstance(
-    int /*level*/,
-    const float* /*transform*/, float /*r*/, float /*g*/, float /*b*/, float /*a*/, float /*ior*/,
-    float /*roughness*/, float /*metallic*/, float /*specular*/, float /*emission*/,
-    int /*textureIndex*/, float /*film_thickness*/) {
-    // TODO(Sprint 18.4 Cut A2): chain `level` sub-IASes around the latest triangle mesh
-    // and register a single instance into impl->instances.
-    std::cerr << "[OptiX] addRecursiveIASSpongeInstance: not yet implemented (Cut A1 stub)" << std::endl;
-    return -1;
+    int level,
+    const float* transform, float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, float emission,
+    int textureIndex, float film_thickness) {
+
+    if (level < 1) {
+        std::cerr << "[OptiX][RecSponge] level must be >= 1 (got " << level << ")" << std::endl;
+        return -1;
+    }
+    if (level > MAX_RECURSIVE_IAS_LEVEL) {
+        std::cerr << "[OptiX][RecSponge] level " << level << " exceeds max "
+                  << MAX_RECURSIVE_IAS_LEVEL << " (constrained by MAX_TRAVERSABLE_GRAPH_DEPTH)"
+                  << std::endl;
+        return -1;
+    }
+    if (impl->instances.size() >= impl->max_instances) {
+        std::cerr << "[OptiX][RecSponge] Maximum instances ("
+                  << impl->max_instances << ") reached" << std::endl;
+        return -1;
+    }
+    if (impl->triangle_meshes.empty()) {
+        std::cerr << "[OptiX][RecSponge] No leaf mesh — call setTriangleMesh(unit cube) first"
+                  << std::endl;
+        return -1;
+    }
+
+    // Predict the instanceId that buildIAS will assign to this entry. The compaction
+    // step in buildIAS skips inactive instances, so the predicted id equals the count
+    // of currently-active instances. This is correct only if no instance is
+    // deactivated between this call and render() — documented in the header.
+    unsigned int predicted_instance_id = 0;
+    for (const auto& other : impl->instances) {
+        if (other.active) ++predicted_instance_id;
+    }
+
+    // Use the most-recent triangle mesh as the leaf cube. Caller is responsible
+    // for uploading a unit cube via setTriangleMesh before this call.
+    size_t mesh_index = impl->triangle_meshes.size() - 1;
+    auto& mesh = impl->triangle_meshes[mesh_index];
+    if (!mesh.gas_built) {
+        buildTriangleMeshGAS(mesh_index);
+    }
+    if (mesh.gas_handle == 0) {
+        std::cerr << "[OptiX][RecSponge] Leaf mesh GAS build failed" << std::endl;
+        return -1;
+    }
+
+    // Chain `level` sub-IASes around the leaf GAS.
+    OptixTraversableHandle handle = mesh.gas_handle;
+    const float (*generators)[12] = getMengerGenerators();
+    for (int i = 0; i < level; ++i) {
+        handle = buildSubIAS(handle, generators, MENGER_GENERATOR_COUNT, predicted_instance_id);
+        if (handle == 0) {
+            std::cerr << "[OptiX][RecSponge] buildSubIAS failed at recursion " << (i + 1)
+                      << std::endl;
+            return -1;
+        }
+    }
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_TRIANGLE;
+    inst.gas_handle = handle;
+    std::memcpy(inst.transform, transform, 12 * sizeof(float));
+    inst.color[0] = r; inst.color[1] = g; inst.color[2] = b; inst.color[3] = a;
+    inst.ior = ior;
+    inst.roughness = roughness;
+    inst.metallic = metallic;
+    inst.specular = specular;
+    inst.emission = emission;
+    inst.film_thickness = film_thickness;
+    inst.texture_index = textureIndex;
+    inst.active = true;
+    inst.mesh_index = mesh_index;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+    impl->ias_dirty = true;
+
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
 }
 
 int OptiXWrapper::addCylinderInstance(

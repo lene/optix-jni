@@ -435,6 +435,22 @@ class OptiXRenderer extends LazyLogging:
     filmThickness: Float
   ): Int
 
+  @native private def addRecursiveIASSpongeInstanceNative(
+    level: Int,
+    transform: Array[Float],
+    r: Float,
+    g: Float,
+    b: Float,
+    a: Float,
+    ior: Float,
+    roughness: Float,
+    metallic: Float,
+    specular: Float,
+    emission: Float,
+    textureIndex: Int,
+    filmThickness: Float
+  ): Int
+
   @native def removeInstance(instanceId: Int): Unit
 
   @native def clearAllInstances(): Unit
@@ -520,6 +536,52 @@ class OptiXRenderer extends LazyLogging:
 
   def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
     addTriangleMeshInstance(position, Material(color, ior), -1)
+
+  /** Add a recursive-IAS Menger sponge instance (Sprint 18.4).
+    *
+    * Wraps the most-recently-uploaded triangle mesh (caller must have called
+    * `setTriangleMesh` with a unit cube) in `level` nested IAS layers using
+    * the 20 Menger generator transforms. VRAM scales O(level * 20) instead
+    * of O(20^level).
+    *
+    * Constraint: do not deactivate any instance between this call and
+    * the next render — the leaf-IAS instances embed a predicted instanceId
+    * that becomes stale if the active-instance list shifts.
+    *
+    * @param level recursion depth; must be in [1, 14]
+    */
+  def addRecursiveIASSpongeInstance(
+    level: Int,
+    transform: Array[Float],
+    material: Material,
+    textureIndex: Int = -1
+  ): Option[Int] =
+    require(level >= 1 && level <= 14, s"Recursive IAS sponge level must be in [1, 14], got $level")
+    require(transform.length == Const.Renderer.transformMatrixSize,
+      s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
+    val id = addRecursiveIASSpongeInstanceNative(
+      level, transform,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
+      textureIndex, material.filmThickness
+    )
+    if id >= 0 then Some(id) else None
+
+  def addRecursiveIASSpongeInstance(
+    level: Int,
+    position: Vector[3],
+    material: Material,
+    textureIndex: Int
+  ): Option[Int] =
+    val transform = Array(
+      1.0f, 0.0f, 0.0f, position.x,
+      0.0f, 1.0f, 0.0f, position.y,
+      0.0f, 0.0f, 1.0f, position.z
+    )
+    addRecursiveIASSpongeInstance(level, transform, material, textureIndex)
+
+  def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): Option[Int] =
+    addRecursiveIASSpongeInstance(level, position, Material(color, ior), -1)
 
   // Cylinder instance management
   def addCylinderInstance(
