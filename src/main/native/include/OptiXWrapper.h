@@ -42,6 +42,26 @@ public:
     void clearTriangleMesh();         // Remove mesh (render sphere instead)
     bool hasTriangleMesh() const;     // Check if mesh is set
 
+    // 4D quad mesh upload with GPU-side projection (Sprint 18.3 Cut A).
+    // - quads4d: N quads × 4 corners × (x,y,z,w) — 16*num_quads floats.
+    // - uvs_or_null: optional N quads × 4 corners × (u,v) — 8*num_quads floats,
+    //   or nullptr to use default unit-square UVs.
+    // - rotXW_deg / rotYW_deg / rotZW_deg: 4D rotation in degrees, composed
+    //   on the host as R_xw * R_yw * R_zw (matches Rotation.scala).
+    // - center_{x,y,z}: 3D translation applied after projection.
+    // Returns the mesh index (slot in triangle_meshes[]).
+    // The 4D and projected buffers stay resident on the device for the
+    // mesh's lifetime so Cut F's updateMesh4DProjection can re-launch the
+    // kernel without re-uploading.
+    int setTriangleMesh4DQuads(
+        const float* quads4d,
+        int num_quads,
+        const float* uvs_or_null,
+        float eyeW, float screenW,
+        float rotXW_deg, float rotYW_deg, float rotZW_deg,
+        float center_x, float center_y, float center_z
+    );
+
     // Camera configuration
     void setCamera(const float* eye, const float* lookAt, const float* up, float fov);
     void updateImageDimensions(int width, int height);

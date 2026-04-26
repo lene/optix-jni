@@ -19,6 +19,7 @@
 #include <optix.h>
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
+#include "Project4D.h"
 
 /**
  * OptiXWrapper implementation using composition.
@@ -49,6 +50,17 @@ struct OptiXWrapper::Impl {
         unsigned int num_vertices = 0;
         unsigned int num_triangles = 0;
         unsigned int vertex_stride = 8;
+
+        // GPU 4D projection sub-struct (Sprint 18.3). Populated only when
+        // setTriangleMesh4DQuads uploaded this mesh. CPU-uploaded meshes
+        // leave face_count == 0 and are unaffected by the 4D code paths.
+        struct Projection4D {
+            CUdeviceptr  d_quads_4d = 0;       // length 4*face_count, float4 per corner
+            CUdeviceptr  d_uvs = 0;            // length 4*face_count float2, or 0
+            unsigned int face_count = 0;       // 0 = not a 4D-projected mesh
+            unsigned int verts_per_face = 4;   // Sprint 19 will set 0 for n-gon path
+            Projection4DParams params{};       // current rotation+projection state
+        } projection4d;
     };
     std::vector<TriangleMeshGPU> triangle_meshes;
 
@@ -350,6 +362,179 @@ void OptiXWrapper::setTriangleMesh(
     mesh_params.vertex_stride = vertex_stride;
 }
 
+// Compose the 4D rotation matrix on the host as R_xw * R_yw * R_zw,
+// matching Rotation.scala line 41. Result is row-major float[16].
+namespace {
+
+inline void rotation_plane(float out[16], int row, int col, float deg) {
+    float rad = deg * 0.017453292519943295f;
+    float c = std::cos(rad);
+    float s = std::sin(rad);
+    for (int i = 0; i < 16; ++i) out[i] = 0.0f;
+    for (int i = 0; i < 4; ++i) out[i * 4 + i] = 1.0f;
+    out[row * 4 + row] = c;
+    out[row * 4 + col] = s;
+    out[col * 4 + row] = -s;
+    out[col * 4 + col] = c;
+}
+
+inline void mat4_mul(float out[16], const float a[16], const float b[16]) {
+    float r[16];
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 4; ++j) {
+            float s = 0.0f;
+            for (int k = 0; k < 4; ++k) {
+                s += a[i * 4 + k] * b[k * 4 + j];
+            }
+            r[i * 4 + j] = s;
+        }
+    }
+    for (int i = 0; i < 16; ++i) out[i] = r[i];
+}
+
+inline void compose_rotation_xw_yw_zw(
+    float out[16], float deg_xw, float deg_yw, float deg_zw
+) {
+    float rxw[16], ryw[16], rzw[16], tmp[16];
+    rotation_plane(rxw, 0, 3, deg_xw);
+    rotation_plane(ryw, 1, 3, deg_yw);
+    rotation_plane(rzw, 2, 3, deg_zw);
+    mat4_mul(tmp, ryw, rzw);
+    mat4_mul(out, rxw, tmp);
+}
+
+}  // namespace
+
+int OptiXWrapper::setTriangleMesh4DQuads(
+    const float* quads4d,
+    int num_quads,
+    const float* uvs_or_null,
+    float eyeW, float screenW,
+    float rotXW_deg, float rotYW_deg, float rotZW_deg,
+    float center_x, float center_y, float center_z
+) {
+    if (num_quads <= 0) {
+        std::cerr
+            << "[OptiX] setTriangleMesh4DQuads: num_quads must be > 0"
+            << std::endl;
+        return -1;
+    }
+
+    Impl::TriangleMeshGPU mesh_entry;
+
+    // Allocate and upload 4D quad buffer (kept resident for Cut F).
+    size_t quads_4d_bytes =
+        static_cast<size_t>(num_quads) * 4 * 4 * sizeof(float);
+    cudaMalloc(
+        reinterpret_cast<void**>(&mesh_entry.projection4d.d_quads_4d),
+        quads_4d_bytes
+    );
+    cudaMemcpy(
+        reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d),
+        quads4d, quads_4d_bytes, cudaMemcpyHostToDevice
+    );
+
+    // Optional UV buffer.
+    if (uvs_or_null != nullptr) {
+        size_t uv_bytes =
+            static_cast<size_t>(num_quads) * 4 * 2 * sizeof(float);
+        cudaMalloc(
+            reinterpret_cast<void**>(&mesh_entry.projection4d.d_uvs),
+            uv_bytes
+        );
+        cudaMemcpy(
+            reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs),
+            uvs_or_null, uv_bytes, cudaMemcpyHostToDevice
+        );
+    }
+
+    // Allocate output 3D vertex + index buffers (these are what the GAS
+    // consumes; setTriangleMesh's slot in triangle_meshes[]).
+    unsigned int num_vertices =
+        static_cast<unsigned int>(num_quads) * 4;
+    unsigned int num_triangles =
+        static_cast<unsigned int>(num_quads) * 2;
+    unsigned int vertex_stride = 8;
+    size_t vertex_bytes =
+        static_cast<size_t>(num_vertices) * vertex_stride * sizeof(float);
+    size_t index_bytes =
+        static_cast<size_t>(num_triangles) * 3 * sizeof(unsigned int);
+    cudaMalloc(
+        reinterpret_cast<void**>(&mesh_entry.d_vertices), vertex_bytes
+    );
+    cudaMalloc(
+        reinterpret_cast<void**>(&mesh_entry.d_indices), index_bytes
+    );
+
+    // Populate the projection params and launch the kernel.
+    mesh_entry.projection4d.face_count =
+        static_cast<unsigned int>(num_quads);
+    mesh_entry.projection4d.verts_per_face = 4;
+    Projection4DParams& params = mesh_entry.projection4d.params;
+    compose_rotation_xw_yw_zw(
+        params.rotation, rotXW_deg, rotYW_deg, rotZW_deg
+    );
+    params.eye_w = eyeW;
+    params.screen_w = screenW;
+    params.center_x = center_x;
+    params.center_y = center_y;
+    params.center_z = center_z;
+
+    cudaError_t err = launchProject4DQuadsKernel(
+        reinterpret_cast<const void*>(mesh_entry.projection4d.d_quads_4d),
+        mesh_entry.projection4d.d_uvs
+            ? reinterpret_cast<const void*>(mesh_entry.projection4d.d_uvs)
+            : nullptr,
+        num_quads,
+        &params,
+        reinterpret_cast<void*>(mesh_entry.d_vertices),
+        reinterpret_cast<void*>(mesh_entry.d_indices),
+        /*stream=*/0
+    );
+    if (err != cudaSuccess) {
+        std::cerr
+            << "[OptiX] project4d kernel launch failed: "
+            << cudaGetErrorString(err) << std::endl;
+    }
+    cudaDeviceSynchronize();
+
+    mesh_entry.num_vertices = num_vertices;
+    mesh_entry.num_triangles = num_triangles;
+    mesh_entry.vertex_stride = vertex_stride;
+    mesh_entry.gas_built = false;
+
+    // Compute mesh AABB by reading back projected vertices. One-time cost
+    // at upload; Cut F will refresh on update if caustics are enabled.
+    std::vector<float> projected(num_vertices * vertex_stride);
+    cudaMemcpy(
+        projected.data(),
+        reinterpret_cast<void*>(mesh_entry.d_vertices),
+        vertex_bytes, cudaMemcpyDeviceToHost
+    );
+    impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
+    impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    for (unsigned int i = 0; i < num_vertices; ++i) {
+        const float* v = projected.data() + i * vertex_stride;
+        impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
+        impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
+        impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
+        impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
+        impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
+        impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
+    }
+
+    int mesh_index = static_cast<int>(impl->triangle_meshes.size());
+    impl->triangle_meshes.push_back(mesh_entry);
+
+    impl->scene.setTriangleMeshMeta(num_vertices, num_triangles);
+    auto& mesh_params = impl->scene.getTriangleMeshMutable();
+    mesh_params.d_vertices = mesh_entry.d_vertices;
+    mesh_params.d_indices = mesh_entry.d_indices;
+    mesh_params.vertex_stride = vertex_stride;
+
+    return mesh_index;
+}
+
 void OptiXWrapper::setTriangleMeshColor(float r, float g, float b, float a) {
     impl->scene.setTriangleMeshColor(r, g, b, a);
 }
@@ -376,6 +561,18 @@ void OptiXWrapper::clearTriangleMesh() {
                 reinterpret_cast<void*>(
                     mesh.d_gas_output_buffer
                 )
+            );
+        }
+        // 4D-projection buffers (Sprint 18.3): kept resident for the mesh
+        // lifetime to support Cut F's updateMesh4DProjection.
+        if (mesh.projection4d.d_quads_4d) {
+            cudaFree(
+                reinterpret_cast<void*>(mesh.projection4d.d_quads_4d)
+            );
+        }
+        if (mesh.projection4d.d_uvs) {
+            cudaFree(
+                reinterpret_cast<void*>(mesh.projection4d.d_uvs)
             );
         }
     }
@@ -452,6 +649,12 @@ void OptiXWrapper::buildTriangleMeshGAS(size_t mesh_index) {
     accel_options.buildFlags =
         OPTIX_BUILD_FLAG_PREFER_FAST_TRACE
         | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    // 4D-projected meshes (Sprint 18.3) need ALLOW_UPDATE so Cut F's
+    // updateMesh4DProjection can refit the GAS via OPERATION_UPDATE
+    // after re-launching the projection kernel into the same buffer.
+    if (mesh.projection4d.face_count > 0) {
+        accel_options.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+    }
     accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
     OptiXContext::GASBuildResult result =

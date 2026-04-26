@@ -179,6 +179,7 @@ add_library(optixjni SHARED
     BufferManager.cpp
     CausticsRenderer.cpp
     JNIBindings.cpp
+    project4d.cu
 )
 
 target_include_directories(optixjni PRIVATE

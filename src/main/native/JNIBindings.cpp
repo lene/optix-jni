@@ -523,6 +523,92 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
 }
 
 /**
+ * Upload a 4D quad mesh and project it to 3D on the GPU (Sprint 18.3 Cut A).
+ * @param quads4d Float array of length 16*numQuads (4 corners * (x,y,z,w))
+ * @param numQuads Number of quads
+ * @param uvs Optional float array of length 8*numQuads (4 corners * (u,v)),
+ *            or null for default unit-square UVs
+ * @param eyeW Distance from eye to projection hyperplane in 4D
+ * @param screenW Distance from origin to projection hyperplane in 4D
+ * @param rotXW 4D rotation in XW plane (degrees)
+ * @param rotYW 4D rotation in YW plane (degrees)
+ * @param rotZW 4D rotation in ZW plane (degrees)
+ * @param centerX 3D translation X applied after projection
+ * @param centerY 3D translation Y applied after projection
+ * @param centerZ 3D translation Z applied after projection
+ * @return mesh index (slot in triangle_meshes[]), or -1 on error
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setTriangleMesh4DQuadsNative(
+    JNIEnv* env, jobject obj,
+    jfloatArray quads4d, jint numQuads,
+    jfloatArray uvs,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW,
+    jfloat centerX, jfloat centerY, jfloat centerZ) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        if (numQuads <= 0) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(exception_class, "numQuads must be positive");
+            return -1;
+        }
+
+        jsize quadsLen = env->GetArrayLength(quads4d);
+        if (quadsLen != numQuads * 16) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "quads4d length (" + std::to_string(quadsLen) +
+                ") must equal numQuads*16 (" + std::to_string(numQuads * 16) + ")";
+            env->ThrowNew(exception_class, msg.c_str());
+            return -1;
+        }
+
+        jfloat* uvsArr = nullptr;
+        if (uvs != nullptr) {
+            jsize uvsLen = env->GetArrayLength(uvs);
+            if (uvsLen != numQuads * 8) {
+                jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+                std::string msg = "uvs length (" + std::to_string(uvsLen) +
+                    ") must equal numQuads*8 (" + std::to_string(numQuads * 8) + ")";
+                env->ThrowNew(exception_class, msg.c_str());
+                return -1;
+            }
+            uvsArr = env->GetFloatArrayElements(uvs, nullptr);
+        }
+
+        jfloat* quadsArr = env->GetFloatArrayElements(quads4d, nullptr);
+        if (quadsArr == nullptr) {
+            if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, 0);
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get quads4d array elements");
+            return -1;
+        }
+
+        int meshIndex = wrapper->setTriangleMesh4DQuads(
+            quadsArr,
+            static_cast<int>(numQuads),
+            uvsArr,
+            eyeW, screenW,
+            rotXW, rotYW, rotZW,
+            centerX, centerY, centerZ
+        );
+
+        env->ReleaseFloatArrayElements(quads4d, quadsArr, 0);
+        if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, 0);
+
+        return meshIndex;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setTriangleMesh4DQuads: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Set triangle mesh material color.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshColorNative(
