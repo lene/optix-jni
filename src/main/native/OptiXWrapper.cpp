@@ -535,6 +535,164 @@ int OptiXWrapper::setTriangleMesh4DQuads(
     return mesh_index;
 }
 
+int OptiXWrapper::updateMesh4DProjection(
+    int mesh_index,
+    float eyeW, float screenW,
+    float rotXW_deg, float rotYW_deg, float rotZW_deg,
+    float center_x, float center_y, float center_z
+) {
+    if (mesh_index < 0
+        || static_cast<size_t>(mesh_index) >= impl->triangle_meshes.size()) {
+        std::cerr
+            << "[OptiX] updateMesh4DProjection: mesh_index "
+            << mesh_index << " out of range (have "
+            << impl->triangle_meshes.size() << " meshes)" << std::endl;
+        return -1;
+    }
+    auto& mesh = impl->triangle_meshes[mesh_index];
+    if (mesh.projection4d.face_count == 0) {
+        std::cerr
+            << "[OptiX] updateMesh4DProjection: mesh_index "
+            << mesh_index
+            << " was not uploaded via setTriangleMesh4DQuads" << std::endl;
+        return -2;
+    }
+
+    // Refresh stored projection params, then re-launch the kernel against the
+    // resident 4D buffer + projected output buffer (same allocations as Cut A).
+    Projection4DParams& params = mesh.projection4d.params;
+    compose_rotation_xw_yw_zw(
+        params.rotation, rotXW_deg, rotYW_deg, rotZW_deg
+    );
+    params.eye_w = eyeW;
+    params.screen_w = screenW;
+    params.center_x = center_x;
+    params.center_y = center_y;
+    params.center_z = center_z;
+
+    cudaError_t err = launchProject4DQuadsKernel(
+        reinterpret_cast<const void*>(mesh.projection4d.d_quads_4d),
+        mesh.projection4d.d_uvs
+            ? reinterpret_cast<const void*>(mesh.projection4d.d_uvs)
+            : nullptr,
+        static_cast<int>(mesh.projection4d.face_count),
+        &params,
+        reinterpret_cast<void*>(mesh.d_vertices),
+        reinterpret_cast<void*>(mesh.d_indices),
+        /*stream=*/0
+    );
+    if (err != cudaSuccess) {
+        std::cerr
+            << "[OptiX] project4d kernel relaunch failed: "
+            << cudaGetErrorString(err) << std::endl;
+        return -3;
+    }
+    cudaDeviceSynchronize();
+
+    // GAS refit. Cut A flagged this mesh's GAS with ALLOW_UPDATE so we can
+    // refit in place rather than rebuild.
+    if (!mesh.gas_built || mesh.d_gas_output_buffer == 0) {
+        // No GAS yet — fall back to full build (e.g. update called before
+        // the first render).
+        buildTriangleMeshGAS(static_cast<size_t>(mesh_index));
+    } else {
+        OptixBuildInput triangle_input = {};
+        triangle_input.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+        triangle_input.triangleArray.vertexBuffers = &mesh.d_vertices;
+        triangle_input.triangleArray.numVertices = mesh.num_vertices;
+        triangle_input.triangleArray.vertexFormat =
+            OPTIX_VERTEX_FORMAT_FLOAT3;
+        triangle_input.triangleArray.vertexStrideInBytes =
+            mesh.vertex_stride * sizeof(float);
+        triangle_input.triangleArray.indexBuffer = mesh.d_indices;
+        triangle_input.triangleArray.numIndexTriplets = mesh.num_triangles;
+        triangle_input.triangleArray.indexFormat =
+            OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
+        triangle_input.triangleArray.indexStrideInBytes =
+            3 * sizeof(unsigned int);
+        uint32_t triangle_flags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+        triangle_input.triangleArray.flags = triangle_flags;
+        triangle_input.triangleArray.numSbtRecords = 1;
+
+        OptixAccelBuildOptions update_options = {};
+        update_options.buildFlags =
+            OPTIX_BUILD_FLAG_PREFER_FAST_TRACE
+            | OPTIX_BUILD_FLAG_ALLOW_COMPACTION
+            | OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+        update_options.operation = OPTIX_BUILD_OPERATION_UPDATE;
+
+        OptixAccelBufferSizes gas_sizes;
+        OPTIX_CHECK(optixAccelComputeMemoryUsage(
+            impl->optix_context.getContext(),
+            &update_options, &triangle_input, 1, &gas_sizes
+        ));
+        CUdeviceptr d_temp = 0;
+        CUDA_CHECK(cudaMalloc(
+            reinterpret_cast<void**>(&d_temp),
+            gas_sizes.tempUpdateSizeInBytes
+        ));
+        OPTIX_CHECK(optixAccelBuild(
+            impl->optix_context.getContext(),
+            0,
+            &update_options, &triangle_input, 1,
+            d_temp, gas_sizes.tempUpdateSizeInBytes,
+            mesh.d_gas_output_buffer,
+            gas_sizes.outputSizeInBytes,
+            &mesh.gas_handle,
+            nullptr, 0
+        ));
+        CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp)));
+    }
+
+    // IAS refit. The IAS already had ALLOW_UPDATE in its build flags
+    // (see buildIAS), and instance handles do not change since the mesh's
+    // GAS handle is stable across UPDATE — only AABBs need to be
+    // recomputed by OptiX.
+    if (impl->use_ias && impl->ias_handle && impl->d_ias_output_buffer
+        && impl->d_instances_buffer) {
+        OptixBuildInput ias_input = {};
+        ias_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+        ias_input.instanceArray.instances = impl->d_instances_buffer;
+        // Count active instances — must match the count used at build time.
+        unsigned int active_count = 0;
+        for (const auto& inst : impl->instances) {
+            if (inst.active) ++active_count;
+        }
+        ias_input.instanceArray.numInstances = active_count;
+
+        OptixAccelBuildOptions ias_update_opts = {};
+        ias_update_opts.buildFlags =
+            OPTIX_BUILD_FLAG_ALLOW_UPDATE
+            | OPTIX_BUILD_FLAG_PREFER_FAST_TRACE;
+        ias_update_opts.operation = OPTIX_BUILD_OPERATION_UPDATE;
+
+        OptixAccelBufferSizes ias_sizes;
+        OPTIX_CHECK(optixAccelComputeMemoryUsage(
+            impl->optix_context.getContext(),
+            &ias_update_opts, &ias_input, 1, &ias_sizes
+        ));
+        CUdeviceptr d_ias_temp = 0;
+        CUDA_CHECK(cudaMalloc(
+            reinterpret_cast<void**>(&d_ias_temp),
+            ias_sizes.tempUpdateSizeInBytes
+        ));
+        OPTIX_CHECK(optixAccelBuild(
+            impl->optix_context.getContext(),
+            0,
+            &ias_update_opts, &ias_input, 1,
+            d_ias_temp, ias_sizes.tempUpdateSizeInBytes,
+            impl->d_ias_output_buffer,
+            ias_sizes.outputSizeInBytes,
+            &impl->ias_handle,
+            nullptr, 0
+        ));
+        CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_ias_temp)));
+        CUDA_CHECK(cudaDeviceSynchronize());
+    }
+
+    return 0;
+}
+
 void OptiXWrapper::setTriangleMeshColor(float r, float g, float b, float a) {
     impl->scene.setTriangleMeshColor(r, g, b, a);
 }

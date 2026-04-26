@@ -345,6 +345,19 @@ class OptiXRenderer extends LazyLogging:
     centerZ: Float
   ): Int
 
+  // Sprint 18.3 Cut F: per-frame update of 4D rotation + projection.
+  @native private def updateMesh4DProjectionNative(
+    meshIndex: Int,
+    eyeW: Float,
+    screenW: Float,
+    rotXW: Float,
+    rotYW: Float,
+    rotZW: Float,
+    centerX: Float,
+    centerY: Float,
+    centerZ: Float
+  ): Int
+
   @native private def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
 
   @native def setTriangleMeshIOR(ior: Float): Unit
@@ -420,6 +433,23 @@ class OptiXRenderer extends LazyLogging:
       eyeW, screenW, rotXW, rotYW, rotZW,
       centerX, centerY, centerZ
     )
+
+  /** Re-project a previously-uploaded 4D-quad mesh with new rotation/projection
+    * params, refitting its GAS (and the IAS, if active) in place. Throws on
+    * native error (invalid index, mesh not 4D-projected, kernel launch failure).
+    */
+  def updateMesh4DProjection(
+    meshIndex: Int,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float,
+    centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
+  ): Unit =
+    require(meshIndex >= 0, s"meshIndex must be non-negative, got $meshIndex")
+    val rc = updateMesh4DProjectionNative(
+      meshIndex, eyeW, screenW, rotXW, rotYW, rotZW,
+      centerX, centerY, centerZ
+    )
+    require(rc == 0, s"updateMesh4DProjection failed with code $rc (meshIndex=$meshIndex)")
 
   def setTriangleMeshColor(color: Color): Unit =
     setTriangleMeshColorNative(color.r, color.g, color.b, color.a)

@@ -62,6 +62,18 @@ public:
         float center_x, float center_y, float center_z
     );
 
+    // Sprint 18.3 Cut F: per-frame update of 4D rotation + projection.
+    // Re-launches the projection kernel against the resident 4D buffers,
+    // refits the mesh's GAS via OPERATION_UPDATE, and refits the IAS if
+    // `use_ias` is true. Returns 0 on success; negative on error
+    // (mesh_index out of range, or mesh was not uploaded as 4D-projected).
+    int updateMesh4DProjection(
+        int mesh_index,
+        float eyeW, float screenW,
+        float rotXW_deg, float rotYW_deg, float rotZW_deg,
+        float center_x, float center_y, float center_z
+    );
+
     // Camera configuration
     void setCamera(const float* eye, const float* lookAt, const float* up, float fov);
     void updateImageDimensions(int width, int height);

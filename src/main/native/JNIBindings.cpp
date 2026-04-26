@@ -609,6 +609,36 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setTriangleMesh4DQuadsNat
 }
 
 /**
+ * Sprint 18.3 Cut F: refresh 4D rotation/projection for an existing mesh
+ * uploaded via setTriangleMesh4DQuads. Returns 0 on success or a negative
+ * error code from OptiXWrapper::updateMesh4DProjection.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMesh4DProjectionNative(
+    JNIEnv* env, jobject obj,
+    jint meshIndex,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW,
+    jfloat centerX, jfloat centerY, jfloat centerZ) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+        return wrapper->updateMesh4DProjection(
+            static_cast<int>(meshIndex),
+            eyeW, screenW,
+            rotXW, rotYW, rotZW,
+            centerX, centerY, centerZ
+        );
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateMesh4DProjection: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Set triangle mesh material color.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshColorNative(
