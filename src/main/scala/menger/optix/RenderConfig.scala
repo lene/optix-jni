@@ -12,7 +12,12 @@ case class RenderConfig(
   antialiasing: Boolean = false,
   aaMaxDepth: Int = 2,
   aaThreshold: Float = 0.1f,
-  maxRayDepth: Int = RenderLimits.MaxRayDepth
+  maxRayDepth: Int = RenderLimits.MaxRayDepth,
+  // Sprint 18.3: opt-in GPU 4D rotation + projection. When true, 4D
+  // tesseract-derived meshes upload as raw 4D quads and the kernel
+  // does rotation + perspective divide on the GPU at scene-build
+  // time (and per-frame via Cut F's update path).
+  gpuProject4D: Boolean = false
 ):
   require(aaMaxDepth >= 1 && aaMaxDepth <= 4, s"aaMaxDepth must be 1-4, got $aaMaxDepth")
   require(aaThreshold >= 0.0f && aaThreshold <= 1.0f, s"aaThreshold must be 0.0-1.0, got $aaThreshold")
