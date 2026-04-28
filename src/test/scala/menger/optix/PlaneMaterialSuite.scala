@@ -195,6 +195,57 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
       renderer.render(smallImage)
     }
 
+  "solid chrome plane via material colour" should "render differently from plain default plane" in:
+    // Regression: SceneConfigurator case None branch must use material.color as solid floor colour,
+    // not the default checker gray.  The fix routes addPlaneSolidColorWithMaterial(mat.color, mat).
+    setupScene(renderer)
+
+    renderer.clearPlanes()
+    renderer.addPlane(floorAxis, positive = false, floorY)
+    val plainImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Plain plane render failed"))
+
+    renderer.clearPlanes()
+    renderer.addPlaneSolidColorWithMaterial(
+      floorAxis, positive = false, floorY,
+      Material.Chrome.color,
+      Material(color = Material.Chrome.color, roughness = chromeRoughness, metallic = chromeMetallic,
+               specular = chromeSpecular, emission = chromeEmission),
+      noTexture
+    )
+    val chromeImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Chrome solid render failed"))
+
+    val diff = pixelDifference(plainImage, chromeImage)
+    diff should be > 0.0
+
+  "metallic plane" should "reflect scene geometry" in:
+    // Regression: metallic planes now trace a reflected ray (miss_plane.cu metallic path).
+    // A chrome floor in a scene with a sphere should show the sphere's reflection;
+    // a matte floor should not — producing a measurable pixel difference.
+    setupScene(renderer)
+
+    renderer.clearPlanes()
+    renderer.addPlaneCheckerColorsWithMaterial(
+      floorAxis, positive = false, floorY,
+      floorColor, floorColor,
+      Material(color = floorColor, roughness = matteRoughness, metallic = matteMetallic,
+               specular = matteSpecular, emission = matteEmission),
+      noTexture
+    )
+    val matteImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Matte render failed"))
+
+    renderer.clearPlanes()
+    renderer.addPlaneCheckerColorsWithMaterial(
+      floorAxis, positive = false, floorY,
+      floorColor, floorColor,
+      Material(color = floorColor, roughness = chromeRoughness, metallic = chromeMetallic,
+               specular = chromeSpecular, emission = chromeEmission),
+      noTexture
+    )
+    val chromeImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Chrome render failed"))
+
+    val diff = pixelDifference(matteImage, chromeImage)
+    diff should be > 1.0  // reflections produce substantial pixel difference
+
   // --- helpers ---------------------------------------------------------------
 
   private def averageBrightness(image: Array[Byte]): Double =

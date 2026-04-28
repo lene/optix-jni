@@ -147,43 +147,60 @@ extern "C" __global__ void __miss__ms() {
         }
 
         const float3 plane_normal = getPlaneNormal(plane);
-        const float3 lighting = calculateLighting(hit_point, plane_normal, true);
 
-        float3 total_color = base_color * lighting;
+        float3 total_color;
 
-        // Specular highlight (Phong, Sprint 13.1): add when specular > 0 and not fully rough
-        // NOTE: Specular highlight uses only the first light (lights[0]) as a simplification.
-        // calculateLighting() iterates all lights for diffuse, but multi-light specular
-        // for planes is out of scope for Sprint 13.1. TODO(Sprint 14+): iterate all lights.
-        if (plane.specular > 0.0f && plane.roughness < 0.95f && params.num_lights > 0) {
-            // Use first directional/point light for specular highlight
-            const Light& light = params.lights[0];
-            float3 light_dir_normalized;
-            float  attenuation;
-            if (light.type == LightType::DIRECTIONAL) {
-                getDirectionalLightParams(light, light_dir_normalized, attenuation);
-            } else {
-                getPointLightParams(light, hit_point, light_dir_normalized, attenuation);
+        if (plane.metallic > 0.0f) {
+            // Metallic path: trace reflected ray then blend with diffuse, matching
+            // the handleMetallicOpaque() behaviour used for sphere geometry.
+            const unsigned int depth = optixGetPayload_3();
+            unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+            if (depth < static_cast<unsigned int>(params.max_ray_depth)) {
+                traceReflectedRay(hit_point, ray_direction, plane_normal, depth,
+                                  reflect_r, reflect_g, reflect_b);
             }
-            const float3 view_dir     = normalize(ray_origin - hit_point);
-            const float3 neg_light    = make_float3(-light_dir_normalized.x,
-                                                    -light_dir_normalized.y,
-                                                    -light_dir_normalized.z);
-            const float  ndotl2       = 2.0f * dot(neg_light, plane_normal);
-            const float3 reflect_dir  = make_float3(
-                neg_light.x - ndotl2 * plane_normal.x,
-                neg_light.y - ndotl2 * plane_normal.y,
-                neg_light.z - ndotl2 * plane_normal.z);
-            const float  spec_power   = 2.0f / (plane.roughness * plane.roughness + 0.001f);
-            const float  spec         = powf(fmaxf(0.0f, dot(view_dir, reflect_dir)), spec_power)
-                                        * plane.specular;
-            const float3 spec_color   = (plane.metallic > 0.5f)
-                                        ? base_color
-                                        : make_float3(spec, spec, spec);
-            total_color = total_color + spec_color * spec;
+            // Tint reflected colour by the plane's base colour (gold/copper tint).
+            const float3 tinted = make_float3(
+                reflect_r / COLOR_BYTE_MAX * base_color.x,
+                reflect_g / COLOR_BYTE_MAX * base_color.y,
+                reflect_b / COLOR_BYTE_MAX * base_color.z
+            );
+            const float3 lighting = calculateLighting(hit_point, plane_normal, true);
+            const float3 diffuse  = base_color * lighting;
+            total_color = tinted * plane.metallic + diffuse * (1.0f - plane.metallic);
+        } else {
+            // Non-metallic path: diffuse + Phong specular highlight.
+            const float3 lighting = calculateLighting(hit_point, plane_normal, true);
+            total_color = base_color * lighting;
+
+            // Specular highlight (Phong): add when specular > 0 and not fully rough.
+            // NOTE: uses only lights[0]; multi-light specular for planes is out of scope.
+            if (plane.specular > 0.0f && plane.roughness < 0.95f && params.num_lights > 0) {
+                const Light& light = params.lights[0];
+                float3 light_dir_normalized;
+                float  attenuation;
+                if (light.type == LightType::DIRECTIONAL) {
+                    getDirectionalLightParams(light, light_dir_normalized, attenuation);
+                } else {
+                    getPointLightParams(light, hit_point, light_dir_normalized, attenuation);
+                }
+                const float3 view_dir   = normalize(ray_origin - hit_point);
+                const float3 neg_light  = make_float3(-light_dir_normalized.x,
+                                                      -light_dir_normalized.y,
+                                                      -light_dir_normalized.z);
+                const float  ndotl2     = 2.0f * dot(neg_light, plane_normal);
+                const float3 refl_dir   = make_float3(
+                    neg_light.x - ndotl2 * plane_normal.x,
+                    neg_light.y - ndotl2 * plane_normal.y,
+                    neg_light.z - ndotl2 * plane_normal.z);
+                const float  spec_power = 2.0f / (plane.roughness * plane.roughness + 0.001f);
+                const float  spec       = powf(fmaxf(0.0f, dot(view_dir, refl_dir)), spec_power)
+                                          * plane.specular;
+                total_color = total_color + make_float3(spec, spec, spec) * spec;
+            }
         }
 
-        // Emission (Sprint 13.1): add self-illumination
+        // Emission: applies to both metallic and non-metallic paths.
         total_color = total_color + base_color * plane.emission;
 
         // Match original truncation semantics: no clamping here; the raygen output
