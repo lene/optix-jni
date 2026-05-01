@@ -196,7 +196,7 @@ extern "C" __global__ void __miss__ms() {
                 const float  spec_power = 2.0f / (plane.roughness * plane.roughness + 0.001f);
                 const float  spec       = powf(fmaxf(0.0f, dot(view_dir, refl_dir)), spec_power)
                                           * plane.specular;
-                total_color = total_color + make_float3(spec, spec, spec) * spec;
+                total_color = total_color + make_float3(spec, spec, spec);
             }
         }
 

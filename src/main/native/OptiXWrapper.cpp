@@ -421,31 +421,56 @@ int OptiXWrapper::setTriangleMesh4DQuads(
     }
 
     Impl::TriangleMeshGPU mesh_entry;
+    cudaError_t err;
 
     // Allocate and upload 4D quad buffer (kept resident for Cut F).
     size_t quads_4d_bytes =
         static_cast<size_t>(num_quads) * 4 * 4 * sizeof(float);
-    cudaMalloc(
+    err = cudaMalloc(
         reinterpret_cast<void**>(&mesh_entry.projection4d.d_quads_4d),
         quads_4d_bytes
     );
-    cudaMemcpy(
+    if (err != cudaSuccess) {
+        std::cerr << "[OptiX] cudaMalloc failed for quads_4d: "
+                  << cudaGetErrorString(err) << std::endl;
+        return -1;
+    }
+    err = cudaMemcpy(
         reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d),
         quads4d, quads_4d_bytes, cudaMemcpyHostToDevice
     );
+    if (err != cudaSuccess) {
+        std::cerr << "[OptiX] cudaMemcpy failed for quads_4d: "
+                  << cudaGetErrorString(err) << std::endl;
+        cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
+        return -1;
+    }
 
     // Optional UV buffer.
     if (uvs_or_null != nullptr) {
         size_t uv_bytes =
             static_cast<size_t>(num_quads) * 4 * 2 * sizeof(float);
-        cudaMalloc(
+        err = cudaMalloc(
             reinterpret_cast<void**>(&mesh_entry.projection4d.d_uvs),
             uv_bytes
         );
-        cudaMemcpy(
+        if (err != cudaSuccess) {
+            std::cerr << "[OptiX] cudaMalloc failed for uvs: "
+                      << cudaGetErrorString(err) << std::endl;
+            cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
+            return -1;
+        }
+        err = cudaMemcpy(
             reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs),
             uvs_or_null, uv_bytes, cudaMemcpyHostToDevice
         );
+        if (err != cudaSuccess) {
+            std::cerr << "[OptiX] cudaMemcpy failed for uvs: "
+                      << cudaGetErrorString(err) << std::endl;
+            cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
+            cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
+            return -1;
+        }
     }
 
     // Allocate output 3D vertex + index buffers (these are what the GAS
@@ -459,12 +484,29 @@ int OptiXWrapper::setTriangleMesh4DQuads(
         static_cast<size_t>(num_vertices) * vertex_stride * sizeof(float);
     size_t index_bytes =
         static_cast<size_t>(num_triangles) * 3 * sizeof(unsigned int);
-    cudaMalloc(
+    err = cudaMalloc(
         reinterpret_cast<void**>(&mesh_entry.d_vertices), vertex_bytes
     );
-    cudaMalloc(
+    if (err != cudaSuccess) {
+        std::cerr << "[OptiX] cudaMalloc failed for d_vertices: "
+                  << cudaGetErrorString(err) << std::endl;
+        if (mesh_entry.projection4d.d_uvs)
+            cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
+        return -1;
+    }
+    err = cudaMalloc(
         reinterpret_cast<void**>(&mesh_entry.d_indices), index_bytes
     );
+    if (err != cudaSuccess) {
+        std::cerr << "[OptiX] cudaMalloc failed for d_indices: "
+                  << cudaGetErrorString(err) << std::endl;
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        if (mesh_entry.projection4d.d_uvs)
+            cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
+        return -1;
+    }
 
     // Populate the projection params and launch the kernel.
     mesh_entry.projection4d.face_count =
@@ -480,7 +522,7 @@ int OptiXWrapper::setTriangleMesh4DQuads(
     params.center_y = center_y;
     params.center_z = center_z;
 
-    cudaError_t err = launchProject4DQuadsKernel(
+    err = launchProject4DQuadsKernel(
         reinterpret_cast<const void*>(mesh_entry.projection4d.d_quads_4d),
         mesh_entry.projection4d.d_uvs
             ? reinterpret_cast<const void*>(mesh_entry.projection4d.d_uvs)
@@ -495,6 +537,12 @@ int OptiXWrapper::setTriangleMesh4DQuads(
         std::cerr
             << "[OptiX] project4d kernel launch failed: "
             << cudaGetErrorString(err) << std::endl;
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_indices));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
+        if (mesh_entry.projection4d.d_uvs)
+            cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
+        return -1;
     }
     cudaDeviceSynchronize();
 

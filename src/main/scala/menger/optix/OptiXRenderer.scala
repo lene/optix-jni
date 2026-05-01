@@ -420,19 +420,22 @@ class OptiXRenderer extends LazyLogging:
     rotXW: Float, rotYW: Float, rotZW: Float,
     centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
   ): Int =
-    require(quads4D != null && quads4D.length % 16 == 0,  // scalafix:ok DisableSyntax.null
-      s"quads4D length must be a positive multiple of 16, got ${if quads4D == null then "null" else quads4D.length.toString}")  // scalafix:ok DisableSyntax.null
+    require(quads4D != null, "quads4D must not be null")  // scalafix:ok DisableSyntax.null
+    require(quads4D.length % 16 == 0,
+      s"quads4D length must be a positive multiple of 16, got ${quads4D.length}")  // scalafix:ok DisableSyntax.null
     require(quads4D.length > 0, "quads4D must not be empty")
     val numQuads = quads4D.length / 16
     uvs.foreach { u =>
       require(u.length == numQuads * 8,
         s"uvs length (${u.length}) must equal numQuads*8 (${numQuads * 8})")
     }
-    setTriangleMesh4DQuadsNative(
+    val result = setTriangleMesh4DQuadsNative(
       quads4D, numQuads, uvs.orNull,
       eyeW, screenW, rotXW, rotYW, rotZW,
       centerX, centerY, centerZ
     )
+    require(result >= 0, s"setTriangleMesh4DQuads failed with code $result")
+    result
 
   /** Re-project a previously-uploaded 4D-quad mesh with new rotation/projection
     * params, refitting its GAS (and the IAS, if active) in place. Throws on
