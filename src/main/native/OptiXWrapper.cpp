@@ -693,6 +693,88 @@ int OptiXWrapper::updateMesh4DProjection(
     return 0;
 }
 
+int OptiXWrapper::updateCpuTriangleMesh(
+    int mesh_index,
+    const float* vertices,
+    unsigned int num_vertices,
+    const unsigned int* indices,
+    unsigned int num_triangles,
+    unsigned int vertex_stride
+) {
+    if (mesh_index < 0
+        || static_cast<size_t>(mesh_index) >= impl->triangle_meshes.size()) {
+        std::cerr
+            << "[OptiX] updateCpuTriangleMesh: mesh_index "
+            << mesh_index << " out of range (have "
+            << impl->triangle_meshes.size() << " meshes)" << std::endl;
+        return -1;
+    }
+    auto& mesh = impl->triangle_meshes[mesh_index];
+    if (mesh.projection4d.face_count > 0) {
+        std::cerr
+            << "[OptiX] updateCpuTriangleMesh: mesh_index "
+            << mesh_index
+            << " is a GPU-projected 4D mesh; use updateMesh4DProjection instead"
+            << std::endl;
+        return -1;
+    }
+
+    // Free existing GPU vertex and index buffers, then re-upload.
+    if (mesh.d_vertices) {
+        cudaFree(reinterpret_cast<void*>(mesh.d_vertices));
+        mesh.d_vertices = 0;
+    }
+    if (mesh.d_indices) {
+        cudaFree(reinterpret_cast<void*>(mesh.d_indices));
+        mesh.d_indices = 0;
+    }
+
+    size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&mesh.d_vertices), vertex_size
+    ));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(mesh.d_vertices),
+        vertices, vertex_size, cudaMemcpyHostToDevice
+    ));
+
+    size_t index_size = num_triangles * 3 * sizeof(unsigned int);
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&mesh.d_indices), index_size
+    ));
+    CUDA_CHECK(cudaMemcpy(
+        reinterpret_cast<void*>(mesh.d_indices),
+        indices, index_size, cudaMemcpyHostToDevice
+    ));
+
+    mesh.num_vertices = num_vertices;
+    mesh.num_triangles = num_triangles;
+    mesh.vertex_stride = vertex_stride;
+    mesh.gas_built = false;
+
+    // Rebuild the GAS for this mesh slot only.
+    buildTriangleMeshGAS(static_cast<size_t>(mesh_index));
+
+    // Update the scene parameters so the IAS material pointer stays valid.
+    impl->scene.getTriangleMeshMutable().d_vertices = mesh.d_vertices;
+    impl->scene.getTriangleMeshMutable().d_indices  = mesh.d_indices;
+    impl->scene.getTriangleMeshMutable().vertex_stride = vertex_stride;
+
+    // Re-link the instance's gas_handle to the freshly built GAS.
+    for (auto& inst : impl->instances) {
+        if (inst.active
+            && inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
+            && static_cast<int>(inst.mesh_index) == mesh_index) {
+            inst.gas_handle = mesh.gas_handle;
+        }
+    }
+
+    // IAS must be rebuilt on the next render() to pick up the new GAS handle.
+    impl->ias_dirty = true;
+
+    return 0;
+}
+
 void OptiXWrapper::setTriangleMeshColor(float r, float g, float b, float a) {
     impl->scene.setTriangleMeshColor(r, g, b, a);
 }

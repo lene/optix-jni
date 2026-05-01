@@ -639,6 +639,42 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMesh4DProjectionNat
 }
 
 /**
+ * In-place CPU mesh update for the interactive 4D-rotation fast path.
+ * Returns 0 on success, -1 on error.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateCpuTriangleMeshNative(
+    JNIEnv* env, jobject obj,
+    jint meshIndex,
+    jfloatArray vertices, jint numVertices,
+    jintArray indices, jint numTriangles,
+    jint vertexStride) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+        jfloat* verts = env->GetFloatArrayElements(vertices, nullptr);
+        jint*   idxs  = env->GetIntArrayElements(indices, nullptr);
+        int rc = wrapper->updateCpuTriangleMesh(
+            static_cast<int>(meshIndex),
+            reinterpret_cast<const float*>(verts),
+            static_cast<unsigned int>(numVertices),
+            reinterpret_cast<const unsigned int*>(idxs),
+            static_cast<unsigned int>(numTriangles),
+            static_cast<unsigned int>(vertexStride)
+        );
+        env->ReleaseFloatArrayElements(vertices, verts, JNI_ABORT);
+        env->ReleaseIntArrayElements(indices, idxs, JNI_ABORT);
+        return static_cast<jint>(rc);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateCpuTriangleMesh: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Set triangle mesh material color.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshColorNative(

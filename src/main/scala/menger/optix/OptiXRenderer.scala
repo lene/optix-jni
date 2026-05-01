@@ -451,6 +451,32 @@ class OptiXRenderer extends LazyLogging:
     )
     require(rc == 0, s"updateMesh4DProjection failed with code $rc (meshIndex=$meshIndex)")
 
+  @native private def updateCpuTriangleMeshNative(
+    meshIndex: Int,
+    vertices: Array[Float], numVertices: Int,
+    indices: Array[Int], numTriangles: Int,
+    vertexStride: Int
+  ): Int
+
+  /** Replace the CPU-uploaded mesh in slot `meshIndex` with new vertex/index data,
+    * rebuild its GAS in place, and mark the IAS dirty — without calling
+    * clearAllInstances(). Used by the CPU-mode 4D-rotation fast path in
+    * InteractiveEngine to avoid the full rebuild that causes a hang.
+    * Throws if the mesh_index is invalid or the slot holds a GPU-projected mesh.
+    */
+  def updateCpuTriangleMesh(
+    meshIndex: Int,
+    mesh: menger.common.TriangleMeshData
+  ): Unit =
+    require(meshIndex >= 0, s"meshIndex must be non-negative, got $meshIndex")
+    val rc = updateCpuTriangleMeshNative(
+      meshIndex,
+      mesh.vertices, mesh.numVertices,
+      mesh.indices, mesh.numTriangles,
+      mesh.vertexStride
+    )
+    require(rc == 0, s"updateCpuTriangleMesh failed with code $rc (meshIndex=$meshIndex)")
+
   def setTriangleMeshColor(color: Color): Unit =
     setTriangleMeshColorNative(color.r, color.g, color.b, color.a)
 

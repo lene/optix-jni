@@ -74,6 +74,21 @@ public:
         float center_x, float center_y, float center_z
     );
 
+    // In-place CPU mesh update for the interactive 4D-rotation fast path.
+    // Re-uploads vertex and index data to the existing slot `mesh_index`,
+    // rebuilds that mesh's GAS, and marks the IAS dirty so it is refitted
+    // on the next render() call — without calling clearAllInstances().
+    // Returns 0 on success; -1 if mesh_index is out of range or the mesh
+    // was uploaded via setTriangleMesh4DQuads (GPU path only).
+    int updateCpuTriangleMesh(
+        int mesh_index,
+        const float* vertices,
+        unsigned int num_vertices,
+        const unsigned int* indices,
+        unsigned int num_triangles,
+        unsigned int vertex_stride
+    );
+
     // Camera configuration
     void setCamera(const float* eye, const float* lookAt, const float* up, float fov);
     void updateImageDimensions(int width, int height);
