@@ -88,8 +88,13 @@ case class RayStats(
   aaRays: Long,
   aaStackOverflows: Long,
   maxDepthReached: Int,
-  minDepthReached: Int
-)
+  minDepthReached: Int,
+  frameMs: Float
+):
+  /** Milliseconds per million rays (0 if no rays traced). */
+  def msPerMray: Float =
+    if totalRays == 0L then 0.0f
+    else frameMs / (totalRays.toFloat / 1_000_000f)
 
 // Caustics statistics for validation (C1-C8 test ladder)
 // Matches CausticsStats struct in OptiXData.h
@@ -148,7 +153,8 @@ case class RenderResult(
   aaRays: Long,
   aaStackOverflows: Long,
   maxDepthReached: Int,
-  minDepthReached: Int
+  minDepthReached: Int,
+  frameMs: Float
 ):
   def stats: RayStats = RayStats(
     totalRays,
@@ -159,7 +165,8 @@ case class RenderResult(
     aaRays,
     aaStackOverflows,
     maxDepthReached,
-    minDepthReached
+    minDepthReached,
+    frameMs
   )
 
 // JNI interface to OptiX ray tracing renderer
@@ -486,7 +493,10 @@ class OptiXRenderer extends LazyLogging:
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
   def renderWithStats(size: ImageSize): RenderResult =
-    renderWithStats(size.width, size.height)
+    val startNs = System.nanoTime()
+    val raw = renderWithStats(size.width, size.height)
+    val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
+    raw.copy(frameMs = elapsedMs)
 
 
   def render(width: Int, height: Int): Option[Array[Byte]] =
