@@ -496,11 +496,14 @@ class OptiXRenderer extends LazyLogging:
     val startNs = System.nanoTime()
     val raw = renderWithStats(size.width, size.height)
     val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
-    raw.copy(frameMs = elapsedMs)
+    Option(raw).map(_.copy(frameMs = elapsedMs)).orNull
 
+
+  def render(size: ImageSize): Option[Array[Byte]] =
+    Option(renderWithStats(size)).map(_.image)
 
   def render(width: Int, height: Int): Option[Array[Byte]] =
-    Option(renderWithStats(width, height)).map(_.image)
+    render(ImageSize(width, height))
 
   // Instance Acceleration Structure (IAS) API for multi-object scenes
   @native private def addSphereInstanceNative(
@@ -721,9 +724,6 @@ class OptiXRenderer extends LazyLogging:
     ior: Float
   ): Option[Int] =
     addCylinderInstance(p0, p1, radius, Material(color, ior))
-
-  def render(size: ImageSize): Option[Array[Byte]] =
-    render(size.width, size.height)
 
   // Idempotent initialization - safe to call multiple times
   def initialize(maxInstances: Int = 64): Boolean =

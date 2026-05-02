@@ -36,3 +36,20 @@ class RenderStatsTest extends AnyFlatSpec with Matchers:
     )
     stats.msPerMray.shouldBe(0.0f)
   }
+
+  "RenderResult.stats" should "propagate frameMs to RayStats" in {
+    val result = RenderResult(
+      image = Array.empty[Byte],
+      totalRays = 1_000_000L,
+      primaryRays = 500_000L,
+      reflectedRays = 0L,
+      refractedRays = 0L,
+      shadowRays = 0L,
+      aaRays = 0L,
+      aaStackOverflows = 0L,
+      maxDepthReached = 1,
+      minDepthReached = 1,
+      frameMs = 42.0f
+    )
+    result.stats.frameMs.shouldBe(42.0f)
+  }
