@@ -422,7 +422,7 @@ class OptiXRenderer extends LazyLogging:
   ): Int =
     require(quads4D != null, "quads4D must not be null")  // scalafix:ok DisableSyntax.null
     require(quads4D.length % 16 == 0,
-      s"quads4D length must be a positive multiple of 16, got ${quads4D.length}")  // scalafix:ok DisableSyntax.null
+      s"quads4D length must be a positive multiple of 16, got ${quads4D.length}")
     require(quads4D.length > 0, "quads4D must not be empty")
     val numQuads = quads4D.length / 16
     uvs.foreach { u =>

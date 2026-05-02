@@ -253,8 +253,10 @@ if(BUILD_OPTIX_TESTS)
     )
 
     # Discover and register tests with CTest
+    # PRE_TEST defers test discovery to run time, avoiding failures on hosts
+    # where libcuda.so.1 is absent (e.g. non-GPU CI runners).
     include(GoogleTest)
-    gtest_discover_tests(optixcontext_test)
+    gtest_discover_tests(optixcontext_test DISCOVERY_MODE PRE_TEST)
 
     message(STATUS "✓ Google Test enabled for OptiXContext unit tests")
 endif()
