@@ -1,10 +1,16 @@
 //==============================================================================
-// Miss Shader Helper Functions
+// Miss Shader — Legacy Plane Intersection + Background Fallback
+//==============================================================================
+// Planes are available as first-class geometry (hit_plane.cu) since Sprint 19.
+// The legacy miss-shader plane path remains for backward compatibility with
+// the --plane CLI flag and existing tests. It will be removed in a future sprint.
+//==============================================================================
+// This file is included by optix_shaders.cu - do not compile separately
+
+//==============================================================================
+// Plane helper functions (used by caustics and legacy miss shader)
 //==============================================================================
 
-/**
- * Extract ray components for the specified plane axis.
- */
 __device__ void getRayPlaneComponents(
     const float3& ray_origin,
     const float3& ray_direction,
@@ -24,9 +30,6 @@ __device__ void getRayPlaneComponents(
     }
 }
 
-/**
- * Get UV coordinates for checkerboard pattern based on plane axis.
- */
 __device__ void getCheckerboardCoordinates(
     const float3& hit_point,
     int plane_axis,
@@ -45,9 +48,6 @@ __device__ void getCheckerboardCoordinates(
     }
 }
 
-/**
- * Get plane color (solid or checkered pattern) for a specific PlaneParams entry.
- */
 __device__ float3 getPlaneColor(const PlaneParams& plane, float checker_u, float checker_v) {
     if (plane.solid_color) {
         return make_float3(plane.color1[0], plane.color1[1], plane.color1[2]);
@@ -65,11 +65,6 @@ __device__ float3 getPlaneColor(const PlaneParams& plane, float checker_u, float
     }
 }
 
-/**
- * Get plane normal based on axis and orientation.
- * Negates the normal when positive=false so lighting is computed
- * from the correct side of the plane.
- */
 __device__ float3 getPlaneNormal(const PlaneParams& plane) {
     float3 n;
     if (plane.axis == 0) {
@@ -82,9 +77,6 @@ __device__ float3 getPlaneNormal(const PlaneParams& plane) {
     return plane.positive ? n : make_float3(-n.x, -n.y, -n.z);
 }
 
-/**
- * Convert background color to RGB (reads from params, set per-scene).
- */
 __device__ void getBackgroundColor(
     unsigned int& r,
     unsigned int& g,
@@ -96,7 +88,7 @@ __device__ void getBackgroundColor(
 }
 
 //==============================================================================
-// Miss shader - returns checkered plane or background color when ray hits nothing
+// Miss Shader — Planes in miss path (legacy) or background fallback
 //==============================================================================
 extern "C" __global__ void __miss__ms() {
     const float3 ray_origin = optixGetWorldRayOrigin();
@@ -104,7 +96,6 @@ extern "C" __global__ void __miss__ms() {
 
     unsigned int r, g, b;
 
-    // Find the closest plane hit among all active planes
     float best_t = -1.0f;
     int   best_plane = -1;
 
@@ -133,13 +124,9 @@ extern "C" __global__ void __miss__ms() {
 
         float3 base_color = getPlaneColor(plane, checker_u, checker_v);
 
-        // Texture sampling (Sprint 13.1): override base_color when texture is bound
         if (plane.texture_index >= 0 &&
             static_cast<unsigned int>(plane.texture_index) < params.num_textures) {
-            // Reuse checker_u/checker_v: getCheckerboardCoordinates() already extracted
-            // the two world-space coordinates that form the UV plane for this axis.
             float2 uv = make_float2(checker_u, checker_v);
-            // Wrap UV to [0,1]
             uv.x -= floorf(uv.x);
             uv.y -= floorf(uv.y);
             const float4 tex = tex2D<float4>(params.textures[plane.texture_index], uv.x, uv.y);
@@ -151,15 +138,12 @@ extern "C" __global__ void __miss__ms() {
         float3 total_color;
 
         if (plane.metallic > 0.0f) {
-            // Metallic path: trace reflected ray then blend with diffuse, matching
-            // the handleMetallicOpaque() behaviour used for sphere geometry.
             const unsigned int depth = optixGetPayload_3();
             unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
             if (depth < static_cast<unsigned int>(params.max_ray_depth)) {
                 traceReflectedRay(hit_point, ray_direction, plane_normal, depth,
                                   reflect_r, reflect_g, reflect_b);
             }
-            // Tint reflected colour by the plane's base colour (gold/copper tint).
             const float3 tinted = make_float3(
                 reflect_r / COLOR_BYTE_MAX * base_color.x,
                 reflect_g / COLOR_BYTE_MAX * base_color.y,
@@ -169,12 +153,9 @@ extern "C" __global__ void __miss__ms() {
             const float3 diffuse  = base_color * lighting;
             total_color = tinted * plane.metallic + diffuse * (1.0f - plane.metallic);
         } else {
-            // Non-metallic path: diffuse + Phong specular highlight.
             const float3 lighting = calculateLighting(hit_point, plane_normal, true);
             total_color = base_color * lighting;
 
-            // Specular highlight (Phong): add when specular > 0 and not fully rough.
-            // NOTE: uses only lights[0]; multi-light specular for planes is out of scope.
             if (plane.specular > 0.0f && plane.roughness < 0.95f && params.num_lights > 0) {
                 const Light& light = params.lights[0];
                 float3 light_dir_normalized;
@@ -200,11 +181,8 @@ extern "C" __global__ void __miss__ms() {
             }
         }
 
-        // Emission: applies to both metallic and non-metallic paths.
         total_color = total_color + base_color * plane.emission;
 
-        // Match original truncation semantics: no clamping here; the raygen output
-        // stage truncates via unsigned char cast, preserving backward compatibility.
         r = static_cast<unsigned int>(total_color.x * COLOR_BYTE_MAX);
         g = static_cast<unsigned int>(total_color.y * COLOR_BYTE_MAX);
         b = static_cast<unsigned int>(total_color.z * COLOR_BYTE_MAX);

@@ -134,6 +134,19 @@ void PipelineManager::createProgramGroups() {
         module, "__intersection__cone"
     );
 
+    // Plane hit groups
+    plane_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
+        module, "__closesthit__plane",
+        module, "__intersection__plane"
+    );
+
+    // Plane shadow hit group
+    plane_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
+        module, "__closesthit__plane_shadow",
+        module, "__anyhit__plane_shadow",
+        module, "__intersection__plane"
+    );
+
     // Photon ray hit groups (for caustics RAY_TYPE_PHOTON)
     photon_sphere_hitgroup = optix_context.createHitgroupProgramGroup(
         module, "__closesthit__photon",
@@ -146,6 +159,9 @@ void PipelineManager::createProgramGroups() {
     photon_cone_hitgroup = optix_context.createHitgroupProgramGroup(
         module, "__closesthit__photon",
         module, "__intersection__cone");
+    photon_plane_hitgroup = optix_context.createHitgroupProgramGroup(
+        module, "__closesthit__photon",
+        module, "__intersection__plane");
     // Photon miss program
     photon_miss_prog_group = optix_context.createMissProgramGroup(
         module, "__miss__photon");
@@ -172,7 +188,7 @@ void PipelineManager::createProgramGroups() {
 }
 
 void PipelineManager::createPipeline() {
-    constexpr int NUM_PROGRAM_GROUPS = 22;  // raygen(1) + miss(3) + hitgroups: sphere(3)+tri(3)+cylinder(3)+cone(3)+caustics(6) - photon groups reuse miss
+    constexpr int NUM_PROGRAM_GROUPS = 25;  // raygen(1) + miss(3) + hitgroups: sphere(3)+tri(3)+cylinder(3)+cone(3)+plane(3)+caustics(6) - photon groups reuse miss
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -185,10 +201,13 @@ void PipelineManager::createPipeline() {
         cylinder_shadow_hitgroup_prog_group,
         cone_hitgroup_prog_group,
         cone_shadow_hitgroup_prog_group,
+        plane_hitgroup_prog_group,
+        plane_shadow_hitgroup_prog_group,
         photon_sphere_hitgroup,
         photon_triangle_hitgroup,
         photon_cylinder_hitgroup,
         photon_cone_hitgroup,
+        photon_plane_hitgroup,
         photon_miss_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
@@ -259,10 +278,11 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     // SBT layout: [0]=sphere_primary, [1]=sphere_shadow, [2]=sphere_photon,
     //             [3]=triangle_primary, [4]=triangle_shadow, [5]=triangle_photon,
     //             [6]=cylinder_primary, [7]=cylinder_shadow, [8]=cylinder_photon,
-    //             [9]=cone_primary, [10]=cone_shadow, [11]=cone_photon
+    //             [9]=cone_primary, [10]=cone_shadow, [11]=cone_photon,
+    //             [12]=plane_primary, [13]=plane_shadow, [14]=plane_photon
     // Offset calculation: geometry_type * 3 + ray_type (0=primary, 1=shadow, 2=photon)
     constexpr size_t record_size = std::max(sizeof(HitGroupSbtRecord), sizeof(TriangleHitGroupSbtRecord));
-    constexpr int num_records = 12;  // 4 geometry types * 3 ray types
+    constexpr int num_records = 15;  // 5 geometry types * 3 ray types
     char hitgroup_records[num_records * record_size];
     std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
 
@@ -333,6 +353,19 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     HitGroupSbtRecord* cone_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 11 * record_size);
     optixSbtRecordPackHeader(photon_cone_hitgroup, cone_photon);
     cone_photon->data = sphere_data;
+
+    // Plane hitgroup records [12]=primary, [13]=shadow, [14]=photon
+    HitGroupSbtRecord* plane_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 12 * record_size);
+    optixSbtRecordPackHeader(plane_hitgroup_prog_group, plane_primary);
+    plane_primary->data = sphere_data;  // Placeholder data (not used by plane shader)
+
+    HitGroupSbtRecord* plane_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 13 * record_size);
+    optixSbtRecordPackHeader(plane_shadow_hitgroup_prog_group, plane_shadow);
+    plane_shadow->data = sphere_data;
+
+    HitGroupSbtRecord* plane_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 14 * record_size);
+    optixSbtRecordPackHeader(photon_plane_hitgroup, plane_photon);
+    plane_photon->data = sphere_data;
 
     CUdeviceptr d_hitgroup_records;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));

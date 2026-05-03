@@ -1115,6 +1115,40 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addConeInstanceNative(
 }
 
 /**
+ * Add a plane instance (analytical primitive).
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addPlaneInstanceNative(
+    JNIEnv* env, jobject obj,
+    jfloat normal_x, jfloat normal_y, jfloat normal_z,
+    jfloat distance,
+    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        int instanceId = wrapper->addPlaneInstance(
+            normal_x, normal_y, normal_z,
+            distance,
+            r, g, b, a, ior,
+            roughness, metallic, specular, emission,
+            filmThickness
+        );
+
+        return instanceId;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addPlaneInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Remove an instance by ID.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(

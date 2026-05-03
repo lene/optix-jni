@@ -767,6 +767,36 @@ class OptiXRenderer extends LazyLogging:
   ): Option[Int] =
     addConeInstance(apex, base, radius, Material(color, ior))
 
+  @native private def addPlaneInstanceNative(
+    normal_x: Float, normal_y: Float, normal_z: Float,
+    distance: Float,
+    r: Float, g: Float, b: Float, a: Float, ior: Float,
+    roughness: Float, metallic: Float, specular: Float, emission: Float,
+    filmThickness: Float
+  ): Int
+
+  def addPlaneInstance(
+    normal: Vector[3],
+    distance: Float,
+    material: Material
+  ): Option[Int] =
+    val id = addPlaneInstanceNative(
+      normal.x, normal.y, normal.z,
+      distance,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
+      material.filmThickness
+    )
+    if id >= 0 then Some(id) else None
+
+  def addPlaneInstance(
+    normal: Vector[3],
+    distance: Float,
+    color: Color,
+    ior: Float
+  ): Option[Int] =
+    addPlaneInstance(normal, distance, Material(color, ior))
+
   // Idempotent initialization - safe to call multiple times
   def initialize(maxInstances: Int = 64): Boolean =
     if isInitialized then

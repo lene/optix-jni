@@ -123,6 +123,13 @@ struct OptiXWrapper::Impl {
     // Track cone GAS buffers for proper cleanup (each cone has its own GAS)
     std::vector<GASData> cone_gas_buffers;
 
+    // Plane geometry data (host-side storage, uploaded to GPU before render)
+    std::vector<PlaneData> plane_data;
+    CUdeviceptr d_plane_data = 0;              // Device array of PlaneData for Params
+
+    // Track plane GAS buffers for proper cleanup (each plane has its own GAS)
+    std::vector<GASData> plane_gas_buffers;
+
     // Sub-IAS lifetime storage for recursive-IAS Menger sponges (Sprint 18.4).
     // Each entry owns one nested IAS layer's instance buffer + IAS output buffer.
     struct SubIASData {
@@ -1276,6 +1283,28 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.cone_data = nullptr;
                 params.num_cones = 0;
             }
+
+            // Upload plane data if any planes exist
+            if (!impl->plane_data.empty()) {
+                size_t plane_size = impl->plane_data.size() * sizeof(PlaneData);
+
+                if (impl->d_plane_data) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_plane_data), plane_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_plane_data),
+                    impl->plane_data.data(),
+                    plane_size,
+                    cudaMemcpyHostToDevice
+                ));
+
+                params.plane_data = reinterpret_cast<PlaneData*>(impl->d_plane_data);
+                params.num_plane_data = static_cast<unsigned int>(impl->plane_data.size());
+            } else {
+                params.plane_data = nullptr;
+                params.num_plane_data = 0;
+            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -1291,6 +1320,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_cylinders = 0;
             params.cone_data = nullptr;
             params.num_cones = 0;
+            params.plane_data = nullptr;
+            params.num_plane_data = 0;
         }
 
         // Dynamic scene data
@@ -2053,6 +2084,117 @@ int OptiXWrapper::addConeInstance(
     return instanceId;
 }
 
+int OptiXWrapper::addPlaneInstance(
+    float normal_x, float normal_y, float normal_z,
+    float distance,
+    float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, float emission,
+    float film_thickness
+) {
+    if (impl->instances.size() >= impl->max_instances) {
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Plane] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
+        return -1;
+    }
+
+    if (!std::isfinite(normal_x) || !std::isfinite(normal_y) || !std::isfinite(normal_z) ||
+        !std::isfinite(distance)) {
+        std::cerr << "[OptiX][Plane] Invalid plane parameters: "
+                  << "normal=(" << normal_x << "," << normal_y << "," << normal_z << "), "
+                  << "distance=" << distance << std::endl;
+        return -1;
+    }
+
+    // Normalize the normal
+    float len = sqrtf(normal_x * normal_x + normal_y * normal_y + normal_z * normal_z);
+    if (len < 1e-8f) {
+        std::cerr << "[OptiX][Plane] Zero-length normal vector" << std::endl;
+        return -1;
+    }
+    float nx = normal_x / len;
+    float ny = normal_y / len;
+    float nz = normal_z / len;
+    float nd = distance / len;
+
+    // Large AABB covering the entire rendering volume.
+    // Planes are infinite, so the AABB must cover all rays that might hit the plane.
+    // A cube centered on the plane's closest point to origin, extending 1000 units.
+    float cx = nd * nx;
+    float cy = nd * ny;
+    float cz = nd * nz;
+
+    OptixAabb aabb;
+    aabb.minX = cx - 1000.0f;
+    aabb.minY = cy - 1000.0f;
+    aabb.minZ = cz - 1000.0f;
+    aabb.maxX = cx + 1000.0f;
+    aabb.maxY = cy + 1000.0f;
+    aabb.maxZ = cz + 1000.0f;
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+
+    PlaneData plane_entry;
+    plane_entry.normal[0] = nx;
+    plane_entry.normal[1] = ny;
+    plane_entry.normal[2] = nz;
+    plane_entry.distance  = nd;
+    plane_entry.padding   = 0.0f;
+
+    int plane_index = static_cast<int>(impl->plane_data.size());
+    impl->plane_data.push_back(plane_entry);
+
+    Impl::GASData gas_data;
+    gas_data.handle      = result.handle;
+    gas_data.gas_buffer  = result.gas_buffer;
+    gas_data.aabb_buffer = result.aabb_buffer;
+    impl->plane_gas_buffers.push_back(gas_data);
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_PLANE;
+    inst.gas_handle    = gas_data.handle;
+
+    float identity_transform[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
+
+    inst.color[0]      = r;
+    inst.color[1]      = g;
+    inst.color[2]      = b;
+    inst.color[3]      = a;
+    inst.ior           = ior;
+    inst.roughness     = roughness;
+    inst.metallic      = metallic;
+    inst.specular      = specular;
+    inst.emission      = emission;
+    inst.film_thickness = film_thickness;
+    inst.texture_index = plane_index;
+    inst.active        = true;
+    inst.mesh_index    = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+
+    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
+
+    impl->ias_dirty = true;
+
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
     impl->ias_dirty = true;
@@ -2088,6 +2230,13 @@ void OptiXWrapper::clearAllInstances() {
         impl->d_cone_data = 0;
     }
 
+    // Clear plane data
+    impl->plane_data.clear();
+    if (impl->d_plane_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
+        impl->d_plane_data = 0;
+    }
+
     // CRITICAL: Synchronize CUDA before freeing GAS buffers
     // The IAS may still have pending GPU operations referencing these buffers
     cudaError_t sync_err = cudaDeviceSynchronize();
@@ -2116,6 +2265,17 @@ void OptiXWrapper::clearAllInstances() {
         }
     }
     impl->cone_gas_buffers.clear();
+
+    // Free plane GAS buffers
+    for (const auto& gas : impl->plane_gas_buffers) {
+        if (gas.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
+        }
+        if (gas.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
+        }
+    }
+    impl->plane_gas_buffers.clear();
 
     // Free recursive-IAS sponge sub-IAS buffers (Sprint 18.4)
     for (const auto& sub : impl->sub_ias_buffers) {

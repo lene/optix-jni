@@ -176,6 +176,13 @@ public:
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
         float film_thickness = 0.0f
     );
+    int addPlaneInstance(
+        float normal_x, float normal_y, float normal_z,
+        float distance,
+        float r, float g, float b, float a, float ior,
+        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float film_thickness = 0.0f
+    );
 
     // Recursive-IAS Menger sponge (Sprint 18.4).
     // Wraps the most-recently-uploaded triangle mesh (call setTriangleMesh first with a

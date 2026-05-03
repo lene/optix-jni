@@ -155,7 +155,8 @@ enum GeometryType {
     GEOMETRY_TYPE_TRIANGLE = 1,  // Built-in triangle mesh (cube, sponge)
     GEOMETRY_TYPE_CYLINDER = 2,  // Custom cylinder primitive (uses intersection program)
     GEOMETRY_TYPE_CONE = 3,      // Custom cone primitive (uses intersection program)
-    GEOMETRY_TYPE_COUNT = 4      // Number of geometry types
+    GEOMETRY_TYPE_PLANE = 4,     // Custom plane primitive (uses intersection program)
+    GEOMETRY_TYPE_COUNT = 5      // Number of geometry types
 };
 
 // Per-instance material data for IAS (indexed by instance ID)
@@ -441,6 +442,15 @@ struct ConeData {
     // Total: 32 bytes (GPU-friendly alignment)
 };
 
+// Plane geometry data for ray intersection
+// Stored in params.plane_data buffer, indexed via InstanceMaterial.texture_index
+struct PlaneData {
+    float normal[3];    // Unit normal vector (12 bytes)
+    float distance;     // Signed distance from origin: dot(normal, point) = distance (4 bytes)
+    float padding;      // Alignment padding (4 bytes)
+    // Total: 20 bytes (rounded to 32 with padding)
+};
+
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
@@ -484,6 +494,10 @@ struct Params {
     // Cone geometry data buffer (for cone intersection shader)
     ConeData* cone_data;            // Device pointer to array of cone geometry
     unsigned int num_cones;         // Number of cones in array
+
+    // Plane geometry data buffer (for plane intersection shader)
+    PlaneData* plane_data;          // Device pointer to array of plane geometry
+    unsigned int num_plane_data;    // Number of IS-plane instances
 
     // Adaptive antialiasing
     bool  aa_enabled;           // Enable adaptive antialiasing

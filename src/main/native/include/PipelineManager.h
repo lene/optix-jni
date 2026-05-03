@@ -72,11 +72,16 @@ private:
     OptixProgramGroup cone_hitgroup_prog_group = nullptr;
     OptixProgramGroup cone_shadow_hitgroup_prog_group = nullptr;
 
+    // Plane program groups
+    OptixProgramGroup plane_hitgroup_prog_group = nullptr;
+    OptixProgramGroup plane_shadow_hitgroup_prog_group = nullptr;
+
     // Photon ray program groups (for caustics RAY_TYPE_PHOTON)
     OptixProgramGroup photon_sphere_hitgroup = nullptr;
     OptixProgramGroup photon_triangle_hitgroup = nullptr;
     OptixProgramGroup photon_cylinder_hitgroup = nullptr;
     OptixProgramGroup photon_cone_hitgroup = nullptr;
+    OptixProgramGroup photon_plane_hitgroup = nullptr;
     OptixProgramGroup photon_miss_prog_group = nullptr;
 
     // Caustics program groups
