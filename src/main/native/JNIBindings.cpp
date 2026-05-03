@@ -1081,6 +1081,39 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addCylinderInstanceNative
     }
 }
 
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addConeInstanceNative(
+    JNIEnv* env, jobject obj,
+    jfloat apex_x, jfloat apex_y, jfloat apex_z,
+    jfloat base_x, jfloat base_y, jfloat base_z,
+    jfloat radius,
+    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        int instanceId = wrapper->addConeInstance(
+            apex_x, apex_y, apex_z,
+            base_x, base_y, base_z,
+            radius,
+            r, g, b, a, ior,
+            roughness, metallic, specular, emission,
+            filmThickness
+        );
+
+        return instanceId;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addConeInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
 /**
  * Remove an instance by ID.
  */

@@ -154,7 +154,8 @@ enum GeometryType {
     GEOMETRY_TYPE_SPHERE = 0,    // Custom sphere primitive (uses intersection program)
     GEOMETRY_TYPE_TRIANGLE = 1,  // Built-in triangle mesh (cube, sponge)
     GEOMETRY_TYPE_CYLINDER = 2,  // Custom cylinder primitive (uses intersection program)
-    GEOMETRY_TYPE_COUNT = 3      // Number of geometry types
+    GEOMETRY_TYPE_CONE = 3,      // Custom cone primitive (uses intersection program)
+    GEOMETRY_TYPE_COUNT = 4      // Number of geometry types
 };
 
 // Per-instance material data for IAS (indexed by instance ID)
@@ -430,6 +431,16 @@ struct CylinderData {
     // Total: 32 bytes (GPU-friendly alignment)
 };
 
+// Cone geometry data for ray intersection
+// Stored in params.cone_data buffer, indexed via InstanceMaterial.texture_index
+struct ConeData {
+    float apex[3];    // Apex point (12 bytes)
+    float radius;     // Base radius (4 bytes)
+    float base[3];    // Base center point (12 bytes)
+    float padding;    // Alignment padding (4 bytes)
+    // Total: 32 bytes (GPU-friendly alignment)
+};
+
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
@@ -469,6 +480,10 @@ struct Params {
     // Indexed by cylinder_index stored in InstanceMaterial.texture_index for cylinder instances
     CylinderData* cylinder_data;    // Device pointer to array of cylinder geometry
     unsigned int num_cylinders;     // Number of cylinders in array
+
+    // Cone geometry data buffer (for cone intersection shader)
+    ConeData* cone_data;            // Device pointer to array of cone geometry
+    unsigned int num_cones;         // Number of cones in array
 
     // Adaptive antialiasing
     bool  aa_enabled;           // Enable adaptive antialiasing

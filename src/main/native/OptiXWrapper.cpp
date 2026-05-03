@@ -116,6 +116,13 @@ struct OptiXWrapper::Impl {
     // Track cylinder GAS buffers for proper cleanup (each cylinder has its own GAS)
     std::vector<GASData> cylinder_gas_buffers;
 
+    // Cone geometry data (host-side storage, uploaded to GPU before render)
+    std::vector<ConeData> cone_data;
+    CUdeviceptr d_cone_data = 0;               // Device array of ConeData for Params
+
+    // Track cone GAS buffers for proper cleanup (each cone has its own GAS)
+    std::vector<GASData> cone_gas_buffers;
+
     // Sub-IAS lifetime storage for recursive-IAS Menger sponges (Sprint 18.4).
     // Each entry owns one nested IAS layer's instance buffer + IAS output buffer.
     struct SubIASData {
@@ -1247,6 +1254,28 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.cylinder_data = nullptr;
                 params.num_cylinders = 0;
             }
+
+            // Upload cone data if any cones exist
+            if (!impl->cone_data.empty()) {
+                size_t cone_size = impl->cone_data.size() * sizeof(ConeData);
+
+                if (impl->d_cone_data) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cone_data), cone_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_cone_data),
+                    impl->cone_data.data(),
+                    cone_size,
+                    cudaMemcpyHostToDevice
+                ));
+
+                params.cone_data = reinterpret_cast<ConeData*>(impl->d_cone_data);
+                params.num_cones = static_cast<unsigned int>(impl->cone_data.size());
+            } else {
+                params.cone_data = nullptr;
+                params.num_cones = 0;
+            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -1260,6 +1289,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_textures = 0;
             params.cylinder_data = nullptr;
             params.num_cylinders = 0;
+            params.cone_data = nullptr;
+            params.num_cones = 0;
         }
 
         // Dynamic scene data
@@ -1915,6 +1946,113 @@ void OptiXWrapper::removeInstance(int instanceId) {
     impl->ias_dirty = true;
 }
 
+int OptiXWrapper::addConeInstance(
+    float apex_x, float apex_y, float apex_z,
+    float base_x, float base_y, float base_z,
+    float radius,
+    float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, float emission,
+    float film_thickness
+) {
+    if (impl->instances.size() >= impl->max_instances) {
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Cone] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
+        return -1;
+    }
+
+    // Validate cone parameters
+    if (!std::isfinite(apex_x) || !std::isfinite(apex_y) || !std::isfinite(apex_z) ||
+        !std::isfinite(base_x) || !std::isfinite(base_y) || !std::isfinite(base_z) ||
+        !std::isfinite(radius) || radius <= 0.0f) {
+        std::cerr << "[OptiX][Cone] Invalid cone parameters: "
+                  << "apex=(" << apex_x << "," << apex_y << "," << apex_z << "), "
+                  << "base=(" << base_x << "," << base_y << "," << base_z << "), "
+                  << "radius=" << radius << std::endl;
+        return -1;
+    }
+
+    // AABB: union of apex point and base disk padded by radius
+    OptixAabb aabb;
+    aabb.minX = fminf(apex_x, base_x - radius);
+    aabb.minY = fminf(apex_y, base_y - radius);
+    aabb.minZ = fminf(apex_z, base_z - radius);
+    aabb.maxX = fmaxf(apex_x, base_x + radius);
+    aabb.maxY = fmaxf(apex_y, base_y + radius);
+    aabb.maxZ = fmaxf(apex_z, base_z + radius);
+
+    if (!std::isfinite(aabb.minX) || !std::isfinite(aabb.maxX) ||
+        aabb.minX > aabb.maxX || aabb.minY > aabb.maxY || aabb.minZ > aabb.maxZ) {
+        std::cerr << "[OptiX][Cone] Invalid AABB" << std::endl;
+        return -1;
+    }
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+
+    ConeData cone_data_entry;
+    cone_data_entry.apex[0] = apex_x;
+    cone_data_entry.apex[1] = apex_y;
+    cone_data_entry.apex[2] = apex_z;
+    cone_data_entry.radius  = radius;
+    cone_data_entry.base[0] = base_x;
+    cone_data_entry.base[1] = base_y;
+    cone_data_entry.base[2] = base_z;
+    cone_data_entry.padding = 0.0f;
+
+    int cone_index = static_cast<int>(impl->cone_data.size());
+    impl->cone_data.push_back(cone_data_entry);
+
+    Impl::GASData gas_data;
+    gas_data.handle      = result.handle;
+    gas_data.gas_buffer  = result.gas_buffer;
+    gas_data.aabb_buffer = result.aabb_buffer;
+    impl->cone_gas_buffers.push_back(gas_data);
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_CONE;
+    inst.gas_handle    = gas_data.handle;
+
+    float identity_transform[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
+
+    inst.color[0]      = r;
+    inst.color[1]      = g;
+    inst.color[2]      = b;
+    inst.color[3]      = a;
+    inst.ior           = ior;
+    inst.roughness     = roughness;
+    inst.metallic      = metallic;
+    inst.specular      = specular;
+    inst.emission      = emission;
+    inst.film_thickness = film_thickness;
+    inst.texture_index = cone_index;
+    inst.active        = true;
+    inst.mesh_index    = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+
+    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
+
+    impl->ias_dirty = true;
+
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
     impl->ias_dirty = true;
@@ -1943,6 +2081,13 @@ void OptiXWrapper::clearAllInstances() {
         impl->d_cylinder_data = 0;
     }
 
+    // Clear cone data
+    impl->cone_data.clear();
+    if (impl->d_cone_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
+        impl->d_cone_data = 0;
+    }
+
     // CRITICAL: Synchronize CUDA before freeing GAS buffers
     // The IAS may still have pending GPU operations referencing these buffers
     cudaError_t sync_err = cudaDeviceSynchronize();
@@ -1960,6 +2105,17 @@ void OptiXWrapper::clearAllInstances() {
         }
     }
     impl->cylinder_gas_buffers.clear();
+
+    // Free cone GAS buffers
+    for (const auto& gas : impl->cone_gas_buffers) {
+        if (gas.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
+        }
+        if (gas.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
+        }
+    }
+    impl->cone_gas_buffers.clear();
 
     // Free recursive-IAS sponge sub-IAS buffers (Sprint 18.4)
     for (const auto& sub : impl->sub_ias_buffers) {
