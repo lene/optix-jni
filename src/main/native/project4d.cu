@@ -1,16 +1,13 @@
 // project4d.cu — 4D rotation + perspective projection compute kernel.
 //
 // Sprint 18.3 Cut A: replaces the CPU-side `Mesh4DProjection.toTriangleMesh`
-// pipeline (rotation + perspective divide + per-quad normal) with a parallel
-// CUDA kernel that runs once at mesh upload (and again per-frame when Cut F's
-// updateMesh4DProjection is called).
+// pipeline with a parallel CUDA kernel. Generalized in Sprint 19.2 to support
+// variable vertices-per-face (3=tri, 4=quad, 5=pentagon).
 //
-// Layout matches Mesh4DProjection.scala:
-//   - Input: N quads × 4 corners × float4 (x,y,z,w)
-//   - Optional UVs: N quads × 4 corners × float2 (u,v); when null we emit the
-//     same default unit-square UVs as the CPU code (0,0)(1,0)(1,1)(0,1)
-//   - Output: 8-float-stride vertex array (pos·3 + normal·3 + uv·2),
-//     6 indices per quad ([0,1,2, 0,2,3] offset by 4*q)
+// Input: N faces × V corners × float4 (x,y,z,w)
+// Output: V vertices × 8-stride (pos·3 + normal·3 + uv·2) + fan indices
+
+#define MAX_VERTS_PER_FACE 8
 
 #include "Project4D.h"
 
@@ -44,64 +41,62 @@ __device__ inline float3 cross3(float3 a, float3 b) {
 
 }  // namespace
 
-// One CUDA thread per quad.
-extern "C" __global__ void project4d_quads_kernel(
-    const float4* __restrict__ in_quads_4d,    // length 4*N
-    const float2* __restrict__ in_uvs,         // length 4*N, may be null
-    int num_quads,
+extern "C" __global__ void project4d_faces_kernel(
+    const float4* __restrict__ in_faces_4d,
+    const float2* __restrict__ in_uvs,
+    int num_faces,
     Projection4DParams proj,
-    float* __restrict__ out_vertices_3d,        // length 8 * 4 * N
-    unsigned int* __restrict__ out_indices       // length 6 * N
+    float* __restrict__ out_vertices_3d,
+    unsigned int* __restrict__ out_indices
 ) {
     int q = blockIdx.x * blockDim.x + threadIdx.x;
-    if (q >= num_quads) return;
+    if (q >= num_faces) return;
 
-    int corner_base = q * 4;
-    float4 v4[4];
-    float3 v3[4];
+    unsigned int V = proj.verts_per_face;
+    if (V < 3 || V > MAX_VERTS_PER_FACE) return;
 
-    #pragma unroll
-    for (int c = 0; c < 4; ++c) {
-        float4 raw = in_quads_4d[corner_base + c];
+    int corner_base = q * V;
+    float4 v4[MAX_VERTS_PER_FACE];
+    float3 v3[MAX_VERTS_PER_FACE];
+
+    for (unsigned int c = 0; c < V; ++c) {
+        float4 raw = in_faces_4d[corner_base + c];
         v4[c] = mul_mat4_vec4(proj.rotation, raw);
         float3 p3 = perspective_w(v4[c], proj.eye_w, proj.screen_w);
-        // Apply center translation (matches CPU translateMesh).
         p3.x += proj.center_x;
         p3.y += proj.center_y;
         p3.z += proj.center_z;
         v3[c] = p3;
     }
 
-    // Face normal via cross product of edges (v1-v0) x (v3-v0), with
-    // the same degenerate-face fallback as Mesh4DProjection.scala:67.
-    float3 edge1 = sub3(v3[1], v3[0]);
-    float3 edge2 = sub3(v3[3], v3[0]);
-    float3 n = cross3(edge1, edge2);
-    float n_len2 = n.x * n.x + n.y * n.y + n.z * n.z;
-    float nx, ny, nz;
+    // Face normal via Newell's method (robust for any n-gon)
+    float nx = 0.0f, ny = 0.0f, nz = 0.0f;
+    for (unsigned int c = 0; c < V; ++c) {
+        unsigned int nxt = (c + 1 < V) ? (c + 1) : 0;
+        nx += (v3[c].y - v3[nxt].y) * (v3[c].z + v3[nxt].z);
+        ny += (v3[c].z - v3[nxt].z) * (v3[c].x + v3[nxt].x);
+        nz += (v3[c].x - v3[nxt].x) * (v3[c].y + v3[nxt].y);
+    }
+    float n_len2 = nx * nx + ny * ny + nz * nz;
     if (n_len2 < 0.0001f) {
         nx = 0.0f; ny = 1.0f; nz = 0.0f;
     } else {
         float inv = rsqrtf(n_len2);
-        nx = n.x * inv; ny = n.y * inv; nz = n.z * inv;
+        nx *= inv; ny *= inv; nz *= inv;
     }
 
-    // Default UVs match Mesh4DProjection.scala:72-75:
-    //   v0 = (0,0), v1 = (1,0), v2 = (1,1), v3 = (0,1).
-    float default_uv[4][2] = {
-        {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}
-    };
-
-    int vbase = q * 4 * 8;
-    #pragma unroll
-    for (int c = 0; c < 4; ++c) {
+    // Write V vertices × 8-stride
+    int vbase = q * V * 8;
+    for (unsigned int c = 0; c < V; ++c) {
         float u, v;
         if (in_uvs != nullptr) {
             float2 uv = in_uvs[corner_base + c];
             u = uv.x; v = uv.y;
         } else {
-            u = default_uv[c][0];
-            v = default_uv[c][1];
+            // Simple UVs: angle-based distribution around center
+            float angle = (float)c / (float)V * 6.283185307f;
+            u = 0.5f + 0.5f * cosf(angle);
+            v = 0.5f + 0.5f * sinf(angle);
         }
         int o = vbase + c * 8;
         out_vertices_3d[o + 0] = v3[c].x;
@@ -114,34 +109,37 @@ extern "C" __global__ void project4d_quads_kernel(
         out_vertices_3d[o + 7] = v;
     }
 
-    int ibase = q * 6;
-    int corner0 = corner_base;  // 4*q
-    out_indices[ibase + 0] = corner0 + 0;
-    out_indices[ibase + 1] = corner0 + 1;
-    out_indices[ibase + 2] = corner0 + 2;
-    out_indices[ibase + 3] = corner0 + 0;
-    out_indices[ibase + 4] = corner0 + 2;
-    out_indices[ibase + 5] = corner0 + 3;
+    // Fan triangulation: for k=2..V-1, emit triangle [0, k-1, k]
+    unsigned int tri_count = V - 2;
+    int ibase = q * tri_count * 3;
+    int vert0 = corner_base;
+    for (unsigned int k = 2; k < V; ++k) {
+        unsigned int ti = k - 2;
+        out_indices[ibase + ti * 3 + 0] = vert0 + 0;
+        out_indices[ibase + ti * 3 + 1] = vert0 + k - 1;
+        out_indices[ibase + ti * 3 + 2] = vert0 + k;
+    }
 }
 
-// Host-side launcher with C linkage so it can be called from OptiXWrapper.cpp
-// without dragging the kernel signature into a C++ header.
+// Backward-compatible host launcher (same C-linkage name, generalized params)
 extern "C" cudaError_t launchProject4DQuadsKernel(
-    const void* d_quads_4d,
+    const void* d_faces_4d,
     const void* d_uvs_or_null,
-    int num_quads,
+    int num_faces,
     const Projection4DParams* params,
     void* d_vertices_3d,
     void* d_indices,
     cudaStream_t stream
 ) {
-    if (num_quads <= 0) return cudaSuccess;
+    if (num_faces <= 0) return cudaSuccess;
+    if (params->verts_per_face < 3 || params->verts_per_face > MAX_VERTS_PER_FACE)
+        return cudaErrorInvalidValue;
     int block = 256;
-    int grid = (num_quads + block - 1) / block;
-    project4d_quads_kernel<<<grid, block, 0, stream>>>(
-        reinterpret_cast<const float4*>(d_quads_4d),
+    int grid = (num_faces + block - 1) / block;
+    project4d_faces_kernel<<<grid, block, 0, stream>>>(
+        reinterpret_cast<const float4*>(d_faces_4d),
         reinterpret_cast<const float2*>(d_uvs_or_null),
-        num_quads,
+        num_faces,
         *params,
         reinterpret_cast<float*>(d_vertices_3d),
         reinterpret_cast<unsigned int*>(d_indices)

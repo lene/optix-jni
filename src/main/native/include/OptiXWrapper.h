@@ -52,7 +52,19 @@ public:
     // Returns the mesh index (slot in triangle_meshes[]).
     // The 4D and projected buffers stay resident on the device for the
     // mesh's lifetime so Cut F's updateMesh4DProjection can re-launch the
-    // kernel without re-uploading.
+    // kernel without re-uploading. Generalized: verts_per_face allows
+    // non-quad faces (3=tris, 5=pentagons).
+    int setProjectedMesh(
+        const float* faces_4d,
+        int num_faces,
+        int verts_per_face,
+        const float* uvs_or_null,
+        float eyeW, float screenW,
+        float rotXW_deg, float rotYW_deg, float rotZW_deg,
+        float center_x, float center_y, float center_z
+    );
+
+    // Backward-compatible quad-only alias
     int setTriangleMesh4DQuads(
         const float* quads4d,
         int num_quads,
@@ -60,7 +72,11 @@ public:
         float eyeW, float screenW,
         float rotXW_deg, float rotYW_deg, float rotZW_deg,
         float center_x, float center_y, float center_z
-    );
+    ) {
+        return setProjectedMesh(quads4d, num_quads, 4, uvs_or_null,
+            eyeW, screenW, rotXW_deg, rotYW_deg, rotZW_deg,
+            center_x, center_y, center_z);
+    }
 
     // Sprint 18.3 Cut F: per-frame update of 4D rotation + projection.
     // Re-launches the projection kernel against the resident 4D buffers,

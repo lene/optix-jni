@@ -538,9 +538,9 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
  * @param centerZ 3D translation Z applied after projection
  * @return mesh index (slot in triangle_meshes[]), or -1 on error
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setTriangleMesh4DQuadsNative(
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setProjectedMeshNative(
     JNIEnv* env, jobject obj,
-    jfloatArray quads4d, jint numQuads,
+    jfloatArray facesData, jint numFaces, jint vertsPerFace,
     jfloatArray uvs,
     jfloat eyeW, jfloat screenW,
     jfloat rotXW, jfloat rotYW, jfloat rotZW,
@@ -551,17 +551,23 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setTriangleMesh4DQuadsNat
             return -1;
         }
 
-        if (numQuads <= 0) {
+        if (numFaces <= 0) {
             jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-            env->ThrowNew(exception_class, "numQuads must be positive");
+            env->ThrowNew(exception_class, "numFaces must be positive");
+            return -1;
+        }
+        if (vertsPerFace < 3) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(exception_class, "vertsPerFace must be >= 3");
             return -1;
         }
 
-        jsize quadsLen = env->GetArrayLength(quads4d);
-        if (quadsLen != numQuads * 16) {
+        int stride = vertsPerFace * 4;
+        jsize quadsLen = env->GetArrayLength(facesData);
+        if (quadsLen != numFaces * stride) {
             jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-            std::string msg = "quads4d length (" + std::to_string(quadsLen) +
-                ") must equal numQuads*16 (" + std::to_string(numQuads * 16) + ")";
+            std::string msg = "facesData length (" + std::to_string(quadsLen) +
+                ") must equal numFaces*vertsPerFace*4 (" + std::to_string(numFaces * stride) + ")";
             env->ThrowNew(exception_class, msg.c_str());
             return -1;
         }
@@ -569,39 +575,40 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setTriangleMesh4DQuadsNat
         jfloat* uvsArr = nullptr;
         if (uvs != nullptr) {
             jsize uvsLen = env->GetArrayLength(uvs);
-            if (uvsLen != numQuads * 8) {
+            if (uvsLen != numFaces * vertsPerFace * 2) {
                 jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
                 std::string msg = "uvs length (" + std::to_string(uvsLen) +
-                    ") must equal numQuads*8 (" + std::to_string(numQuads * 8) + ")";
+                    ") must equal numFaces*vertsPerFace*2";
                 env->ThrowNew(exception_class, msg.c_str());
                 return -1;
             }
             uvsArr = env->GetFloatArrayElements(uvs, nullptr);
         }
 
-        jfloat* quadsArr = env->GetFloatArrayElements(quads4d, nullptr);
+        jfloat* quadsArr = env->GetFloatArrayElements(facesData, nullptr);
         if (quadsArr == nullptr) {
             if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, 0);
             jclass exception_class = env->FindClass("java/lang/RuntimeException");
-            env->ThrowNew(exception_class, "Failed to get quads4d array elements");
+            env->ThrowNew(exception_class, "Failed to get facesData array elements");
             return -1;
         }
 
-        int meshIndex = wrapper->setTriangleMesh4DQuads(
+        int meshIndex = wrapper->setProjectedMesh(
             quadsArr,
-            static_cast<int>(numQuads),
+            static_cast<int>(numFaces),
+            static_cast<int>(vertsPerFace),
             uvsArr,
             eyeW, screenW,
             rotXW, rotYW, rotZW,
             centerX, centerY, centerZ
         );
 
-        env->ReleaseFloatArrayElements(quads4d, quadsArr, 0);
+        env->ReleaseFloatArrayElements(facesData, quadsArr, 0);
         if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, 0);
 
         return meshIndex;
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in setTriangleMesh4DQuads: " << e.what() << std::endl;
+        std::cerr << "[JNI] Error in setProjectedMesh: " << e.what() << std::endl;
         jclass exception_class = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(exception_class, e.what());
         return -1;

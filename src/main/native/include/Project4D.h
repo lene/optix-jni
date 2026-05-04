@@ -10,25 +10,22 @@
 extern "C" {
 
 struct Projection4DParams {
-    // 4x4 row-major rotation matrix, pre-composed on the host
-    // as R_xw * R_yw * R_zw (matches Rotation.scala line 41).
     float rotation[16];
     float eye_w;
     float screen_w;
-    // Center translation applied in 3D after projection
-    // (matches Mesh4DProjection.translateMesh).
     float center_x;
     float center_y;
     float center_z;
+    unsigned int verts_per_face;   // 3=tri, 4=quad, 5=pentagon
 };
 
 cudaError_t launchProject4DQuadsKernel(
-    const void* d_quads_4d,        // length 4*num_quads, float4 per corner
-    const void* d_uvs_or_null,     // length 4*num_quads float2, or nullptr
-    int num_quads,
+    const void* d_faces_4d,        // length verts_per_face * num_faces, float4 per corner
+    const void* d_uvs_or_null,     // length verts_per_face * num_faces float2, or nullptr
+    int num_faces,
     const Projection4DParams* params,
-    void* d_vertices_3d,            // length 8 * 4 * num_quads floats
-    void* d_indices,                // length 6 * num_quads unsigned ints
+    void* d_vertices_3d,            // length 8 * verts_per_face * num_faces floats
+    void* d_indices,                // length 3 * (verts_per_face-2) * num_faces unsigned ints
     cudaStream_t stream
 );
 

@@ -338,10 +338,12 @@ class OptiXRenderer extends LazyLogging:
   ): Unit
 
   // Sprint 18.3 Cut A: GPU-side 4D rotation + projection. Returns mesh index.
-  @native private def setTriangleMesh4DQuadsNative(
-    quads4D: Array[Float],
-    numQuads: Int,
-    uvs: Array[Float],         // null permitted for default unit-square UVs
+  // Generalized: vertsPerFace allows non-quad faces (3=tris, 5=pentagons).
+  @native private def setProjectedMeshNative(
+    facesData: Array[Float],
+    numFaces: Int,
+    vertsPerFace: Int,
+    uvs: Array[Float],         // null permitted
     eyeW: Float,
     screenW: Float,
     rotXW: Float,
@@ -412,14 +414,42 @@ class OptiXRenderer extends LazyLogging:
       mesh.vertexStride
     )
 
-  /** Upload a 4D quad mesh; the GPU does rotation + perspective projection at
+  /** Upload a 4D face mesh; the GPU does rotation + perspective projection at
     * upload time (and on Cut F's update path). Returns the mesh index slot in
     * triangle_meshes[], or throws on validation failure.
     *
-    * @param quads4D length 16 * numQuads — N quads × 4 corners × (x,y,z,w)
-    * @param uvs optional length 8 * numQuads — N quads × 4 corners × (u,v);
-    *   None falls back to default unit-square UVs matching Mesh4DProjection.
+    * @param facesData length V*4*numFaces — N faces × V corners × (x,y,z,w)
+    * @param vertsPerFace number of vertices per face (3=tri, 4=quad, 5=pentagon)
+    * @param uvs optional length vertsPerFace*2*numFaces; None uses computed UVs
     */
+  def setProjectedMesh(
+    facesData: Array[Float],
+    vertsPerFace: Int,
+    uvs: Option[Array[Float]],
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float,
+    centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
+  ): Int =
+    require(facesData != null, "facesData must not be null")  // scalafix:ok DisableSyntax.null
+    require(vertsPerFace >= 3, s"vertsPerFace must be >= 3, got $vertsPerFace")
+    val stride = vertsPerFace * 4
+    require(facesData.length % stride == 0,
+      s"facesData length must be a multiple of vertsPerFace*4 ($stride), got ${facesData.length}")
+    require(facesData.length > 0, "facesData must not be empty")
+    val numFaces = facesData.length / stride
+    uvs.foreach { u =>
+      require(u.length == numFaces * vertsPerFace * 2,
+        s"uvs length (${u.length}) must equal numFaces*vertsPerFace*2 (${numFaces * vertsPerFace * 2})")
+    }
+    val result = setProjectedMeshNative(
+      facesData, numFaces, vertsPerFace, uvs.orNull,
+      eyeW, screenW, rotXW, rotYW, rotZW,
+      centerX, centerY, centerZ
+    )
+    require(result >= 0, s"setProjectedMesh failed with code $result")
+    result
+
+  // Backward-compatible alias
   def setTriangleMesh4DQuads(
     quads4D: Array[Float],
     uvs: Option[Array[Float]],
@@ -427,22 +457,8 @@ class OptiXRenderer extends LazyLogging:
     rotXW: Float, rotYW: Float, rotZW: Float,
     centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
   ): Int =
-    require(quads4D != null, "quads4D must not be null")  // scalafix:ok DisableSyntax.null
-    require(quads4D.length % 16 == 0,
-      s"quads4D length must be a positive multiple of 16, got ${quads4D.length}")
-    require(quads4D.length > 0, "quads4D must not be empty")
-    val numQuads = quads4D.length / 16
-    uvs.foreach { u =>
-      require(u.length == numQuads * 8,
-        s"uvs length (${u.length}) must equal numQuads*8 (${numQuads * 8})")
-    }
-    val result = setTriangleMesh4DQuadsNative(
-      quads4D, numQuads, uvs.orNull,
-      eyeW, screenW, rotXW, rotYW, rotZW,
-      centerX, centerY, centerZ
-    )
-    require(result >= 0, s"setTriangleMesh4DQuads failed with code $result")
-    result
+    setProjectedMesh(quads4D, 4, uvs, eyeW, screenW, rotXW, rotYW, rotZW,
+      centerX, centerY, centerZ)
 
   /** Re-project a previously-uploaded 4D-quad mesh with new rotation/projection
     * params, refitting its GAS (and the IAS, if active) in place. Throws on

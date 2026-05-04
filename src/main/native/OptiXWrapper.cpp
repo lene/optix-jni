@@ -419,17 +419,24 @@ inline void compose_rotation_xw_yw_zw(
 
 }  // namespace
 
-int OptiXWrapper::setTriangleMesh4DQuads(
-    const float* quads4d,
-    int num_quads,
+int OptiXWrapper::setProjectedMesh(
+    const float* faces4d,
+    int num_faces,
+    int verts_per_face,
     const float* uvs_or_null,
     float eyeW, float screenW,
     float rotXW_deg, float rotYW_deg, float rotZW_deg,
     float center_x, float center_y, float center_z
 ) {
-    if (num_quads <= 0) {
+    if (num_faces <= 0) {
         std::cerr
-            << "[OptiX] setTriangleMesh4DQuads: num_quads must be > 0"
+            << "[OptiX] setProjectedMesh: num_faces must be > 0"
+            << std::endl;
+        return -1;
+    }
+    if (verts_per_face < 3) {
+        std::cerr
+            << "[OptiX] setProjectedMesh: verts_per_face must be >= 3"
             << std::endl;
         return -1;
     }
@@ -437,33 +444,33 @@ int OptiXWrapper::setTriangleMesh4DQuads(
     Impl::TriangleMeshGPU mesh_entry;
     cudaError_t err;
 
-    // Allocate and upload 4D quad buffer (kept resident for Cut F).
-    size_t quads_4d_bytes =
-        static_cast<size_t>(num_quads) * 4 * 4 * sizeof(float);
+    // Allocate and upload 4D face buffer
+    size_t faces_4d_bytes =
+        static_cast<size_t>(num_faces) * verts_per_face * 4 * sizeof(float);
     err = cudaMalloc(
         reinterpret_cast<void**>(&mesh_entry.projection4d.d_quads_4d),
-        quads_4d_bytes
+        faces_4d_bytes
     );
     if (err != cudaSuccess) {
-        std::cerr << "[OptiX] cudaMalloc failed for quads_4d: "
+        std::cerr << "[OptiX] cudaMalloc failed for faces_4d: "
                   << cudaGetErrorString(err) << std::endl;
         return -1;
     }
     err = cudaMemcpy(
         reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d),
-        quads4d, quads_4d_bytes, cudaMemcpyHostToDevice
+        faces4d, faces_4d_bytes, cudaMemcpyHostToDevice
     );
     if (err != cudaSuccess) {
-        std::cerr << "[OptiX] cudaMemcpy failed for quads_4d: "
+        std::cerr << "[OptiX] cudaMemcpy failed for faces_4d: "
                   << cudaGetErrorString(err) << std::endl;
         cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
         return -1;
     }
 
-    // Optional UV buffer.
+    // Optional UV buffer
     if (uvs_or_null != nullptr) {
         size_t uv_bytes =
-            static_cast<size_t>(num_quads) * 4 * 2 * sizeof(float);
+            static_cast<size_t>(num_faces) * verts_per_face * 2 * sizeof(float);
         err = cudaMalloc(
             reinterpret_cast<void**>(&mesh_entry.projection4d.d_uvs),
             uv_bytes
@@ -487,17 +494,17 @@ int OptiXWrapper::setTriangleMesh4DQuads(
         }
     }
 
-    // Allocate output 3D vertex + index buffers (these are what the GAS
-    // consumes; setTriangleMesh's slot in triangle_meshes[]).
+    // Output: V vertices per face, (V-2) triangles per face
     unsigned int num_vertices =
-        static_cast<unsigned int>(num_quads) * 4;
+        static_cast<unsigned int>(num_faces) * verts_per_face;
     unsigned int num_triangles =
-        static_cast<unsigned int>(num_quads) * 2;
+        static_cast<unsigned int>(num_faces) * (verts_per_face - 2);
     unsigned int vertex_stride = 8;
     size_t vertex_bytes =
         static_cast<size_t>(num_vertices) * vertex_stride * sizeof(float);
     size_t index_bytes =
         static_cast<size_t>(num_triangles) * 3 * sizeof(unsigned int);
+
     err = cudaMalloc(
         reinterpret_cast<void**>(&mesh_entry.d_vertices), vertex_bytes
     );
@@ -522,10 +529,9 @@ int OptiXWrapper::setTriangleMesh4DQuads(
         return -1;
     }
 
-    // Populate the projection params and launch the kernel.
     mesh_entry.projection4d.face_count =
-        static_cast<unsigned int>(num_quads);
-    mesh_entry.projection4d.verts_per_face = 4;
+        static_cast<unsigned int>(num_faces);
+    mesh_entry.projection4d.verts_per_face = verts_per_face;
     Projection4DParams& params = mesh_entry.projection4d.params;
     compose_rotation_xw_yw_zw(
         params.rotation, rotXW_deg, rotYW_deg, rotZW_deg
@@ -535,13 +541,14 @@ int OptiXWrapper::setTriangleMesh4DQuads(
     params.center_x = center_x;
     params.center_y = center_y;
     params.center_z = center_z;
+    params.verts_per_face = verts_per_face;
 
     err = launchProject4DQuadsKernel(
         reinterpret_cast<const void*>(mesh_entry.projection4d.d_quads_4d),
         mesh_entry.projection4d.d_uvs
             ? reinterpret_cast<const void*>(mesh_entry.projection4d.d_uvs)
             : nullptr,
-        num_quads,
+        num_faces,
         &params,
         reinterpret_cast<void*>(mesh_entry.d_vertices),
         reinterpret_cast<void*>(mesh_entry.d_indices),
@@ -565,8 +572,7 @@ int OptiXWrapper::setTriangleMesh4DQuads(
     mesh_entry.vertex_stride = vertex_stride;
     mesh_entry.gas_built = false;
 
-    // Compute mesh AABB by reading back projected vertices. One-time cost
-    // at upload; Cut F will refresh on update if caustics are enabled.
+    // Compute mesh AABB by reading back projected vertices
     std::vector<float> projected(num_vertices * vertex_stride);
     cudaMemcpy(
         projected.data(),
