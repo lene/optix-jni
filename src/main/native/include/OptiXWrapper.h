@@ -197,7 +197,10 @@ public:
         float distance,
         float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        float film_thickness = 0.0f
+        float film_thickness = 0.0f,
+        float r2 = 0.0f, float g2 = 0.0f, float b2 = 0.0f,
+        int solid_color = 1,
+        float checker_size = 1.0f
     );
 
     // Recursive-IAS Menger sponge (Sprint 18.4).

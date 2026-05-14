@@ -445,10 +445,13 @@ struct ConeData {
 // Plane geometry data for ray intersection
 // Stored in params.plane_data buffer, indexed via InstanceMaterial.texture_index
 struct PlaneData {
-    float normal[3];    // Unit normal vector (12 bytes)
-    float distance;     // Signed distance from origin: dot(normal, point) = distance (4 bytes)
-    float padding;      // Alignment padding (4 bytes)
-    // Total: 20 bytes (rounded to 32 with padding)
+    float normal[3];      // Unit normal vector (12 bytes)
+    float distance;       // Signed distance from origin: dot(normal, point) = distance (4 bytes)
+    float color1[3];      // Primary / checker-A color (12 bytes)
+    float checker_size;   // Checker square size in world units (4 bytes)
+    float color2[3];      // Checker-B color (12 bytes)
+    int   solid_color;    // 1 = solid (color1 only), 0 = checker pattern (4 bytes)
+    // Total: 48 bytes
 };
 
 // Launch parameters passed to OptiX shaders

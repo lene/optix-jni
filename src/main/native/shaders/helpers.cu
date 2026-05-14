@@ -700,9 +700,10 @@ __device__ void computeDiffuseColor(
     const float4& material_color,
     unsigned int& diffuse_r,
     unsigned int& diffuse_g,
-    unsigned int& diffuse_b
+    unsigned int& diffuse_b,
+    bool double_sided = false
 ) {
-    const float3 lighting = calculateLighting(hit_point, normal);
+    const float3 lighting = calculateLighting(hit_point, normal, double_sided);
 
     const float3 surface_color = make_float3(
         material_color.x,
@@ -758,10 +759,11 @@ __device__ void handleFullyOpaque(
     const float3& hit_point,
     const float3& normal,
     const float4& material_color,
-    float emission = 0.0f
+    float emission = 0.0f,
+    bool double_sided = false
 ) {
     unsigned int r, g, b;
-    computeDiffuseColor(hit_point, normal, material_color, r, g, b);
+    computeDiffuseColor(hit_point, normal, material_color, r, g, b, double_sided);
     addEmissionToColor(r, g, b, material_color, emission);
     optixSetPayload_0(r);
     optixSetPayload_1(g);

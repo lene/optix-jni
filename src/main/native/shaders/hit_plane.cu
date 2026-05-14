@@ -17,7 +17,7 @@ extern "C" __global__ void __intersection__plane() {
     const InstanceMaterial& mat = params.instance_materials[instanceId];
     const int plane_index = mat.texture_index;
 
-    if (plane_index < 0 || plane_index >= static_cast<int>(params.num_planes)) return;
+    if (plane_index < 0 || plane_index >= static_cast<int>(params.num_plane_data)) return;
     if (!params.plane_data) return;
 
     const PlaneData* plane = &params.plane_data[plane_index];
@@ -72,6 +72,41 @@ extern "C" __global__ void __closesthit__plane() {
     float material_ior, roughness, metallic, specular, emission, film_thickness;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic,
                            specular, emission, film_thickness);
+
+    // Apply checker pattern from plane geometry data
+    const unsigned int instanceId = optixGetInstanceId();
+    if (params.instance_materials && params.plane_data) {
+        const int plane_index = params.instance_materials[instanceId].texture_index;
+        if (plane_index >= 0 && plane_index < static_cast<int>(params.num_plane_data)) {
+            const PlaneData& pd = params.plane_data[plane_index];
+            float3 base_color;
+            if (pd.solid_color) {
+                base_color = make_float3(pd.color1[0], pd.color1[1], pd.color1[2]);
+            } else {
+                const float3 abs_n = make_float3(
+                    fabsf(geometric_normal.x),
+                    fabsf(geometric_normal.y),
+                    fabsf(geometric_normal.z));
+                float u, v;
+                if (abs_n.x >= abs_n.y && abs_n.x >= abs_n.z) {
+                    u = hit_point.y; v = hit_point.z;
+                } else if (abs_n.y >= abs_n.z) {
+                    u = hit_point.x; v = hit_point.z;
+                } else {
+                    u = hit_point.x; v = hit_point.y;
+                }
+                const float cs = pd.checker_size > 0.0f ? pd.checker_size : 1.0f;
+                const int cu = static_cast<int>(floorf(u / cs));
+                const int cv = static_cast<int>(floorf(v / cs));
+                const bool is_light = ((cu + cv) & 1) == 0;
+                base_color = is_light
+                    ? make_float3(pd.color1[0], pd.color1[1], pd.color1[2])
+                    : make_float3(pd.color2[0], pd.color2[1], pd.color2[2]);
+            }
+            material_color = make_float4(base_color.x, base_color.y, base_color.z, material_color.w);
+        }
+    }
+
     const float material_alpha = material_color.w;
 
     // Fully transparent: pass through
@@ -86,7 +121,9 @@ extern "C" __global__ void __closesthit__plane() {
                              material_color, metallic, optixGetPayload_3(), emission);
         return;
     }
-    handleFullyOpaque(hit_point, normal, material_color, emission);
+    // Use geometric_normal (pre-flip) with double_sided=true to match legacy miss-shader lighting:
+    // planes are lit from both sides using fabsf(NdotL) regardless of view direction.
+    handleFullyOpaque(hit_point, geometric_normal, material_color, emission, true);
 }
 
 //==============================================================================

@@ -2095,7 +2095,9 @@ int OptiXWrapper::addPlaneInstance(
     float distance,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission,
-    float film_thickness
+    float film_thickness,
+    float r2, float g2, float b2,
+    int solid_color, float checker_size
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -2146,11 +2148,18 @@ int OptiXWrapper::addPlaneInstance(
     OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
 
     PlaneData plane_entry;
-    plane_entry.normal[0] = nx;
-    plane_entry.normal[1] = ny;
-    plane_entry.normal[2] = nz;
-    plane_entry.distance  = nd;
-    plane_entry.padding   = 0.0f;
+    plane_entry.normal[0]    = nx;
+    plane_entry.normal[1]    = ny;
+    plane_entry.normal[2]    = nz;
+    plane_entry.distance     = nd;
+    plane_entry.color1[0]    = r;
+    plane_entry.color1[1]    = g;
+    plane_entry.color1[2]    = b;
+    plane_entry.checker_size = checker_size;
+    plane_entry.color2[0]    = r2;
+    plane_entry.color2[1]    = g2;
+    plane_entry.color2[2]    = b2;
+    plane_entry.solid_color  = solid_color;
 
     int plane_index = static_cast<int>(impl->plane_data.size());
     impl->plane_data.push_back(plane_entry);
