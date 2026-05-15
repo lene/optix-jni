@@ -254,7 +254,7 @@ class OptiXRenderer extends LazyLogging:
   @native private def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
 
   def setProceduralTexture(instanceId: Int, proceduralType: Int, proceduralScale: Float = 1.0f): Unit =
-    require(proceduralType >= 0 && proceduralType <= 4, "proceduralType must be 0–4")
+    require(proceduralType >= 0 && proceduralType <= 7, "proceduralType must be 0–7")
     require(proceduralScale > 0f, "proceduralScale must be positive")
     setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
 
@@ -977,8 +977,11 @@ case class OptiXNotAvailableException(message: String) extends Exception(message
 case class TextureUploadException(message: String) extends Exception(message)
 
 object ProceduralType:
-  val None       = 0
-  val ValueNoise = 1
-  val FBM        = 2
-  val Worley     = 3
-  val Gradient   = 4
+  val None         = 0
+  val ValueNoise   = 1
+  val FBM          = 2
+  val Worley       = 3
+  val Gradient     = 4
+  val Wood         = 5
+  val Marble       = 6
+  val LayeredNoise = 7

@@ -46,12 +46,38 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
     }
   }
 
-  it should "reject invalid type > 4" in {
+  it should "reject invalid type > 7" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
       .getOrElse(fail("addSphereInstance failed"))
     an[IllegalArgumentException] should be thrownBy {
-      renderer.setProceduralTexture(instanceId, 5, 1.0f)
+      renderer.setProceduralTexture(instanceId, 8, 1.0f)
     }
+  }
+
+  "Wood procedural texture" should "produce a different image than marble" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.Wood, 1.0f)
+    val woodSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.Marble, 1.0f)
+    val marbleSum = pixelSum(renderImage(imgSize))
+
+    woodSum should not equal marbleSum
+  }
+
+  "LayeredNoise procedural texture" should "produce a different image than plain FBM" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.FBM, 1.0f)
+    val fbmSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.LayeredNoise, 1.0f)
+    val layeredSum = pixelSum(renderImage(imgSize))
+
+    layeredSum should not equal fbmSum
   }
 
   it should "reject non-positive scale" in {

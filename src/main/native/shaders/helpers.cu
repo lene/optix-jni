@@ -1486,6 +1486,24 @@ __device__ float worleyNoise3D(float3 p) {
     return sqrtf(minDist);
 }
 
+// Wood grain — concentric rings along Z distorted by fBm
+__device__ float woodPattern(float3 p) {
+    float grain = p.z * 8.f + 5.f * fbm3D(p, 4, 2.f, 0.5f);
+    return 0.5f + 0.5f * sinf(grain);
+}
+
+// Marble veins — sinusoidal vein along X distorted by fBm
+__device__ float marblePattern(float3 p) {
+    float vein = p.x * 4.f + 4.f * fbm3D(p, 6, 2.f, 0.5f);
+    return 0.5f + 0.5f * sinf(vein);
+}
+
+// Layered noise — high-contrast multi-octave fBm
+__device__ float layeredNoise(float3 p) {
+    float n = fbm3D(p, 6, 2.f, 0.5f);
+    return fminf(n * n * 2.f, 1.f);
+}
+
 // Procedural texture dispatcher — modulates base_color RGB by noise value
 __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_pos,
                                           int proc_type, float proc_scale) {
@@ -1496,6 +1514,9 @@ __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_
         case 2: n = fbm3D(p, 4, 2.f, 0.5f);           break;
         case 3: n = fminf(worleyNoise3D(p), 1.f);      break;
         case 4: n = (gradNoise3D(p) + 1.f) * 0.5f;    break;
+        case 5: n = woodPattern(p);                    break;
+        case 6: n = marblePattern(p);                  break;
+        case 7: n = layeredNoise(p);                   break;
         default: return base_color;
     }
     return make_float4(base_color.x * n, base_color.y * n,
