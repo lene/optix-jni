@@ -254,6 +254,10 @@ void OptiXWrapper::setBackgroundColor(float r, float g, float b) {
     impl->config.setBackgroundColor(r, g, b);
 }
 
+void OptiXWrapper::setEnvironmentMap(int textureIndex) {
+    impl->config.setEnvMapIndex(textureIndex);
+}
+
 void OptiXWrapper::clearPlanes() {
     impl->config.clearPlanes();
 }
@@ -1358,6 +1362,10 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.bg_r = impl->config.getBackgroundR();
         params.bg_g = impl->config.getBackgroundG();
         params.bg_b = impl->config.getBackgroundB();
+        int envIdx = impl->config.getEnvMapIndex();
+        params.env_map_enabled = (envIdx >= 0 && envIdx < (int)impl->textures.size());
+        if (params.env_map_enabled)
+            params.env_map_texture = impl->textures[envIdx].texture_obj;
 
         params.num_planes = impl->config.getNumPlanes();
         // Copy all MAX_PLANES slots (zero-initialized past num_planes) to avoid
@@ -2514,6 +2522,7 @@ void OptiXWrapper::releaseTextures() {
     }
     impl->textures.clear();
     impl->texture_name_to_index.clear();
+    impl->config.setEnvMapIndex(-1);
 
     // Free device texture objects array
     if (impl->d_texture_objects) {

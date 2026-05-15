@@ -244,6 +244,12 @@ class OptiXRenderer extends LazyLogging:
   def setBackgroundColor(r: Float, g: Float, b: Float): Unit =
     setBackgroundColorNative(r, g, b)
 
+  @native private def setEnvironmentMapNative(textureIndex: Int): Unit
+
+  def setEnvironmentMap(textureIndex: Int): Unit =
+    require(textureIndex >= 0, "textureIndex must be >= 0")
+    setEnvironmentMapNative(textureIndex)
+
 
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 

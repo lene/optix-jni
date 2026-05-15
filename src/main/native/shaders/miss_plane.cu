@@ -87,6 +87,16 @@ __device__ void getBackgroundColor(
     b = static_cast<unsigned int>(params.bg_b * COLOR_SCALE_FACTOR);
 }
 
+__device__ void sampleEnvMap(unsigned int& r, unsigned int& g, unsigned int& b) {
+    float3 dir = normalize(optixGetWorldRayDirection());
+    float u = 0.5f + atan2f(dir.z, dir.x) * (0.5f * M_1_PIf);
+    float v = 0.5f - asinf(fmaxf(-1.f, fminf(1.f, dir.y))) * M_1_PIf;
+    float4 c = tex2D<float4>(params.env_map_texture, u, v);
+    r = static_cast<unsigned int>(fminf(c.x, 1.f) * COLOR_SCALE_FACTOR);
+    g = static_cast<unsigned int>(fminf(c.y, 1.f) * COLOR_SCALE_FACTOR);
+    b = static_cast<unsigned int>(fminf(c.z, 1.f) * COLOR_SCALE_FACTOR);
+}
+
 //==============================================================================
 // Miss Shader — Planes in miss path (legacy) or background fallback
 //==============================================================================
@@ -187,7 +197,10 @@ extern "C" __global__ void __miss__ms() {
         g = static_cast<unsigned int>(total_color.y * COLOR_BYTE_MAX);
         b = static_cast<unsigned int>(total_color.z * COLOR_BYTE_MAX);
     } else {
-        getBackgroundColor(r, g, b);
+        if (params.env_map_enabled)
+            sampleEnvMap(r, g, b);
+        else
+            getBackgroundColor(r, g, b);
     }
 
     optixSetPayload_0(r);

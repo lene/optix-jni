@@ -129,6 +129,9 @@ public:
     // Background color configuration
     void setBackgroundColor(float r, float g, float b);
 
+    // Environment map configuration
+    void setEnvironmentMap(int textureIndex);
+
     // Plane configuration
     void clearPlanes();
     void addPlane(int axis, bool positive, float value);  // default gray checker

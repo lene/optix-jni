@@ -58,6 +58,10 @@ public:
     float getBackgroundG() const { return bg_g; }
     float getBackgroundB() const { return bg_b; }
 
+    // Environment map configuration
+    void setEnvMapIndex(int idx) { env_map_index = idx; }
+    int getEnvMapIndex() const { return env_map_index; }
+
     // Plane appearance configuration
     void clearPlanes();
     void addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b);
@@ -107,6 +111,9 @@ private:
     float bg_r = OptiXConstants::DEFAULT_BG_R;
     float bg_g = OptiXConstants::DEFAULT_BG_G;
     float bg_b = OptiXConstants::DEFAULT_BG_B;
+
+    // Environment map
+    int env_map_index = -1;
 
     // Plane appearance
     PlaneParams planes[RayTracingConstants::MAX_PLANES] = {};

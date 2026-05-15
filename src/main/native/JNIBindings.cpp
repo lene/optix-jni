@@ -315,6 +315,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setBackgroundColorNative(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setEnvironmentMapNative(
+    JNIEnv* env, jobject obj, jint textureIndex) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setEnvironmentMap((int)textureIndex);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setEnvironmentMap: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
     JNIEnv* env, jobject obj, jboolean enabled, jint maxDepth, jfloat threshold) {
     try {

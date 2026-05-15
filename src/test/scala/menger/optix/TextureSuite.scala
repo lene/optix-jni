@@ -172,3 +172,16 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "reject empty path" in:
     an[IllegalArgumentException] should be thrownBy:
       renderer.uploadTextureFromFile("")
+
+  "setEnvironmentMap" should "accept a valid texture index after upload" in:
+    val tmp = java.nio.file.Files.createTempFile("test_envmap_", ".hdr")
+    try
+      writeMinimalHdr(tmp, 4, 4)
+      val idx = renderer.uploadTextureFromFile(tmp.toString)
+      idx should be >= 0
+      noException should be thrownBy renderer.setEnvironmentMap(idx)
+    finally java.nio.file.Files.deleteIfExists(tmp)
+
+  it should "reject negative index" in:
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.setEnvironmentMap(-1)

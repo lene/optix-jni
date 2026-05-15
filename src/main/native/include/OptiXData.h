@@ -485,6 +485,8 @@ struct Params {
     bool  shadows_enabled;             // Enable shadow ray tracing
     bool  transparent_shadows_enabled; // Enable colored shadows through transparent objects (Sprint 13.2)
     float bg_r, bg_g, bg_b;    // Background color (overrides MissData SBT)
+    bool                env_map_enabled;   // true = sample equirectangular env map
+    cudaTextureObject_t env_map_texture;   // equirectangular HDR texture object
 
     // Ray statistics (GPU buffer)
     RayStats* stats;            // Pointer to GPU stats buffer
