@@ -1130,7 +1130,9 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addPlaneInstanceNative(
     jfloat distance,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness) {
+    jfloat filmThickness,
+    jfloat r2, jfloat g2, jfloat b2,
+    jint solid_color, jfloat checker_size) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -1142,7 +1144,9 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addPlaneInstanceNative(
             distance,
             r, g, b, a, ior,
             roughness, metallic, specular, emission,
-            filmThickness
+            filmThickness,
+            r2, g2, b2,
+            (int)solid_color, checker_size
         );
 
         return instanceId;

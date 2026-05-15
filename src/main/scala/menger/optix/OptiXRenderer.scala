@@ -794,20 +794,28 @@ class OptiXRenderer extends LazyLogging:
     distance: Float,
     r: Float, g: Float, b: Float, a: Float, ior: Float,
     roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float
+    filmThickness: Float,
+    r2: Float, g2: Float, b2: Float,
+    solidColor: Int, checkerSize: Float
   ): Int
 
   def addPlaneInstance(
     normal: Vector[3],
     distance: Float,
-    material: Material
+    material: Material,
+    checkerColor: Option[Color] = None,
+    checkerSize: Float = 1.0f
   ): Option[Int] =
+    val (r2, g2, b2, solidColor) = checkerColor match
+      case Some(c) => (c.r, c.g, c.b, 0)
+      case None    => (0f, 0f, 0f, 1)
     val id = addPlaneInstanceNative(
       normal.x, normal.y, normal.z,
       distance,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      r2, g2, b2, solidColor, checkerSize
     )
     if id >= 0 then Some(id) else None
 
@@ -817,7 +825,7 @@ class OptiXRenderer extends LazyLogging:
     color: Color,
     ior: Float
   ): Option[Int] =
-    addPlaneInstance(normal, distance, Material(color, ior))
+    addPlaneInstance(normal, distance, Material(color, ior), None, 1.0f)
 
   // Idempotent initialization - safe to call multiple times
   def initialize(maxInstances: Int = 64): Boolean =
