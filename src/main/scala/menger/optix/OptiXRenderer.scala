@@ -383,6 +383,8 @@ class OptiXRenderer extends LazyLogging:
     height: Int
   ): Int
 
+  @native private def uploadTextureFromFileNative(path: String): Int
+
   @native private def releaseTexturesNative(): Unit
 
   def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Try[Int] =
@@ -401,6 +403,10 @@ class OptiXRenderer extends LazyLogging:
       Failure(TextureUploadException(s"Failed to upload texture '$name': error code $index"))
     else
       Success(index)
+
+  def uploadTextureFromFile(path: String): Int =
+    require(path != null && path.nonEmpty, "Path must not be null or empty") // scalafix:ok DisableSyntax.null
+    uploadTextureFromFileNative(path)
 
   def releaseTextures(): Unit =
     releaseTexturesNative()

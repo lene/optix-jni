@@ -146,3 +146,29 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     after shouldBe a[Success[?]]
     // After release, indices start fresh (typically from 0)
     after.get shouldBe beforeIdx
+
+  private def writeMinimalHdr(path: java.nio.file.Path, width: Int, height: Int): Unit =
+    val header = s"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y $height +X $width\n"
+    val fos = new java.io.FileOutputStream(path.toFile)
+    try
+      fos.write(header.getBytes("ASCII"))
+      // RGBE encoding of (1.0, 1.0, 1.0): mantissa=0.5 exp=1 → E=129, R=G=B=128
+      val pixel = Array[Byte](128.toByte, 128.toByte, 128.toByte, 129.toByte)
+      for _ <- 0 until width * height do fos.write(pixel)
+    finally fos.close()
+
+  "uploadTextureFromFile" should "load HDR texture and return valid index" in:
+    val tmp = java.nio.file.Files.createTempFile("test_hdr_", ".hdr")
+    try
+      writeMinimalHdr(tmp, 4, 4)
+      val idx = renderer.uploadTextureFromFile(tmp.toString)
+      idx should be >= 0
+    finally java.nio.file.Files.deleteIfExists(tmp)
+
+  it should "reject null path" in:
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.uploadTextureFromFile(null) // scalafix:ok DisableSyntax.null
+
+  it should "reject empty path" in:
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.uploadTextureFromFile("")

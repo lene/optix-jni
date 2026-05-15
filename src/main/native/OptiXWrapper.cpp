@@ -20,6 +20,7 @@
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
 #include "Project4D.h"
+#include "stb_image.h"
 
 /**
  * OptiXWrapper implementation using composition.
@@ -2416,6 +2417,90 @@ int OptiXWrapper::uploadTexture(
         std::cerr << "[OptiX] Texture upload failed: " << e.what() << std::endl;
         return -1;
     }
+}
+
+int OptiXWrapper::uploadTextureFloat(
+    const char* name,
+    const float* float_rgba,
+    unsigned int width,
+    unsigned int height
+) {
+    auto it = impl->texture_name_to_index.find(name);
+    if (it != impl->texture_name_to_index.end()) {
+        return it->second;
+    }
+
+    if (impl->textures.size() >= MAX_TEXTURES) {
+        std::cerr << "[OptiX] Maximum textures (" << MAX_TEXTURES << ") reached" << std::endl;
+        return -1;
+    }
+
+    try {
+        cudaChannelFormatDesc channel_desc =
+            cudaCreateChannelDesc(32, 32, 32, 32, cudaChannelFormatKindFloat);
+        cudaArray_t cuda_array;
+        CUDA_CHECK(cudaMallocArray(&cuda_array, &channel_desc, width, height));
+
+        CUDA_CHECK(cudaMemcpy2DToArray(
+            cuda_array, 0, 0,
+            float_rgba,
+            width * 4 * sizeof(float),
+            width * 4 * sizeof(float),
+            height,
+            cudaMemcpyHostToDevice
+        ));
+
+        cudaResourceDesc res_desc = {};
+        res_desc.resType = cudaResourceTypeArray;
+        res_desc.res.array.array = cuda_array;
+
+        cudaTextureDesc tex_desc = {};
+        tex_desc.addressMode[0] = cudaAddressModeWrap;
+        tex_desc.addressMode[1] = cudaAddressModeWrap;
+        tex_desc.filterMode = cudaFilterModeLinear;
+        tex_desc.readMode = cudaReadModeElementType;  // Return raw float values, not normalized
+        tex_desc.normalizedCoords = 1;
+
+        cudaTextureObject_t texture_obj;
+        CUDA_CHECK(cudaCreateTextureObject(&texture_obj, &res_desc, &tex_desc, nullptr));
+
+        int index = static_cast<int>(impl->textures.size());
+        impl->textures.push_back({cuda_array, texture_obj, width, height});
+        impl->texture_name_to_index[name] = index;
+
+        return index;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[OptiX] HDR texture upload failed: " << e.what() << std::endl;
+        return -1;
+    }
+}
+
+int OptiXWrapper::uploadTextureFromFile(const char* path) {
+    const char* ext = strrchr(path, '.');
+    int w = 0, h = 0, c = 0;
+
+    if (ext && strcasecmp(ext, ".hdr") == 0) {
+        float* data = stbi_loadf(path, &w, &h, &c, 4);
+        if (!data) {
+            std::cerr << "[OptiX] Failed to load HDR texture '" << path
+                      << "': " << stbi_failure_reason() << std::endl;
+            return -1;
+        }
+        int idx = uploadTextureFloat(path, data, static_cast<unsigned int>(w), static_cast<unsigned int>(h));
+        stbi_image_free(data);
+        return idx;
+    }
+
+    unsigned char* data = stbi_load(path, &w, &h, &c, 4);
+    if (!data) {
+        std::cerr << "[OptiX] Failed to load texture '" << path
+                  << "': " << stbi_failure_reason() << std::endl;
+        return -1;
+    }
+    int idx = uploadTexture(path, data, static_cast<unsigned int>(w), static_cast<unsigned int>(h));
+    stbi_image_free(data);
+    return idx;
 }
 
 void OptiXWrapper::releaseTextures() {

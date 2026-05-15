@@ -155,6 +155,13 @@ public:
         unsigned int width,
         unsigned int height
     );  // Returns texture index, or -1 on error
+    int uploadTextureFloat(
+        const char* name,
+        const float* float_rgba,
+        unsigned int width,
+        unsigned int height
+    );  // Upload float4 RGBA texture (HDR); returns index or -1
+    int uploadTextureFromFile(const char* path);  // Auto-detect format; HDR → float4, others → uchar4
     void releaseTextures();  // Free all uploaded textures
 
     // Rendering

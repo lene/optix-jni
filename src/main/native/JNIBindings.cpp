@@ -1311,6 +1311,30 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_uploadTextureNative(
 }
 
 /**
+ * Upload a texture from a file path (auto-detects format; .hdr → float4, others → uchar4).
+ * @param path Absolute or relative file path
+ * @return Texture index (>= 0) on success, -1 on failure
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_uploadTextureFromFileNative(
+    JNIEnv* env, jobject obj, jstring jpath) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+
+        const char* path = env->GetStringUTFChars(jpath, nullptr);
+        if (path == nullptr) return -1;
+
+        int result = wrapper->uploadTextureFromFile(path);
+        env->ReleaseStringUTFChars(jpath, path);
+        return result;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in uploadTextureFromFile: " << e.what() << std::endl;
+        return -1;
+    }
+}
+
+/**
  * Release all uploaded textures.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_releaseTexturesNative(

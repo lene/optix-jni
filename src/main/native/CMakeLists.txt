@@ -143,6 +143,17 @@ message(STATUS "========================================")
 message(STATUS "")
 
 #=============================================================================
+# stb_image (header-only, MIT) — HDR texture loading
+#=============================================================================
+include(FetchContent)
+FetchContent_Declare(stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG        master
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(stb)
+
+#=============================================================================
 # Compile PTX Shaders
 #=============================================================================
 add_library(optix_shaders OBJECT
@@ -180,6 +191,7 @@ add_library(optixjni SHARED
     CausticsRenderer.cpp
     JNIBindings.cpp
     project4d.cu
+    stb_image_impl.cpp
 )
 
 target_include_directories(optixjni PRIVATE
@@ -187,6 +199,7 @@ target_include_directories(optixjni PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CUDAToolkit_INCLUDE_DIRS}
     ${OptiX_INCLUDE_DIR}
+    ${stb_SOURCE_DIR}
 )
 
 target_link_libraries(optixjni PRIVATE
