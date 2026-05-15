@@ -263,6 +263,12 @@ extern "C" __global__ void __closesthit__cylinder() {
     float material_ior, roughness, metallic, specular, emission, film_thickness;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
 
+    // Apply procedural texture modulation
+    int proc_type; float proc_scale;
+    getInstanceProceduralParams(proc_type, proc_scale);
+    if (proc_type != 0)
+        material_color = applyProceduralTexture(material_color, hit_point, proc_type, proc_scale);
+
     // Handle metallic reflection for depth 0 only (single bounce)
     if (depth == 0 && metallic > 0.0f) {
         // Use existing helper function for metallic opaque materials

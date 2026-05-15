@@ -171,6 +171,8 @@ struct InstanceMaterial {
     unsigned int geometry_type; // GeometryType enum value
     int texture_index;          // Index into Params.textures array (-1 = no texture)
     float film_thickness;       // Thin-film thickness in nm (0 = no thin-film interference)
+    int procedural_type;        // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
+    float procedural_scale;     // Noise coordinate scale (default 1.0)
     // Per-mesh triangle buffer pointers (IAS mode only)
     // Populated for triangle instances; nullptr/0 for spheres/cylinders
     float* vertices;            // Device pointer to vertex data
@@ -197,8 +199,11 @@ struct MaterialProperties {
     // Thin-film interference
     float film_thickness;        // Film thickness in nm (0 = no thin-film interference)
 
-    // Padding to maintain 60-byte struct size
-    unsigned int padding[4];
+    // Procedural texture and reserved texture fields
+    int   procedural_type;    // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
+    float procedural_scale;   // Noise coordinate scale (default 1.0)
+    int   roughness_texture;  // -1 = no texture (reserved for Task 20.7)
+    int   normal_texture;     // -1 = no texture (reserved for Task 20.7)
 };
 
 // Material type for presets

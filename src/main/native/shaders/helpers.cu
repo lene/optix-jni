@@ -1401,6 +1401,122 @@ __device__ int getInstanceTextureIndex() {
     return -1;  // No texture in single-object mode
 }
 
+//==============================================================================
+// Procedural Noise Library
+//==============================================================================
+
+// PCG hash — high-quality 3D integer hash
+__device__ static inline uint3 pcg3d(uint3 v) {
+    v.x = v.x * 1664525u + 1013904223u;
+    v.y = v.y * 1664525u + 1013904223u;
+    v.z = v.z * 1664525u + 1013904223u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v.x ^= v.x >> 16u; v.y ^= v.y >> 16u; v.z ^= v.z >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    return v;
+}
+
+__device__ static inline float hashFloat3(float3 p) {
+    uint3 u = pcg3d(make_uint3(__float_as_uint(p.x),
+                               __float_as_uint(p.y),
+                               __float_as_uint(p.z)));
+    return (u.x & 0xFFFFFFu) * (1.f / 16777216.f);
+}
+
+// Value noise — trilinear interpolation with smoothstep
+__device__ float valueNoise3D(float3 p) {
+    float3 i = make_float3(floorf(p.x), floorf(p.y), floorf(p.z));
+    float3 f = p - i;
+    float3 u = make_float3(f.x*f.x*(3.f-2.f*f.x),
+                           f.y*f.y*(3.f-2.f*f.y),
+                           f.z*f.z*(3.f-2.f*f.z));
+    float v000 = hashFloat3(i + make_float3(0,0,0));
+    float v100 = hashFloat3(i + make_float3(1,0,0));
+    float v010 = hashFloat3(i + make_float3(0,1,0));
+    float v110 = hashFloat3(i + make_float3(1,1,0));
+    float v001 = hashFloat3(i + make_float3(0,0,1));
+    float v101 = hashFloat3(i + make_float3(1,0,1));
+    float v011 = hashFloat3(i + make_float3(0,1,1));
+    float v111 = hashFloat3(i + make_float3(1,1,1));
+    float x00 = v000 + u.x * (v100 - v000);
+    float x10 = v010 + u.x * (v110 - v010);
+    float x01 = v001 + u.x * (v101 - v001);
+    float x11 = v011 + u.x * (v111 - v011);
+    float y0  = x00  + u.y * (x10  - x00);
+    float y1  = x01  + u.y * (x11  - x01);
+    return y0 + u.z * (y1 - y0);
+}
+
+// Gradient noise — remapped value noise in [-1, 1]
+__device__ float gradNoise3D(float3 p) {
+    return valueNoise3D(p) * 2.f - 1.f;
+}
+
+// Fractal Brownian Motion
+__device__ float fbm3D(float3 p, int octaves, float lacunarity, float gain) {
+    float value = 0.f, amp = 0.5f;
+    for (int k = 0; k < octaves; ++k) {
+        value += amp * valueNoise3D(p);
+        p      = p * lacunarity;
+        amp   *= gain;
+    }
+    return value;
+}
+
+// Worley (cellular) noise — F1 distance to nearest feature point
+__device__ float worleyNoise3D(float3 p) {
+    float3 i = make_float3(floorf(p.x), floorf(p.y), floorf(p.z));
+    float3 f = p - i;
+    float minDist = 8.f;
+    for (int dz = -1; dz <= 1; ++dz)
+    for (int dy = -1; dy <= 1; ++dy)
+    for (int dx = -1; dx <= 1; ++dx) {
+        float3 neighbor = i + make_float3((float)dx, (float)dy, (float)dz);
+        uint3 h = pcg3d(make_uint3(__float_as_uint(neighbor.x),
+                                   __float_as_uint(neighbor.y),
+                                   __float_as_uint(neighbor.z)));
+        float3 jitter = make_float3(
+            (h.x & 0xFFFFFFu) * (1.f / 16777216.f),
+            (h.y & 0xFFFFFFu) * (1.f / 16777216.f),
+            (h.z & 0xFFFFFFu) * (1.f / 16777216.f));
+        float3 diff = f - (make_float3((float)dx, (float)dy, (float)dz) + jitter);
+        float d = dot(diff, diff);
+        if (d < minDist) minDist = d;
+    }
+    return sqrtf(minDist);
+}
+
+// Procedural texture dispatcher — modulates base_color RGB by noise value
+__device__ float4 applyProceduralTexture(const float4& base_color, float3 world_pos,
+                                          int proc_type, float proc_scale) {
+    float3 p = world_pos * proc_scale;
+    float n;
+    switch (proc_type) {
+        case 1: n = valueNoise3D(p);                   break;
+        case 2: n = fbm3D(p, 4, 2.f, 0.5f);           break;
+        case 3: n = fminf(worleyNoise3D(p), 1.f);      break;
+        case 4: n = (gradNoise3D(p) + 1.f) * 0.5f;    break;
+        default: return base_color;
+    }
+    return make_float4(base_color.x * n, base_color.y * n,
+                       base_color.z * n, base_color.w);
+}
+
+// Get procedural texture parameters for current instance
+__device__ void getInstanceProceduralParams(int& proc_type, float& proc_scale) {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        const InstanceMaterial& mat = params.instance_materials[instance_id];
+        proc_type  = mat.procedural_type;
+        proc_scale = mat.procedural_scale;
+    } else {
+        proc_type  = 0;
+        proc_scale = 1.0f;
+    }
+}
+
+//==============================================================================
+
 /**
  * Sample texture color for the current instance at given UV coordinates.
  *

@@ -132,6 +132,9 @@ public:
     // Environment map configuration
     void setEnvironmentMap(int textureIndex);
 
+    // Procedural texture configuration
+    void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
+
     // Plane configuration
     void clearPlanes();
     void addPlane(int axis, bool positive, float value);  // default gray checker

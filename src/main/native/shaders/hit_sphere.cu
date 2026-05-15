@@ -43,6 +43,13 @@ extern "C" __global__ void __closesthit__ch() {
     float4 material_color;
     float material_ior, roughness, metallic, specular, emission, film_thickness;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
+
+    // Apply procedural texture modulation (world-space noise on material color)
+    int proc_type; float proc_scale;
+    getInstanceProceduralParams(proc_type, proc_scale);
+    if (proc_type != 0)
+        material_color = applyProceduralTexture(material_color, hit_point, proc_type, proc_scale);
+
     const float sphere_alpha = material_color.w;
 
     // Handle fully transparent spheres

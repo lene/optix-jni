@@ -82,6 +82,8 @@ struct OptiXWrapper::Impl {
         float emission;                       // Emission intensity (default: 0.0)
         float film_thickness;                 // Thin-film thickness in nm (0 = none)
         int texture_index;                    // Index into textures array (-1 = no texture)
+        int procedural_type;                  // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
+        float procedural_scale;               // Noise coordinate scale (default 1.0)
         bool active;                          // True if instance is enabled
         size_t mesh_index;                    // Index into triangle_meshes (SIZE_MAX = not a triangle)
     };
@@ -256,6 +258,14 @@ void OptiXWrapper::setBackgroundColor(float r, float g, float b) {
 
 void OptiXWrapper::setEnvironmentMap(int textureIndex) {
     impl->config.setEnvMapIndex(textureIndex);
+}
+
+void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
+                                         float proceduralScale) {
+    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
+    impl->instances[instanceId].procedural_type  = proceduralType;
+    impl->instances[instanceId].procedural_scale = proceduralScale;
+    impl->ias_dirty = true;
 }
 
 void OptiXWrapper::clearPlanes() {
@@ -1042,6 +1052,8 @@ void OptiXWrapper::buildIAS() {
         mat.geometry_type = inst.geometry_type;
         mat.texture_index = inst.texture_index;
         mat.film_thickness = inst.film_thickness;
+        mat.procedural_type = inst.procedural_type;
+        mat.procedural_scale = inst.procedural_scale;
         // Per-mesh triangle buffer pointers for IAS mode
         if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
             && inst.mesh_index < impl->triangle_meshes.size()) {
@@ -1579,6 +1591,8 @@ int OptiXWrapper::addSphereInstance(
     inst.emission = emission;
     inst.film_thickness = film_thickness;
     inst.texture_index = -1;  // Spheres don't support textures
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
     inst.active = true;
     inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
@@ -1647,6 +1661,8 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.emission = emission;
     inst.film_thickness = film_thickness;
     inst.texture_index = textureIndex;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -1839,6 +1855,8 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     inst.emission = emission;
     inst.film_thickness = film_thickness;
     inst.texture_index = textureIndex;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -1962,6 +1980,8 @@ int OptiXWrapper::addCylinderInstance(
     inst.emission = emission;
     inst.film_thickness = film_thickness;
     inst.texture_index = cylinder_index;  // For cylinders: index into cylinder_data array
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
     inst.active = true;
     inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
@@ -2081,6 +2101,8 @@ int OptiXWrapper::addConeInstance(
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
     inst.texture_index = cone_index;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
     inst.active        = true;
     inst.mesh_index    = SIZE_MAX;
 
@@ -2201,6 +2223,8 @@ int OptiXWrapper::addPlaneInstance(
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
     inst.texture_index = plane_index;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
     inst.active        = true;
     inst.mesh_index    = SIZE_MAX;
 

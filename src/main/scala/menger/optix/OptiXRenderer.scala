@@ -251,6 +251,13 @@ class OptiXRenderer extends LazyLogging:
     setEnvironmentMapNative(textureIndex)
 
 
+  @native private def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
+
+  def setProceduralTexture(instanceId: Int, proceduralType: Int, proceduralScale: Float = 1.0f): Unit =
+    require(proceduralType >= 0 && proceduralType <= 4, "proceduralType must be 0–4")
+    require(proceduralScale > 0f, "proceduralScale must be positive")
+    setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
+
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 
   @native def setMaxRayDepth(depth: Int): Unit
@@ -968,3 +975,10 @@ case class OptiXNotAvailableException(message: String) extends Exception(message
 
 // Exception thrown when texture upload fails
 case class TextureUploadException(message: String) extends Exception(message)
+
+object ProceduralType:
+  val None       = 0
+  val ValueNoise = 1
+  val FBM        = 2
+  val Worley     = 3
+  val Gradient   = 4

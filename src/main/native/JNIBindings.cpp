@@ -327,6 +327,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setEnvironmentMapNative(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setProceduralTextureNative(
+    JNIEnv* env, jobject obj, jint instanceId, jint proceduralType, jfloat proceduralScale) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setProceduralTexture((int)instanceId, (int)proceduralType, (float)proceduralScale);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setProceduralTexture: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
     JNIEnv* env, jobject obj, jboolean enabled, jint maxDepth, jfloat threshold) {
     try {
