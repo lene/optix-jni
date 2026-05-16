@@ -1534,6 +1534,13 @@ __device__ float triplanarNoise(float3 p, float3 normal) {
     return nx * w.x + ny * w.y + nz * w.z;
 }
 
+// Spherical UV from outward normal: u=longitude [0,1], v=latitude [0,1]
+__device__ float2 sphereUV(float3 n) {
+    float u = 0.5f + atan2f(n.z, n.x) * (0.5f / M_PIf);
+    float v = 0.5f - asinf(fminf(fmaxf(n.y, -1.f), 1.f)) * (1.f / M_PIf);
+    return make_float2(u, v);
+}
+
 // Procedural texture dispatcher — modulates base_color RGB by noise value (types 1-7,10)
 // or replaces color entirely (types 8-9)
 __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_pos,

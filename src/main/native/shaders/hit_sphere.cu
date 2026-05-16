@@ -50,6 +50,9 @@ extern "C" __global__ void __closesthit__ch() {
     if (proc_type != 0)
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
 
+    // Apply image texture via spherical UV (no-op when no texture is set)
+    material_color = sampleInstanceTexture(material_color, sphereUV(outward_normal));
+
     const float sphere_alpha = material_color.w;
 
     // Handle fully transparent spheres
