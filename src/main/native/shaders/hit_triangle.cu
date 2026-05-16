@@ -293,7 +293,7 @@ extern "C" __global__ void __closesthit__triangle() {
     int proc_type; float proc_scale;
     getInstanceProceduralParams(proc_type, proc_scale);
     if (proc_type != 0)
-        mesh_color = applyProceduralTexture(mesh_color, geom.hit_point, proc_type, proc_scale);
+        mesh_color = applyProceduralTexture(mesh_color, geom.hit_point, geom.normal, proc_type, proc_scale);
 
     const float mesh_alpha = mesh_color.w;
 

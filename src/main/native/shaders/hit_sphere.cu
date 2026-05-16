@@ -48,7 +48,7 @@ extern "C" __global__ void __closesthit__ch() {
     int proc_type; float proc_scale;
     getInstanceProceduralParams(proc_type, proc_scale);
     if (proc_type != 0)
-        material_color = applyProceduralTexture(material_color, hit_point, proc_type, proc_scale);
+        material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
 
     const float sphere_alpha = material_color.w;
 

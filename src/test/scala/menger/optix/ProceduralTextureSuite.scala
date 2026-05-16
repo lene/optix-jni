@@ -46,11 +46,11 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
     }
   }
 
-  it should "reject invalid type > 9" in {
+  it should "reject invalid type > 10" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
       .getOrElse(fail("addSphereInstance failed"))
     an[IllegalArgumentException] should be thrownBy {
-      renderer.setProceduralTexture(instanceId, 10, 1.0f)
+      renderer.setProceduralTexture(instanceId, 11, 1.0f)
     }
   }
 
@@ -134,4 +134,28 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
     an[IllegalArgumentException] should be thrownBy {
       renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 0.0f)
     }
+  }
+
+  "Triplanar procedural texture" should "produce a different image than no procedural" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+    val flatSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.Triplanar, 1.0f)
+    val triplanarSum = pixelSum(renderImage(imgSize))
+
+    triplanarSum should not equal flatSum
+  }
+
+  it should "produce a different image than plain FBM" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.FBM, 1.0f)
+    val fbmSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.Triplanar, 1.0f)
+    val triplanarSum = pixelSum(renderImage(imgSize))
+
+    triplanarSum should not equal fbmSum
   }

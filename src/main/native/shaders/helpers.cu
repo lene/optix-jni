@@ -1523,22 +1523,35 @@ __device__ float4 heatmapColor(float t, float alpha) {
     return make_float4(r, g, b, alpha);
 }
 
-// Procedural texture dispatcher — modulates base_color RGB by noise value (types 1-7)
+// Triplanar FBM: sample fBm along each axis, blend by abs(normal) weights
+__device__ float triplanarNoise(float3 p, float3 normal) {
+    float3 w = make_float3(fabsf(normal.x), fabsf(normal.y), fabsf(normal.z));
+    float wsum = w.x + w.y + w.z + 1e-6f;
+    w = make_float3(w.x / wsum, w.y / wsum, w.z / wsum);
+    float nx = fbm3D(make_float3(p.y, p.z, 0.f), 4, 2.f, 0.5f);
+    float ny = fbm3D(make_float3(p.x, p.z, 0.f), 4, 2.f, 0.5f);
+    float nz = fbm3D(make_float3(p.x, p.y, 0.f), 4, 2.f, 0.5f);
+    return nx * w.x + ny * w.y + nz * w.z;
+}
+
+// Procedural texture dispatcher — modulates base_color RGB by noise value (types 1-7,10)
 // or replaces color entirely (types 8-9)
 __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_pos,
+                                          float3 surface_normal,
                                           int proc_type, float proc_scale) {
     float3 p = world_pos * proc_scale;
     float n;
     switch (proc_type) {
-        case 1: n = valueNoise3D(p);                   break;
-        case 2: n = fbm3D(p, 4, 2.f, 0.5f);           break;
-        case 3: n = fminf(worleyNoise3D(p), 1.f);      break;
-        case 4: n = (gradNoise3D(p) + 1.f) * 0.5f;    break;
-        case 5: n = woodPattern(p);                    break;
-        case 6: n = marblePattern(p);                  break;
-        case 7: n = layeredNoise(p);                   break;
-        case 8: return xyzToRGB(p, base_color.w);
-        case 9: return heatmapColor(fbm3D(p, 4, 2.f, 0.5f), base_color.w);
+        case 1:  n = valueNoise3D(p);                   break;
+        case 2:  n = fbm3D(p, 4, 2.f, 0.5f);           break;
+        case 3:  n = fminf(worleyNoise3D(p), 1.f);      break;
+        case 4:  n = (gradNoise3D(p) + 1.f) * 0.5f;    break;
+        case 5:  n = woodPattern(p);                    break;
+        case 6:  n = marblePattern(p);                  break;
+        case 7:  n = layeredNoise(p);                   break;
+        case 8:  return xyzToRGB(p, base_color.w);
+        case 9:  return heatmapColor(fbm3D(p, 4, 2.f, 0.5f), base_color.w);
+        case 10: n = triplanarNoise(p, surface_normal); break;
         default: return base_color;
     }
     return make_float4(base_color.x * n, base_color.y * n,
