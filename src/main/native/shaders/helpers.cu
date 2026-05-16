@@ -1514,8 +1514,17 @@ __device__ float4 xyzToRGB(float3 p, float alpha) {
     );
 }
 
+// Heat map: maps scalar t in [0,1] to blue->cyan->green->yellow->red gradient
+__device__ float4 heatmapColor(float t, float alpha) {
+    t = fminf(fmaxf(t, 0.f), 1.f);
+    float r = fminf(fmaxf(1.5f - fabsf(t * 4.f - 3.f), 0.f), 1.f);
+    float g = fminf(fmaxf(1.5f - fabsf(t * 4.f - 2.f), 0.f), 1.f);
+    float b = fminf(fmaxf(1.5f - fabsf(t * 4.f - 1.f), 0.f), 1.f);
+    return make_float4(r, g, b, alpha);
+}
+
 // Procedural texture dispatcher — modulates base_color RGB by noise value (types 1-7)
-// or replaces color entirely (type 8)
+// or replaces color entirely (types 8-9)
 __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_pos,
                                           int proc_type, float proc_scale) {
     float3 p = world_pos * proc_scale;
@@ -1529,6 +1538,7 @@ __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_
         case 6: n = marblePattern(p);                  break;
         case 7: n = layeredNoise(p);                   break;
         case 8: return xyzToRGB(p, base_color.w);
+        case 9: return heatmapColor(fbm3D(p, 4, 2.f, 0.5f), base_color.w);
         default: return base_color;
     }
     return make_float4(base_color.x * n, base_color.y * n,

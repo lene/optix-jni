@@ -46,12 +46,36 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
     }
   }
 
-  it should "reject invalid type > 8" in {
+  it should "reject invalid type > 9" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
       .getOrElse(fail("addSphereInstance failed"))
     an[IllegalArgumentException] should be thrownBy {
-      renderer.setProceduralTexture(instanceId, 9, 1.0f)
+      renderer.setProceduralTexture(instanceId, 10, 1.0f)
     }
+  }
+
+  "HeatMap procedural texture" should "produce a different image than no procedural" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+    val flatSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.HeatMap, 1.0f)
+    val heatSum = pixelSum(renderImage(imgSize))
+
+    heatSum should not equal flatSum
+  }
+
+  it should "produce a different image than plain FBM" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.FBM, 1.0f)
+    val fbmSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.HeatMap, 1.0f)
+    val heatSum = pixelSum(renderImage(imgSize))
+
+    heatSum should not equal fbmSum
   }
 
   "XYZToRGB procedural texture" should "produce a different image than no procedural" in {
