@@ -295,6 +295,10 @@ extern "C" __global__ void __closesthit__triangle() {
     if (proc_type != 0)
         mesh_color = applyProceduralTexture(mesh_color, geom.hit_point, geom.normal, proc_type, proc_scale);
 
+    // Apply PBR map textures (Task 20.7)
+    geom.normal = applyNormalMap(geom.normal, geom.uv_coords, getInstanceNormalTextureIndex());
+    roughness   = applyRoughnessMap(roughness, geom.uv_coords, getInstanceRoughnessTextureIndex());
+
     const float mesh_alpha = mesh_color.w;
 
     // Handle fully transparent triangles

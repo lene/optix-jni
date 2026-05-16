@@ -1401,6 +1401,22 @@ __device__ int getInstanceTextureIndex() {
     return -1;  // No texture in single-object mode
 }
 
+__device__ int getInstanceNormalTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].normal_texture_index;
+    }
+    return -1;
+}
+
+__device__ int getInstanceRoughnessTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].roughness_texture_index;
+    }
+    return -1;
+}
+
 //==============================================================================
 // Procedural Noise Library
 //==============================================================================
@@ -1609,6 +1625,71 @@ __device__ float4 sampleInstanceTexture(const float4& base_color, const float2& 
         base_color.z * tex_color.z,
         base_color.w * tex_color.w
     );
+}
+
+// Sample a texture by explicit index (used for normal/roughness maps).
+__device__ float4 sampleTextureByIndex(int tex_index, const float2& uv) {
+    if (tex_index < 0 || !params.textures || tex_index >= static_cast<int>(params.num_textures))
+        return make_float4(0.5f, 0.5f, 1.0f, 1.0f);  // Flat normal default
+    const cudaTextureObject_t tex = params.textures[tex_index];
+    return tex2D<float4>(tex, uv.x, uv.y);
+}
+
+/**
+ * Sample normal map and return a perturbed world-space normal.
+ *
+ * Decodes tangent-space normal from RGB [0,1] → [-1,1].
+ * Constructs an orthonormal tangent frame from geometric_normal using
+ * Gram-Schmidt, then transforms the tangent-space normal to world space.
+ *
+ * @param geometric_normal  Geometric surface normal (world space, normalised)
+ * @param uv                UV coordinates
+ * @param normal_tex_index  Texture index for normal map (-1 = no map)
+ * @return Perturbed normal (world space, normalised), or geometric_normal if no map
+ */
+__device__ float3 applyNormalMap(const float3& geometric_normal, const float2& uv, int normal_tex_index) {
+    if (normal_tex_index < 0 || !params.textures || normal_tex_index >= static_cast<int>(params.num_textures))
+        return geometric_normal;
+
+    const float4 raw = sampleTextureByIndex(normal_tex_index, uv);
+    // Decode: [0,1]^3 → [-1,1]^3
+    float3 ts_normal = make_float3(
+        raw.x * 2.0f - 1.0f,
+        raw.y * 2.0f - 1.0f,
+        raw.z * 2.0f - 1.0f
+    );
+    ts_normal = normalize(ts_normal);
+
+    // Build tangent frame via Gram-Schmidt (works for any surface normal)
+    float3 up = fabsf(geometric_normal.y) < 0.99f
+        ? make_float3(0.0f, 1.0f, 0.0f)
+        : make_float3(1.0f, 0.0f, 0.0f);
+    float3 tangent   = normalize(up - geometric_normal * dot(up, geometric_normal));
+    float3 bitangent = cross(geometric_normal, tangent);
+
+    // Transform tangent-space normal to world space
+    return normalize(
+        tangent   * ts_normal.x +
+        bitangent * ts_normal.y +
+        geometric_normal * ts_normal.z
+    );
+}
+
+/**
+ * Sample roughness map and return overriding roughness value.
+ *
+ * Uses the R channel of the texture.
+ *
+ * @param material_roughness  Fallback roughness from material
+ * @param uv                  UV coordinates
+ * @param roughness_tex_index Texture index for roughness map (-1 = no map)
+ * @return Roughness value in [0,1]
+ */
+__device__ float applyRoughnessMap(float material_roughness, const float2& uv, int roughness_tex_index) {
+    if (roughness_tex_index < 0 || !params.textures || roughness_tex_index >= static_cast<int>(params.num_textures))
+        return material_roughness;
+    const float4 raw = sampleTextureByIndex(roughness_tex_index, uv);
+    return raw.x;  // R channel = roughness
 }
 
 //==============================================================================

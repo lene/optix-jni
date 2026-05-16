@@ -173,6 +173,8 @@ struct InstanceMaterial {
     float film_thickness;       // Thin-film thickness in nm (0 = no thin-film interference)
     int procedural_type;        // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
     float procedural_scale;     // Noise coordinate scale (default 1.0)
+    int normal_texture_index;   // Normal map index (-1 = no normal map)
+    int roughness_texture_index; // Roughness map index (-1 = no roughness map)
     // Per-mesh triangle buffer pointers (IAS mode only)
     // Populated for triangle instances; nullptr/0 for spheres/cylinders
     float* vertices;            // Device pointer to vertex data

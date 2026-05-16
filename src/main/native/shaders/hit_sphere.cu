@@ -28,7 +28,7 @@ extern "C" __global__ void __closesthit__ch() {
     );
 
     // Surface normal (points toward incoming ray)
-    const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
+    float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
 
     // Get current depth from payload
     const unsigned int depth = optixGetPayload_3();
@@ -51,7 +51,12 @@ extern "C" __global__ void __closesthit__ch() {
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
 
     // Apply image texture via spherical UV (no-op when no texture is set)
-    material_color = sampleInstanceTexture(material_color, sphereUV(outward_normal));
+    const float2 sphere_uv = sphereUV(outward_normal);
+    material_color = sampleInstanceTexture(material_color, sphere_uv);
+
+    // Apply PBR map textures (Task 20.7)
+    normal = applyNormalMap(normal, sphere_uv, getInstanceNormalTextureIndex());
+    roughness = applyRoughnessMap(roughness, sphere_uv, getInstanceRoughnessTextureIndex());
 
     const float sphere_alpha = material_color.w;
 

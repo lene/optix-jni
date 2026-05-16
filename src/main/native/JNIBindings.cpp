@@ -339,6 +339,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setProceduralTextureNativ
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setMapTexturesNative(
+    JNIEnv* env, jobject obj, jint instanceId, jint normalTextureIndex, jint roughnessTextureIndex) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setMapTextures((int)instanceId, (int)normalTextureIndex, (int)roughnessTextureIndex);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setMapTextures: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
     JNIEnv* env, jobject obj, jboolean enabled, jint maxDepth, jfloat threshold) {
     try {

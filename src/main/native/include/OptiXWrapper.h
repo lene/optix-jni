@@ -135,6 +135,9 @@ public:
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
 
+    // PBR map texture configuration (Task 20.7)
+    void setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex);
+
     // Plane configuration
     void clearPlanes();
     void addPlane(int axis, bool positive, float value);  // default gray checker

@@ -84,6 +84,8 @@ struct OptiXWrapper::Impl {
         int texture_index;                    // Index into textures array (-1 = no texture)
         int procedural_type;                  // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
         float procedural_scale;               // Noise coordinate scale (default 1.0)
+        int normal_texture_index;             // Normal map index (-1 = no normal map)
+        int roughness_texture_index;          // Roughness map index (-1 = no roughness map)
         bool active;                          // True if instance is enabled
         size_t mesh_index;                    // Index into triangle_meshes (SIZE_MAX = not a triangle)
     };
@@ -265,6 +267,13 @@ void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
     impl->instances[instanceId].procedural_type  = proceduralType;
     impl->instances[instanceId].procedural_scale = proceduralScale;
+    impl->ias_dirty = true;
+}
+
+void OptiXWrapper::setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex) {
+    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
+    impl->instances[instanceId].normal_texture_index    = normalTextureIndex;
+    impl->instances[instanceId].roughness_texture_index = roughnessTextureIndex;
     impl->ias_dirty = true;
 }
 
@@ -1054,6 +1063,8 @@ void OptiXWrapper::buildIAS() {
         mat.film_thickness = inst.film_thickness;
         mat.procedural_type = inst.procedural_type;
         mat.procedural_scale = inst.procedural_scale;
+        mat.normal_texture_index = inst.normal_texture_index;
+        mat.roughness_texture_index = inst.roughness_texture_index;
         // Per-mesh triangle buffer pointers for IAS mode
         if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
             && inst.mesh_index < impl->triangle_meshes.size()) {
@@ -1593,6 +1604,8 @@ int OptiXWrapper::addSphereInstance(
     inst.texture_index = -1;  // Spheres don't support textures
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
     inst.active = true;
     inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
@@ -1663,6 +1676,8 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.texture_index = textureIndex;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -1857,6 +1872,8 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     inst.texture_index = textureIndex;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -1982,6 +1999,8 @@ int OptiXWrapper::addCylinderInstance(
     inst.texture_index = cylinder_index;  // For cylinders: index into cylinder_data array
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
     inst.active = true;
     inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
@@ -2103,6 +2122,8 @@ int OptiXWrapper::addConeInstance(
     inst.texture_index = cone_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
     inst.active        = true;
     inst.mesh_index    = SIZE_MAX;
 
@@ -2225,6 +2246,8 @@ int OptiXWrapper::addPlaneInstance(
     inst.texture_index = plane_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
     inst.active        = true;
     inst.mesh_index    = SIZE_MAX;
 

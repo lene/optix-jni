@@ -258,6 +258,11 @@ class OptiXRenderer extends LazyLogging:
     require(proceduralScale > 0f, "proceduralScale must be positive")
     setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
 
+  @native private def setMapTexturesNative(instanceId: Int, normalTextureIndex: Int, roughnessTextureIndex: Int): Unit
+
+  def setMapTextures(instanceId: Int, normalTextureIndex: Int = -1, roughnessTextureIndex: Int = -1): Unit =
+    setMapTexturesNative(instanceId, normalTextureIndex, roughnessTextureIndex)
+
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
 
   @native def setMaxRayDepth(depth: Int): Unit
