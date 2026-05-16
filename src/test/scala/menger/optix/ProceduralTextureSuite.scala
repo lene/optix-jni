@@ -159,3 +159,28 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
     triplanarSum should not equal fbmSum
   }
+
+  "Cone procedural texture" should "produce a different image than no procedural" in {
+    val apex = Vector[3](0f, 1f, 0f)
+    val base = Vector[3](0f, -1f, 0f)
+    val instanceId = renderer.addConeInstance(apex, base, 0.8f, Material(white, 1.0f))
+      .getOrElse(fail("addConeInstance failed"))
+    val flatSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 3.0f)
+    val noisySum = pixelSum(renderImage(imgSize))
+
+    noisySum should not equal flatSum
+  }
+
+  "Plane procedural texture" should "produce a different image than no procedural" in {
+    val normal = Vector[3](0f, 1f, 0f)
+    val instanceId = renderer.addPlaneInstance(normal, -1.5f, Material(white, 1.0f))
+      .getOrElse(fail("addPlaneInstance failed"))
+    val flatSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 3.0f)
+    val noisySum = pixelSum(renderImage(imgSize))
+
+    noisySum should not equal flatSum
+  }

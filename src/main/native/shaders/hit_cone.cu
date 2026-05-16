@@ -127,6 +127,11 @@ extern "C" __global__ void __closesthit__cone() {
     float material_ior, roughness, metallic, specular, emission, film_thickness;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
 
+    int proc_type; float proc_scale;
+    getInstanceProceduralParams(proc_type, proc_scale);
+    if (proc_type != 0)
+        material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
+
     if (depth == 0 && metallic > 0.0f) {
         handleMetallicOpaque(hit_point, ray_direction, normal,
                              material_color, metallic, depth, emission);
