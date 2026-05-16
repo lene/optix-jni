@@ -46,12 +46,36 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
     }
   }
 
-  it should "reject invalid type > 7" in {
+  it should "reject invalid type > 8" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
       .getOrElse(fail("addSphereInstance failed"))
     an[IllegalArgumentException] should be thrownBy {
-      renderer.setProceduralTexture(instanceId, 8, 1.0f)
+      renderer.setProceduralTexture(instanceId, 9, 1.0f)
     }
+  }
+
+  "XYZToRGB procedural texture" should "produce a different image than no procedural" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+    val flatSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.XYZToRGB, 1.0f)
+    val xyzSum = pixelSum(renderImage(imgSize))
+
+    xyzSum should not equal flatSum
+  }
+
+  it should "produce a different image than wood" in {
+    val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
+      .getOrElse(fail("addSphereInstance failed"))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.Wood, 1.0f)
+    val woodSum = pixelSum(renderImage(imgSize))
+
+    renderer.setProceduralTexture(instanceId, ProceduralType.XYZToRGB, 1.0f)
+    val xyzSum = pixelSum(renderImage(imgSize))
+
+    xyzSum should not equal woodSum
   }
 
   "Wood procedural texture" should "produce a different image than marble" in {

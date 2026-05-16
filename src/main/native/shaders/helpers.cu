@@ -1504,7 +1504,18 @@ __device__ float layeredNoise(float3 p) {
     return fminf(n * n * 2.f, 1.f);
 }
 
-// Procedural texture dispatcher — modulates base_color RGB by noise value
+// XYZ-to-RGB: replace color with position-derived RGB (|x|,|y|,|z| mod 1 → R,G,B)
+__device__ float4 xyzToRGB(float3 p, float alpha) {
+    return make_float4(
+        fminf(fmaxf(fabsf(fmodf(p.x, 1.f)), 0.f), 1.f),
+        fminf(fmaxf(fabsf(fmodf(p.y, 1.f)), 0.f), 1.f),
+        fminf(fmaxf(fabsf(fmodf(p.z, 1.f)), 0.f), 1.f),
+        alpha
+    );
+}
+
+// Procedural texture dispatcher — modulates base_color RGB by noise value (types 1-7)
+// or replaces color entirely (type 8)
 __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_pos,
                                           int proc_type, float proc_scale) {
     float3 p = world_pos * proc_scale;
@@ -1517,6 +1528,7 @@ __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_
         case 5: n = woodPattern(p);                    break;
         case 6: n = marblePattern(p);                  break;
         case 7: n = layeredNoise(p);                   break;
+        case 8: return xyzToRGB(p, base_color.w);
         default: return base_color;
     }
     return make_float4(base_color.x * n, base_color.y * n,

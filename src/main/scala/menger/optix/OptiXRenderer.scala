@@ -254,7 +254,7 @@ class OptiXRenderer extends LazyLogging:
   @native private def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
 
   def setProceduralTexture(instanceId: Int, proceduralType: Int, proceduralScale: Float = 1.0f): Unit =
-    require(proceduralType >= 0 && proceduralType <= 7, "proceduralType must be 0–7")
+    require(proceduralType >= 0 && proceduralType <= 8, "proceduralType must be 0–8")
     require(proceduralScale > 0f, "proceduralScale must be positive")
     setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
 
@@ -985,3 +985,4 @@ object ProceduralType:
   val Wood         = 5
   val Marble       = 6
   val LayeredNoise = 7
+  val XYZToRGB     = 8
