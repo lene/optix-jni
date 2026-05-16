@@ -169,6 +169,9 @@ case class RenderResult(
     frameMs
   )
 
+case class PlaneSpec(axis: Int, positive: Boolean, value: Float)
+case class CheckerPattern(color1: Color, color2: Color)
+
 // JNI interface to OptiX ray tracing renderer
 class OptiXRenderer extends LazyLogging:
 
@@ -345,6 +348,18 @@ class OptiXRenderer extends LazyLogging:
       color2.r, color2.g, color2.b,
       material.roughness, material.metallic, material.specular, material.emission,
       textureIndex)
+
+  def addPlaneCheckerColorsWithMaterial(
+    plane: PlaneSpec, checker: CheckerPattern, material: Material): Unit =
+    addPlaneCheckerColorsWithMaterial(
+      plane.axis, plane.positive, plane.value,
+      checker.color1, checker.color2, material)
+
+  def addPlaneCheckerColorsWithMaterial(
+    plane: PlaneSpec, checker: CheckerPattern, material: Material, textureIndex: Int): Unit =
+    addPlaneCheckerColorsWithMaterial(
+      plane.axis, plane.positive, plane.value,
+      checker.color1, checker.color2, material, textureIndex)
 
   // Triangle mesh methods
   @native private def setTriangleMeshNative(
