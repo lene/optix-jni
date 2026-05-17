@@ -11,14 +11,9 @@ import scala.util.control.Exception.catching
 
 import com.typesafe.scalalogging.LazyLogging
 import menger.common.Color
-import menger.common.Const
 import menger.common.ImageSize
-import menger.common.TriangleMeshData
 import menger.common.Vector
 import menger.common.toArray
-import menger.common.x
-import menger.common.y
-import menger.common.z
 import menger.common.{Light => CommonLight}
 
 // Light source types (must match C++ LightType enum)
@@ -173,7 +168,13 @@ case class PlaneSpec(axis: Int, positive: Boolean, value: Float)
 case class CheckerPattern(color1: Color, color2: Color)
 
 // JNI interface to OptiX ray tracing renderer
-class OptiXRenderer extends LazyLogging:
+class OptiXRenderer
+  extends OptiXSphereApi
+  with OptiXMeshApi
+  with OptiXPlaneApi
+  with OptiXTextureApi
+  with OptiXRenderApi
+  with LazyLogging:
 
   // Native handle to the C++ OptiXWrapper instance (0 = not initialized)
   // Note: Must be accessible to JNI (not private) - JNI reads/writes this field directly
@@ -184,185 +185,63 @@ class OptiXRenderer extends LazyLogging:
   // Derive initialization state from nativeHandle (0 = not initialized)
   private def isInitialized: Boolean = nativeHandle != 0L
 
-  // Native method declarations (private - use public wrappers)
+  // ---- Lifecycle @native declarations ----
   @native private def initializeNative(maxInstances: Int): Boolean
   @native private def disposeNative(): Unit
 
+  // ---- Single-sphere legacy @native declarations ----
+  @native private[optix] def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
+  @native private[optix] def setSphereColorNative(r: Float, g: Float, b: Float, a: Float): Unit
 
-  @native private def setSphere(x: Float, y: Float, z: Float, radius: Float): Unit
-
-  def setSphere(center: Vector[3], radius: Float): Unit =
-    setSphere(center.x, center.y, center.z, radius)
-
-  
-  @native private def setSphereColorNative(r: Float, g: Float, b: Float, a: Float): Unit
-
-  def setSphereColor(color: Color): Unit =
-    setSphereColorNative(color.r, color.g, color.b, color.a)
-
-
+  // ---- Camera/scene @native declarations ----
+  @native private def setCameraNative(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit
+  @native def updateImageDimensions(width: Int, height: Int): Unit
   @native def setIOR(ior: Float): Unit
-
-  
   @native def setScale(scale: Float): Unit
 
-
-  @native private def setCameraNative(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit
-
-  def setCamera(eye: Vector[3], lookAt: Vector[3], up: Vector[3], horizontalFovDegrees: Float): Unit =
-    require(
-      horizontalFovDegrees > 0 && horizontalFovDegrees < 180,
-      s"Horizontal FOV must be in range (0, 180), got $horizontalFovDegrees"
-    )
-    setCameraNative(eye.toArray, lookAt.toArray, up.toArray, horizontalFovDegrees)
-
-
-  @native def updateImageDimensions(width: Int, height: Int): Unit
-
-  def updateImageDimensions(size: ImageSize): Unit =
-    updateImageDimensions(size.width, size.height)
-
-
+  // ---- Lights @native declarations ----
   @native private def setLight(direction: Array[Float], intensity: Float): Unit
-
-  def setLight(direction: Vector[3], intensity: Float): Unit =
-    setLight(direction.toArray, intensity)
-
   @native private def setLights(lights: Array[Light]): Unit
-
-  def setLights(lights: Seq[CommonLight]): Unit =
-    val jniLights = lights.map(toJNILight).toArray
-    setLights(jniLights)
-
-  
   @native def setShadows(enabled: Boolean): Unit
-
   @native private def setTransparentShadowsNative(enabled: Boolean): Unit
-
-  def setTransparentShadows(enabled: Boolean): Unit =
-    setTransparentShadowsNative(enabled)
-
   @native private def setBackgroundColorNative(r: Float, g: Float, b: Float): Unit
 
-  def setBackgroundColor(r: Float, g: Float, b: Float): Unit =
-    setBackgroundColorNative(r, g, b)
+  // ---- Texture @native declarations (called from OptiXTextureApi) ----
+  @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
+  @native private[optix] def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
+  @native private[optix] def setMapTexturesNative(instanceId: Int, normalTextureIndex: Int, roughnessTextureIndex: Int): Unit
+  @native private[optix] def uploadTextureNative(name: String, imageData: Array[Byte], width: Int, height: Int): Int
+  @native private[optix] def uploadTextureFromFileNative(path: String): Int
+  @native private[optix] def releaseTexturesNative(): Unit
 
-  @native private def setEnvironmentMapNative(textureIndex: Int): Unit
-
-  def setEnvironmentMap(textureIndex: Int): Unit =
-    require(textureIndex >= 0, "textureIndex must be >= 0")
-    setEnvironmentMapNative(textureIndex)
-
-
-  @native private def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
-
-  def setProceduralTexture(instanceId: Int, proceduralType: Int, proceduralScale: Float = 1.0f): Unit =
-    require(proceduralType >= 0 && proceduralType <= 10, "proceduralType must be 0–10")
-    require(proceduralScale > 0f, "proceduralScale must be positive")
-    setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
-
-  @native private def setMapTexturesNative(instanceId: Int, normalTextureIndex: Int, roughnessTextureIndex: Int): Unit
-
-  def setMapTextures(instanceId: Int, normalTextureIndex: Int = -1, roughnessTextureIndex: Int = -1): Unit =
-    setMapTexturesNative(instanceId, normalTextureIndex, roughnessTextureIndex)
-
+  // ---- Render @native declarations ----
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
-
   @native def setMaxRayDepth(depth: Int): Unit
-
-  def setRenderConfig(config: RenderConfig): Unit =
-    setShadows(config.shadows)
-    setTransparentShadows(config.transparentShadows)
-    setAntialiasing(config.antialiasing, config.aaMaxDepth, config.aaThreshold)
-    setMaxRayDepth(config.maxRayDepth)
-
   @native def setCaustics(enabled: Boolean, photonsPerIter: Int, iterations: Int, initialRadius: Float, alpha: Float): Unit
+  @native private[optix] def getCausticsStatsNative(): CausticsStats
+  @native def renderWithStats(width: Int, height: Int): RenderResult
 
-  def setCausticsConfig(config: CausticsConfig): Unit =
-    setCaustics(config.enabled, config.photonsPerIteration, config.iterations, config.initialRadius, config.alpha)
-
-  // Convenience method with default PPM parameters
-  def enableCaustics(
-    photonsPerIter: Int = 100000,
-    iterations: Int = 10,
-    initialRadius: Float = 1.0f,
-    alpha: Float = 0.7f
-  ): Unit =
-    setCaustics(true, photonsPerIter, iterations, initialRadius, alpha)
-
-  def disableCaustics(): Unit =
-    setCaustics(false, 0, 0, 0.0f, 0.0f)
-
-  // Get caustics statistics for validation (C1-C8 test ladder)
-  // Returns None if caustics are disabled or stats not available
-  @native private def getCausticsStatsNative(): CausticsStats
-
-  def getCausticsStats: Option[CausticsStats] =
-    Try(getCausticsStatsNative()).toOption.filter(_.photonsEmitted > 0)
-
-  @native private def clearPlanesNative(): Unit
-  @native private def addPlaneNative(axis: Int, positive: Boolean, value: Float): Unit
-  @native private def addPlaneSolidColorNative(
+  // ---- Plane @native declarations (called from OptiXPlaneApi) ----
+  @native private[optix] def clearPlanesNative(): Unit
+  @native private[optix] def addPlaneNative(axis: Int, positive: Boolean, value: Float): Unit
+  @native private[optix] def addPlaneSolidColorNative(
     axis: Int, positive: Boolean, value: Float, r: Float, g: Float, b: Float): Unit
-  @native private def addPlaneCheckerColorsNative(
+  @native private[optix] def addPlaneCheckerColorsNative(
     axis: Int, positive: Boolean, value: Float,
     r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Unit
-  @native private def addPlaneSolidColorWithMaterialNative(
+  @native private[optix] def addPlaneSolidColorWithMaterialNative(
     axis: Int, positive: Boolean, value: Float,
     r: Float, g: Float, b: Float,
     roughness: Float, metallic: Float, specular: Float, emission: Float,
     textureIndex: Int): Unit
-  @native private def addPlaneCheckerColorsWithMaterialNative(
+  @native private[optix] def addPlaneCheckerColorsWithMaterialNative(
     axis: Int, positive: Boolean, value: Float,
     r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float,
     roughness: Float, metallic: Float, specular: Float, emission: Float,
     textureIndex: Int): Unit
 
-  def clearPlanes(): Unit = clearPlanesNative()
-
-  def addPlane(axis: Int, positive: Boolean, value: Float): Unit = addPlaneNative(axis, positive, value)
-
-  def addPlaneSolidColor(axis: Int, positive: Boolean, value: Float, r: Float, g: Float, b: Float): Unit =
-    addPlaneSolidColorNative(axis, positive, value, r, g, b)
-
-  def addPlaneCheckerColors(axis: Int, positive: Boolean, value: Float,
-                            r1: Float, g1: Float, b1: Float,
-                            r2: Float, g2: Float, b2: Float): Unit =
-    addPlaneCheckerColorsNative(axis, positive, value, r1, g1, b1, r2, g2, b2)
-
-  def addPlaneSolidColorWithMaterial(
-    axis: Int, positive: Boolean, value: Float,
-    color: Color, material: Material, textureIndex: Int = -1): Unit =
-    addPlaneSolidColorWithMaterialNative(
-      axis, positive, value,
-      color.r, color.g, color.b,
-      material.roughness, material.metallic, material.specular, material.emission,
-      textureIndex)
-
-  def addPlaneCheckerColorsWithMaterial(
-    axis: Int, positive: Boolean, value: Float,
-    color1: Color, color2: Color, material: Material, textureIndex: Int = -1): Unit =
-    addPlaneCheckerColorsWithMaterialNative(
-      axis, positive, value,
-      color1.r, color1.g, color1.b,
-      color2.r, color2.g, color2.b,
-      material.roughness, material.metallic, material.specular, material.emission,
-      textureIndex)
-
-  def addPlaneCheckerColorsWithMaterial(
-    plane: PlaneSpec, checker: CheckerPattern, material: Material): Unit =
-    addPlaneCheckerColorsWithMaterial(
-      plane.axis, plane.positive, plane.value,
-      checker.color1, checker.color2, material)
-
-  def addPlaneCheckerColorsWithMaterial(
-    plane: PlaneSpec, checker: CheckerPattern, material: Material, textureIndex: Int): Unit =
-    addPlaneCheckerColorsWithMaterial(
-      plane.axis, plane.positive, plane.value,
-      checker.color1, checker.color2, material, textureIndex)
-
-  // Triangle mesh methods
-  @native private def setTriangleMeshNative(
+  // ---- Triangle mesh @native declarations (called from OptiXMeshApi) ----
+  @native private[optix] def setTriangleMeshNative(
     vertices: Array[Float],
     numVertices: Int,
     indices: Array[Int],
@@ -370,9 +249,7 @@ class OptiXRenderer extends LazyLogging:
     vertexStride: Int
   ): Unit
 
-  // Sprint 18.3 Cut A: GPU-side 4D rotation + projection. Returns mesh index.
-  // Generalized: vertsPerFace allows non-quad faces (3=tris, 5=pentagons).
-  @native private def setProjectedMeshNative(
+  @native private[optix] def setProjectedMeshNative(
     facesData: Array[Float],
     numFaces: Int,
     vertsPerFace: Int,
@@ -387,8 +264,7 @@ class OptiXRenderer extends LazyLogging:
     centerZ: Float
   ): Int
 
-  // Sprint 18.3 Cut F: per-frame update of 4D rotation + projection.
-  @native private def updateMesh4DProjectionNative(
+  @native private[optix] def updateMesh4DProjectionNative(
     meshIndex: Int,
     eyeW: Float,
     screenW: Float,
@@ -400,429 +276,68 @@ class OptiXRenderer extends LazyLogging:
     centerZ: Float
   ): Int
 
-  @native private def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
-
+  @native private[optix] def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
   @native def setTriangleMeshIOR(ior: Float): Unit
-
   @native def clearTriangleMesh(): Unit
-
   @native def hasTriangleMesh(): Boolean
 
-  // Texture methods
-  @native private def uploadTextureNative(
-    name: String,
-    imageData: Array[Byte],
-    width: Int,
-    height: Int
-  ): Int
-
-  @native private def uploadTextureFromFileNative(path: String): Int
-
-  @native private def releaseTexturesNative(): Unit
-
-  def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Try[Int] =
-    // JNI boundary validation - null checks required for native method safety
-    require(name != null && name.nonEmpty, "Texture name must not be null or empty") // scalafix:ok DisableSyntax.null
-    require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
-    require(width > 0, s"Width must be positive, got $width")
-    require(height > 0, s"Height must be positive, got $height")
-    val expectedSize = width * height * 4  // RGBA, 4 bytes per pixel
-    require(
-      imageData.length == expectedSize,
-      s"Image data size mismatch: expected $expectedSize bytes (${width}x${height}x4), got ${imageData.length}"
-    )
-    val index = uploadTextureNative(name, imageData, width, height)
-    if index < 0 then
-      Failure(TextureUploadException(s"Failed to upload texture '$name': error code $index"))
-    else
-      Success(index)
-
-  def uploadTextureFromFile(path: String): Int =
-    require(path != null && path.nonEmpty, "Path must not be null or empty") // scalafix:ok DisableSyntax.null
-    uploadTextureFromFileNative(path)
-
-  def releaseTextures(): Unit =
-    releaseTexturesNative()
-
-  def setTriangleMesh(mesh: TriangleMeshData): Unit =
-    setTriangleMeshNative(
-      mesh.vertices,
-      mesh.numVertices,
-      mesh.indices,
-      mesh.numTriangles,
-      mesh.vertexStride
-    )
-
-  /** Upload a 4D face mesh; the GPU does rotation + perspective projection at
-    * upload time (and on Cut F's update path). Returns the mesh index slot in
-    * triangle_meshes[], or throws on validation failure.
-    *
-    * @param facesData length V*4*numFaces — N faces × V corners × (x,y,z,w)
-    * @param vertsPerFace number of vertices per face (3=tri, 4=quad, 5=pentagon)
-    * @param uvs optional length vertsPerFace*2*numFaces; None uses computed UVs
-    */
-  def setProjectedMesh(
-    facesData: Array[Float],
-    vertsPerFace: Int,
-    uvs: Option[Array[Float]],
-    eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float,
-    centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
-  ): Int =
-    require(facesData != null, "facesData must not be null")  // scalafix:ok DisableSyntax.null
-    require(vertsPerFace >= 3, s"vertsPerFace must be >= 3, got $vertsPerFace")
-    val stride = vertsPerFace * 4
-    require(facesData.length % stride == 0,
-      s"facesData length must be a multiple of vertsPerFace*4 ($stride), got ${facesData.length}")
-    require(facesData.length > 0, "facesData must not be empty")
-    val numFaces = facesData.length / stride
-    uvs.foreach { u =>
-      require(u.length == numFaces * vertsPerFace * 2,
-        s"uvs length (${u.length}) must equal numFaces*vertsPerFace*2 (${numFaces * vertsPerFace * 2})")
-    }
-    val result = setProjectedMeshNative(
-      facesData, numFaces, vertsPerFace, uvs.orNull,
-      eyeW, screenW, rotXW, rotYW, rotZW,
-      centerX, centerY, centerZ
-    )
-    require(result >= 0, s"setProjectedMesh failed with code $result")
-    result
-
-  // Backward-compatible alias
-  def setTriangleMesh4DQuads(
-    quads4D: Array[Float],
-    uvs: Option[Array[Float]],
-    eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float,
-    centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
-  ): Int =
-    setProjectedMesh(quads4D, 4, uvs, eyeW, screenW, rotXW, rotYW, rotZW,
-      centerX, centerY, centerZ)
-
-  /** Re-project a previously-uploaded 4D-quad mesh with new rotation/projection
-    * params, refitting its GAS (and the IAS, if active) in place. Throws on
-    * native error (invalid index, mesh not 4D-projected, kernel launch failure).
-    */
-  def updateMesh4DProjection(
-    meshIndex: Int,
-    eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float,
-    centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
-  ): Unit =
-    require(meshIndex >= 0, s"meshIndex must be non-negative, got $meshIndex")
-    val rc = updateMesh4DProjectionNative(
-      meshIndex, eyeW, screenW, rotXW, rotYW, rotZW,
-      centerX, centerY, centerZ
-    )
-    require(rc == 0, s"updateMesh4DProjection failed with code $rc (meshIndex=$meshIndex)")
-
-  @native private def updateCpuTriangleMeshNative(
+  @native private[optix] def updateCpuTriangleMeshNative(
     meshIndex: Int,
     vertices: Array[Float], numVertices: Int,
     indices: Array[Int], numTriangles: Int,
     vertexStride: Int
   ): Int
 
-  /** Replace the CPU-uploaded mesh in slot `meshIndex` with new vertex/index data,
-    * rebuild its GAS in place, and mark the IAS dirty — without calling
-    * clearAllInstances(). Used by the CPU-mode 4D-rotation fast path in
-    * InteractiveEngine to avoid the full rebuild that causes a hang.
-    * Throws if the mesh_index is invalid or the slot holds a GPU-projected mesh.
-    */
-  def updateCpuTriangleMesh(
-    meshIndex: Int,
-    mesh: menger.common.TriangleMeshData
-  ): Unit =
-    require(meshIndex >= 0, s"meshIndex must be non-negative, got $meshIndex")
-    val rc = updateCpuTriangleMeshNative(
-      meshIndex,
-      mesh.vertices, mesh.numVertices,
-      mesh.indices, mesh.numTriangles,
-      mesh.vertexStride
-    )
-    require(rc == 0, s"updateCpuTriangleMesh failed with code $rc (meshIndex=$meshIndex)")
-
-  def setTriangleMeshColor(color: Color): Unit =
-    setTriangleMeshColorNative(color.r, color.g, color.b, color.a)
-
-  @native def renderWithStats(width: Int, height: Int): RenderResult
-
-  def renderWithStats(size: ImageSize): RenderResult =
-    val startNs = System.nanoTime()
-    val raw = renderWithStats(size.width, size.height)
-    val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
-    Option(raw).map(_.copy(frameMs = elapsedMs)).orNull
-
-
-  def render(size: ImageSize): Option[Array[Byte]] =
-    Option(renderWithStats(size)).map(_.image)
-
-  def render(width: Int, height: Int): Option[Array[Byte]] =
-    render(ImageSize(width, height))
-
-  // Instance Acceleration Structure (IAS) API for multi-object scenes
-  @native private def addSphereInstanceNative(
+  // ---- IAS instance @native declarations (called from OptiXMeshApi / OptiXPlaneApi) ----
+  @native private[optix] def addSphereInstanceNative(
     transform: Array[Float],
-    r: Float,
-    g: Float,
-    b: Float,
-    a: Float,
-    ior: Float,
-    roughness: Float,
-    metallic: Float,
-    specular: Float,
-    emission: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     filmThickness: Float
   ): Int
 
-  @native private def addTriangleMeshInstanceNative(
+  @native private[optix] def addTriangleMeshInstanceNative(
     transform: Array[Float],
-    r: Float,
-    g: Float,
-    b: Float,
-    a: Float,
-    ior: Float,
-    roughness: Float,
-    metallic: Float,
-    specular: Float,
-    emission: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     textureIndex: Int,
     filmThickness: Float
   ): Int
 
-  @native private def addCylinderInstanceNative(
+  @native private[optix] def addCylinderInstanceNative(
     p0_x: Float, p0_y: Float, p0_z: Float,
     p1_x: Float, p1_y: Float, p1_z: Float,
     radius: Float,
-    r: Float,
-    g: Float,
-    b: Float,
-    a: Float,
-    ior: Float,
-    roughness: Float,
-    metallic: Float,
-    specular: Float,
-    emission: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     filmThickness: Float
   ): Int
 
-  @native private def addConeInstanceNative(
+  @native private[optix] def addConeInstanceNative(
     apex_x: Float, apex_y: Float, apex_z: Float,
     base_x: Float, base_y: Float, base_z: Float,
     radius: Float,
-    r: Float,
-    g: Float,
-    b: Float,
-    a: Float,
-    ior: Float,
-    roughness: Float,
-    metallic: Float,
-    specular: Float,
-    emission: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     filmThickness: Float
   ): Int
 
-  @native private def addRecursiveIASSpongeInstanceNative(
+  @native private[optix] def addRecursiveIASSpongeInstanceNative(
     level: Int,
     transform: Array[Float],
-    r: Float,
-    g: Float,
-    b: Float,
-    a: Float,
-    ior: Float,
-    roughness: Float,
-    metallic: Float,
-    specular: Float,
-    emission: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     textureIndex: Int,
     filmThickness: Float
   ): Int
 
   @native def removeInstance(instanceId: Int): Unit
-
   @native def clearAllInstances(): Unit
-
   @native def getInstanceCount(): Int
-
   @native def isIASMode(): Boolean
-
   @native def setIASMode(enabled: Boolean): Unit
 
-  def addSphereInstance(transform: Array[Float], material: Material): Option[Int] =
-    require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addSphereInstanceNative(
-      transform,
-      material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
-    )
-    if id >= 0 then Some(id) else None
-
-  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
-    addSphereInstance(transform, Material(color, ior))
-
-  def addSphereInstance(position: Vector[3], material: Material): Option[Int] =
-    val transform = Array(
-      1.0f, 0.0f, 0.0f, position.x,
-      0.0f, 1.0f, 0.0f, position.y,
-      0.0f, 0.0f, 1.0f, position.z
-    )
-    addSphereInstance(transform, material)
-
-  def addSphereInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
-    addSphereInstance(position, Material(color, ior))
-
-  def addTriangleMeshInstance(
-    transform: Array[Float],
-    material: Material,
-    textureIndex: Int = -1
-  ): Option[Int] =
-    require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addTriangleMeshInstanceNative(
-      transform,
-      material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      textureIndex, material.filmThickness
-    )
-    if id >= 0 then Some(id) else None
-
-  def addTriangleMeshInstance(
-    transform: Array[Float],
-    color: Color,
-    ior: Float,
-    textureIndex: Int
-  ): Option[Int] =
-    addTriangleMeshInstance(transform, Material(color, ior), textureIndex)
-
-  def addTriangleMeshInstance(
-    transform: Array[Float],
-    color: Color,
-    ior: Float
-  ): Option[Int] =
-    addTriangleMeshInstance(transform, Material(color, ior), -1)
-
-  def addTriangleMeshInstance(
-    position: Vector[3],
-    material: Material,
-    textureIndex: Int
-  ): Option[Int] =
-    val transform = Array(
-      1.0f, 0.0f, 0.0f, position.x,
-      0.0f, 1.0f, 0.0f, position.y,
-      0.0f, 0.0f, 1.0f, position.z
-    )
-    addTriangleMeshInstance(transform, material, textureIndex)
-
-  def addTriangleMeshInstance(
-    position: Vector[3],
-    color: Color,
-    ior: Float,
-    textureIndex: Int
-  ): Option[Int] =
-    addTriangleMeshInstance(position, Material(color, ior), textureIndex)
-
-  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
-    addTriangleMeshInstance(position, Material(color, ior), -1)
-
-  /** Add a recursive-IAS Menger sponge instance (Sprint 18.4).
-    *
-    * Wraps the most-recently-uploaded triangle mesh (caller must have called
-    * `setTriangleMesh` with a unit cube) in `level` nested IAS layers using
-    * the 20 Menger generator transforms. VRAM scales O(level * 20) instead
-    * of O(20^level).
-    *
-    * Constraint: do not deactivate any instance between this call and
-    * the next render — the leaf-IAS instances embed a predicted instanceId
-    * that becomes stale if the active-instance list shifts.
-    *
-    * @param level recursion depth; must be in [1, 14]
-    */
-  def addRecursiveIASSpongeInstance(
-    level: Int,
-    transform: Array[Float],
-    material: Material,
-    textureIndex: Int = -1
-  ): Option[Int] =
-    require(level >= 1 && level <= 14, s"Recursive IAS sponge level must be in [1, 14], got $level")
-    require(transform.length == Const.Renderer.transformMatrixSize,
-      s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addRecursiveIASSpongeInstanceNative(
-      level, transform,
-      material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      textureIndex, material.filmThickness
-    )
-    if id >= 0 then Some(id) else None
-
-  def addRecursiveIASSpongeInstance(
-    level: Int,
-    position: Vector[3],
-    material: Material,
-    textureIndex: Int
-  ): Option[Int] =
-    val transform = Array(
-      1.0f, 0.0f, 0.0f, position.x,
-      0.0f, 1.0f, 0.0f, position.y,
-      0.0f, 0.0f, 1.0f, position.z
-    )
-    addRecursiveIASSpongeInstance(level, transform, material, textureIndex)
-
-  def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): Option[Int] =
-    addRecursiveIASSpongeInstance(level, position, Material(color, ior), -1)
-
-  // Cylinder instance management
-  def addCylinderInstance(
-    p0: Vector[3],
-    p1: Vector[3],
-    radius: Float,
-    material: Material
-  ): Option[Int] =
-    val id = addCylinderInstanceNative(
-      p0.x, p0.y, p0.z,
-      p1.x, p1.y, p1.z,
-      radius,
-      material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
-    )
-    if id >= 0 then Some(id) else None
-
-  def addCylinderInstance(
-    p0: Vector[3],
-    p1: Vector[3],
-    radius: Float,
-    color: Color,
-    ior: Float
-  ): Option[Int] =
-    addCylinderInstance(p0, p1, radius, Material(color, ior))
-
-  // Cone instance management
-  def addConeInstance(
-    apex: Vector[3],
-    base: Vector[3],
-    radius: Float,
-    material: Material
-  ): Option[Int] =
-    val id = addConeInstanceNative(
-      apex.x, apex.y, apex.z,
-      base.x, base.y, base.z,
-      radius,
-      material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
-    )
-    if id >= 0 then Some(id) else None
-
-  def addConeInstance(
-    apex: Vector[3],
-    base: Vector[3],
-    radius: Float,
-    color: Color,
-    ior: Float
-  ): Option[Int] =
-    addConeInstance(apex, base, radius, Material(color, ior))
-
-  @native private def addPlaneInstanceNative(
+  @native private[optix] def addPlaneInstanceNative(
     normal_x: Float, normal_y: Float, normal_z: Float,
     distance: Float,
     r: Float, g: Float, b: Float, a: Float, ior: Float,
@@ -832,34 +347,32 @@ class OptiXRenderer extends LazyLogging:
     solidColor: Int, checkerSize: Float
   ): Int
 
-  def addPlaneInstance(
-    normal: Vector[3],
-    distance: Float,
-    material: Material,
-    checkerColor: Option[Color] = None,
-    checkerSize: Float = 1.0f
-  ): Option[Int] =
-    val (r2, g2, b2, solidColor) = checkerColor match
-      case Some(c) => (c.r, c.g, c.b, 0)
-      case None    => (0f, 0f, 0f, 1)
-    val id = addPlaneInstanceNative(
-      normal.x, normal.y, normal.z,
-      distance,
-      material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness,
-      r2, g2, b2, solidColor, checkerSize
+  // ---- Camera ----
+  def setCamera(eye: Vector[3], lookAt: Vector[3], up: Vector[3], horizontalFovDegrees: Float): Unit =
+    require(
+      horizontalFovDegrees > 0 && horizontalFovDegrees < 180,
+      s"Horizontal FOV must be in range (0, 180), got $horizontalFovDegrees"
     )
-    if id >= 0 then Some(id) else None
+    setCameraNative(eye.toArray, lookAt.toArray, up.toArray, horizontalFovDegrees)
 
-  def addPlaneInstance(
-    normal: Vector[3],
-    distance: Float,
-    color: Color,
-    ior: Float
-  ): Option[Int] =
-    addPlaneInstance(normal, distance, Material(color, ior), None, 1.0f)
+  def updateImageDimensions(size: ImageSize): Unit =
+    updateImageDimensions(size.width, size.height)
 
+  // ---- Lights ----
+  def setLight(direction: Vector[3], intensity: Float): Unit =
+    setLight(direction.toArray, intensity)
+
+  def setLights(lights: Seq[CommonLight]): Unit =
+    val jniLights = lights.map(toJNILight).toArray
+    setLights(jniLights)
+
+  def setTransparentShadows(enabled: Boolean): Unit =
+    setTransparentShadowsNative(enabled)
+
+  def setBackgroundColor(r: Float, g: Float, b: Float): Unit =
+    setBackgroundColorNative(r, g, b)
+
+  // ---- Lifecycle ----
   // Idempotent initialization - safe to call multiple times
   def initialize(maxInstances: Int = 64): Boolean =
     if isInitialized then
@@ -993,9 +506,6 @@ object OptiXRenderer extends LazyLogging:
 // Exception thrown when OptiX is not available
 case class OptiXNotAvailableException(message: String) extends Exception(message)
 
-// Exception thrown when texture upload fails
-case class TextureUploadException(message: String) extends Exception(message)
-
 object ProceduralType:
   val None         = 0
   val ValueNoise   = 1
@@ -1008,3 +518,4 @@ object ProceduralType:
   val XYZToRGB     = 8
   val HeatMap      = 9
   val Triplanar    = 10
+case class TextureUploadException(message: String, cause: Throwable = null) extends Exception(message, cause) // scalafix:ok DisableSyntax.null
