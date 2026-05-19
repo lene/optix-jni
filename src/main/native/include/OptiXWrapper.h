@@ -219,6 +219,18 @@ public:
         float checker_size = 1.0f
     );
 
+    // 4D Menger sponge analog via iterative IFS ray traversal (Sprint 21.1).
+    // O(1) VRAM: single AABB GAS + per-thread stack in intersection shader.
+    int addMenger4DInstance(
+        int level, int dist_threshold,
+        float x, float y, float z, float scale,
+        float eye_w, float screen_w,
+        float rot_xw, float rot_yw, float rot_zw,
+        float r, float g, float b, float a, float ior,
+        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f,
+        float emission = 0.0f, float film_thickness = 0.0f
+    );
+
     // Recursive-IAS Menger sponge (Sprint 18.4).
     // Wraps the most-recently-uploaded triangle mesh (call setTriangleMesh first with a
     // unit cube) in `level` nested IAS layers using the 20 Menger generator transforms.

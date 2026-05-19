@@ -76,12 +76,17 @@ private:
     OptixProgramGroup plane_hitgroup_prog_group = nullptr;
     OptixProgramGroup plane_shadow_hitgroup_prog_group = nullptr;
 
+    // Menger4D program groups
+    OptixProgramGroup menger4d_hitgroup_prog_group = nullptr;
+    OptixProgramGroup menger4d_shadow_hitgroup_prog_group = nullptr;
+
     // Photon ray program groups (for caustics RAY_TYPE_PHOTON)
     OptixProgramGroup photon_sphere_hitgroup = nullptr;
     OptixProgramGroup photon_triangle_hitgroup = nullptr;
     OptixProgramGroup photon_cylinder_hitgroup = nullptr;
     OptixProgramGroup photon_cone_hitgroup = nullptr;
     OptixProgramGroup photon_plane_hitgroup = nullptr;
+    OptixProgramGroup photon_menger4d_hitgroup = nullptr;
     OptixProgramGroup photon_miss_prog_group = nullptr;
 
     // Caustics program groups

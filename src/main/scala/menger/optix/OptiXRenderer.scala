@@ -331,6 +331,17 @@ class OptiXRenderer
     filmThickness: Float
   ): Int
 
+  @native private[optix] def addMenger4DInstanceNative(
+    level: Int,
+    distanceThreshold: Int,
+    x: Float, y: Float, z: Float, scale: Float,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
+    filmThickness: Float
+  ): Int
+
   @native def removeInstance(instanceId: Int): Unit
   @native def clearAllInstances(): Unit
   @native def getInstanceCount(): Int
@@ -428,9 +439,13 @@ object OptiXRenderer extends LazyLogging:
 
   // Functional helper methods for library loading
   private def loadFromSystemPath(): Try[Unit] =
-    catching(classOf[UnsatisfiedLinkError]).withTry:
-      System.loadLibrary(libraryName)
-      logger.info(s"Loaded $libraryName from java.library.path")
+    for
+      _ <- catching(classOf[UnsatisfiedLinkError]).withTry:
+             System.loadLibrary(libraryName)
+             logger.info(s"Loaded $libraryName from java.library.path")
+      platform <- detectPlatform()
+      _ <- extractPTX(platform)
+    yield ()
 
   private def detectPlatform(): Try[String] =
     val os = System.getProperty("os.name").toLowerCase

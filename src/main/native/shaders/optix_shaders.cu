@@ -17,5 +17,6 @@ using namespace RayTracingConstants;
 #include "hit_cylinder.cu"
 #include "hit_cone.cu"
 #include "hit_plane.cu"
+#include "hit_menger4d.cu"
 #include "shadows.cu"
 #include "caustics_ppm.cu"

@@ -135,6 +135,13 @@ struct OptiXWrapper::Impl {
     // Track plane GAS buffers for proper cleanup (each plane has its own GAS)
     std::vector<GASData> plane_gas_buffers;
 
+    // 4D Menger sponge geometry data (host-side, uploaded to GPU before render)
+    std::vector<Menger4DData> menger4d_data;
+    CUdeviceptr d_menger4d_data = 0;            // Device array of Menger4DData for Params
+
+    // Track menger4d GAS buffers (each instance has its own AABB GAS)
+    std::vector<GASData> menger4d_gas_buffers;
+
     // Sub-IAS lifetime storage for recursive-IAS Menger sponges (Sprint 18.4).
     // Each entry owns one nested IAS layer's instance buffer + IAS output buffer.
     struct SubIASData {
@@ -1339,6 +1346,25 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.plane_data = nullptr;
                 params.num_plane_data = 0;
             }
+
+            if (!impl->menger4d_data.empty()) {
+                size_t m4d_size = impl->menger4d_data.size() * sizeof(Menger4DData);
+                if (impl->d_menger4d_data) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_menger4d_data));
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_menger4d_data), m4d_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_menger4d_data),
+                    impl->menger4d_data.data(),
+                    m4d_size,
+                    cudaMemcpyHostToDevice
+                ));
+                params.menger4d_data = reinterpret_cast<Menger4DData*>(impl->d_menger4d_data);
+                params.num_menger4d = static_cast<unsigned int>(impl->menger4d_data.size());
+            } else {
+                params.menger4d_data = nullptr;
+                params.num_menger4d = 0;
+            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -1356,6 +1382,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_cones = 0;
             params.plane_data = nullptr;
             params.num_plane_data = 0;
+            params.menger4d_data = nullptr;
+            params.num_menger4d = 0;
         }
 
         // Dynamic scene data
@@ -2244,6 +2272,102 @@ int OptiXWrapper::addPlaneInstance(
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
     inst.texture_index = plane_index;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
+    inst.active        = true;
+    inst.mesh_index    = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+
+    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
+
+    impl->ias_dirty = true;
+
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
+int OptiXWrapper::addMenger4DInstance(
+    int level, int dist_threshold,
+    float x, float y, float z, float scale,
+    float eye_w, float screen_w,
+    float rot_xw, float rot_yw, float rot_zw,
+    float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular,
+    float emission, float film_thickness
+) {
+    if (impl->instances.size() >= impl->max_instances) {
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Menger4D] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
+        return -1;
+    }
+    if (level < 0 || level > 14) {
+        std::cerr << "[OptiX][Menger4D] Level must be 0-14, got " << level << std::endl;
+        return -1;
+    }
+
+    // Conservative AABB: projected sponge fits within scale radius of pos
+    OptixAabb aabb;
+    aabb.minX = x - scale; aabb.maxX = x + scale;
+    aabb.minY = y - scale; aabb.maxY = y + scale;
+    aabb.minZ = z - scale; aabb.maxZ = z + scale;
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+
+    // Build per-instance data
+    Menger4DData m4d;
+    m4d.pos[0]  = x; m4d.pos[1] = y; m4d.pos[2] = z;
+    m4d.scale   = scale;
+    m4d.eye_w   = eye_w;
+    m4d.screen_w = screen_w;
+    m4d.level   = level;
+    m4d.dist_threshold = dist_threshold;
+    compose_rotation_xw_yw_zw(m4d.rotation4d, rot_xw, rot_yw, rot_zw);
+
+    int m4d_index = static_cast<int>(impl->menger4d_data.size());
+    impl->menger4d_data.push_back(m4d);
+
+    Impl::GASData gas_data;
+    gas_data.handle      = result.handle;
+    gas_data.gas_buffer  = result.gas_buffer;
+    gas_data.aabb_buffer = result.aabb_buffer;
+    impl->menger4d_gas_buffers.push_back(gas_data);
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_MENGER4D;
+    inst.gas_handle    = gas_data.handle;
+
+    float identity_transform[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
+
+    inst.color[0]      = r;
+    inst.color[1]      = g;
+    inst.color[2]      = b;
+    inst.color[3]      = a;
+    inst.ior           = ior;
+    inst.roughness     = roughness;
+    inst.metallic      = metallic;
+    inst.specular      = specular;
+    inst.emission      = emission;
+    inst.film_thickness = film_thickness;
+    inst.texture_index = m4d_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;

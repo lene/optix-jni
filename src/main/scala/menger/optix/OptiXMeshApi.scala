@@ -252,3 +252,22 @@ private[optix] trait OptiXMeshApi:
     ior: Float
   ): Option[Int] =
     addConeInstance(apex, base, radius, Material(color, ior))
+
+  def addMenger4DInstance(
+    level: Int,
+    distanceThreshold: Int,
+    position: Vector[3],
+    scale: Float,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float,
+    material: Material
+  ): Option[Int] =
+    val id = addMenger4DInstanceNative(
+      level, distanceThreshold,
+      position.x, position.y, position.z, scale,
+      eyeW, screenW, rotXW, rotYW, rotZW,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
+      material.filmThickness
+    )
+    if id >= 0 then Some(id) else None

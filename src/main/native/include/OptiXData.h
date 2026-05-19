@@ -156,7 +156,8 @@ enum GeometryType {
     GEOMETRY_TYPE_CYLINDER = 2,  // Custom cylinder primitive (uses intersection program)
     GEOMETRY_TYPE_CONE = 3,      // Custom cone primitive (uses intersection program)
     GEOMETRY_TYPE_PLANE = 4,     // Custom plane primitive (uses intersection program)
-    GEOMETRY_TYPE_COUNT = 5      // Number of geometry types
+    GEOMETRY_TYPE_MENGER4D = 5,  // 4D Menger sponge analog (iterative IFS in custom IS)
+    GEOMETRY_TYPE_COUNT = 6      // Number of geometry types
 };
 
 // Per-instance material data for IAS (indexed by instance ID)
@@ -461,6 +462,19 @@ struct PlaneData {
     // Total: 48 bytes
 };
 
+// 4D Menger sponge per-instance data for the IFS intersection shader.
+// Stored in params.menger4d_data buffer, indexed via InstanceMaterial.texture_index
+struct Menger4DData {
+    float pos[3];          // 3D world position of the sponge center (12 bytes)
+    float scale;           // World scale (projected coords multiplied by this) (4 bytes)
+    float rotation4d[16];  // 4x4 rotation matrix in 4D, row-major (64 bytes)
+    float eye_w;           // W coordinate of perspective eye point (4 bytes)
+    float screen_w;        // W coordinate of projection screen (4 bytes)
+    int   level;           // IFS recursion depth (4 bytes)
+    int   dist_threshold;  // Generator keep predicate: abs-sum > dist_threshold (4 bytes)
+    // Total: 96 bytes
+};
+
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
@@ -510,6 +524,10 @@ struct Params {
     // Plane geometry data buffer (for plane intersection shader)
     PlaneData* plane_data;          // Device pointer to array of plane geometry
     unsigned int num_plane_data;    // Number of IS-plane instances
+
+    // 4D Menger sponge geometry data buffer (for IFS intersection shader)
+    Menger4DData* menger4d_data;    // Device pointer to array of Menger4DData
+    unsigned int num_menger4d;      // Number of menger4d instances
 
     // Adaptive antialiasing
     bool  aa_enabled;           // Enable adaptive antialiasing

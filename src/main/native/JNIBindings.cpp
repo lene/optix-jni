@@ -1196,6 +1196,38 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addPlaneInstanceNative(
 }
 
 /**
+ * Add a 4D Menger sponge analog instance (iterative IFS, O(1) VRAM).
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addMenger4DInstanceNative(
+    JNIEnv* env, jobject obj,
+    jint level, jint distThreshold,
+    jfloat x, jfloat y, jfloat z, jfloat scale,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW,
+    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+
+        return wrapper->addMenger4DInstance(
+            (int)level, (int)distThreshold,
+            x, y, z, scale,
+            eyeW, screenW,
+            rotXW, rotYW, rotZW,
+            r, g, b, a, ior,
+            roughness, metallic, specular, emission, filmThickness
+        );
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addMenger4DInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Remove an instance by ID.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(
