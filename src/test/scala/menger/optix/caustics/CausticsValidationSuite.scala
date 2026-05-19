@@ -1,17 +1,12 @@
 package menger.optix.caustics
 
-import scala.math.Pi
-import scala.math.abs
 import scala.math.asin
-import scala.math.cos
 import scala.math.sin
-import scala.math.sqrt
 
 import menger.common.Color
 import menger.common.Const
 import menger.common.ImageSize
 import menger.common.Vector
-import menger.optix.OptiXRenderer
 import menger.optix.RendererFixture
 import menger.optix.TestScenario
 import menger.optix.TestUtilities

@@ -4,7 +4,6 @@ import menger.common.Const
 import menger.common.ImageSize
 import menger.common.Vector
 import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
-import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

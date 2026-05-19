@@ -1,7 +1,6 @@
 package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.Color
 import menger.optix.ImageMatchers.haveBrightnessStdDevGreaterThan
 import menger.optix.ThresholdConstants.MIN_BRIGHTNESS_VARIATION
 import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE

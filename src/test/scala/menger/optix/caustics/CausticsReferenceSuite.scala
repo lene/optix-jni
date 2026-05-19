@@ -4,17 +4,11 @@ import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 
-import scala.math.max
-import scala.math.min
-import scala.math.sqrt
-
 import menger.common.Color
 import menger.common.Const
 import menger.common.ImageSize
 import menger.common.Vector
-import menger.optix.OptiXRenderer
 import menger.optix.RendererFixture
-import menger.optix.Slow
 import menger.optix.TestScenario
 import menger.optix.TestUtilities
 import menger.optix.ThresholdConstants

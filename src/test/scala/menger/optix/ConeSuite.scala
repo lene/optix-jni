@@ -1,12 +1,9 @@
 package menger.optix
 
-import menger.common.Color
-import menger.common.ImageSize
 import menger.common.Vector
 import menger.optix.ColorConstants.OPAQUE_BLUE
 import menger.optix.ColorConstants.OPAQUE_GREEN
 import menger.optix.ColorConstants.OPAQUE_RED
-import menger.optix.ColorConstants.OPAQUE_WHITE
 import menger.optix.ThresholdConstants.QUICK_TEST_SIZE
 import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec

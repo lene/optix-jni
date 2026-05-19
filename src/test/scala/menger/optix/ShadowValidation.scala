@@ -4,7 +4,6 @@ import scala.math.abs
 
 import menger.common.ImageSize
 import menger.optix.TestUtilities.Region
-import menger.optix.TestUtilities.regionBrightness
 
 
 object ShadowValidation:

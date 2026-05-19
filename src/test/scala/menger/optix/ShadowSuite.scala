@@ -28,7 +28,6 @@ import menger.optix.ThresholdConstants.RADIUS_TOLERANCE_RATIO
 import menger.optix.ThresholdConstants.RENDER_ITERATIONS
 import menger.optix.ThresholdConstants.SMALL_SHADOW_SHIFT
 import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
-import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import menger.optix.ThresholdConstants.TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO
 import menger.optix.ThresholdConstants.TRANSPARENT_SHADOW_MIN_BRIGHTNESS
 import menger.optix.ThresholdConstants.WIDE_CENTER_TOLERANCE_FRACTION

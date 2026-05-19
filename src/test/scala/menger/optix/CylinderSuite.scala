@@ -1,7 +1,6 @@
 package menger.optix
 
 import menger.common.Color
-import menger.common.ImageSize
 import menger.common.Vector
 import menger.optix.ColorConstants.OPAQUE_BLUE
 import menger.optix.ColorConstants.OPAQUE_GREEN

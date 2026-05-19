@@ -14,12 +14,8 @@ import menger.optix.ColorConstants.OPAQUE_SHADOW_TEST_GRAY
 import menger.optix.ColorConstants.OPAQUE_WHITE
 import menger.optix.ColorConstants.PERFORMANCE_TEST_GREEN_CYAN
 import menger.optix.ColorConstants.PERFORMANCE_TEST_WHITE
-import menger.optix.ColorConstants.Red
 import menger.optix.ColorConstants.SEMI_TRANSPARENT_GREEN
 import menger.optix.ColorConstants.TRANSLUCENT_GREEN_CYAN
-import menger.optix.ColorConstants.withAlpha
-import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
-import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 
 case class SphereConfig(
   position: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),

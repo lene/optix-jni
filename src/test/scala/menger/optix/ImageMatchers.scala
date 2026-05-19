@@ -10,7 +10,6 @@ import menger.optix.ThresholdConstants.MIN_GLASS_REFRACTION_STDDEV
 import menger.optix.ThresholdConstants.MIN_WATER_REFRACTION_STDDEV
 import menger.optix.ThresholdConstants.SMALL_SPHERE_MAX_AREA
 import menger.optix.ThresholdConstants.SPHERE_CENTER_TOLERANCE
-import org.scalatest.matchers.BeMatcher
 import org.scalatest.matchers.MatchResult
 import org.scalatest.matchers.Matcher
 

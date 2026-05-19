@@ -5,9 +5,6 @@ import menger.optix.ColorConstants.OPAQUE_BLUE
 import menger.optix.ColorConstants.OPAQUE_GREEN
 import menger.optix.ColorConstants.OPAQUE_RED
 import menger.optix.ColorConstants.OPAQUE_WHITE
-import menger.optix.ImageValidation.detectSphereCenter
-import menger.optix.ImageValidation.dominantColorChannel
-import menger.optix.ImageValidation.spherePixelArea
 import menger.optix.ThresholdConstants.LARGE_SPHERE_MIN_AREA
 import menger.optix.ThresholdConstants.MEDIUM_SPHERE_MAX_AREA
 import menger.optix.ThresholdConstants.MEDIUM_SPHERE_MIN_AREA

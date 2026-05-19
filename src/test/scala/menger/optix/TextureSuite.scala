@@ -1,6 +1,5 @@
 package menger.optix
 
-import scala.util.Failure
 import scala.util.Success
 
 import org.scalatest.flatspec.AnyFlatSpec

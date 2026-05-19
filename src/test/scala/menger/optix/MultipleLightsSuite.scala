@@ -3,7 +3,6 @@ package menger.optix
 import menger.common.Color
 import menger.common.Light
 import menger.common.Vector
-import menger.optix.ImageValidation.imageByteSize
 import menger.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec

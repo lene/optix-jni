@@ -1,6 +1,8 @@
 package menger.optix
 
-import menger.common.{Color, ImageSize, Vector}
+import menger.common.Color
+import menger.common.ImageSize
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

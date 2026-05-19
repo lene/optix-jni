@@ -1,9 +1,6 @@
 package menger.optix.visualization
 
-import menger.common.Color
-import menger.common.Const
 import menger.common.ImageSize
-import menger.common.Vector
 import menger.optix.ColorConstants
 import menger.optix.ImageValidation
 import menger.optix.OptiXRenderer

@@ -16,8 +16,6 @@ import menger.optix.ImageMatchers.beGrayscale
 import menger.optix.ImageMatchers.beGreenDominant
 import menger.optix.ImageMatchers.beRedDominant
 import menger.optix.ImageMatchers.haveBrightnessStdDevGreaterThan
-import menger.optix.Slow
-import menger.optix.ThresholdConstants.BACKGROUND_GRAYSCALE_TOLERANCE
 import menger.optix.ThresholdConstants.GRAYSCALE_TOLERANCE
 import menger.optix.ThresholdConstants.MIN_BRIGHTNESS_VARIATION
 import menger.optix.ThresholdConstants.MIN_COLOR_CHANNEL_DIFFERENCE

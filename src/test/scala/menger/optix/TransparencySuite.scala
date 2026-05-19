@@ -2,12 +2,10 @@ package menger.optix
 
 import com.typesafe.scalalogging.LazyLogging
 import menger.common.Color
-import menger.optix.ColorConstants.Blue
 import menger.optix.ColorConstants.FULLY_TRANSPARENT_GREEN
 import menger.optix.ColorConstants.MOSTLY_OPAQUE_GREEN
 import menger.optix.ColorConstants.MOSTLY_TRANSPARENT_GREEN
 import menger.optix.ColorConstants.NEARLY_TRANSPARENT_WHITE
-import menger.optix.ColorConstants.Red
 import menger.optix.ColorConstants.SEMI_TRANSPARENT_GREEN
 import menger.optix.ImageMatchers.haveBrightnessStdDevGreaterThan
 import menger.optix.ImageMatchers.showPlaneInRegion
@@ -16,7 +14,6 @@ import menger.optix.ThresholdConstants.MIN_BASIC_REFRACTION_STDDEV
 import menger.optix.ThresholdConstants.MIN_SEMI_TRANSPARENT_AREA
 import menger.optix.ThresholdConstants.MIN_VISIBLE_SPHERE_AREA
 import menger.optix.ThresholdConstants.TEST_IMAGE_SIZE
-import menger.optix.ThresholdConstants.TRANSPARENT_SHADOW_MIN_BRIGHTNESS
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
