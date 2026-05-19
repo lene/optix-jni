@@ -271,3 +271,12 @@ private[optix] trait OptiXMeshApi:
       material.filmThickness
     )
     if id >= 0 then Some(id) else None
+
+  def updateMenger4DProjection(
+    instanceId: Int,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float
+  ): Unit =
+    require(instanceId >= 0, s"instanceId must be non-negative, got $instanceId")
+    val rc = updateMenger4DProjectionNative(instanceId, eyeW, screenW, rotXW, rotYW, rotZW)
+    require(rc == 0, s"updateMenger4DProjection failed with code $rc (instanceId=$instanceId)")

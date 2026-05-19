@@ -1228,6 +1228,26 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addMenger4DInstanceNative
 }
 
 /**
+ * Update 4D projection params for an existing menger4d instance.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMenger4DProjectionNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        return wrapper->updateMenger4DProjection(instanceId, eyeW, screenW, rotXW, rotYW, rotZW);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateMenger4DProjection: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Remove an instance by ID.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(

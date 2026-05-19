@@ -2390,6 +2390,33 @@ int OptiXWrapper::addMenger4DInstance(
     return instanceId;
 }
 
+int OptiXWrapper::updateMenger4DProjection(
+    int instanceId,
+    float eye_w, float screen_w,
+    float rot_xw, float rot_yw, float rot_zw
+) {
+    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) {
+        std::cerr << "[OptiX][Menger4D] updateMenger4DProjection: instanceId "
+                  << instanceId << " out of range" << std::endl;
+        return -1;
+    }
+    auto& inst = impl->instances[instanceId];
+    if (inst.geometry_type != GEOMETRY_TYPE_MENGER4D) {
+        std::cerr << "[OptiX][Menger4D] updateMenger4DProjection: instance "
+                  << instanceId << " is not a Menger4D instance" << std::endl;
+        return -2;
+    }
+    int m4d_index = inst.texture_index;
+    if (m4d_index < 0 || m4d_index >= (int)impl->menger4d_data.size()) {
+        return -3;
+    }
+    auto& m4d = impl->menger4d_data[m4d_index];
+    m4d.eye_w    = eye_w;
+    m4d.screen_w = screen_w;
+    compose_rotation_xw_yw_zw(m4d.rotation4d, rot_xw, rot_yw, rot_zw);
+    return 0;
+}
+
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
     impl->ias_dirty = true;

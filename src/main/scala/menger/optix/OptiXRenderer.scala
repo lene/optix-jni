@@ -342,6 +342,12 @@ class OptiXRenderer
     filmThickness: Float
   ): Int
 
+  @native private[optix] def updateMenger4DProjectionNative(
+    instanceId: Int,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float
+  ): Int
+
   @native def removeInstance(instanceId: Int): Unit
   @native def clearAllInstances(): Unit
   @native def getInstanceCount(): Int

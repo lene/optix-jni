@@ -231,6 +231,15 @@ public:
         float emission = 0.0f, float film_thickness = 0.0f
     );
 
+    // Update 4D projection params for an existing menger4d instance.
+    // menger4d_data is re-uploaded every frame, so changes take effect next render.
+    // Returns 0 on success; negative on error (invalid instanceId or wrong geometry type).
+    int updateMenger4DProjection(
+        int instanceId,
+        float eye_w, float screen_w,
+        float rot_xw, float rot_yw, float rot_zw
+    );
+
     // Recursive-IAS Menger sponge (Sprint 18.4).
     // Wraps the most-recently-uploaded triangle mesh (call setTriangleMesh first with a
     // unit cube) in `level` nested IAS layers using the 20 Menger generator transforms.
