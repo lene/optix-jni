@@ -334,9 +334,10 @@ extern "C" __global__ void __closesthit__menger4d() {
         __uint_as_float(optixGetAttribute_1()),
         __uint_as_float(optixGetAttribute_2())
     );
-    // Flip normal to face the camera, matching hit_triangle.cu:156-159.
-    // 4D perspective projection can flip winding; this ensures correct shading.
-    if (dot3f(ray_direction, normal) > 0.f)
+    // Determine entering before flipping normal.
+    // 4D perspective projection can flip winding inconsistently; flip normal to face camera.
+    const bool entering = (dot3f(ray_direction, normal) < 0.f);
+    if (!entering)
         normal = make_float3(-normal.x, -normal.y, -normal.z);
 
     const unsigned int depth = optixGetPayload_3();
@@ -355,21 +356,57 @@ extern "C" __global__ void __closesthit__menger4d() {
     if (proc_type != 0)
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
 
-    if (depth == 0 && metallic > 0.0f) {
-        handleMetallicOpaque(hit_point, ray_direction, normal,
-                             material_color, metallic, depth, emission);
+    const float alpha = material_color.w;
+
+    if (alpha < RayTracingConstants::ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
+        handleFullyTransparent(hit_point, ray_direction, depth);
         return;
     }
 
-    const float3 final_lighting = calculateLighting(hit_point, normal, false, true);
+    if (alpha >= RayTracingConstants::ALPHA_FULLY_OPAQUE_THRESHOLD) {
+        if (metallic > 0.0f) {
+            handleMetallicOpaque(hit_point, ray_direction, normal,
+                                 material_color, metallic, depth, emission);
+        } else {
+            handleFullyOpaque(hit_point, normal, material_color, emission);
+        }
+        return;
+    }
 
-    const float final_r = material_color.x * final_lighting.x * RayTracingConstants::COLOR_SCALE_FACTOR;
-    const float final_g = material_color.y * final_lighting.y * RayTracingConstants::COLOR_SCALE_FACTOR;
-    const float final_b = material_color.z * final_lighting.z * RayTracingConstants::COLOR_SCALE_FACTOR;
+    // Semi-transparent (glass/water) path: refraction + reflection + Fresnel blend
+    if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
+        traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
+        return;
+    }
 
-    optixSetPayload_0(static_cast<unsigned int>(fminf(final_r + emission * material_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_1(static_cast<unsigned int>(fminf(final_g + emission * material_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_2(static_cast<unsigned int>(fminf(final_b + emission * material_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
+
+    unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
+    const bool refraction_occurred = traceRefractedRay(
+        hit_point, ray_direction, normal, entering, depth, material_ior,
+        refract_r, refract_g, refract_b
+    );
+
+    if (!refraction_occurred) {
+        refract_r = reflect_r;
+        refract_g = reflect_g;
+        refract_b = reflect_b;
+    }
+
+    float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
+    refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color);
+
+    if (film_thickness > 0.0f) {
+        const float cos_theta = fabsf(dot3f(ray_direction, normal));
+        const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, material_ior, film_thickness);
+        blendFresnelColorsRGBAndSetPayload(fresnel_rgb, reflect_r, reflect_g, reflect_b,
+                                           refract_color, material_color, emission);
+    } else {
+        const float fresnel = computeFresnelReflectance(ray_direction, normal, entering, material_ior);
+        blendFresnelColorsAndSetPayload(fresnel, reflect_r, reflect_g, reflect_b,
+                                        refract_color, material_color, emission);
+    }
 }
 
 extern "C" __global__ void __anyhit__menger4d_shadow() {

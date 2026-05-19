@@ -77,6 +77,22 @@ class Menger4DRenderSuite extends AnyFlatSpec with Matchers with LazyLogging wit
     val stdDev = ImageValidation.brightnessStdDev(img, TEST_IMAGE_SIZE)
     stdDev should be > 5.0
 
+  it should "render glass differently from opaque white" in:
+    val whiteOpaque = Material(ColorConstants.OPAQUE_WHITE)
+
+    renderer.addMenger4DInstance(0, 2, pos, scale, eyeW, screenW, 15f, 10f, 0f, Material.Glass)
+    val glassImg = renderImage(TEST_IMAGE_SIZE)
+
+    renderer.clearAllInstances()
+    renderer.addMenger4DInstance(0, 2, pos, scale, eyeW, screenW, 15f, 10f, 0f, whiteOpaque)
+    val opaqueImg = renderImage(TEST_IMAGE_SIZE)
+
+    // If glass fallback to diffuse: both renders identical → diff ≈ 0.
+    // With correct glass path: refraction + Fresnel differ from opaque lit surface.
+    val n = TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
+    val pixelDiff = (0 until n).map(i => math.abs((glassImg(i) & 0xff) - (opaqueImg(i) & 0xff))).sum
+    pixelDiff should be > 10000
+
   it should "render level 2" in:
     renderer.addMenger4DInstance(
       2, 2, pos, scale, eyeW, screenW, 15f, 10f, 0f,
