@@ -1248,6 +1248,58 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMenger4DProjectionN
 }
 
 /**
+ * Add a 4D Sierpinski pentachoron analog instance (iterative IFS, O(1) VRAM).
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSierpinski4DInstanceNative(
+    JNIEnv* env, jobject obj,
+    jint level,
+    jfloat x, jfloat y, jfloat z, jfloat scale,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW,
+    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+
+        return wrapper->addSierpinski4DInstance(
+            (int)level,
+            x, y, z, scale,
+            eyeW, screenW,
+            rotXW, rotYW, rotZW,
+            r, g, b, a, ior,
+            roughness, metallic, specular, emission, filmThickness
+        );
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addSierpinski4DInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
+ * Update 4D projection params for an existing sierpinski4d instance.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateSierpinski4DProjectionNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        return wrapper->updateSierpinski4DProjection(instanceId, eyeW, screenW, rotXW, rotYW, rotZW);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateSierpinski4DProjection: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Remove an instance by ID.
  */
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(

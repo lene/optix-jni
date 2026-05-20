@@ -142,6 +142,13 @@ struct OptiXWrapper::Impl {
     // Track menger4d GAS buffers (each instance has its own AABB GAS)
     std::vector<GASData> menger4d_gas_buffers;
 
+    // 4D Sierpinski pentachoron geometry data (host-side, uploaded to GPU before render)
+    std::vector<Sierpinski4DData> sierpinski4d_data;
+    CUdeviceptr d_sierpinski4d_data = 0;            // Device array of Sierpinski4DData for Params
+
+    // Track sierpinski4d GAS buffers (each instance has its own AABB GAS)
+    std::vector<GASData> sierpinski4d_gas_buffers;
+
     // Sub-IAS lifetime storage for recursive-IAS Menger sponges (Sprint 18.4).
     // Each entry owns one nested IAS layer's instance buffer + IAS output buffer.
     struct SubIASData {
@@ -1365,6 +1372,25 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.menger4d_data = nullptr;
                 params.num_menger4d = 0;
             }
+
+            if (!impl->sierpinski4d_data.empty()) {
+                size_t s4d_size = impl->sierpinski4d_data.size() * sizeof(Sierpinski4DData);
+                if (impl->d_sierpinski4d_data) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_sierpinski4d_data), s4d_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_sierpinski4d_data),
+                    impl->sierpinski4d_data.data(),
+                    s4d_size,
+                    cudaMemcpyHostToDevice
+                ));
+                params.sierpinski4d_data = reinterpret_cast<Sierpinski4DData*>(impl->d_sierpinski4d_data);
+                params.num_sierpinski4d = static_cast<unsigned int>(impl->sierpinski4d_data.size());
+            } else {
+                params.sierpinski4d_data = nullptr;
+                params.num_sierpinski4d = 0;
+            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -1384,6 +1410,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_plane_data = 0;
             params.menger4d_data = nullptr;
             params.num_menger4d = 0;
+            params.sierpinski4d_data = nullptr;
+            params.num_sierpinski4d = 0;
         }
 
         // Dynamic scene data
@@ -2417,6 +2445,126 @@ int OptiXWrapper::updateMenger4DProjection(
     return 0;
 }
 
+int OptiXWrapper::addSierpinski4DInstance(
+    int level,
+    float x, float y, float z, float scale,
+    float eye_w, float screen_w,
+    float rot_xw, float rot_yw, float rot_zw,
+    float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular,
+    float emission, float film_thickness
+) {
+    if (impl->instances.size() >= impl->max_instances) {
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Sierpinski4D] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
+        return -1;
+    }
+    if (level < 0 || level > 14) {
+        std::cerr << "[OptiX][Sierpinski4D] Level must be 0-14, got " << level << std::endl;
+        return -1;
+    }
+
+    OptixAabb aabb;
+    aabb.minX = x - scale; aabb.maxX = x + scale;
+    aabb.minY = y - scale; aabb.maxY = y + scale;
+    aabb.minZ = z - scale; aabb.maxZ = z + scale;
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+
+    Sierpinski4DData s4d;
+    s4d.pos[0]   = x; s4d.pos[1] = y; s4d.pos[2] = z;
+    s4d.scale    = scale;
+    s4d.eye_w    = eye_w;
+    s4d.screen_w = screen_w;
+    s4d.level    = level;
+    s4d._pad     = 0;
+    compose_rotation_xw_yw_zw(s4d.rotation4d, rot_xw, rot_yw, rot_zw);
+
+    int s4d_index = static_cast<int>(impl->sierpinski4d_data.size());
+    impl->sierpinski4d_data.push_back(s4d);
+
+    Impl::GASData gas_data;
+    gas_data.handle      = result.handle;
+    gas_data.gas_buffer  = result.gas_buffer;
+    gas_data.aabb_buffer = result.aabb_buffer;
+    impl->sierpinski4d_gas_buffers.push_back(gas_data);
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_SIERPINSKI4D;
+    inst.gas_handle    = gas_data.handle;
+
+    float identity_transform[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
+
+    inst.color[0]       = r;
+    inst.color[1]       = g;
+    inst.color[2]       = b;
+    inst.color[3]       = a;
+    inst.ior            = ior;
+    inst.roughness      = roughness;
+    inst.metallic       = metallic;
+    inst.specular       = specular;
+    inst.emission       = emission;
+    inst.film_thickness = film_thickness;
+    inst.texture_index  = s4d_index;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
+    inst.active    = true;
+    inst.mesh_index = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+
+    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
+    impl->ias_dirty = true;
+
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
+int OptiXWrapper::updateSierpinski4DProjection(
+    int instanceId,
+    float eye_w, float screen_w,
+    float rot_xw, float rot_yw, float rot_zw
+) {
+    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) {
+        std::cerr << "[OptiX][Sierpinski4D] updateSierpinski4DProjection: instanceId "
+                  << instanceId << " out of range" << std::endl;
+        return -1;
+    }
+    auto& inst = impl->instances[instanceId];
+    if (inst.geometry_type != GEOMETRY_TYPE_SIERPINSKI4D) {
+        std::cerr << "[OptiX][Sierpinski4D] updateSierpinski4DProjection: instance "
+                  << instanceId << " is not a Sierpinski4D instance" << std::endl;
+        return -2;
+    }
+    int s4d_index = inst.texture_index;
+    if (s4d_index < 0 || s4d_index >= (int)impl->sierpinski4d_data.size()) {
+        return -3;
+    }
+    auto& s4d = impl->sierpinski4d_data[s4d_index];
+    s4d.eye_w    = eye_w;
+    s4d.screen_w = screen_w;
+    compose_rotation_xw_yw_zw(s4d.rotation4d, rot_xw, rot_yw, rot_zw);
+    return 0;
+}
+
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
     impl->ias_dirty = true;
@@ -2459,6 +2607,13 @@ void OptiXWrapper::clearAllInstances() {
         impl->d_plane_data = 0;
     }
 
+    // Clear sierpinski4d data
+    impl->sierpinski4d_data.clear();
+    if (impl->d_sierpinski4d_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
+        impl->d_sierpinski4d_data = 0;
+    }
+
     // CRITICAL: Synchronize CUDA before freeing GAS buffers
     // The IAS may still have pending GPU operations referencing these buffers
     cudaError_t sync_err = cudaDeviceSynchronize();
@@ -2498,6 +2653,17 @@ void OptiXWrapper::clearAllInstances() {
         }
     }
     impl->plane_gas_buffers.clear();
+
+    // Free sierpinski4d GAS buffers
+    for (const auto& gas : impl->sierpinski4d_gas_buffers) {
+        if (gas.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
+        }
+        if (gas.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
+        }
+    }
+    impl->sierpinski4d_gas_buffers.clear();
 
     // Free recursive-IAS sponge sub-IAS buffers (Sprint 18.4)
     for (const auto& sub : impl->sub_ias_buffers) {
