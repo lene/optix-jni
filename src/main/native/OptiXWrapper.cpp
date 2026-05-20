@@ -2633,7 +2633,7 @@ int OptiXWrapper::addHexadecachoron4DInstance(
     h4d.eye_w    = eye_w;
     h4d.screen_w = screen_w;
     h4d.level    = level;
-    h4d.hit_bias = (a < 0.999f) ? 0.001f : 0.0f;
+    h4d.hit_bias = (a < 0.999f) ? 0.01f : 0.0f;
     compose_rotation_xw_yw_zw(h4d.rotation4d, rot_xw, rot_yw, rot_zw);
 
     int h4d_index = static_cast<int>(impl->hexadecachoron4d_data.size());
