@@ -348,6 +348,22 @@ class OptiXRenderer
     rotXW: Float, rotYW: Float, rotZW: Float
   ): Int
 
+  @native private[optix] def addSierpinski4DInstanceNative(
+    level: Int,
+    x: Float, y: Float, z: Float,
+    scale: Float, eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float,
+    specular: Float, emission: Float, filmThickness: Float
+  ): Int
+
+  @native private[optix] def updateSierpinski4DProjectionNative(
+    instanceId: Int,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float
+  ): Int
+
   @native def removeInstance(instanceId: Int): Unit
   @native def clearAllInstances(): Unit
   @native def getInstanceCount(): Int
