@@ -82,10 +82,10 @@ class Sierpinski4DRenderSuite extends AnyFlatSpec with Matchers with LazyLogging
     )
     val level2Img = renderImage(TEST_IMAGE_SIZE)
 
-    // Level 2 fractal has more subdivisions: brightness variance should differ
+    // Level 2 fractal has more subdivisions: brightness variance should differ meaningfully
     val n = TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
     val pixelDiff = (0 until n).map(i => math.abs((level1Img(i) & 0xff) - (level2Img(i) & 0xff))).sum
-    pixelDiff should be > 0
+    pixelDiff should be > 1000
 
   it should "show 4D nature: different rotXW produces different output" in:
     renderer.addSierpinski4DInstance(
@@ -101,7 +101,7 @@ class Sierpinski4DRenderSuite extends AnyFlatSpec with Matchers with LazyLogging
     )
     val rot05Img = renderImage(TEST_IMAGE_SIZE)
 
-    // Different 4D rotation angles must produce different 3D cross-sections
+    // Different 4D rotation angles must produce meaningfully different 3D cross-sections
     val n = TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
     val pixelDiff = (0 until n).map(i => math.abs((rot0Img(i) & 0xff) - (rot05Img(i) & 0xff))).sum
-    pixelDiff should be > 0
+    pixelDiff should be > 1000
