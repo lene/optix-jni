@@ -80,6 +80,11 @@ private:
     OptixProgramGroup menger4d_hitgroup_prog_group = nullptr;
     OptixProgramGroup menger4d_shadow_hitgroup_prog_group = nullptr;
 
+    // Sierpinski4D program groups
+    OptixProgramGroup sierpinski4d_hitgroup_prog_group = nullptr;
+    OptixProgramGroup sierpinski4d_shadow_hitgroup_prog_group = nullptr;
+    OptixProgramGroup photon_sierpinski4d_hitgroup = nullptr;
+
     // Photon ray program groups (for caustics RAY_TYPE_PHOTON)
     OptixProgramGroup photon_sphere_hitgroup = nullptr;
     OptixProgramGroup photon_triangle_hitgroup = nullptr;
