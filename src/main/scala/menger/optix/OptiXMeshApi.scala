@@ -307,3 +307,30 @@ private[optix] trait OptiXMeshApi:
     require(instanceId >= 0, s"instanceId must be non-negative, got $instanceId")
     val rc = updateSierpinski4DProjectionNative(instanceId, eyeW, screenW, rotXW, rotYW, rotZW)
     require(rc == 0, s"updateSierpinski4DProjection failed with code $rc (instanceId=$instanceId)")
+
+  def addHexadecachoron4DInstance(
+    level: Int,
+    position: Vector[3],
+    scale: Float,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float,
+    material: Material
+  ): Option[Int] =
+    val id = addHexadecachoron4DInstanceNative(
+      level,
+      position.x, position.y, position.z, scale,
+      eyeW, screenW, rotXW, rotYW, rotZW,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
+      material.filmThickness
+    )
+    if id >= 0 then Some(id) else None
+
+  def updateHexadecachoron4DProjection(
+    instanceId: Int,
+    eyeW: Float, screenW: Float,
+    rotXW: Float, rotYW: Float, rotZW: Float
+  ): Unit =
+    require(instanceId >= 0, s"instanceId must be non-negative, got $instanceId")
+    val rc = updateHexadecachoron4DProjectionNative(instanceId, eyeW, screenW, rotXW, rotYW, rotZW)
+    require(rc == 0, s"updateHexadecachoron4DProjection failed with code $rc (instanceId=$instanceId)")
