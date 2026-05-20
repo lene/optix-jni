@@ -1377,6 +1377,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 size_t s4d_size = impl->sierpinski4d_data.size() * sizeof(Sierpinski4DData);
                 if (impl->d_sierpinski4d_data) {
                     cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
+                    impl->d_sierpinski4d_data = 0;
                 }
                 CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_sierpinski4d_data), s4d_size));
                 CUDA_CHECK(cudaMemcpy(
