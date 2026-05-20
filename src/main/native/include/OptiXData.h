@@ -486,7 +486,7 @@ struct Sierpinski4DData {
     float eye_w;           // W coordinate of perspective eye point (4 bytes)
     float screen_w;        // W coordinate of projection screen (4 bytes)
     int   level;           // IFS recursion depth (4 bytes)
-    int   _pad;            // Padding for alignment (4 bytes)
+    float hit_bias;        // Added to reported t to let the fine instance win over the coarse (4 bytes)
     // Total: 96 bytes
 };
 
@@ -499,7 +499,7 @@ struct Hexadecachoron4DData {
     float eye_w;           // W coordinate of perspective eye point (4 bytes)
     float screen_w;        // W coordinate of projection screen (4 bytes)
     int   level;           // IFS recursion depth (4 bytes)
-    int   _pad;            // Padding for alignment (4 bytes)
+    float hit_bias;        // Added to reported t to let the fine instance win over the coarse (4 bytes)
     // Total: 96 bytes
 };
 

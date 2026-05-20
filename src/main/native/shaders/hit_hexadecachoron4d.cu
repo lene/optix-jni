@@ -229,7 +229,7 @@ extern "C" __global__ void __intersection__hexadecachoron4d() {
 
     if (best_t < ray_tmax) {
         optixReportIntersection(
-            best_t, 0,
+            best_t + s.hit_bias, 0,
             __float_as_uint(best_normal.x),
             __float_as_uint(best_normal.y),
             __float_as_uint(best_normal.z)
