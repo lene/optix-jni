@@ -158,7 +158,8 @@ enum GeometryType {
     GEOMETRY_TYPE_PLANE = 4,     // Custom plane primitive (uses intersection program)
     GEOMETRY_TYPE_MENGER4D = 5,      // 4D Menger sponge analog (iterative IFS in custom IS)
     GEOMETRY_TYPE_SIERPINSKI4D = 6,  // 4D Sierpinski pentachoron analog (iterative IFS in custom IS)
-    GEOMETRY_TYPE_COUNT = 7          // Number of geometry types
+    GEOMETRY_TYPE_HEXADECACHORON4D = 7,  // 4D Sierpinski 16-cell analog (iterative IFS in custom IS)
+    GEOMETRY_TYPE_COUNT = 8          // Number of geometry types
 };
 
 // Per-instance material data for IAS (indexed by instance ID)
@@ -489,6 +490,19 @@ struct Sierpinski4DData {
     // Total: 96 bytes
 };
 
+// 4D Sierpinski 16-cell (hexadecachoron) per-instance data for the IFS intersection shader.
+// Stored in params.hexadecachoron4d_data buffer, indexed via InstanceMaterial.texture_index
+struct Hexadecachoron4DData {
+    float pos[3];          // 3D world position of the fractal center (12 bytes)
+    float scale;           // World scale (projected coords multiplied by this) (4 bytes)
+    float rotation4d[16];  // 4x4 rotation matrix in 4D, row-major (64 bytes)
+    float eye_w;           // W coordinate of perspective eye point (4 bytes)
+    float screen_w;        // W coordinate of projection screen (4 bytes)
+    int   level;           // IFS recursion depth (4 bytes)
+    int   _pad;            // Padding for alignment (4 bytes)
+    // Total: 96 bytes
+};
+
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
@@ -546,6 +560,10 @@ struct Params {
     // 4D Sierpinski pentachoron geometry data buffer (for IFS intersection shader)
     Sierpinski4DData* sierpinski4d_data;    // Device pointer to array of Sierpinski4DData
     unsigned int num_sierpinski4d;          // Number of sierpinski4d instances
+
+    // 4D Sierpinski 16-cell (hexadecachoron) geometry data buffer (for IFS intersection shader)
+    Hexadecachoron4DData* hexadecachoron4d_data;    // Device pointer to array of Hexadecachoron4DData
+    unsigned int num_hexadecachoron4d;              // Number of hexadecachoron4d instances
 
     // Adaptive antialiasing
     bool  aa_enabled;           // Enable adaptive antialiasing
