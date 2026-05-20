@@ -149,6 +149,13 @@ struct OptiXWrapper::Impl {
     // Track sierpinski4d GAS buffers (each instance has its own AABB GAS)
     std::vector<GASData> sierpinski4d_gas_buffers;
 
+    // 4D Sierpinski 16-cell (hexadecachoron) geometry data (host-side, uploaded to GPU before render)
+    std::vector<Hexadecachoron4DData> hexadecachoron4d_data;
+    CUdeviceptr d_hexadecachoron4d_data = 0;        // Device array of Hexadecachoron4DData for Params
+
+    // Track hexadecachoron4d GAS buffers (each instance has its own AABB GAS)
+    std::vector<GASData> hexadecachoron4d_gas_buffers;
+
     // Sub-IAS lifetime storage for recursive-IAS Menger sponges (Sprint 18.4).
     // Each entry owns one nested IAS layer's instance buffer + IAS output buffer.
     struct SubIASData {
@@ -1392,6 +1399,26 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.sierpinski4d_data = nullptr;
                 params.num_sierpinski4d = 0;
             }
+
+            if (!impl->hexadecachoron4d_data.empty()) {
+                size_t h4d_size = impl->hexadecachoron4d_data.size() * sizeof(Hexadecachoron4DData);
+                if (impl->d_hexadecachoron4d_data) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_hexadecachoron4d_data));
+                    impl->d_hexadecachoron4d_data = 0;
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_hexadecachoron4d_data), h4d_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_hexadecachoron4d_data),
+                    impl->hexadecachoron4d_data.data(),
+                    h4d_size,
+                    cudaMemcpyHostToDevice
+                ));
+                params.hexadecachoron4d_data = reinterpret_cast<Hexadecachoron4DData*>(impl->d_hexadecachoron4d_data);
+                params.num_hexadecachoron4d = static_cast<unsigned int>(impl->hexadecachoron4d_data.size());
+            } else {
+                params.hexadecachoron4d_data = nullptr;
+                params.num_hexadecachoron4d = 0;
+            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -1413,6 +1440,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_menger4d = 0;
             params.sierpinski4d_data = nullptr;
             params.num_sierpinski4d = 0;
+            params.hexadecachoron4d_data = nullptr;
+            params.num_hexadecachoron4d = 0;
         }
 
         // Dynamic scene data
@@ -2566,6 +2595,126 @@ int OptiXWrapper::updateSierpinski4DProjection(
     return 0;
 }
 
+int OptiXWrapper::addHexadecachoron4DInstance(
+    int level,
+    float x, float y, float z, float scale,
+    float eye_w, float screen_w,
+    float rot_xw, float rot_yw, float rot_zw,
+    float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular,
+    float emission, float film_thickness
+) {
+    if (impl->instances.size() >= impl->max_instances) {
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Hexadecachoron4D] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
+        return -1;
+    }
+    if (level < 0 || level > 14) {
+        std::cerr << "[OptiX][Hexadecachoron4D] Level must be 0-14, got " << level << std::endl;
+        return -1;
+    }
+
+    OptixAabb aabb;
+    aabb.minX = x - scale; aabb.maxX = x + scale;
+    aabb.minY = y - scale; aabb.maxY = y + scale;
+    aabb.minZ = z - scale; aabb.maxZ = z + scale;
+
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
+
+    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+
+    Hexadecachoron4DData h4d;
+    h4d.pos[0]   = x; h4d.pos[1] = y; h4d.pos[2] = z;
+    h4d.scale    = scale;
+    h4d.eye_w    = eye_w;
+    h4d.screen_w = screen_w;
+    h4d.level    = level;
+    h4d._pad     = 0;
+    compose_rotation_xw_yw_zw(h4d.rotation4d, rot_xw, rot_yw, rot_zw);
+
+    int h4d_index = static_cast<int>(impl->hexadecachoron4d_data.size());
+    impl->hexadecachoron4d_data.push_back(h4d);
+
+    Impl::GASData gas_data;
+    gas_data.handle      = result.handle;
+    gas_data.gas_buffer  = result.gas_buffer;
+    gas_data.aabb_buffer = result.aabb_buffer;
+    impl->hexadecachoron4d_gas_buffers.push_back(gas_data);
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_HEXADECACHORON4D;
+    inst.gas_handle    = gas_data.handle;
+
+    float identity_transform[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
+
+    inst.color[0]       = r;
+    inst.color[1]       = g;
+    inst.color[2]       = b;
+    inst.color[3]       = a;
+    inst.ior            = ior;
+    inst.roughness      = roughness;
+    inst.metallic       = metallic;
+    inst.specular       = specular;
+    inst.emission       = emission;
+    inst.film_thickness = film_thickness;
+    inst.texture_index  = h4d_index;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
+    inst.active    = true;
+    inst.mesh_index = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+
+    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
+    impl->ias_dirty = true;
+
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
+int OptiXWrapper::updateHexadecachoron4DProjection(
+    int instanceId,
+    float eye_w, float screen_w,
+    float rot_xw, float rot_yw, float rot_zw
+) {
+    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) {
+        std::cerr << "[OptiX][Hexadecachoron4D] updateHexadecachoron4DProjection: instanceId "
+                  << instanceId << " out of range" << std::endl;
+        return -1;
+    }
+    auto& inst = impl->instances[instanceId];
+    if (inst.geometry_type != GEOMETRY_TYPE_HEXADECACHORON4D) {
+        std::cerr << "[OptiX][Hexadecachoron4D] updateHexadecachoron4DProjection: instance "
+                  << instanceId << " is not a Hexadecachoron4D instance" << std::endl;
+        return -2;
+    }
+    int h4d_index = inst.texture_index;
+    if (h4d_index < 0 || h4d_index >= (int)impl->hexadecachoron4d_data.size()) {
+        return -3;
+    }
+    auto& h4d = impl->hexadecachoron4d_data[h4d_index];
+    h4d.eye_w    = eye_w;
+    h4d.screen_w = screen_w;
+    compose_rotation_xw_yw_zw(h4d.rotation4d, rot_xw, rot_yw, rot_zw);
+    return 0;
+}
+
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
     impl->ias_dirty = true;
@@ -2613,6 +2762,13 @@ void OptiXWrapper::clearAllInstances() {
     if (impl->d_sierpinski4d_data) {
         cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
         impl->d_sierpinski4d_data = 0;
+    }
+
+    // Clear hexadecachoron4d data
+    impl->hexadecachoron4d_data.clear();
+    if (impl->d_hexadecachoron4d_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_hexadecachoron4d_data));
+        impl->d_hexadecachoron4d_data = 0;
     }
 
     // CRITICAL: Synchronize CUDA before freeing GAS buffers
@@ -2665,6 +2821,17 @@ void OptiXWrapper::clearAllInstances() {
         }
     }
     impl->sierpinski4d_gas_buffers.clear();
+
+    // Free hexadecachoron4d GAS buffers
+    for (const auto& gas : impl->hexadecachoron4d_gas_buffers) {
+        if (gas.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
+        }
+        if (gas.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
+        }
+    }
+    impl->hexadecachoron4d_gas_buffers.clear();
 
     // Free recursive-IAS sponge sub-IAS buffers (Sprint 18.4)
     for (const auto& sub : impl->sub_ias_buffers) {

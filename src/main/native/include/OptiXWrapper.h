@@ -261,6 +261,27 @@ public:
         float rot_xw, float rot_yw, float rot_zw
     );
 
+    // 4D Sierpinski 16-cell (hexadecachoron) analog via iterative IFS ray traversal.
+    // O(1) VRAM: single AABB GAS + per-thread stack in intersection shader.
+    // No dist_threshold — Hexadecachoron4D has no threshold filtering.
+    int addHexadecachoron4DInstance(
+        int level,
+        float x, float y, float z, float scale,
+        float eye_w, float screen_w,
+        float rot_xw, float rot_yw, float rot_zw,
+        float r, float g, float b, float a, float ior,
+        float roughness, float metallic, float specular,
+        float emission, float film_thickness
+    );
+
+    // Update 4D projection params for an existing hexadecachoron4d instance.
+    // Returns 0 on success; negative on error (invalid instanceId or wrong geometry type).
+    int updateHexadecachoron4DProjection(
+        int instanceId,
+        float eye_w, float screen_w,
+        float rot_xw, float rot_yw, float rot_zw
+    );
+
     // Recursive-IAS Menger sponge (Sprint 18.4).
     // Wraps the most-recently-uploaded triangle mesh (call setTriangleMesh first with a
     // unit cube) in `level` nested IAS layers using the 20 Menger generator transforms.

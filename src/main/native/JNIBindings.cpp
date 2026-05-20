@@ -1299,6 +1299,55 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateSierpinski4DProject
     }
 }
 
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addHexadecachoron4DInstanceNative(
+    JNIEnv* env, jobject obj,
+    jint level,
+    jfloat x, jfloat y, jfloat z, jfloat scale,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW,
+    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+
+        return wrapper->addHexadecachoron4DInstance(
+            (int)level,
+            x, y, z, scale,
+            eyeW, screenW,
+            rotXW, rotYW, rotZW,
+            r, g, b, a, ior,
+            roughness, metallic, specular, emission, filmThickness
+        );
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addHexadecachoron4DInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
+ * Update 4D projection params for an existing hexadecachoron4d instance.
+ */
+JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateHexadecachoron4DProjectionNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId,
+    jfloat eyeW, jfloat screenW,
+    jfloat rotXW, jfloat rotYW, jfloat rotZW) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        return wrapper->updateHexadecachoron4DProjection(instanceId, eyeW, screenW, rotXW, rotYW, rotZW);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateHexadecachoron4DProjection: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
 /**
  * Remove an instance by ID.
  */
