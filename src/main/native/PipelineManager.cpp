@@ -190,6 +190,20 @@ void PipelineManager::createProgramGroups() {
     photon_sierpinski4d_hitgroup = optix_context.createHitgroupProgramGroup(
         module, "__closesthit__photon",
         module, "__intersection__sierpinski4d");
+
+    // Hexadecachoron4D hit groups (primary + shadow + photon)
+    hexadecachoron4d_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
+        module, "__closesthit__hexadecachoron4d",
+        module, "__intersection__hexadecachoron4d"
+    );
+    hexadecachoron4d_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
+        module, "__closesthit__hexadecachoron4d_shadow",
+        module, "__anyhit__hexadecachoron4d_shadow",
+        module, "__intersection__hexadecachoron4d"
+    );
+    photon_hexadecachoron4d_hitgroup = optix_context.createHitgroupProgramGroup(
+        module, "__closesthit__photon",
+        module, "__intersection__hexadecachoron4d");
     // Photon miss program
     photon_miss_prog_group = optix_context.createMissProgramGroup(
         module, "__miss__photon");
@@ -216,7 +230,7 @@ void PipelineManager::createProgramGroups() {
 }
 
 void PipelineManager::createPipeline() {
-    constexpr int NUM_PROGRAM_GROUPS = 31;  // raygen(1) + miss(3) + hitgroups: sphere(3)+tri(3)+cylinder(3)+cone(3)+plane(3)+menger4d(3)+sierpinski4d(3)+caustics(6)
+    constexpr int NUM_PROGRAM_GROUPS = 34;  // raygen(1) + miss(3) + hitgroups: sphere(3)+tri(3)+cylinder(3)+cone(3)+plane(3)+menger4d(3)+sierpinski4d(3)+hexadecachoron4d(3)+caustics(6)
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -242,6 +256,9 @@ void PipelineManager::createPipeline() {
         sierpinski4d_hitgroup_prog_group,
         sierpinski4d_shadow_hitgroup_prog_group,
         photon_sierpinski4d_hitgroup,
+        hexadecachoron4d_hitgroup_prog_group,
+        hexadecachoron4d_shadow_hitgroup_prog_group,
+        photon_hexadecachoron4d_hitgroup,
         photon_miss_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
@@ -315,10 +332,11 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     //             [9]=cone_primary, [10]=cone_shadow, [11]=cone_photon,
     //             [12]=plane_primary, [13]=plane_shadow, [14]=plane_photon,
     //             [15]=menger4d_primary, [16]=menger4d_shadow, [17]=menger4d_photon,
-    //             [18]=sierpinski4d_primary, [19]=sierpinski4d_shadow, [20]=sierpinski4d_photon
+    //             [18]=sierpinski4d_primary, [19]=sierpinski4d_shadow, [20]=sierpinski4d_photon,
+    //             [21]=hexadecachoron4d_primary, [22]=hexadecachoron4d_shadow, [23]=hexadecachoron4d_photon
     // Offset calculation: geometry_type * 3 + ray_type (0=primary, 1=shadow, 2=photon)
     constexpr size_t record_size = std::max(sizeof(HitGroupSbtRecord), sizeof(TriangleHitGroupSbtRecord));
-    constexpr int num_records = 21;  // 7 geometry types * 3 ray types
+    constexpr int num_records = 24;  // 8 geometry types * 3 ray types
     char hitgroup_records[num_records * record_size];
     std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
 
@@ -429,6 +447,19 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     optixSbtRecordPackHeader(photon_sierpinski4d_hitgroup, sierpinski4d_photon);
     sierpinski4d_photon->data = sphere_data;
 
+    // Hexadecachoron4D hitgroup records [21]=primary, [22]=shadow, [23]=photon
+    HitGroupSbtRecord* hexadecachoron4d_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 21 * record_size);
+    optixSbtRecordPackHeader(hexadecachoron4d_hitgroup_prog_group, hexadecachoron4d_primary);
+    hexadecachoron4d_primary->data = sphere_data;  // Placeholder (not used by hexadecachoron4d shader)
+
+    HitGroupSbtRecord* hexadecachoron4d_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 22 * record_size);
+    optixSbtRecordPackHeader(hexadecachoron4d_shadow_hitgroup_prog_group, hexadecachoron4d_shadow);
+    hexadecachoron4d_shadow->data = sphere_data;
+
+    HitGroupSbtRecord* hexadecachoron4d_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 23 * record_size);
+    optixSbtRecordPackHeader(photon_hexadecachoron4d_hitgroup, hexadecachoron4d_photon);
+    hexadecachoron4d_photon->data = sphere_data;
+
     CUdeviceptr d_hitgroup_records;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
     CUDA_CHECK(cudaMemcpy(
@@ -499,6 +530,9 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(sierpinski4d_hitgroup_prog_group);
     destroyProgramGroupIfExists(sierpinski4d_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(photon_sierpinski4d_hitgroup);
+    destroyProgramGroupIfExists(hexadecachoron4d_hitgroup_prog_group);
+    destroyProgramGroupIfExists(hexadecachoron4d_shadow_hitgroup_prog_group);
+    destroyProgramGroupIfExists(photon_hexadecachoron4d_hitgroup);
     destroyProgramGroupIfExists(photon_miss_prog_group);
 
     if (includeCaustics) {
