@@ -58,6 +58,15 @@ public:
     float getBackgroundG() const { return bg_g; }
     float getBackgroundB() const { return bg_b; }
 
+    // Fog configuration
+    void setFog(float density, float r, float g, float b) {
+        fog_density = density; fog_r = r; fog_g = g; fog_b = b;
+    }
+    float getFogDensity() const { return fog_density; }
+    float getFogR() const { return fog_r; }
+    float getFogG() const { return fog_g; }
+    float getFogB() const { return fog_b; }
+
     // Environment map configuration
     void setEnvMapIndex(int idx) { env_map_index = idx; }
     int getEnvMapIndex() const { return env_map_index; }
@@ -111,6 +120,10 @@ private:
     float bg_r = OptiXConstants::DEFAULT_BG_R;
     float bg_g = OptiXConstants::DEFAULT_BG_G;
     float bg_b = OptiXConstants::DEFAULT_BG_B;
+
+    // Fog
+    float fog_density = 0.0f;
+    float fog_r = 0.8f, fog_g = 0.8f, fog_b = 0.9f;
 
     // Environment map
     int env_map_index = -1;

@@ -369,10 +369,10 @@ extern "C" __global__ void __closesthit__triangle() {
 
         // Coverage blend: coverage_alpha * diffuse + (1 - coverage_alpha) * through
         const float a = coverage_alpha;
-        const unsigned int r = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_r) + (1.0f - a) * static_cast<float>(through_r), RayTracingConstants::COLOR_BYTE_MAX));
-        const unsigned int g = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_g) + (1.0f - a) * static_cast<float>(through_g), RayTracingConstants::COLOR_BYTE_MAX));
-        const unsigned int b = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_b) + (1.0f - a) * static_cast<float>(through_b), RayTracingConstants::COLOR_BYTE_MAX));
-
+        unsigned int r = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_r) + (1.0f - a) * static_cast<float>(through_r), RayTracingConstants::COLOR_BYTE_MAX));
+        unsigned int g = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_g) + (1.0f - a) * static_cast<float>(through_g), RayTracingConstants::COLOR_BYTE_MAX));
+        unsigned int b = static_cast<unsigned int>(fminf(a * static_cast<float>(diffuse_b) + (1.0f - a) * static_cast<float>(through_b), RayTracingConstants::COLOR_BYTE_MAX));
+        applyFogInPlace(r, g, b, optixGetRayTmax());
         optixSetPayload_0(r);
         optixSetPayload_1(g);
         optixSetPayload_2(b);
@@ -436,9 +436,13 @@ extern "C" __global__ void __closesthit__triangle() {
             fminf(a * fresnel_color.y + (1.0f - a) * thru_color.y, 1.0f),
             fminf(a * fresnel_color.z + (1.0f - a) * thru_color.z, 1.0f)
         );
-        optixSetPayload_0(static_cast<unsigned int>(blended.x * RayTracingConstants::COLOR_BYTE_MAX));
-        optixSetPayload_1(static_cast<unsigned int>(blended.y * RayTracingConstants::COLOR_BYTE_MAX));
-        optixSetPayload_2(static_cast<unsigned int>(blended.z * RayTracingConstants::COLOR_BYTE_MAX));
+        unsigned int tri_r2 = static_cast<unsigned int>(blended.x * RayTracingConstants::COLOR_BYTE_MAX);
+        unsigned int tri_g2 = static_cast<unsigned int>(blended.y * RayTracingConstants::COLOR_BYTE_MAX);
+        unsigned int tri_b2 = static_cast<unsigned int>(blended.z * RayTracingConstants::COLOR_BYTE_MAX);
+        applyFogInPlace(tri_r2, tri_g2, tri_b2, optixGetRayTmax());
+        optixSetPayload_0(tri_r2);
+        optixSetPayload_1(tri_g2);
+        optixSetPayload_2(tri_b2);
         return;
     }
 

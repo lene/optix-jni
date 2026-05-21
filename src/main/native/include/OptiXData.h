@@ -575,6 +575,10 @@ struct Params {
 
     // Progressive Photon Mapping (Caustics)
     CausticsParams caustics;    // Caustics rendering parameters and GPU buffers
+
+    // Fog / depth cue
+    float fog_density;     // 0.0 = no fog; exponential: exp(-fog_density * t)
+    float fog_r, fog_g, fog_b;  // Fog color [0,1]
 };
 
 // Ray generation shader data (camera)

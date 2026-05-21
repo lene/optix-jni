@@ -129,6 +129,9 @@ public:
     // Background color configuration
     void setBackgroundColor(float r, float g, float b);
 
+    // Fog / depth cue configuration
+    void setFog(float density, float r, float g, float b);
+
     // Environment map configuration
     void setEnvironmentMap(int textureIndex);
 

@@ -747,6 +747,23 @@ __device__ void addEmissionToColor(
 }
 
 /**
+ * Apply exponential fog in-place to integer RGB color.
+ * fog_factor = exp(-fog_density * t); blends toward fog color.
+ * No-op when fog_density <= 0.
+ *
+ * @param r/g/b Integer color channels (0-255), modified in place
+ * @param t     Ray hit distance
+ */
+__device__ inline void applyFogInPlace(unsigned int& r, unsigned int& g, unsigned int& b, float t) {
+    if (params.fog_density <= 0.0f) return;
+    const float fog_factor = expf(-params.fog_density * t);
+    const float inv_fog   = 1.0f - fog_factor;
+    r = static_cast<unsigned int>(fminf(static_cast<float>(r) * fog_factor + params.fog_r * RayTracingConstants::COLOR_BYTE_MAX * inv_fog, RayTracingConstants::COLOR_BYTE_MAX));
+    g = static_cast<unsigned int>(fminf(static_cast<float>(g) * fog_factor + params.fog_g * RayTracingConstants::COLOR_BYTE_MAX * inv_fog, RayTracingConstants::COLOR_BYTE_MAX));
+    b = static_cast<unsigned int>(fminf(static_cast<float>(b) * fog_factor + params.fog_b * RayTracingConstants::COLOR_BYTE_MAX * inv_fog, RayTracingConstants::COLOR_BYTE_MAX));
+}
+
+/**
  * Handle fully opaque surface (alpha >= threshold).
  * Solid surface with diffuse shading.
  *
@@ -765,6 +782,7 @@ __device__ void handleFullyOpaque(
     unsigned int r, g, b;
     computeDiffuseColor(hit_point, normal, material_color, r, g, b, double_sided);
     addEmissionToColor(r, g, b, material_color, emission);
+    applyFogInPlace(r, g, b, optixGetRayTmax());
     optixSetPayload_0(r);
     optixSetPayload_1(g);
     optixSetPayload_2(b);
@@ -1007,6 +1025,7 @@ __device__ void blendFresnelColorsRGBAndSetPayload(
 
     // Add emission
     addEmissionToColor(r, g, b, material_color, emission);
+    applyFogInPlace(r, g, b, optixGetRayTmax());
 
     // Set payloads
     optixSetPayload_0(r);
@@ -1182,6 +1201,7 @@ __device__ void handleMetallicOpaque(
 
     // Add emission
     addEmissionToColor(r, g, b, material_color, emission);
+    applyFogInPlace(r, g, b, optixGetRayTmax());
 
     optixSetPayload_0(r);
     optixSetPayload_1(g);
@@ -1286,6 +1306,7 @@ __device__ void blendFresnelColorsAndSetPayload(
 
     // Add emission
     addEmissionToColor(r, g, b, material_color, emission);
+    applyFogInPlace(r, g, b, optixGetRayTmax());
 
     // Set payloads
     optixSetPayload_0(r);

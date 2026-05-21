@@ -279,6 +279,10 @@ void OptiXWrapper::setBackgroundColor(float r, float g, float b) {
     impl->config.setBackgroundColor(r, g, b);
 }
 
+void OptiXWrapper::setFog(float density, float r, float g, float b) {
+    impl->config.setFog(density, r, g, b);
+}
+
 void OptiXWrapper::setEnvironmentMap(int textureIndex) {
     impl->config.setEnvMapIndex(textureIndex);
 }
@@ -1471,6 +1475,10 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.bg_r = impl->config.getBackgroundR();
         params.bg_g = impl->config.getBackgroundG();
         params.bg_b = impl->config.getBackgroundB();
+        params.fog_density = impl->config.getFogDensity();
+        params.fog_r       = impl->config.getFogR();
+        params.fog_g       = impl->config.getFogG();
+        params.fog_b       = impl->config.getFogB();
         int envIdx = impl->config.getEnvMapIndex();
         params.env_map_enabled = (envIdx >= 0 && envIdx < (int)impl->textures.size());
         if (params.env_map_enabled)

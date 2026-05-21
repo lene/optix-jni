@@ -292,9 +292,13 @@ extern "C" __global__ void __closesthit__cylinder() {
     const float emissive_g = fminf(final_g + emission * material_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX);
     const float emissive_b = fminf(final_b + emission * material_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX);
 
-    optixSetPayload_0(static_cast<unsigned int>(emissive_r));
-    optixSetPayload_1(static_cast<unsigned int>(emissive_g));
-    optixSetPayload_2(static_cast<unsigned int>(emissive_b));
+    unsigned int cyl_r = static_cast<unsigned int>(emissive_r);
+    unsigned int cyl_g = static_cast<unsigned int>(emissive_g);
+    unsigned int cyl_b = static_cast<unsigned int>(emissive_b);
+    applyFogInPlace(cyl_r, cyl_g, cyl_b, optixGetRayTmax());
+    optixSetPayload_0(cyl_r);
+    optixSetPayload_1(cyl_g);
+    optixSetPayload_2(cyl_b);
 }
 
 //==============================================================================

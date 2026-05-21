@@ -205,6 +205,7 @@ class OptiXRenderer
   @native def setShadows(enabled: Boolean): Unit
   @native private def setTransparentShadowsNative(enabled: Boolean): Unit
   @native private def setBackgroundColorNative(r: Float, g: Float, b: Float): Unit
+  @native private def setFogNative(density: Float, r: Float, g: Float, b: Float): Unit
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
@@ -420,6 +421,9 @@ class OptiXRenderer
 
   def setBackgroundColor(r: Float, g: Float, b: Float): Unit =
     setBackgroundColorNative(r, g, b)
+
+  def setFog(density: Float, r: Float, g: Float, b: Float): Unit =
+    setFogNative(density, r, g, b)
 
   // ---- Lifecycle ----
   // Idempotent initialization - safe to call multiple times

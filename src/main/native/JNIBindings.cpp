@@ -315,6 +315,19 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setBackgroundColorNative(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setFogNative(
+    JNIEnv* env, jobject obj, jfloat density, jfloat r, jfloat g, jfloat b)
+{
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setFog(density, r, g, b);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setFog: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setEnvironmentMapNative(
     JNIEnv* env, jobject obj, jint textureIndex) {
     try {

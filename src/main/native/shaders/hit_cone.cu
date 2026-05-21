@@ -144,9 +144,13 @@ extern "C" __global__ void __closesthit__cone() {
     const float final_g = material_color.y * final_lighting.y * RayTracingConstants::COLOR_SCALE_FACTOR;
     const float final_b = material_color.z * final_lighting.z * RayTracingConstants::COLOR_SCALE_FACTOR;
 
-    optixSetPayload_0(static_cast<unsigned int>(fminf(final_r + emission * material_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_1(static_cast<unsigned int>(fminf(final_g + emission * material_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
-    optixSetPayload_2(static_cast<unsigned int>(fminf(final_b + emission * material_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX)));
+    unsigned int cone_r = static_cast<unsigned int>(fminf(final_r + emission * material_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int cone_g = static_cast<unsigned int>(fminf(final_g + emission * material_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int cone_b = static_cast<unsigned int>(fminf(final_b + emission * material_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    applyFogInPlace(cone_r, cone_g, cone_b, optixGetRayTmax());
+    optixSetPayload_0(cone_r);
+    optixSetPayload_1(cone_g);
+    optixSetPayload_2(cone_b);
 }
 
 extern "C" __global__ void __anyhit__cone_shadow() {
