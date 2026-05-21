@@ -75,6 +75,7 @@ RUN apt-get update && apt-get install -y \
     mesa-utils \
     time \
     unzip \
+    cppcheck \
     valgrind \
     x11-xserver-utils \
     xvfb \

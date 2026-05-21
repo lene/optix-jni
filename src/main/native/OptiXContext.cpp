@@ -62,7 +62,9 @@ bool OptiXContext::clearCache() {
 
 // OptiX log callback - detects cache corruption for auto-recovery
 static void optixLogCallback(unsigned int level, const char* tag, const char* message, void* /*cbdata*/) {
-    std::cerr << "[OptiX][" << level << "][" << tag << "]: " << message << std::endl;
+    std::cerr << "[OptiX][" << level << "]["
+              << (tag     ? tag     : "") << "]: "
+              << (message ? message : "") << std::endl;
 
     // Detect cache corruption: tag is "DISKCACHE" and message contains corruption indicators
     // Common error messages:
