@@ -37,23 +37,24 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
     light.intensity shouldBe 1.0f
 
   "setLights" should "accept empty array without error" in:
-    renderer.setLights(Seq.empty[Light])
+    renderer.setLights(Array.empty[Light])
     // Should not crash
 
   it should "accept single light" in:
     val light = Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
-    renderer.setLights(Seq(light))
+    renderer.setLights(Array(light))
 
     TestScenario.default()
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer)
 
     val result = renderer.render(TEST_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
   it should "accept multiple lights up to MAX_LIGHTS" in:
-    val lights = (0 until 8).map: i =>
-      Light.Directional(Vector[3](i * 0.1f, -1.0f, 0.0f))
+    val lights: Array[Light] = (0 until 8).map(i =>
+      Light.Directional(Vector[3](i * 0.1f, -1.0f, 0.0f)): Light
+    ).toArray
 
     renderer.setLights(lights)
 
@@ -62,7 +63,7 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .applyTo(renderer)
 
     val result = renderer.render(TEST_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
   // Category 2: Lighting Behavior
 
@@ -79,16 +80,16 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       direction = Vector[3](0.0f, -1.0f, 0.0f),
       intensity = 0.5f
     )
-    renderer.setLights(Seq(singleLight))
-    val imageSingle = renderer.render(STANDARD_IMAGE_SIZE).get
+    renderer.setLights(Array(singleLight))
+    val imageSingle = renderer.render(STANDARD_IMAGE_SIZE)
 
     // Two lights from above, same total intensity
-    val twoLights = Seq(
+    val twoLights: Array[Light] = Array(
       Light.Directional(Vector[3](0.0f, -1.0f, 0.0f), intensity = 0.25f),
       Light.Directional(Vector[3](0.0f, -1.0f, 0.0f), intensity = 0.25f)
     )
     renderer.setLights(twoLights)
-    val imageTwo = renderer.render(STANDARD_IMAGE_SIZE).get
+    val imageTwo = renderer.render(STANDARD_IMAGE_SIZE)
 
     // Brightness should be similar (within 10% due to ambient lighting)
     val centerRegion = ShadowValidation.Region.centered(STANDARD_IMAGE_SIZE.width / 2, STANDARD_IMAGE_SIZE.height / 2, 50)
@@ -113,17 +114,17 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
 
     // Light from right only
     val lightRight = Light.Directional(Vector[3](1.0f, -0.5f, 0.0f))
-    renderer.setLights(Seq(lightRight))
-    val imageRight = renderer.render(STANDARD_IMAGE_SIZE).get
+    renderer.setLights(Array(lightRight))
+    val imageRight = renderer.render(STANDARD_IMAGE_SIZE)
 
     // Light from left only
     val lightLeft = Light.Directional(Vector[3](-1.0f, -0.5f, 0.0f))
-    renderer.setLights(Seq(lightLeft))
-    val imageLeft = renderer.render(STANDARD_IMAGE_SIZE).get
+    renderer.setLights(Array(lightLeft))
+    val imageLeft = renderer.render(STANDARD_IMAGE_SIZE)
 
     // Both lights
-    renderer.setLights(Seq(lightRight, lightLeft))
-    val imageBoth = renderer.render(STANDARD_IMAGE_SIZE).get
+    renderer.setLights(Array(lightRight, lightLeft))
+    val imageBoth = renderer.render(STANDARD_IMAGE_SIZE)
 
     // With both lights, the combined brightness should be higher
     val centerRegion = ShadowValidation.Region.centered(STANDARD_IMAGE_SIZE.width / 2, STANDARD_IMAGE_SIZE.height / 2, 50)
@@ -155,16 +156,16 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       position = Vector[3](0.0f, 3.0f, 0.0f),
       intensity = 2.0f
     )
-    renderer.setLights(Seq(closeLight))
-    val imageClose = renderer.render(STANDARD_IMAGE_SIZE).get
+    renderer.setLights(Array(closeLight))
+    val imageClose = renderer.render(STANDARD_IMAGE_SIZE)
 
     // Point light far from sphere
     val farLight = Light.Point(
       position = Vector[3](0.0f, 10.0f, 0.0f),
       intensity = 2.0f
     )
-    renderer.setLights(Seq(farLight))
-    val imageFar = renderer.render(STANDARD_IMAGE_SIZE).get
+    renderer.setLights(Array(farLight))
+    val imageFar = renderer.render(STANDARD_IMAGE_SIZE)
 
     // Both should render successfully
     imageClose.length shouldBe ImageValidation.imageByteSize(STANDARD_IMAGE_SIZE)
@@ -184,7 +185,7 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .applyTo(renderer)
 
     // Red light from left, blue light from right
-    val lights = Seq(
+    val lights: Array[Light] = Array(
       Light.Directional(
         direction = Vector[3](-1.0f, -0.5f, 0.0f),
         color = Color(1.0f, 0.0f, 0.0f),  // Red
@@ -199,10 +200,10 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
     renderer.setLights(lights)
 
     val result = renderer.render(STANDARD_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
     // Extract RGB channels from center region
-    val imageData = result.get
+    val imageData = result
 
     // Sample center 100x100 pixels
     val rgbSamples = for
@@ -239,14 +240,14 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
     renderer.setShadows(true)
 
     // Two lights from different angles
-    val lights = Seq(
+    val lights: Array[Light] = Array(
       Light.Directional(Vector[3](1.0f, -1.0f, 0.0f)),
       Light.Directional(Vector[3](-1.0f, -1.0f, 0.0f))
     )
     renderer.setLights(lights)
 
     val result = renderer.render(STANDARD_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
     // With two lights from opposite sides, shadows should be softer
     // (each light illuminates the other's shadow region)
@@ -262,11 +263,11 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
     renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val result = renderer.render(STANDARD_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
     val centerRegion = ShadowValidation.Region.centered(STANDARD_IMAGE_SIZE.width / 2, STANDARD_IMAGE_SIZE.height / 2, 50)
     val brightness = ShadowValidation.regionBrightness(
-      result.get, STANDARD_IMAGE_SIZE, centerRegion
+      result, STANDARD_IMAGE_SIZE, centerRegion
     )
 
     // Should render normally (brightness > ambient which is ~60 with 0.3 factor and gray=200)
@@ -280,7 +281,7 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .applyTo(renderer)
 
     // Set multiple lights
-    val lights = Seq(
+    val lights: Array[Light] = Array(
       Light.Directional(Vector[3](1.0f, 0.0f, 0.0f)),
       Light.Directional(Vector[3](-1.0f, 0.0f, 0.0f))
     )
@@ -291,7 +292,7 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
 
     // Should render with single light from above
     val result = renderer.render(STANDARD_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
   "setLights" should "override previous setLight call" in:
     TestScenario.default()
@@ -302,7 +303,7 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
     renderer.setLight(Vector[3](1.0f, 0.0f, 0.0f), 1.0f)
 
     // Override with multiple lights
-    val lights = Seq(
+    val lights: Array[Light] = Array(
       Light.Directional(Vector[3](0.0f, -1.0f, 0.0f)),
       Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
     )
@@ -310,14 +311,15 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
 
     // Should render with two lights from above
     val result = renderer.render(STANDARD_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
   // Category 7: Error Handling
 
   "setLights" should "throw IllegalArgumentException when exceeding MAX_LIGHTS" in:
     // MAX_LIGHTS is 8, try to set 9 lights
-    val tooManyLights = (0 until 9).map: i =>
-      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
+    val tooManyLights: Array[Light] = (0 until 9).map(_ =>
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f)): Light
+    ).toArray
 
     val exception = intercept[IllegalArgumentException]:
       renderer.setLights(tooManyLights)
@@ -328,8 +330,9 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
     exception.getMessage should include("out of range")
 
   it should "throw IllegalArgumentException with clear message for count 10" in:
-    val tooManyLights = (0 until 10).map: i =>
-      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
+    val tooManyLights: Array[Light] = (0 until 10).map(_ =>
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f)): Light
+    ).toArray
 
     val exception = intercept[IllegalArgumentException]:
       renderer.setLights(tooManyLights)
@@ -339,8 +342,9 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
 
   it should "succeed with exactly MAX_LIGHTS (8)" in:
     // This should NOT throw
-    val exactlyMaxLights = (0 until 8).map: i =>
-      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
+    val exactlyMaxLights: Array[Light] = (0 until 8).map(_ =>
+      Light.Directional(Vector[3](0.0f, -1.0f, 0.0f)): Light
+    ).toArray
 
     noException should be thrownBy:
       renderer.setLights(exactlyMaxLights)
@@ -351,4 +355,4 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .applyTo(renderer)
 
     val result = renderer.render(TEST_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null

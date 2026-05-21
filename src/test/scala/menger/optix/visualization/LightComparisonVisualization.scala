@@ -38,7 +38,7 @@ object LightComparisonVisualization:
     )
     // NO setLight() call - uses C++ default: (0.577350f, 0.577350f, -0.577350f)
 
-    val pixels1 = renderer1.render(width, height).get
+    val pixels1 = renderer1.render(width, height)
     TestUtilities.savePNG("light_default_cpp.png", pixels1, width, height)
     val brightness1 = measureBrightness(pixels1, width, height)
     println(s"Brightness: $brightness1")
@@ -59,7 +59,7 @@ object LightComparisonVisualization:
     )
     renderer2.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
-    val pixels2 = renderer2.render(width, height).get
+    val pixels2 = renderer2.render(width, height)
     TestUtilities.savePNG("light_setlight_unnormalized.png", pixels2, width, height)
     val brightness2 = measureBrightness(pixels2, width, height)
     println(s"Brightness: $brightness2")
@@ -80,7 +80,7 @@ object LightComparisonVisualization:
     )
     renderer3.setLight(Vector[3](0.577350f, 0.577350f, -0.577350f), 1.0f)
 
-    val pixels3 = renderer3.render(width, height).get
+    val pixels3 = renderer3.render(width, height)
     TestUtilities.savePNG("light_setlight_normalized.png", pixels3, width, height)
     val brightness3 = measureBrightness(pixels3, width, height)
     println(s"Brightness: $brightness3")
@@ -96,7 +96,7 @@ object LightComparisonVisualization:
 
     renderer4.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
-    val pixels4 = renderer4.render(width, height).get
+    val pixels4 = renderer4.render(width, height)
     TestUtilities.savePNG("light_exact_test.png", pixels4, width, height)
     val brightness4 = measureBrightness(pixels4, width, height)
     println(s"Brightness: $brightness4")

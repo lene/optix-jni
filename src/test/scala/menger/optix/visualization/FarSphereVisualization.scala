@@ -40,12 +40,12 @@ object FarSphereVisualization:
 
     // Render with shadows OFF
     renderer.setShadows(false)
-    val pixelsOff = renderer.render(width, height).get
+    val pixelsOff = renderer.render(width, height)
     TestUtilities.savePNG("half_distance_shadows_off.png", pixelsOff, width, height)
 
     // Render with shadows ON
     renderer.setShadows(true)
-    val pixelsOn = renderer.render(width, height).get
+    val pixelsOn = renderer.render(width, height)
     TestUtilities.savePNG("half_distance_shadows_on.png", pixelsOn, width, height)
 
     println("Done!")

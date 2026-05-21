@@ -123,7 +123,7 @@ object TestUtilities extends LazyLogging:
 
     val start = System.nanoTime
     (0 until frames).foreach { _ =>
-      renderer.render(size).get
+      renderer.render(size)
     }
     val duration = (System.nanoTime - start) / 1e9
     frames / duration

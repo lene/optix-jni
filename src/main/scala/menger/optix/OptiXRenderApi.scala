@@ -1,7 +1,5 @@
 package menger.optix
 
-import scala.util.Try
-
 import menger.common.ImageSize
 
 private[optix] trait OptiXRenderApi:
@@ -27,17 +25,25 @@ private[optix] trait OptiXRenderApi:
   def disableCaustics(): Unit =
     setCaustics(false, 0, 0, 0.0f, 0.0f)
 
-  def getCausticsStats: Option[CausticsStats] =
-    Try(getCausticsStatsNative()).toOption.filter(_.photonsEmitted > 0)
+  /** @return caustics statistics if photons were emitted, or null if caustics are disabled / no photons emitted */
+  def getCausticsStats: CausticsStats =
+    try
+      val stats = getCausticsStatsNative()
+      if stats != null && stats.photonsEmitted > 0 then stats else null // scalafix:ok DisableSyntax.null
+    catch
+      case _: Exception => null // scalafix:ok DisableSyntax.null
 
   def renderWithStats(size: ImageSize): RenderResult =
     val startNs = System.nanoTime()
     val raw = renderWithStats(size.width, size.height)
     val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
-    Option(raw).map(_.copy(frameMs = elapsedMs)).orNull
+    if raw != null then raw.copy(frameMs = elapsedMs) else null // scalafix:ok DisableSyntax.null
 
-  def render(size: ImageSize): Option[Array[Byte]] =
-    Option(renderWithStats(size)).map(_.image)
+  /** @return rendered image bytes, or null on failure */
+  def render(size: ImageSize): Array[Byte] =
+    val result = renderWithStats(size)
+    if result != null then result.image else null // scalafix:ok DisableSyntax.null
 
-  def render(width: Int, height: Int): Option[Array[Byte]] =
+  /** @return rendered image bytes, or null on failure */
+  def render(width: Int, height: Int): Array[Byte] =
     render(ImageSize(width, height))

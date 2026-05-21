@@ -27,8 +27,7 @@ class Sierpinski4DRenderSuite extends AnyFlatSpec with Matchers with LazyLogging
       rotXW = 0f, rotYW = 0f, rotZW = 0f,
       material = Material(OPAQUE_RED)
     )
-    result shouldBe defined
-    result.get should be >= 0
+    result should be >= 0
 
   it should "return distinct IDs for multiple instances" in:
     val id0 = renderer.addSierpinski4DInstance(
@@ -39,9 +38,9 @@ class Sierpinski4DRenderSuite extends AnyFlatSpec with Matchers with LazyLogging
       1, Vector[3](1.5f, 0f, -5f), scale, eyeW, screenW, 0f, 0f, 0f,
       Material(OPAQUE_BLUE)
     )
-    id0 shouldBe defined
-    id1 shouldBe defined
-    id0.get should not equal id1.get
+    id0 should be >= 0
+    id1 should be >= 0
+    id0 should not equal id1
 
   "sierpinski4d rendering" should "produce non-empty image data" in:
     renderer.addSierpinski4DInstance(

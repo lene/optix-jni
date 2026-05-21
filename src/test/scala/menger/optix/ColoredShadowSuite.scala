@@ -84,13 +84,13 @@ class ColoredShadowSuite
         withAlpha(OPAQUE_RED, transparentAlpha),
         coloredShadows = false
       )
-      val imageDefault = renderer.render(imageSize).get
+      val imageDefault = renderer.render(imageSize)
 
       setupColoredShadowScene(
         withAlpha(OPAQUE_RED, transparentAlpha),
         coloredShadows = false
       )
-      val imageExplicitOff = renderer.render(imageSize).get
+      val imageExplicitOff = renderer.render(imageSize)
 
       withClue("Default config should match explicit off") {
         java.util.Arrays.equals(
@@ -106,7 +106,7 @@ class ColoredShadowSuite
         withAlpha(OPAQUE_RED, transparentAlpha),
         coloredShadows = true
       )
-      val image = renderer.render(imageSize).get
+      val image = renderer.render(imageSize)
       image.length shouldBe
         imageSize.width * imageSize.height * 4
     }
@@ -120,7 +120,7 @@ class ColoredShadowSuite
         withAlpha(OPAQUE_RED, transparentAlpha),
         coloredShadows = true
       )
-      val image = renderer.render(imageSize).get
+      val image = renderer.render(imageSize)
       val shadowRegion = findShadowRegion(image)
       val (avgR, avgG, avgB) =
         regionChannelAverages(image, imageSize, shadowRegion)
@@ -142,7 +142,7 @@ class ColoredShadowSuite
         withAlpha(OPAQUE_BLUE, transparentAlpha),
         coloredShadows = true
       )
-      val image = renderer.render(imageSize).get
+      val image = renderer.render(imageSize)
       val shadowRegion = findShadowRegion(image)
       val (avgR, avgG, avgB) =
         regionChannelAverages(image, imageSize, shadowRegion)
@@ -164,7 +164,7 @@ class ColoredShadowSuite
         withAlpha(OPAQUE_GREEN, transparentAlpha),
         coloredShadows = true
       )
-      val image = renderer.render(imageSize).get
+      val image = renderer.render(imageSize)
       val shadowRegion = findShadowRegion(image)
       val (avgR, avgG, avgB) =
         regionChannelAverages(image, imageSize, shadowRegion)
@@ -190,13 +190,13 @@ class ColoredShadowSuite
         withAlpha(OPAQUE_WHITE, transparentAlpha),
         coloredShadows = true
       )
-      val coloredImage = renderer.render(imageSize).get
+      val coloredImage = renderer.render(imageSize)
 
       setupColoredShadowScene(
         withAlpha(OPAQUE_WHITE, transparentAlpha),
         coloredShadows = false
       )
-      val scalarImage = renderer.render(imageSize).get
+      val scalarImage = renderer.render(imageSize)
 
       // Use scalar image to find shadow (it has real shadow)
       val shadowRegion = findShadowRegion(scalarImage)
@@ -224,7 +224,7 @@ class ColoredShadowSuite
       // so shadow_factor = (0.5, 0.5, 0.5) — uniform and dark.
       val opaqueGray = Color(0.5f, 0.5f, 0.5f, 1.0f)
       setupColoredShadowScene(opaqueGray, coloredShadows = true)
-      val image = renderer.render(imageSize).get
+      val image = renderer.render(imageSize)
       val shadowRegion = findShadowRegion(image)
       val (avgR, avgG, avgB) =
         regionChannelAverages(image, imageSize, shadowRegion)
@@ -252,14 +252,14 @@ class ColoredShadowSuite
         Color(1.0f, 0.0f, 0.0f, 0.0f),
         coloredShadows = true
       )
-      val transparentImage = renderer.render(imageSize).get
+      val transparentImage = renderer.render(imageSize)
 
       // Compare with opaque to find shadow region
       setupColoredShadowScene(
         Color(1.0f, 0.0f, 0.0f, 1.0f),
         coloredShadows = true
       )
-      val opaqueImage = renderer.render(imageSize).get
+      val opaqueImage = renderer.render(imageSize)
       val shadowRegion = findShadowRegion(opaqueImage)
 
       val brightTransparent =
@@ -284,10 +284,10 @@ class ColoredShadowSuite
       val sphereColor = withAlpha(OPAQUE_RED, transparentAlpha)
 
       setupColoredShadowScene(sphereColor, coloredShadows = false)
-      val imageOff = renderer.render(imageSize).get
+      val imageOff = renderer.render(imageSize)
 
       setupColoredShadowScene(sphereColor, coloredShadows = true)
-      val imageOn = renderer.render(imageSize).get
+      val imageOn = renderer.render(imageSize)
 
       withClue(
         "Colored shadows on vs off should produce " +
@@ -307,10 +307,10 @@ class ColoredShadowSuite
       val sphereColor = withAlpha(OPAQUE_WHITE, transparentAlpha)
 
       setupColoredShadowScene(sphereColor, coloredShadows = false)
-      val imageOff = renderer.render(imageSize).get
+      val imageOff = renderer.render(imageSize)
 
       setupColoredShadowScene(sphereColor, coloredShadows = true)
-      val imageOn = renderer.render(imageSize).get
+      val imageOn = renderer.render(imageSize)
 
       withClue(
         "White sphere with colored shadows on vs off should " +
@@ -369,7 +369,7 @@ class ColoredShadowSuite
     renderer.clearAllInstances()
     renderer.addSphereInstance(lowSphereTransform, transparentBlue, Const.iorGlass)
     setupMultiSphereSceneBase(transparentShadows = true)
-    val oneSphereImage = renderer.render(imageSize).get
+    val oneSphereImage = renderer.render(imageSize)
     val shadowRegion   = findShadowRegion(oneSphereImage)
     val (_, _, oneSphereAvgB) =
       regionChannelAverages(oneSphereImage, imageSize, shadowRegion)
@@ -380,7 +380,7 @@ class ColoredShadowSuite
     renderer.addSphereInstance(lowSphereTransform,  transparentBlue, Const.iorGlass)
     renderer.addSphereInstance(highSphereTransform, transparentRed,  Const.iorGlass)
     setupMultiSphereSceneBase(transparentShadows = true)
-    val twoSphereImage = renderer.render(imageSize).get
+    val twoSphereImage = renderer.render(imageSize)
     val (_, _, twoSphereAvgB) =
       regionChannelAverages(twoSphereImage, imageSize, shadowRegion)
 
@@ -402,7 +402,7 @@ class ColoredShadowSuite
     renderer.addSphereInstance(lowSphereTransform,  transparentBlue, Const.iorGlass)
     renderer.addSphereInstance(highSphereTransform, transparentRed,  Const.iorGlass)
     setupMultiSphereSceneBase(transparentShadows = true)
-    val imageA        = renderer.render(imageSize).get
+    val imageA        = renderer.render(imageSize)
     val shadowRegion  = findShadowRegion(imageA)
     val (rA, gA, bA)  = regionChannelAverages(imageA, imageSize, shadowRegion)
 
@@ -412,7 +412,7 @@ class ColoredShadowSuite
     renderer.addSphereInstance(lowSphereTransform,  transparentRed,  Const.iorGlass)
     renderer.addSphereInstance(highSphereTransform, transparentBlue, Const.iorGlass)
     setupMultiSphereSceneBase(transparentShadows = true)
-    val imageB       = renderer.render(imageSize).get
+    val imageB       = renderer.render(imageSize)
     val (rB, gB, bB) = regionChannelAverages(imageB, imageSize, shadowRegion)
 
     withClue(
@@ -439,7 +439,7 @@ class ColoredShadowSuite
     renderer.clearAllInstances()
     renderer.addSphereInstance(lowSphereTransform, transparentBlue, Const.iorGlass)
     setupMultiSphereSceneBase(transparentShadows = true)
-    val transparentOnlyImage = renderer.render(imageSize).get
+    val transparentOnlyImage = renderer.render(imageSize)
     val shadowRegion         = findShadowRegion(transparentOnlyImage)
     // Compare B channel: blue sphere does NOT attenuate B (shadow_b=1.0), so B stays
     // at full lit-floor brightness even inside the shadow circle.
@@ -452,7 +452,7 @@ class ColoredShadowSuite
     renderer.addSphereInstance(lowSphereTransform,  transparentBlue, Const.iorGlass)
     renderer.addSphereInstance(highSphereTransform, opaqueBlack,     Const.iorGlass)
     setupMultiSphereSceneBase(transparentShadows = true)
-    val opaqueBackImage       = renderer.render(imageSize).get
+    val opaqueBackImage       = renderer.render(imageSize)
     val (_, _, avgB_opaqueBack) = regionChannelAverages(opaqueBackImage, imageSize, shadowRegion)
 
     withClue(

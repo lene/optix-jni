@@ -51,7 +51,7 @@ object ColoredGlassComparison:
       .withPlane(1, false, -2.0f)
       .applyTo(renderer1)
 
-    val pixelsRed = renderer1.render(width, height).get
+    val pixelsRed = renderer1.render(width, height)
     TestUtilities.savePNG("glass_red.png", pixelsRed, width, height)
     analyzeDominantColor("Red Glass", pixelsRed, width, height, "r")
 
@@ -65,7 +65,7 @@ object ColoredGlassComparison:
       .withPlane(1, false, -2.0f)
       .applyTo(renderer2)
 
-    val pixelsGreen = renderer2.render(width, height).get
+    val pixelsGreen = renderer2.render(width, height)
     TestUtilities.savePNG("glass_green.png", pixelsGreen, width, height)
     analyzeDominantColor("Green Glass", pixelsGreen, width, height, "g")
 
@@ -79,7 +79,7 @@ object ColoredGlassComparison:
       .withPlane(1, false, -2.0f)
       .applyTo(renderer3)
 
-    val pixelsBlue = renderer3.render(width, height).get
+    val pixelsBlue = renderer3.render(width, height)
     TestUtilities.savePNG("glass_blue.png", pixelsBlue, width, height)
     analyzeDominantColor("Blue Glass", pixelsBlue, width, height, "b")
 

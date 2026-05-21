@@ -81,5 +81,6 @@ trait RendererFixture extends BeforeAndAfterEach:
 
 
   protected def renderImage(size: ImageSize): Array[Byte] =
-    renderer.render(size).getOrElse:
-      fail(s"Rendering failed - returned None for ${size.width}x${size.height}")
+    val img = renderer.render(size)
+    if img == null then fail(s"Rendering failed - returned null for ${size.width}x${size.height}") // scalafix:ok DisableSyntax.null
+    img

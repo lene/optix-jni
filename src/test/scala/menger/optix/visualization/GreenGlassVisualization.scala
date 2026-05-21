@@ -54,6 +54,6 @@ object GreenGlassVisualization:
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val pixels = renderer.render(width, height).get
+    val pixels = renderer.render(width, height)
     TestUtilities.savePNG("green_glass_test.png", pixels, width, height)
     analyzeDominantColor(pixels, width, height)

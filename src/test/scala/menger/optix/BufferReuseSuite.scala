@@ -27,9 +27,9 @@ class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {
 
       // Render multiple times with same dimensions (should reuse buffer)
       val size = STANDARD_IMAGE_SIZE
-      val img1 = renderer.render(size).get
-      val img2 = renderer.render(size).get
-      val img3 = renderer.render(size).get
+      val img1 = renderer.render(size)
+      val img2 = renderer.render(size)
+      val img3 = renderer.render(size)
 
       img1.length should be (ImageValidation.imageByteSize(size))
       img2.length should be (ImageValidation.imageByteSize(size))
@@ -62,10 +62,10 @@ class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {
       val size1 = ImageSize(640, 480)
       val size2 = ImageSize(1024, 768)
       val size3 = STANDARD_IMAGE_SIZE
-      val img1 = renderer.render(size1).get
-      val img2 = renderer.render(size2).get
-      val img3 = renderer.render(size3).get
-      val img4 = renderer.render(size3).get  // Same as img3, should reuse buffer
+      val img1 = renderer.render(size1)
+      val img2 = renderer.render(size2)
+      val img3 = renderer.render(size3)
+      val img4 = renderer.render(size3)  // Same as img3, should reuse buffer
 
       img1.length should be (ImageValidation.imageByteSize(size1))
       img2.length should be (ImageValidation.imageByteSize(size2))
@@ -96,13 +96,13 @@ class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {
       // Render with different sphere positions (same dimensions)
       val size = TEST_IMAGE_SIZE
       renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
-      val img1 = renderer.render(size).get
+      val img1 = renderer.render(size)
 
       renderer.setSphere(Vector[3](1.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
-      val img2 = renderer.render(size).get
+      val img2 = renderer.render(size)
 
       renderer.setSphere(Vector[3](0.0f, 1.0f, 0.0f), Const.defaultSphereRadius)
-      val img3 = renderer.render(size).get
+      val img3 = renderer.render(size)
 
       // All renders should succeed
       img1.length should be (ImageValidation.imageByteSize(size))
@@ -129,7 +129,7 @@ class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {
       val size = TEST_IMAGE_SIZE
       renderer.initialize() should be (true)
       renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
-      val img1 = renderer.render(size).get
+      val img1 = renderer.render(size)
       img1.length should be (ImageValidation.imageByteSize(size))
 
       // Dispose (should free cached buffer)
@@ -138,7 +138,7 @@ class BufferReuseSuite extends AnyFlatSpec with Matchers with LazyLogging {
       // Second session (buffer should be reallocated)
       renderer.initialize() should be (true)
       renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
-      val img2 = renderer.render(size).get
+      val img2 = renderer.render(size)
       img2.length should be (ImageValidation.imageByteSize(size))
 
       // Should produce same output (same scene)

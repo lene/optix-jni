@@ -43,7 +43,7 @@ class AreaLightSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, 1.0f, 0.0f),
       45.0f
     )
-    renderer.setLights(Seq(light))
+    renderer.setLights(Array(light))
     renderer.setShadows(true)
 
   // ========== Test 1: API — Light.Area construction defaults ==========
@@ -149,7 +149,7 @@ class AreaLightSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, 1.0f, 0.0f),
       45.0f
     )
-    renderer.setLights(Seq(areaLightAbove))
+    renderer.setLights(Array(areaLightAbove))
     renderer.setShadows(true)
     renderer.setTransparentShadows(true)
 
@@ -165,7 +165,7 @@ class AreaLightSuite extends AnyFlatSpec with Matchers with RendererFixture:
   // ========== Test 6: Multiple area lights ==========
 
   "Multiple area lights" should "render without errors" in:
-    val lights = Seq(
+    val lights: Array[Light] = Array(
       Light.Area(Vector[3](2.0f, 3.0f, 0.0f), Vector[3](-1.0f, -1.0f, 0.0f), 1.0f),
       Light.Area(Vector[3](-2.0f, 3.0f, 0.0f), Vector[3](1.0f, -1.0f, 0.0f), 1.0f)
     )

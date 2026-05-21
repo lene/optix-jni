@@ -52,17 +52,20 @@ private[optix] trait OptiXPlaneApi:
       plane.axis, plane.positive, plane.value,
       checker.color1, checker.color2, material, textureIndex)
 
+  /** @param checkerColor second checker color, or null for solid-color plane
+    * @return instance ID (>= 0), or -1 on failure
+    */
   def addPlaneInstance(
     normal: Vector[3],
     distance: Float,
     material: Material,
-    checkerColor: Option[Color] = None,
+    checkerColor: Color = null, // scalafix:ok DisableSyntax.null
     checkerSize: Float = 1.0f
-  ): Option[Int] =
-    val (r2, g2, b2, solidColor) = checkerColor match
-      case Some(c) => (c.r, c.g, c.b, 0)
-      case None    => (0f, 0f, 0f, 1)
-    val id = addPlaneInstanceNative(
+  ): Int =
+    val (r2, g2, b2, solidColor) =
+      if checkerColor != null then (checkerColor.r, checkerColor.g, checkerColor.b, 0) // scalafix:ok DisableSyntax.null
+      else (0f, 0f, 0f, 1)
+    addPlaneInstanceNative(
       normal.x, normal.y, normal.z,
       distance,
       material.color.r, material.color.g, material.color.b, material.color.a,
@@ -70,12 +73,12 @@ private[optix] trait OptiXPlaneApi:
       material.filmThickness,
       r2, g2, b2, solidColor, checkerSize
     )
-    if id >= 0 then Some(id) else None
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addPlaneInstance(
     normal: Vector[3],
     distance: Float,
     color: Color,
     ior: Float
-  ): Option[Int] =
-    addPlaneInstance(normal, distance, Material(color, ior), None, 1.0f)
+  ): Int =
+    addPlaneInstance(normal, distance, Material(color, ior), null, 1.0f) // scalafix:ok DisableSyntax.null

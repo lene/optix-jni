@@ -65,13 +65,13 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
       val img1 = renderer1.render(size)
       val img2 = renderer2.render(size)
 
-      img1 shouldBe defined
-      img2 shouldBe defined
-      img1.get.length should be (ImageValidation.imageByteSize(size))
-      img2.get.length should be (ImageValidation.imageByteSize(size))
+      img1 should not be null // scalafix:ok DisableSyntax.null
+      img2 should not be null // scalafix:ok DisableSyntax.null
+      img1.length should be (ImageValidation.imageByteSize(size))
+      img2.length should be (ImageValidation.imageByteSize(size))
 
       // Images should be different (different spheres)
-      img1.get should not equal img2.get
+      img1 should not equal img2
 
       // Count pixels with dominant red vs blue
       def countRedPixels(img: Array[Byte]): Int = {
@@ -92,10 +92,10 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
         }
       }
 
-      val red1 = countRedPixels(img1.get)
-      val blue1 = countBluePixels(img1.get)
-      val red2 = countRedPixels(img2.get)
-      val blue2 = countBluePixels(img2.get)
+      val red1 = countRedPixels(img1)
+      val blue1 = countBluePixels(img1)
+      val red2 = countRedPixels(img2)
+      val blue2 = countBluePixels(img2)
 
       // Renderer 1 should have more red pixels
       red1 should be > blue1
@@ -135,12 +135,12 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
       val img1 = renderer1.render(size1)
       val img2 = renderer2.render(size2)
 
-      img1.get.length should be (ImageValidation.imageByteSize(size1))
-      img2.get.length should be (ImageValidation.imageByteSize(size2))
+      img1.length should be (ImageValidation.imageByteSize(size1))
+      img2.length should be (ImageValidation.imageByteSize(size2))
 
       // Both should have rendered successfully (non-zero pixels)
-      val nonZero1 = img1.get.count(_ != 0)
-      val nonZero2 = img2.get.count(_ != 0)
+      val nonZero1 = img1.count(_ != 0)
+      val nonZero2 = img2.count(_ != 0)
 
       nonZero1 should be > 0
       nonZero2 should be > 0
@@ -179,17 +179,17 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
       val img2b = renderer2.render(size)
 
       // All renders should succeed
-      img1a.get.length should be (ImageValidation.imageByteSize(size))
-      img2a.get.length should be (ImageValidation.imageByteSize(size))
-      img1b.get.length should be (ImageValidation.imageByteSize(size))
-      img2b.get.length should be (ImageValidation.imageByteSize(size))
+      img1a.length should be (ImageValidation.imageByteSize(size))
+      img2a.length should be (ImageValidation.imageByteSize(size))
+      img1b.length should be (ImageValidation.imageByteSize(size))
+      img2b.length should be (ImageValidation.imageByteSize(size))
 
       // Same renderer should produce same image
-      img1a.get should equal (img1b.get)
-      img2a.get should equal (img2b.get)
+      img1a should equal (img1b)
+      img2a should equal (img2b)
 
       // Different renderers should produce different images
-      img1a.get should not equal img2a.get
+      img1a should not equal img2a
 
     } finally {
       renderer1.dispose()
@@ -217,7 +217,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     val size = TEST_IMAGE_SIZE
     renderer2.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
     val img = renderer2.render(size)
-    img.get.length should be (ImageValidation.imageByteSize(size))
+    img.length should be (ImageValidation.imageByteSize(size))
 
     // Dispose second renderer
     renderer2.dispose()
@@ -240,7 +240,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
         // Verify it works
         val size = ImageSize(200, 200)
         renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
-        val img = renderer.render(size).get
+        val img = renderer.render(size)
         img.length should be (ImageValidation.imageByteSize(size))
 
       } finally {
@@ -260,9 +260,9 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
     noException should be thrownBy renderer.setSphere(Vector[3](0, 0, 0), 1)
     noException should be thrownBy renderer.setSphereColor(Color(1, 0, 0, 1))
 
-    // render should return None on uninitialized instance
+    // render should return null on uninitialized instance
     val img = renderer.render(TEST_IMAGE_SIZE)
-    img shouldBe None
+    img shouldBe null // scalafix:ok DisableSyntax.null
   }
 
   it should "allow re-initialization check" in {
@@ -303,7 +303,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
       // Renderer should still work normally
       val size = ImageSize(200, 200)
       renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
-      val img = renderer.render(size).get
+      val img = renderer.render(size)
       img.length should be (ImageValidation.imageByteSize(size))
 
     } finally {
@@ -327,7 +327,7 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
       // Renderer should work
       val size = ImageSize(200, 200)
       renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), Const.defaultSphereRadius)
-      val img = renderer.render(size).get
+      val img = renderer.render(size)
       img.length should be (ImageValidation.imageByteSize(size))
 
     } finally {

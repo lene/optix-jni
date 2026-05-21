@@ -35,7 +35,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Should show floor plane through semi-transparent sphere
     imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)
@@ -46,7 +46,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Should show moderate variation (refraction distortion)
     imageData should showGlassRefraction(TEST_IMAGE_SIZE)
@@ -57,7 +57,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Should show strong variation (glass refraction)
     imageData should showWaterRefraction(TEST_IMAGE_SIZE)
@@ -68,7 +68,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Should show very high variation (strong refraction)
     imageData should showDiamondRefraction(TEST_IMAGE_SIZE)
@@ -81,7 +81,7 @@ class RefractionSuite extends AnyFlatSpec
 
     // Measure edge brightness at IOR=1.33 (water)
     renderer.setIOR(1.33f)
-    val imageWater = renderer.render(TEST_IMAGE_SIZE).get
+    val imageWater = renderer.render(TEST_IMAGE_SIZE)
     val edgeBrightnessWater = ImageValidation.edgeBrightness(
       imageWater,
       TEST_IMAGE_SIZE
@@ -89,7 +89,7 @@ class RefractionSuite extends AnyFlatSpec
 
     // Measure edge brightness at IOR=2.42 (diamond)
     renderer.setIOR(2.42f)
-    val imageDiamond = renderer.render(TEST_IMAGE_SIZE).get
+    val imageDiamond = renderer.render(TEST_IMAGE_SIZE)
     val edgeBrightnessDiamond = ImageValidation.edgeBrightness(
       imageDiamond,
       TEST_IMAGE_SIZE
@@ -103,7 +103,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Red channel should dominate
     imageData should beRedDominant(TEST_IMAGE_SIZE)
@@ -114,7 +114,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Green channel should dominate
     // Tolerance=7.0 because green glass produces less separation than red/blue
@@ -127,7 +127,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Blue channel should dominate
     imageData should beBlueDominant(TEST_IMAGE_SIZE)
@@ -138,7 +138,7 @@ class RefractionSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Checkered floor should be visible through transparent sphere
     imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)

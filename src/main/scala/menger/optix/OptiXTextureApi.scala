@@ -1,9 +1,5 @@
 package menger.optix
 
-import scala.util.Failure
-import scala.util.Success
-import scala.util.Try
-
 private[optix] trait OptiXTextureApi:
   this: OptiXRenderer =>
 
@@ -25,7 +21,11 @@ private[optix] trait OptiXTextureApi:
   def setImageTexture(instanceId: Int, imageTextureIndex: Int): Unit =
     setImageTextureNative(instanceId, imageTextureIndex)
 
-  def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Try[Int] =
+  /** Upload texture; throws [[TextureUploadException]] on native failure.
+    * @return texture index (>= 0)
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Int =
     // JNI boundary validation - null checks required for native method safety
     require(name != null && name.nonEmpty, "Texture name must not be null or empty") // scalafix:ok DisableSyntax.null
     require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
@@ -38,9 +38,9 @@ private[optix] trait OptiXTextureApi:
     )
     val index = uploadTextureNative(name, imageData, width, height)
     if index < 0 then
-      Failure(TextureUploadException(s"Failed to upload texture '$name': error code $index"))
+      throw TextureUploadException(s"Failed to upload texture '$name': error code $index")
     else
-      Success(index)
+      index
 
   def uploadTextureFromFile(path: String): Int =
     require(path != null && path.nonEmpty, "Path must not be null or empty") // scalafix:ok DisableSyntax.null

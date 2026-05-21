@@ -28,10 +28,13 @@ private[optix] trait OptiXMeshApi:
     * @param vertsPerFace number of vertices per face (3=tri, 4=quad, 5=pentagon)
     * @param uvs optional length vertsPerFace*2*numFaces; None uses computed UVs
     */
+  /** @param uvs optional UV coordinates; pass null to use computed UVs
+    * @return mesh index slot in triangle_meshes[]
+    */
   def setProjectedMesh(
     facesData: Array[Float],
     vertsPerFace: Int,
-    uvs: Option[Array[Float]],
+    uvs: Array[Float],
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
@@ -43,22 +46,23 @@ private[optix] trait OptiXMeshApi:
       s"facesData length must be a multiple of vertsPerFace*4 ($stride), got ${facesData.length}")
     require(facesData.length > 0, "facesData must not be empty")
     val numFaces = facesData.length / stride
-    uvs.foreach { u =>
-      require(u.length == numFaces * vertsPerFace * 2,
-        s"uvs length (${u.length}) must equal numFaces*vertsPerFace*2 (${numFaces * vertsPerFace * 2})")
-    }
+    if uvs != null then // scalafix:ok DisableSyntax.null
+      require(uvs.length == numFaces * vertsPerFace * 2,
+        s"uvs length (${uvs.length}) must equal numFaces*vertsPerFace*2 (${numFaces * vertsPerFace * 2})")
     val result = setProjectedMeshNative(
-      facesData, numFaces, vertsPerFace, uvs.orNull,
+      facesData, numFaces, vertsPerFace, uvs,
       eyeW, screenW, rotXW, rotYW, rotZW,
       centerX, centerY, centerZ
     )
     require(result >= 0, s"setProjectedMesh failed with code $result")
     result
 
-  // Backward-compatible alias
+  /** Backward-compatible alias. Pass null for uvs to use computed UVs.
+    * @return mesh index slot in triangle_meshes[]
+    */
   def setTriangleMesh4DQuads(
     quads4D: Array[Float],
-    uvs: Option[Array[Float]],
+    uvs: Array[Float],
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
@@ -105,40 +109,43 @@ private[optix] trait OptiXMeshApi:
   def setTriangleMeshColor(color: Color): Unit =
     setTriangleMeshColorNative(color.r, color.g, color.b, color.a)
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addTriangleMeshInstance(
     transform: Array[Float],
     material: Material,
     textureIndex: Int = -1
-  ): Option[Int] =
+  ): Int =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addTriangleMeshInstanceNative(
+    addTriangleMeshInstanceNative(
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       textureIndex, material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addTriangleMeshInstance(
     transform: Array[Float],
     color: Color,
     ior: Float,
     textureIndex: Int
-  ): Option[Int] =
+  ): Int =
     addTriangleMeshInstance(transform, Material(color, ior), textureIndex)
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addTriangleMeshInstance(
     transform: Array[Float],
     color: Color,
     ior: Float
-  ): Option[Int] =
+  ): Int =
     addTriangleMeshInstance(transform, Material(color, ior), -1)
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addTriangleMeshInstance(
     position: Vector[3],
     material: Material,
     textureIndex: Int
-  ): Option[Int] =
+  ): Int =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
@@ -146,15 +153,17 @@ private[optix] trait OptiXMeshApi:
     )
     addTriangleMeshInstance(transform, material, textureIndex)
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addTriangleMeshInstance(
     position: Vector[3],
     color: Color,
     ior: Float,
     textureIndex: Int
-  ): Option[Int] =
+  ): Int =
     addTriangleMeshInstance(position, Material(color, ior), textureIndex)
 
-  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+  /** @return instance ID (>= 0), or -1 on failure */
+  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Int =
     addTriangleMeshInstance(position, Material(color, ior), -1)
 
   /** Add a recursive-IAS Menger sponge instance (Sprint 18.4).
@@ -170,29 +179,30 @@ private[optix] trait OptiXMeshApi:
     *
     * @param level recursion depth; must be in [1, 14]
     */
+  /** @return instance ID (>= 0), or -1 on failure */
   def addRecursiveIASSpongeInstance(
     level: Int,
     transform: Array[Float],
     material: Material,
     textureIndex: Int = -1
-  ): Option[Int] =
+  ): Int =
     require(level >= 1 && level <= 14, s"Recursive IAS sponge level must be in [1, 14], got $level")
     require(transform.length == Const.Renderer.transformMatrixSize,
       s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addRecursiveIASSpongeInstanceNative(
+    addRecursiveIASSpongeInstanceNative(
       level, transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       textureIndex, material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addRecursiveIASSpongeInstance(
     level: Int,
     position: Vector[3],
     material: Material,
     textureIndex: Int
-  ): Option[Int] =
+  ): Int =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
@@ -200,16 +210,18 @@ private[optix] trait OptiXMeshApi:
     )
     addRecursiveIASSpongeInstance(level, transform, material, textureIndex)
 
-  def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): Option[Int] =
+  /** @return instance ID (>= 0), or -1 on failure */
+  def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): Int =
     addRecursiveIASSpongeInstance(level, position, Material(color, ior), -1)
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addCylinderInstance(
     p0: Vector[3],
     p1: Vector[3],
     radius: Float,
     material: Material
-  ): Option[Int] =
-    val id = addCylinderInstanceNative(
+  ): Int =
+    addCylinderInstanceNative(
       p0.x, p0.y, p0.z,
       p1.x, p1.y, p1.z,
       radius,
@@ -217,24 +229,25 @@ private[optix] trait OptiXMeshApi:
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addCylinderInstance(
     p0: Vector[3],
     p1: Vector[3],
     radius: Float,
     color: Color,
     ior: Float
-  ): Option[Int] =
+  ): Int =
     addCylinderInstance(p0, p1, radius, Material(color, ior))
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addConeInstance(
     apex: Vector[3],
     base: Vector[3],
     radius: Float,
     material: Material
-  ): Option[Int] =
-    val id = addConeInstanceNative(
+  ): Int =
+    addConeInstanceNative(
       apex.x, apex.y, apex.z,
       base.x, base.y, base.z,
       radius,
@@ -242,17 +255,18 @@ private[optix] trait OptiXMeshApi:
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addConeInstance(
     apex: Vector[3],
     base: Vector[3],
     radius: Float,
     color: Color,
     ior: Float
-  ): Option[Int] =
+  ): Int =
     addConeInstance(apex, base, radius, Material(color, ior))
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addMenger4DInstance(
     level: Int,
     distanceThreshold: Int,
@@ -261,8 +275,8 @@ private[optix] trait OptiXMeshApi:
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     material: Material
-  ): Option[Int] =
-    val id = addMenger4DInstanceNative(
+  ): Int =
+    addMenger4DInstanceNative(
       level, distanceThreshold,
       position.x, position.y, position.z, scale,
       eyeW, screenW, rotXW, rotYW, rotZW,
@@ -270,7 +284,6 @@ private[optix] trait OptiXMeshApi:
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
   def updateMenger4DProjection(
     instanceId: Int,
@@ -281,6 +294,7 @@ private[optix] trait OptiXMeshApi:
     val rc = updateMenger4DProjectionNative(instanceId, eyeW, screenW, rotXW, rotYW, rotZW)
     require(rc == 0, s"updateMenger4DProjection failed with code $rc (instanceId=$instanceId)")
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addSierpinski4DInstance(
     level: Int,
     position: Vector[3],
@@ -288,8 +302,8 @@ private[optix] trait OptiXMeshApi:
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     material: Material
-  ): Option[Int] =
-    val id = addSierpinski4DInstanceNative(
+  ): Int =
+    addSierpinski4DInstanceNative(
       level,
       position.x, position.y, position.z, scale,
       eyeW, screenW, rotXW, rotYW, rotZW,
@@ -297,7 +311,6 @@ private[optix] trait OptiXMeshApi:
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
   def updateSierpinski4DProjection(
     instanceId: Int,
@@ -308,6 +321,7 @@ private[optix] trait OptiXMeshApi:
     val rc = updateSierpinski4DProjectionNative(instanceId, eyeW, screenW, rotXW, rotYW, rotZW)
     require(rc == 0, s"updateSierpinski4DProjection failed with code $rc (instanceId=$instanceId)")
 
+  /** @return instance ID (>= 0), or -1 on failure */
   def addHexadecachoron4DInstance(
     level: Int,
     position: Vector[3],
@@ -315,8 +329,8 @@ private[optix] trait OptiXMeshApi:
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     material: Material
-  ): Option[Int] =
-    val id = addHexadecachoron4DInstanceNative(
+  ): Int =
+    addHexadecachoron4DInstanceNative(
       level,
       position.x, position.y, position.z, scale,
       eyeW, screenW, rotXW, rotYW, rotZW,
@@ -324,7 +338,6 @@ private[optix] trait OptiXMeshApi:
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
   def updateHexadecachoron4DProjection(
     instanceId: Int,

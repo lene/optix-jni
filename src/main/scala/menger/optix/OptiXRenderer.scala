@@ -413,8 +413,8 @@ class OptiXRenderer
   def setLight(direction: Vector[3], intensity: Float): Unit =
     setLight(direction.toArray, intensity)
 
-  def setLights(lights: Seq[CommonLight]): Unit =
-    val jniLights = lights.map(toJNILight).toArray
+  def setLights(lights: Array[CommonLight]): Unit =
+    val jniLights = lights.map(toJNILight)
     setLights(jniLights)
 
   def setTransparentShadows(enabled: Boolean): Unit =
@@ -462,16 +462,17 @@ class OptiXRenderer
         false
     .getOrElse(false)
 
-  // Ensures OptiX is available, returns Try with error details
-  def ensureAvailable(): Try[OptiXRenderer] =
+  /** Ensures OptiX is available and returns this renderer. Throws [[OptiXNotAvailableException]] on failure. */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def ensureAvailable(): OptiXRenderer =
     if !OptiXRenderer.isLibraryLoaded then
-      Failure(OptiXNotAvailableException(
+      throw OptiXNotAvailableException(
         "OptiX native library failed to load - ensure CUDA and OptiX are available"
-      ))
+      )
     else if !initialize() then
-      Failure(OptiXNotAvailableException("Failed to initialize OptiX renderer"))
+      throw OptiXNotAvailableException("Failed to initialize OptiX renderer")
     else
-      Success(this)
+      this
 
 object OptiXRenderer extends LazyLogging:
   private val libraryName = "optixjni"

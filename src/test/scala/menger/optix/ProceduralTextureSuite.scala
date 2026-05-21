@@ -18,7 +18,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "ValueNoise procedural texture" should "produce a different image than no procedural" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
     val flatSum = pixelSum(renderImage(imgSize))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 3.0f)
@@ -29,7 +28,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "FBM and ValueNoise procedural textures" should "produce different images" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 2.0f)
     val valueNoiseSum = pixelSum(renderImage(imgSize))
@@ -42,7 +40,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "setProceduralTexture" should "reject invalid type < 0" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
     an[IllegalArgumentException] should be thrownBy {
       renderer.setProceduralTexture(instanceId, -1, 1.0f)
     }
@@ -50,7 +47,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   it should "reject invalid type > 10" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
     an[IllegalArgumentException] should be thrownBy {
       renderer.setProceduralTexture(instanceId, 11, 1.0f)
     }
@@ -58,7 +54,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "HeatMap procedural texture" should "produce a different image than no procedural" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
     val flatSum = pixelSum(renderImage(imgSize))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.HeatMap, 1.0f)
@@ -69,7 +64,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   it should "produce a different image than plain FBM" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.FBM, 1.0f)
     val fbmSum = pixelSum(renderImage(imgSize))
@@ -82,7 +76,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "XYZToRGB procedural texture" should "produce a different image than no procedural" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
     val flatSum = pixelSum(renderImage(imgSize))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.XYZToRGB, 1.0f)
@@ -93,7 +86,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   it should "produce a different image than wood" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.Wood, 1.0f)
     val woodSum = pixelSum(renderImage(imgSize))
@@ -106,7 +98,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "Wood procedural texture" should "produce a different image than marble" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.Wood, 1.0f)
     val woodSum = pixelSum(renderImage(imgSize))
@@ -119,7 +110,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "LayeredNoise procedural texture" should "produce a different image than plain FBM" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.FBM, 1.0f)
     val fbmSum = pixelSum(renderImage(imgSize))
@@ -132,7 +122,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   it should "reject non-positive scale" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
     an[IllegalArgumentException] should be thrownBy {
       renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 0.0f)
     }
@@ -140,7 +129,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   "Triplanar procedural texture" should "produce a different image than no procedural" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
     val flatSum = pixelSum(renderImage(imgSize))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.Triplanar, 1.0f)
@@ -151,7 +139,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   it should "produce a different image than plain FBM" in {
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
-      .getOrElse(fail("addSphereInstance failed"))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.FBM, 1.0f)
     val fbmSum = pixelSum(renderImage(imgSize))
@@ -166,7 +153,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
     val apex = Vector[3](0f, 1f, 0f)
     val base = Vector[3](0f, -1f, 0f)
     val instanceId = renderer.addConeInstance(apex, base, 0.8f, Material(white, 1.0f))
-      .getOrElse(fail("addConeInstance failed"))
     val flatSum = pixelSum(renderImage(imgSize))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 3.0f)
@@ -178,7 +164,6 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
   "Plane procedural texture" should "produce a different image than no procedural" in {
     val normal = Vector[3](0f, 1f, 0f)
     val instanceId = renderer.addPlaneInstance(normal, -1.5f, Material(white, 1.0f))
-      .getOrElse(fail("addPlaneInstance failed"))
     val flatSum = pixelSum(renderImage(imgSize))
 
     renderer.setProceduralTexture(instanceId, ProceduralType.ValueNoise, 3.0f)

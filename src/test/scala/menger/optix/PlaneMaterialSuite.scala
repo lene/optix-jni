@@ -111,7 +111,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
                specular = matteSpecular, emission = matteEmission),
       noTexture
     )
-    val matteImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Matte render failed"))
+    val matteImage = renderer.render(TEST_IMAGE_SIZE)
     val matteBrightness = averageBrightness(matteImage)
 
     renderer.clearPlanes()
@@ -122,7 +122,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
                specular = matteSpecular, emission = emissionBrightness),
       noTexture
     )
-    val emissiveImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Emissive render failed"))
+    val emissiveImage = renderer.render(TEST_IMAGE_SIZE)
     val emissiveBrightness = averageBrightness(emissiveImage)
 
     emissiveBrightness should be > matteBrightness
@@ -137,7 +137,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
                specular = matteSpecular, emission = matteEmission),
       noTexture
     )
-    val matteImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Matte render failed"))
+    val matteImage = renderer.render(TEST_IMAGE_SIZE)
 
     renderer.clearPlanes()
     renderer.addPlaneSolidColorWithMaterial(
@@ -147,7 +147,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
                specular = chromeSpecular, emission = chromeEmission),
       noTexture
     )
-    val chromeImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Chrome render failed"))
+    val chromeImage = renderer.render(TEST_IMAGE_SIZE)
 
     // Images must differ by at least one step (the specular highlight introduces visible difference)
     val diff = pixelDifference(matteImage, chromeImage)
@@ -202,7 +202,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     renderer.clearPlanes()
     renderer.addPlane(floorAxis, positive = false, floorY)
-    val plainImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Plain plane render failed"))
+    val plainImage = renderer.render(TEST_IMAGE_SIZE)
 
     renderer.clearPlanes()
     renderer.addPlaneSolidColorWithMaterial(
@@ -212,7 +212,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
                specular = chromeSpecular, emission = chromeEmission),
       noTexture
     )
-    val chromeImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Chrome solid render failed"))
+    val chromeImage = renderer.render(TEST_IMAGE_SIZE)
 
     val diff = pixelDifference(plainImage, chromeImage)
     diff should be > 0.0
@@ -231,7 +231,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
                specular = matteSpecular, emission = matteEmission),
       noTexture
     )
-    val matteImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Matte render failed"))
+    val matteImage = renderer.render(TEST_IMAGE_SIZE)
 
     renderer.clearPlanes()
     renderer.addPlaneCheckerColorsWithMaterial(
@@ -241,7 +241,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
                specular = chromeSpecular, emission = chromeEmission),
       noTexture
     )
-    val chromeImage = renderer.render(TEST_IMAGE_SIZE).getOrElse(fail("Chrome render failed"))
+    val chromeImage = renderer.render(TEST_IMAGE_SIZE)
 
     val diff = pixelDifference(matteImage, chromeImage)
     diff should be > 1.0  // reflections produce substantial pixel difference

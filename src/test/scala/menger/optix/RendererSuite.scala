@@ -102,16 +102,16 @@ class RendererTest extends AnyFlatSpec
     val direction = Vector[3](0.5f, 0.5f, -0.5f)
     noException should be thrownBy { setLight(direction, 1.0f) }
 
-  it should "return Some from render()" in new OptiXRenderer:
+  it should "return non-null from render()" in new OptiXRenderer:
     initialize()
     val result = render(STANDARD_IMAGE_SIZE)
-    result shouldBe defined
+    result should not be null // scalafix:ok DisableSyntax.null
 
   it should "return correct size array from render() (RGBA)" in new OptiXRenderer:
     initialize()
     val result = render(STANDARD_IMAGE_SIZE)
     val expectedSize = ImageValidation.imageByteSize(STANDARD_IMAGE_SIZE)
-    result.get.length shouldBe expectedSize
+    result.length shouldBe expectedSize
 
   it should "allow dispose() to be called without crashing" in new OptiXRenderer:
     initialize()
@@ -134,7 +134,7 @@ class RendererTest extends AnyFlatSpec
     setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
 
     val image = render(100, 100)
-    image.get.length shouldBe 100 * 100 * 4
+    image.length shouldBe 100 * 100 * 4
 
     dispose()
 
@@ -143,7 +143,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereRadius(0.5f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(STANDARD_IMAGE_SIZE).get
+    val imageData = renderer.render(STANDARD_IMAGE_SIZE)
     imageData.length shouldBe ImageValidation.imageByteSize(STANDARD_IMAGE_SIZE)
 
     val savedFile = TestUtilities.savePNG("optix_test_output.png", imageData,
@@ -160,14 +160,14 @@ class RendererTest extends AnyFlatSpec
       .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
-    val image1 = renderer.render(size).get
+    val image1 = renderer.render(size)
 
     // Render from side
     TestScenario.default()
       .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](3.0f, 0.0f, 0.0f))
       .applyTo(renderer)
-    val image2 = renderer.render(size).get
+    val image2 = renderer.render(size)
 
     // Render from top
     TestScenario.default()
@@ -175,7 +175,7 @@ class RendererTest extends AnyFlatSpec
       .withCameraEye(Vector[3](0.0f, 3.0f, 0.0f))
       .withCameraUp(Vector[3](0.0f, 0.0f, -1.0f))
       .applyTo(renderer)
-    val image3 = renderer.render(size).get
+    val image3 = renderer.render(size)
 
     // All should have brightness variation
     ImageValidation.brightnessStdDev(image1, size) should be > MIN_BRIGHTNESS_VARIATION
@@ -197,7 +197,7 @@ class RendererTest extends AnyFlatSpec
       .withIOR(1.0f)
       .withLightDirection(Vector[3](0.5f, 0.5f, -0.5f))
       .applyTo(renderer)
-    val image1 = renderer.render(size).get
+    val image1 = renderer.render(size)
 
     // Light from left
     TestScenario.default()
@@ -206,7 +206,7 @@ class RendererTest extends AnyFlatSpec
       .withIOR(1.0f)
       .withLightDirection(Vector[3](-1.0f, 0.0f, 0.0f))
       .applyTo(renderer)
-    val image2 = renderer.render(size).get
+    val image2 = renderer.render(size)
 
     // Light from behind camera
     TestScenario.default()
@@ -215,7 +215,7 @@ class RendererTest extends AnyFlatSpec
       .withIOR(1.0f)
       .withLightDirection(Vector[3](0.0f, 0.0f, 1.0f))
       .applyTo(renderer)
-    val image3 = renderer.render(size).get
+    val image3 = renderer.render(size)
 
     // Images should be different
     image1 should not equal image2
@@ -226,13 +226,13 @@ class RendererTest extends AnyFlatSpec
     val size = QUICK_TEST_SIZE
 
     TestScenario.default().withSphereRadius(0.5f).applyTo(renderer)
-    val image1 = renderer.render(size).get
+    val image1 = renderer.render(size)
 
     TestScenario.default().withSphereRadius(Const.defaultSphereRadius).applyTo(renderer)
-    val image2 = renderer.render(size).get
+    val image2 = renderer.render(size)
 
     TestScenario.default().withSphereRadius(2.5f).applyTo(renderer)
-    val image3 = renderer.render(size).get
+    val image3 = renderer.render(size)
 
     image1 should not equal image2
     image2 should not equal image3
@@ -242,13 +242,13 @@ class RendererTest extends AnyFlatSpec
     val size = QUICK_TEST_SIZE
 
     TestScenario.default().withSpherePosition(Vector[3](0.0f, 0.0f, 0.0f)).applyTo(renderer)
-    val image1 = renderer.render(size).get
+    val image1 = renderer.render(size)
 
     TestScenario.default().withSpherePosition(Vector[3](1.0f, 0.0f, 0.0f)).applyTo(renderer)
-    val image2 = renderer.render(size).get
+    val image2 = renderer.render(size)
 
     TestScenario.default().withSpherePosition(Vector[3](0.0f, 1.0f, 0.0f)).applyTo(renderer)
-    val image3 = renderer.render(size).get
+    val image3 = renderer.render(size)
 
     image1 should not equal image2
     image2 should not equal image3
@@ -259,7 +259,7 @@ class RendererTest extends AnyFlatSpec
     val images = for i <- 0 until 10 yield
       val radius = 0.5f + i * 0.1f
       TestScenario.default().withSphereRadius(radius).applyTo(renderer)
-      renderer.render(size).get
+      renderer.render(size)
 
     // All images should be valid
     images.foreach { image =>
@@ -276,22 +276,22 @@ class RendererTest extends AnyFlatSpec
 
     // Very narrow FOV
     TestScenario.default().withHorizontalFOV(1.0f).applyTo(renderer)
-    val image1 = renderer.render(size).get
+    val image1 = renderer.render(size)
     image1.length shouldBe ImageValidation.imageByteSize(size)
 
     // Very wide FOV
     TestScenario.default().withHorizontalFOV(179.0f).applyTo(renderer)
-    val image2 = renderer.render(size).get
+    val image2 = renderer.render(size)
     image2.length shouldBe ImageValidation.imageByteSize(size)
 
   it should "handle very small sphere radius" in:
     TestScenario.default().withSphereRadius(0.001f).applyTo(renderer)
-    val image = renderer.render(100, 100).get
+    val image = renderer.render(100, 100)
     image.length shouldBe 100 * 100 * 4
 
   it should "handle very large sphere radius" in:
     TestScenario.default().withSphereRadius(1000.0f).applyTo(renderer)
-    val image = renderer.render(100, 100).get
+    val image = renderer.render(100, 100)
     image.length shouldBe 100 * 100 * 4
 
   it should "handle sphere far from origin" in:
@@ -301,7 +301,7 @@ class RendererTest extends AnyFlatSpec
       .withCameraEye(Vector[3](100.0f, 100.0f, 103.0f))
       .withCameraLookAt(Vector[3](100.0f, 100.0f, 100.0f))
       .applyTo(renderer)
-    val image = renderer.render(100, 100).get
+    val image = renderer.render(100, 100)
     image.length shouldBe 100 * 100 * 4
 
   it should "handle camera very close to sphere" in:
@@ -309,7 +309,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereRadius(Const.defaultSphereRadius)
       .withCameraEye(Vector[3](0.0f, 0.0f, 0.01f))
       .applyTo(renderer)
-    val image = renderer.render(100, 100).get
+    val image = renderer.render(100, 100)
     image.length shouldBe 100 * 100 * 4
 
   it should "handle multiple initialize() calls" in new OptiXRenderer:
@@ -326,16 +326,16 @@ class RendererTest extends AnyFlatSpec
   it should "handle different render sizes" in:
     TestScenario.default().applyTo(renderer)
 
-    val image1 = renderer.render(10, 10).get
+    val image1 = renderer.render(10, 10)
     image1.length shouldBe 10 * 10 * 4
 
-    val image2 = renderer.render(512, 512).get
+    val image2 = renderer.render(512, 512)
     image2.length shouldBe 512 * 512 * 4
 
-    val image3 = renderer.render(1920, 1080).get
+    val image3 = renderer.render(1920, 1080)
     image3.length shouldBe 1920 * 1080 * 4
 
-    val image4 = renderer.render(600, 800).get
+    val image4 = renderer.render(600, 800)
     image4.length shouldBe 600 * 800 * 4
 
   "Sphere color" should "render correct color (not grayscale)" in:
@@ -347,7 +347,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
-    val imageRed = renderer.render(imageSize).get
+    val imageRed = renderer.render(imageSize)
     imageRed should beRedDominant(imageSize)
 
     // Pure green sphere
@@ -356,7 +356,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
-    val imageGreen = renderer.render(imageSize).get
+    val imageGreen = renderer.render(imageSize)
     imageGreen should beGreenDominant(imageSize)
 
     // Pure blue sphere
@@ -365,7 +365,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
-    val imageBlue = renderer.render(imageSize).get
+    val imageBlue = renderer.render(imageSize)
     imageBlue should beBlueDominant(imageSize)
 
     // All three images should be different
@@ -381,7 +381,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
       .applyTo(renderer)
-    val image = renderer.render(imageSize).get
+    val image = renderer.render(imageSize)
 
     image should beGreenDominant(imageSize)
 
@@ -404,7 +404,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_MEDIUM_GRAY)
       .withSphereRadius(Const.defaultSphereRadius)
       .applyTo(renderer)
-    val imageGray = renderer.render(imageSize).get
+    val imageGray = renderer.render(imageSize)
 
     imageGray should beGrayscale(imageSize)
 
@@ -425,7 +425,7 @@ class RendererTest extends AnyFlatSpec
     renderer.setIOR(1.0f)
     renderer.setScale(1.0f)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Green should be dominant channel
     val ratio = ImageValidation.colorChannelRatio(
@@ -446,7 +446,7 @@ class RendererTest extends AnyFlatSpec
       .withIOR(1.0f)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
-    val imageOpaque = renderer.render(size).get
+    val imageOpaque = renderer.render(size)
 
     // Semi-transparent white sphere
     TestScenario.default()
@@ -455,7 +455,7 @@ class RendererTest extends AnyFlatSpec
       .withIOR(1.0f)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
-    val imageTransparent = renderer.render(size).get
+    val imageTransparent = renderer.render(size)
 
     val centerIdx = size.height / 2 * size.width + size.width / 2
 
@@ -475,7 +475,7 @@ class RendererTest extends AnyFlatSpec
       .withIOR(1.0f)
       .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
       .applyTo(renderer)
-    val image = renderer.render(size).get
+    val image = renderer.render(size)
 
     // Center should show background, not the opaque sphere color (pure white)
     val centerIdx = size.height / 2 * size.width + size.width / 2
@@ -496,7 +496,7 @@ class RendererTest extends AnyFlatSpec
 
     renderer.setScale(1.0f)
 
-    val imageData = renderer.render(size).get
+    val imageData = renderer.render(size)
     imageData.length shouldBe ImageValidation.imageByteSize(size)
 
     // Check variation across 5 vertical samples spanning the sphere
@@ -519,7 +519,7 @@ class RendererTest extends AnyFlatSpec
 
     renderer.setScale(1.0f)
 
-    val imageData = renderer.render(size).get
+    val imageData = renderer.render(size)
     imageData.length shouldBe ImageValidation.imageByteSize(size)
 
   // Caustics (Progressive Photon Mapping) tests
@@ -551,7 +551,7 @@ class RendererTest extends AnyFlatSpec
 
     // Small render to keep test fast
     val size = QUICK_TEST_SIZE
-    val imageData = renderer.render(size).get
+    val imageData = renderer.render(size)
 
     // Verify valid image output
     imageData.length shouldBe ImageValidation.imageByteSize(size)
@@ -568,7 +568,7 @@ class RendererTest extends AnyFlatSpec
     renderer.setCaustics(enabled = true, photonsPerIter = 1000, iterations = 2, initialRadius = 0.1f, alpha = 0.7f)
 
     val size = QUICK_TEST_SIZE
-    val imageData = renderer.render(size).get
+    val imageData = renderer.render(size)
 
     imageData.length shouldBe ImageValidation.imageByteSize(size)
 
@@ -582,15 +582,15 @@ class RendererTest extends AnyFlatSpec
 
     // Render without caustics
     renderer.setCaustics(enabled = false, photonsPerIter = 0, iterations = 0, initialRadius = 0.0f, alpha = 0.0f)
-    val imageNoCaustics = renderer.render(size).get
+    val imageNoCaustics = renderer.render(size)
     imageNoCaustics.length shouldBe ImageValidation.imageByteSize(size)
 
     // Render with caustics
     renderer.setCaustics(enabled = true, photonsPerIter = 1000, iterations = 2, initialRadius = 0.1f, alpha = 0.7f)
-    val imageWithCaustics = renderer.render(size).get
+    val imageWithCaustics = renderer.render(size)
     imageWithCaustics.length shouldBe ImageValidation.imageByteSize(size)
 
     // Disable again
     renderer.disableCaustics()
-    val imageDisabled = renderer.render(size).get
+    val imageDisabled = renderer.render(size)
     imageDisabled.length shouldBe ImageValidation.imageByteSize(size)

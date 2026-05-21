@@ -124,12 +124,12 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMesh(singleTriangle)
     renderer.setTriangleMeshColor(Color(0.0f, 1.0f, 0.0f))
     val result = renderer.render(TEST_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
   it should "produce valid image dimensions" in:
     renderer.setTriangleMesh(singleTriangle)
     renderer.setTriangleMeshColor(Color(1.0f, 0.0f, 0.0f))
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
     imageData.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
 
   it should "work with transparent material" in:
@@ -137,7 +137,7 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMeshColor(Color(0.9f, 0.9f, 1.0f, 0.5f))
     renderer.setTriangleMeshIOR(1.5f)
     val result = renderer.render(TEST_IMAGE_SIZE)
-    result.isDefined shouldBe true
+    result should not be null // scalafix:ok DisableSyntax.null
 
   // ========== Glass Cube Tests (Task 5.3) ==========
 
@@ -149,8 +149,8 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.addPlane(1, true, -2.0f)
 
     val result = renderer.render(TEST_IMAGE_SIZE)
-    result.isDefined shouldBe true
-    result.get.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
+    result should not be null // scalafix:ok DisableSyntax.null
+    result.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
 
   it should "look different with different IOR values" in:
     renderer.setTriangleMesh(cubeMesh())
@@ -159,13 +159,13 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.addPlane(1, true, -2.0f)
 
     renderer.setTriangleMeshIOR(1.0f) // No refraction
-    val ior1 = renderer.render(TEST_IMAGE_SIZE).get
+    val ior1 = renderer.render(TEST_IMAGE_SIZE)
 
     renderer.setTriangleMeshIOR(1.5f) // Glass
-    val ior15 = renderer.render(TEST_IMAGE_SIZE).get
+    val ior15 = renderer.render(TEST_IMAGE_SIZE)
 
     renderer.setTriangleMeshIOR(2.4f) // Diamond
-    val ior24 = renderer.render(TEST_IMAGE_SIZE).get
+    val ior24 = renderer.render(TEST_IMAGE_SIZE)
 
     // All should be different
     ior1 should not equal ior15
@@ -179,15 +179,15 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     // Clear glass
     renderer.setTriangleMeshColor(Color(1.0f, 1.0f, 1.0f, 0.3f))
-    val clear = renderer.render(TEST_IMAGE_SIZE).get
+    val clear = renderer.render(TEST_IMAGE_SIZE)
 
     // Red tinted glass
     renderer.setTriangleMeshColor(Color(1.0f, 0.3f, 0.3f, 0.5f))
-    val red = renderer.render(TEST_IMAGE_SIZE).get
+    val red = renderer.render(TEST_IMAGE_SIZE)
 
     // Blue tinted glass
     renderer.setTriangleMeshColor(Color(0.3f, 0.3f, 1.0f, 0.5f))
-    val blue = renderer.render(TEST_IMAGE_SIZE).get
+    val blue = renderer.render(TEST_IMAGE_SIZE)
 
     // All should be visually different
     clear should not equal red
@@ -205,10 +205,10 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.addPlane(1, true, -1.5f)
 
     renderer.setShadows(true)
-    val withShadows = renderer.render(TEST_IMAGE_SIZE).get
+    val withShadows = renderer.render(TEST_IMAGE_SIZE)
 
     renderer.setShadows(false)
-    val withoutShadows = renderer.render(TEST_IMAGE_SIZE).get
+    val withoutShadows = renderer.render(TEST_IMAGE_SIZE)
 
     // Images should differ (shadow visible)
     withShadows should not equal withoutShadows
@@ -218,7 +218,7 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMeshColor(Color(0.8f, 0.2f, 0.2f)) // Red opaque
     renderer.setTriangleMeshIOR(1.0f)
 
-    val result = renderer.render(TEST_IMAGE_SIZE).get
+    val result = renderer.render(TEST_IMAGE_SIZE)
 
     // Verify the image has non-background pixels (cube is visible)
     val nonBackgroundPixels = (0 until (TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height)).count { i =>
@@ -248,8 +248,8 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.addPlane(1, true, -2.0f)
 
     val result = renderer.render(TEST_IMAGE_SIZE)
-    result.isDefined shouldBe true
-    result.get.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
+    result should not be null // scalafix:ok DisableSyntax.null
+    result.length shouldBe TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height * 4
 
   // Helper to create a mesh with many triangles by subdividing a cube
   private def createComplexMesh(subdivisions: Int): TriangleMeshData =

@@ -30,7 +30,7 @@ object MultipleLightsTestVisualization:
     val height = 600
 
     // Render
-    val result = renderer.render(width, height).get
+    val result = renderer.render(width, height)
     TestUtilities.savePNG("multilight_test_image.png", result, width, height)
 
     // Calculate brightness in center region as test does

@@ -41,7 +41,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
 
   it should "increase when sphere instances are added" in:
     val id = renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
-    id shouldBe defined
+    id should be >= 0
     renderer.getInstanceCount() shouldBe 1
 
   it should "increase for each added instance" in:
@@ -55,9 +55,9 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     val id1 = renderer.addSphereInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
     val id2 = renderer.addSphereInstance(Vector[3](-1.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
 
-    id0 shouldBe Some(0)
-    id1 shouldBe Some(1)
-    id2 shouldBe Some(2)
+    id0 shouldBe 0
+    id1 shouldBe 1
+    id2 shouldBe 2
 
   it should "enable IAS mode automatically" in:
     renderer.isIASMode() shouldBe false
@@ -71,7 +71,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
       0.0f, 0.0f, 2.0f, 0.0f   // scale Z by 2
     )
     val id = renderer.addSphereInstance(transform, OPAQUE_RED, 1.5f)
-    id shouldBe defined
+    id should be >= 0
 
   it should "reject transform arrays with wrong size" in:
     val wrongSize = Array(1.0f, 0.0f, 0.0f)  // Only 3 elements
@@ -83,7 +83,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     val id1 = renderer.addSphereInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
     renderer.getInstanceCount() shouldBe 2
 
-    renderer.removeInstance(id0.get)
+    renderer.removeInstance(id0)
     renderer.getInstanceCount() shouldBe 1
 
   it should "not crash when removing non-existent instance" in:
@@ -158,9 +158,9 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     val id1 = renderer.addTriangleMeshInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
     val id2 = renderer.addTriangleMeshInstance(Vector[3](-1.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
 
-    id0 shouldBe Some(0)
-    id1 shouldBe Some(1)
-    id2 shouldBe Some(2)
+    id0 shouldBe 0
+    id1 shouldBe 1
+    id2 shouldBe 2
 
   it should "enable IAS mode automatically" in:
     val mesh = TestUtilities.createUnitCubeMesh()
@@ -180,7 +180,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
 
   it should "fail if no triangle mesh is set" in:
     val result = renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
-    result shouldBe None
+    result should be < 0
 
   "Triangle mesh IAS rendering" should "render a single cube instance" taggedAs (Slow) in:
     val mesh = TestUtilities.createUnitCubeMesh()

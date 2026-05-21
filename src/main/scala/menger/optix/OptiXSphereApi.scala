@@ -16,20 +16,22 @@ private[optix] trait OptiXSphereApi:
   def setSphereColor(color: Color): Unit =
     setSphereColorNative(color.r, color.g, color.b, color.a)
 
-  def addSphereInstance(transform: Array[Float], material: Material): Option[Int] =
+  /** @return instance ID (>= 0), or -1 on failure */
+  def addSphereInstance(transform: Array[Float], material: Material): Int =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    val id = addSphereInstanceNative(
+    addSphereInstanceNative(
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       material.filmThickness
     )
-    if id >= 0 then Some(id) else None
 
-  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Option[Int] =
+  /** @return instance ID (>= 0), or -1 on failure */
+  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Int =
     addSphereInstance(transform, Material(color, ior))
 
-  def addSphereInstance(position: Vector[3], material: Material): Option[Int] =
+  /** @return instance ID (>= 0), or -1 on failure */
+  def addSphereInstance(position: Vector[3], material: Material): Int =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
@@ -37,5 +39,6 @@ private[optix] trait OptiXSphereApi:
     )
     addSphereInstance(transform, material)
 
-  def addSphereInstance(position: Vector[3], color: Color, ior: Float): Option[Int] =
+  /** @return instance ID (>= 0), or -1 on failure */
+  def addSphereInstance(position: Vector[3], color: Color, ior: Float): Int =
     addSphereInstance(position, Material(color, ior))

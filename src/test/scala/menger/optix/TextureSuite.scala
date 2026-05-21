@@ -43,8 +43,8 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val imageData = createTestTexture(width, height)
 
     val result = renderer.uploadTexture("test_texture", imageData, width, height)
-    result shouldBe a[Success[?]]
-    result.get should be >= 0
+    result should be >= 0
+    
 
   it should "return same index for same texture name" in:
     val width = 32
@@ -54,9 +54,9 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val result1 = renderer.uploadTexture("same_name", imageData, width, height)
     val result2 = renderer.uploadTexture("same_name", imageData, width, height)
 
-    result1 shouldBe a[Success[?]]
-    result2 shouldBe a[Success[?]]
-    result1.get shouldBe result2.get
+    result1 should be >= 0
+    result2 should be >= 0
+    result1 shouldBe result2
 
   it should "return different indices for different texture names" in:
     val width = 16
@@ -66,9 +66,9 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val result1 = renderer.uploadTexture("texture_a", imageData, width, height)
     val result2 = renderer.uploadTexture("texture_b", imageData, width, height)
 
-    result1 shouldBe a[Success[?]]
-    result2 shouldBe a[Success[?]]
-    result1.get should not equal result2.get
+    result1 should be >= 0
+    result2 should be >= 0
+    result1 should not equal result2
 
   it should "handle various texture sizes" in:
     val sizes = Seq((16, 16), (64, 64), (128, 128), (256, 256), (512, 512))
@@ -76,13 +76,13 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     sizes.zipWithIndex.foreach { case ((w, h), idx) =>
       val imageData = createTestTexture(w, h)
       val result = renderer.uploadTexture(s"size_test_$idx", imageData, w, h)
-      result shouldBe a[Success[?]]
+      result should be >= 0
     }
 
   it should "handle non-square textures" in:
     val imageData = createTestTexture(128, 64)
     val result = renderer.uploadTexture("non_square", imageData, 128, 64)
-    result shouldBe a[Success[?]]
+    result should be >= 0
 
   "Texture validation" should "reject empty texture name" in:
     val imageData = createTestTexture(32, 32)
@@ -128,23 +128,23 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "allow new uploads after release" in:
     val imageData = createTestTexture(32, 32)
 
-    renderer.uploadTexture("before_release", imageData, 32, 32) shouldBe a[Success[?]]
+    renderer.uploadTexture("before_release", imageData, 32, 32) should be >= 0
     renderer.releaseTextures()
-    renderer.uploadTexture("after_release", imageData, 32, 32) shouldBe a[Success[?]]
+    renderer.uploadTexture("after_release", imageData, 32, 32) should be >= 0
 
   it should "reset texture indices after release" in:
     val imageData = createTestTexture(32, 32)
 
     val before = renderer.uploadTexture("reset_test", imageData, 32, 32)
-    before shouldBe a[Success[?]]
-    val beforeIdx = before.get
+    before should be >= 0
+    val beforeIdx = before
 
     renderer.releaseTextures()
 
     val after = renderer.uploadTexture("reset_test", imageData, 32, 32)
-    after shouldBe a[Success[?]]
+    after should be >= 0
     // After release, indices start fresh (typically from 0)
-    after.get shouldBe beforeIdx
+    after shouldBe beforeIdx
 
   private def writeMinimalHdr(path: java.nio.file.Path, width: Int, height: Int): Unit =
     val header = s"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y $height +X $width\n"
@@ -190,16 +190,16 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
   "Cone with image texture" should "accept a valid texture index and return instance ID" in:
     val imageData = createTestTexture(32, 32)
     val texIdx = renderer.uploadTexture("cone_tex_21_6", imageData, 32, 32)
-    texIdx shouldBe a[Success[?]]
-    texIdx.get should be >= 0
+    texIdx should be >= 0
+    
     val coneId = renderer.addConeInstance(
       menger.common.Vector[3](0.0f, 1.0f, 0.0f),
       menger.common.Vector[3](0.0f, -1.0f, 0.0f),
       0.5f,
       Material.Chrome
     )
-    coneId shouldBe defined
-    noException should be thrownBy renderer.setImageTexture(coneId.get, texIdx.get)
+    coneId should be >= 0
+    noException should be thrownBy renderer.setImageTexture(coneId, texIdx)
 
   it should "work without image texture (regression: imageTextureIndex = -1)" in:
     val coneId = renderer.addConeInstance(
@@ -208,21 +208,21 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.5f,
       Material.Chrome
     )
-    coneId shouldBe defined
-    coneId.get should be >= 0
+    coneId should be >= 0
+    
 
   "Plane with image texture" should "accept a valid texture index and return instance ID" in:
     val imageData = createTestTexture(32, 32)
     val texIdx = renderer.uploadTexture("plane_tex_21_6", imageData, 32, 32)
-    texIdx shouldBe a[Success[?]]
-    texIdx.get should be >= 0
+    texIdx should be >= 0
+    
     val planeId = renderer.addPlaneInstance(
       menger.common.Vector[3](0.0f, 1.0f, 0.0f),
       -1.0f,
       Material.Chrome
     )
-    planeId shouldBe defined
-    noException should be thrownBy renderer.setImageTexture(planeId.get, texIdx.get)
+    planeId should be >= 0
+    noException should be thrownBy renderer.setImageTexture(planeId, texIdx)
 
   it should "work without image texture (regression: imageTextureIndex = -1)" in:
     val planeId = renderer.addPlaneInstance(
@@ -230,5 +230,5 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
       -1.0f,
       Material.Chrome
     )
-    planeId shouldBe defined
-    planeId.get should be >= 0
+    planeId should be >= 0
+    

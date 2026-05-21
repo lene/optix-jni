@@ -39,13 +39,13 @@ class RecursiveIASSpongeSuite extends AnyFlatSpec
   it should "fail when no leaf mesh has been uploaded" in:
     val id = renderer.addRecursiveIASSpongeInstance(
       level = 1, position = Vector[3](0f, 0f, 0f), color = OPAQUE_RED, ior = 1.0f)
-    id shouldBe None
+    id should be < 0
 
   it should "register a single instance at level 1" taggedAs (Slow) in:
     addUnitCubeLeaf()
     val id = renderer.addRecursiveIASSpongeInstance(
       level = 1, position = Vector[3](0f, 0f, 0f), color = OPAQUE_RED, ior = 1.0f)
-    id shouldBe defined
+    id should be >= 0
     renderer.getInstanceCount() shouldBe 1
     renderer.isIASMode() shouldBe true
 
@@ -53,11 +53,11 @@ class RecursiveIASSpongeSuite extends AnyFlatSpec
     addUnitCubeLeaf()
     val id = renderer.addRecursiveIASSpongeInstance(
       level = 2, position = Vector[3](0f, 0f, 0f), color = OPAQUE_RED, ior = 1.0f)
-    id shouldBe defined
+    id should be >= 0
 
     val img = renderer.render(TEST_IMAGE_SIZE)
-    img shouldBe defined
-    val pixels = img.get
+    img should not be null // scalafix:ok DisableSyntax.null
+    val pixels = img
     pixels.length shouldBe ImageValidation.imageByteSize(TEST_IMAGE_SIZE)
 
     // Non-uniform proof: at least one pixel must differ from pixel 0 by more
@@ -77,6 +77,6 @@ class RecursiveIASSpongeSuite extends AnyFlatSpec
     addUnitCubeLeaf()
     val id = renderer.addRecursiveIASSpongeInstance(
       level = 3, position = Vector[3](0f, 0f, 0f), color = OPAQUE_RED, ior = 1.0f)
-    id shouldBe defined
+    id should be >= 0
     val img = renderer.render(TEST_IMAGE_SIZE)
-    img shouldBe defined
+    img should not be null // scalafix:ok DisableSyntax.null

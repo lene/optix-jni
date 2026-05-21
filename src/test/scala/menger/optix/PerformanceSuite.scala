@@ -32,10 +32,10 @@ class PerformanceSuite extends AnyFlatSpec
     setup
 
     // Warmup render
-    renderer.render(performanceSize).get
+    renderer.render(performanceSize)
 
     val startNs = System.nanoTime()
-    (0 until iterations).foreach(_ => renderer.render(performanceSize).get)
+    (0 until iterations).foreach(_ => renderer.render(performanceSize))
     val elapsedNs = System.nanoTime() - startNs
 
     val durationMs = elapsedNs / 1_000_000.0

@@ -25,7 +25,7 @@ class MaterialSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
     val ratio = ImageValidation.colorChannelRatio(
       imageData,
       TEST_IMAGE_SIZE
@@ -40,7 +40,7 @@ class MaterialSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
 
     // Glass refraction creates brightness variation
     imageData should showGlassRefraction(TEST_IMAGE_SIZE)
@@ -51,7 +51,7 @@ class MaterialSuite extends AnyFlatSpec
       .withPlane(1, false, -2.0f)
       .applyTo(renderer)
 
-    val imageData = renderer.render(TEST_IMAGE_SIZE).get
+    val imageData = renderer.render(TEST_IMAGE_SIZE)
     val ratio = ImageValidation.colorChannelRatio(
       imageData,
       TEST_IMAGE_SIZE
