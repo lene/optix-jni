@@ -1438,6 +1438,18 @@ __device__ int getInstanceRoughnessTextureIndex() {
     return -1;
 }
 
+/**
+ * Returns the image_texture_index for the current instance.
+ * Used by cone and plane shaders where texture_index is repurposed for geometry data.
+ */
+__device__ int getInstanceImageTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].image_texture_index;
+    }
+    return -1;
+}
+
 //==============================================================================
 // Procedural Noise Library
 //==============================================================================

@@ -64,7 +64,7 @@ extern "C" __global__ void __closesthit__plane() {
 
     // Orient normal to face the incoming ray
     const bool front_face = dot(geometric_normal, ray_direction) < 0.0f;
-    const float3 normal = front_face
+    float3 normal = front_face
         ? geometric_normal
         : make_float3(-geometric_normal.x, -geometric_normal.y, -geometric_normal.z);
 
@@ -111,6 +111,36 @@ extern "C" __global__ void __closesthit__plane() {
     getInstanceProceduralParams(proc_type, proc_scale);
     if (proc_type != 0)
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
+
+    // Apply image texture + PBR maps (Task 21.6)
+    // Planar UV based on dominant normal axis (matches checker coordinate logic)
+    {
+        const float3 abs_n = make_float3(fabsf(geometric_normal.x),
+                                          fabsf(geometric_normal.y),
+                                          fabsf(geometric_normal.z));
+        float pu, pv;
+        if (abs_n.x >= abs_n.y && abs_n.x >= abs_n.z) {
+            pu = hit_point.y; pv = hit_point.z;
+        } else if (abs_n.y >= abs_n.z) {
+            pu = hit_point.x; pv = hit_point.z;
+        } else {
+            pu = hit_point.x; pv = hit_point.y;
+        }
+        // Wrap to [0,1] for repeating texture
+        pu = pu - floorf(pu);
+        pv = pv - floorf(pv);
+        const float2 plane_uv = make_float2(pu, pv);
+
+        const int img_tex_idx = getInstanceImageTextureIndex();
+        if (img_tex_idx >= 0)
+            material_color = sampleTextureByIndex(img_tex_idx, plane_uv);
+
+        const int normal_idx = getInstanceNormalTextureIndex();
+        if (normal_idx >= 0)
+            normal = applyNormalMap(geometric_normal, plane_uv, normal_idx);
+
+        roughness = applyRoughnessMap(roughness, plane_uv, getInstanceRoughnessTextureIndex());
+    }
 
     const float material_alpha = material_color.w;
 

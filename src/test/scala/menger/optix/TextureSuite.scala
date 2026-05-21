@@ -184,3 +184,51 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "reject negative index" in:
     an[IllegalArgumentException] should be thrownBy:
       renderer.setEnvironmentMap(-1)
+
+  // ========== Task 21.6: Cone and Plane Image Texture (image_texture_index) ==========
+
+  "Cone with image texture" should "accept a valid texture index and return instance ID" in:
+    val imageData = createTestTexture(32, 32)
+    val texIdx = renderer.uploadTexture("cone_tex_21_6", imageData, 32, 32)
+    texIdx shouldBe a[Success[?]]
+    texIdx.get should be >= 0
+    val coneId = renderer.addConeInstance(
+      menger.common.Vector[3](0.0f, 1.0f, 0.0f),
+      menger.common.Vector[3](0.0f, -1.0f, 0.0f),
+      0.5f,
+      Material.Chrome
+    )
+    coneId shouldBe defined
+    noException should be thrownBy renderer.setImageTexture(coneId.get, texIdx.get)
+
+  it should "work without image texture (regression: imageTextureIndex = -1)" in:
+    val coneId = renderer.addConeInstance(
+      menger.common.Vector[3](0.0f, 1.0f, 0.0f),
+      menger.common.Vector[3](0.0f, -1.0f, 0.0f),
+      0.5f,
+      Material.Chrome
+    )
+    coneId shouldBe defined
+    coneId.get should be >= 0
+
+  "Plane with image texture" should "accept a valid texture index and return instance ID" in:
+    val imageData = createTestTexture(32, 32)
+    val texIdx = renderer.uploadTexture("plane_tex_21_6", imageData, 32, 32)
+    texIdx shouldBe a[Success[?]]
+    texIdx.get should be >= 0
+    val planeId = renderer.addPlaneInstance(
+      menger.common.Vector[3](0.0f, 1.0f, 0.0f),
+      -1.0f,
+      Material.Chrome
+    )
+    planeId shouldBe defined
+    noException should be thrownBy renderer.setImageTexture(planeId.get, texIdx.get)
+
+  it should "work without image texture (regression: imageTextureIndex = -1)" in:
+    val planeId = renderer.addPlaneInstance(
+      menger.common.Vector[3](0.0f, 1.0f, 0.0f),
+      -1.0f,
+      Material.Chrome
+    )
+    planeId shouldBe defined
+    planeId.get should be >= 0

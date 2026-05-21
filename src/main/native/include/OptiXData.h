@@ -178,6 +178,7 @@ struct InstanceMaterial {
     float procedural_scale;     // Noise coordinate scale (default 1.0)
     int normal_texture_index;   // Normal map index (-1 = no normal map)
     int roughness_texture_index; // Roughness map index (-1 = no roughness map)
+    int image_texture_index;    // Image texture index for cone/plane (-1 = no texture; for these geometry types texture_index is the geometry data index)
     // Per-mesh triangle buffer pointers (IAS mode only)
     // Populated for triangle instances; nullptr/0 for spheres/cylinders
     float* vertices;            // Device pointer to vertex data

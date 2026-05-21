@@ -141,6 +141,11 @@ public:
     // PBR map texture configuration (Task 20.7)
     void setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex);
 
+    // Image texture for cone/plane instances (Task 21.6)
+    // For these geometry types, texture_index is the geometry data index,
+    // so image texture uses a separate image_texture_index field.
+    void setImageTexture(int instanceId, int imageTextureIndex);
+
     // Plane configuration
     void clearPlanes();
     void addPlane(int axis, bool positive, float value);  // default gray checker

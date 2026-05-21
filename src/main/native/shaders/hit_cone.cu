@@ -110,7 +110,7 @@ extern "C" __global__ void __closesthit__cone() {
         ray_origin.z + ray_direction.z * t
     );
 
-    const float3 normal = make_float3(
+    float3 normal = make_float3(
         __uint_as_float(optixGetAttribute_0()),
         __uint_as_float(optixGetAttribute_1()),
         __uint_as_float(optixGetAttribute_2())
@@ -131,6 +131,60 @@ extern "C" __global__ void __closesthit__cone() {
     getInstanceProceduralParams(proc_type, proc_scale);
     if (proc_type != 0)
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
+
+    // Apply image texture + PBR maps (Task 21.6)
+    {
+        const unsigned int instanceId = optixGetInstanceId();
+        if (params.instance_materials && params.cone_data) {
+            const int cone_idx = params.instance_materials[instanceId].texture_index;
+            if (cone_idx >= 0 && cone_idx < static_cast<int>(params.num_cones)) {
+                const ConeData& cone = params.cone_data[cone_idx];
+                const float3 apex_pt = make_float3(cone.apex[0], cone.apex[1], cone.apex[2]);
+                const float3 base_pt = make_float3(cone.base[0], cone.base[1], cone.base[2]);
+                const float3 axis_vec = make_float3(apex_pt.x - base_pt.x,
+                                                     apex_pt.y - base_pt.y,
+                                                     apex_pt.z - base_pt.z);
+                const float cone_height = length(axis_vec);
+                const float3 axis_dir = (cone_height > 1e-8f)
+                    ? make_float3(axis_vec.x / cone_height, axis_vec.y / cone_height, axis_vec.z / cone_height)
+                    : make_float3(0.0f, 1.0f, 0.0f);
+
+                // v: normalized position along axis (0=base, 1=apex)
+                const float3 hit_to_base = make_float3(hit_point.x - base_pt.x,
+                                                        hit_point.y - base_pt.y,
+                                                        hit_point.z - base_pt.z);
+                const float v_coord = (cone_height > 1e-8f)
+                    ? fminf(fmaxf(dot(hit_to_base, axis_dir) / cone_height, 0.0f), 1.0f)
+                    : 0.0f;
+
+                // u: angle around axis
+                float3 tangent;
+                if (fabsf(axis_dir.x) < 0.9f)
+                    tangent = normalize(cross(axis_dir, make_float3(1.0f, 0.0f, 0.0f)));
+                else
+                    tangent = normalize(cross(axis_dir, make_float3(0.0f, 1.0f, 0.0f)));
+                const float3 bitangent = cross(axis_dir, tangent);
+                const float3 radial = make_float3(
+                    hit_to_base.x - dot(hit_to_base, axis_dir) * axis_dir.x,
+                    hit_to_base.y - dot(hit_to_base, axis_dir) * axis_dir.y,
+                    hit_to_base.z - dot(hit_to_base, axis_dir) * axis_dir.z);
+                const float u_coord = (atan2f(dot(radial, bitangent), dot(radial, tangent)) + M_PIf)
+                                      * (0.5f * M_1_PIf);
+
+                const float2 cone_uv = make_float2(u_coord, v_coord);
+
+                const int img_tex_idx = getInstanceImageTextureIndex();
+                if (img_tex_idx >= 0)
+                    material_color = sampleTextureByIndex(img_tex_idx, cone_uv);
+
+                const int normal_idx = getInstanceNormalTextureIndex();
+                if (normal_idx >= 0)
+                    normal = applyNormalMap(normal, cone_uv, normal_idx);
+
+                roughness = applyRoughnessMap(roughness, cone_uv, getInstanceRoughnessTextureIndex());
+            }
+        }
+    }
 
     if (depth == 0 && metallic > 0.0f) {
         handleMetallicOpaque(hit_point, ray_direction, normal,

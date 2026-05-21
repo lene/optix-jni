@@ -19,6 +19,12 @@ private[optix] trait OptiXTextureApi:
   def setMapTextures(instanceId: Int, normalTextureIndex: Int = -1, roughnessTextureIndex: Int = -1): Unit =
     setMapTexturesNative(instanceId, normalTextureIndex, roughnessTextureIndex)
 
+  /** Set image texture for cone/plane instances (Task 21.6).
+   *  For these geometry types, texture_index is the geometry data index,
+   *  so image texture uses image_texture_index instead. */
+  def setImageTexture(instanceId: Int, imageTextureIndex: Int): Unit =
+    setImageTextureNative(instanceId, imageTextureIndex)
+
   def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Try[Int] =
     // JNI boundary validation - null checks required for native method safety
     require(name != null && name.nonEmpty, "Texture name must not be null or empty") // scalafix:ok DisableSyntax.null
