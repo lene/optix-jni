@@ -18,15 +18,15 @@ class RenderHealthSuite extends AnyFlatSpec with Matchers:
 
   "checkRgba" should "flag an all-red buffer" in:
     val pixels = fill(8, 8, 255, 0, 0)
-    val result = RenderHealth.checkRgba(pixels, 8, 8)
-    result.isLeft shouldBe true
-    result.swap.toOption.get should include("uniform")
-    result.swap.toOption.get should include("RGB(255, 0, 0)")
+    val ex = intercept[UniformRenderException]:
+      RenderHealth.checkRgba(pixels, 8, 8)
+    ex.getMessage should include("uniform")
+    ex.getMessage should include("RGB(255, 0, 0)")
 
   it should "flag an all-black buffer" in:
     val pixels = fill(4, 4, 0, 0, 0)
-    val result = RenderHealth.checkRgba(pixels, 4, 4)
-    result.isLeft shouldBe true
+    an[UniformRenderException] should be thrownBy
+      RenderHealth.checkRgba(pixels, 4, 4)
 
   it should "pass a buffer with diverse pixels" in:
     val pixels = new Array[Byte](16 * 16 * 4)
@@ -36,8 +36,8 @@ class RenderHealthSuite extends AnyFlatSpec with Matchers:
       pixels(base + 1) = ((i * 3) % 256).toByte
       pixels(base + 2) = ((i * 7) % 256).toByte
       pixels(base + 3) = 0xFF.toByte
-    val result = RenderHealth.checkRgba(pixels, 16, 16)
-    result shouldBe Right(())
+    noException should be thrownBy
+      RenderHealth.checkRgba(pixels, 16, 16)
 
   it should "pass when the uniform fraction is below threshold" in:
     val pixels = new Array[Byte](100 * 4)
@@ -48,8 +48,8 @@ class RenderHealthSuite extends AnyFlatSpec with Matchers:
       pixels(base + 1) = 0.toByte
       pixels(base + 2) = (if red then 0 else 255).toByte
       pixels(base + 3) = 0xFF.toByte
-    val result = RenderHealth.checkRgba(pixels, 10, 10)
-    result shouldBe Right(())
+    noException should be thrownBy
+      RenderHealth.checkRgba(pixels, 10, 10)
 
   it should "respect channelEpsilon for near-uniform buffers" in:
     val pixels = new Array[Byte](100 * 4)
@@ -61,8 +61,8 @@ class RenderHealthSuite extends AnyFlatSpec with Matchers:
       pixels(base + 2) = (128 + jitter).toByte
       pixels(base + 3) = 0xFF.toByte
     // jitter spans -1..+1, so a tolerance of 2 covers all variation
-    val result = RenderHealth.checkRgba(pixels, 10, 10, channelEpsilon = 2)
-    result.isLeft shouldBe true
+    an[UniformRenderException] should be thrownBy
+      RenderHealth.checkRgba(pixels, 10, 10, channelEpsilon = 2)
 
   it should "reject empty or wrongly-sized buffers" in:
     an[IllegalArgumentException] should be thrownBy

@@ -10,17 +10,10 @@ case class Material(
     specular: Float = 0.5f,
     emission: Float = 0.0f,
     filmThickness: Float = 0.0f,
-    baseColorTexture: Option[Int] = None,
-    normalTexture: Option[Int] = None,
-    roughnessTexture: Option[Int] = None
-):
-  def withColorOpt(c: Option[Color]): Material = c.fold(this)(v => copy(color = v))
-  def withIorOpt(i: Option[Float]): Material = i.fold(this)(v => copy(ior = v))
-  def withRoughnessOpt(r: Option[Float]): Material = r.fold(this)(v => copy(roughness = v))
-  def withMetallicOpt(m: Option[Float]): Material = m.fold(this)(v => copy(metallic = v))
-  def withSpecularOpt(s: Option[Float]): Material = s.fold(this)(v => copy(specular = v))
-  def withEmissionOpt(e: Option[Float]): Material = e.fold(this)(v => copy(emission = v))
-  def withFilmThicknessOpt(f: Option[Float]): Material = f.fold(this)(v => copy(filmThickness = v))
+    baseColorTexture: Int = -1,
+    normalTexture: Int = -1,
+    roughnessTexture: Int = -1
+)
 
 object Material:
 
@@ -123,22 +116,26 @@ object Material:
   def glass(color: Color): Material =
     Material(color.copy(a = 0.02f), ior = 1.5f, roughness = 0.0f, metallic = 0.0f, specular = 1.0f)
 
-  // Lookup by name (case-insensitive)
-  def fromName(name: String): Option[Material] =
+  /** Lookup by name (case-insensitive).
+   *  Returns an empty Optional if the name is not a known preset.
+   *  Scala callers: use `.toScala` from `scala.jdk.OptionConverters` to get `Option[Material]`.
+   */
+  def fromName(name: String): java.util.Optional[Material] =
     name.toLowerCase match
-      case "glass"     => Some(Glass)
-      case "water"     => Some(Water)
-      case "diamond"   => Some(Diamond)
-      case "chrome"    => Some(Chrome)
-      case "gold"      => Some(Gold)
-      case "copper"    => Some(Copper)
-      case "film"      => Some(Film)
-      case "parchment" => Some(Parchment)
-      case "metal"     => Some(metal(White))
-      case "plastic"   => Some(plastic(White))
-      case "matte"     => Some(matte(White))
-      case _           => None
+      case "glass"     => java.util.Optional.of(Glass)
+      case "water"     => java.util.Optional.of(Water)
+      case "diamond"   => java.util.Optional.of(Diamond)
+      case "chrome"    => java.util.Optional.of(Chrome)
+      case "gold"      => java.util.Optional.of(Gold)
+      case "copper"    => java.util.Optional.of(Copper)
+      case "film"      => java.util.Optional.of(Film)
+      case "parchment" => java.util.Optional.of(Parchment)
+      case "metal"     => java.util.Optional.of(metal(White))
+      case "plastic"   => java.util.Optional.of(plastic(White))
+      case "matte"     => java.util.Optional.of(matte(White))
+      case _           => java.util.Optional.empty()
 
-  // All known preset names (for validation/help text)
-  val presetNames: Set[String] =
-    Set("glass", "water", "diamond", "chrome", "gold", "copper", "film", "parchment", "metal", "plastic", "matte")
+
+  /** All known preset names as a Java-friendly set (for validation/help text). */
+  val presetNames: java.util.Set[String] =
+    java.util.Set.of("glass", "water", "diamond", "chrome", "gold", "copper", "film", "parchment", "metal", "plastic", "matte")

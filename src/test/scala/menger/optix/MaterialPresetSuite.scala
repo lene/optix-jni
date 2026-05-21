@@ -1,5 +1,8 @@
 package menger.optix
 
+import scala.jdk.CollectionConverters._
+import scala.jdk.OptionConverters._
+
 import menger.common.Color
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -123,56 +126,56 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
   // ========== fromName Lookup Tests ==========
 
   "Material.fromName" should "return Glass for 'glass'" in:
-    Material.fromName("glass") shouldBe Some(Material.Glass)
+    Material.fromName("glass").toScala shouldBe Some(Material.Glass)
 
   it should "return Water for 'water'" in:
-    Material.fromName("water") shouldBe Some(Material.Water)
+    Material.fromName("water").toScala shouldBe Some(Material.Water)
 
   it should "return Diamond for 'diamond'" in:
-    Material.fromName("diamond") shouldBe Some(Material.Diamond)
+    Material.fromName("diamond").toScala shouldBe Some(Material.Diamond)
 
   it should "return Chrome for 'chrome'" in:
-    Material.fromName("chrome") shouldBe Some(Material.Chrome)
+    Material.fromName("chrome").toScala shouldBe Some(Material.Chrome)
 
   it should "return Gold for 'gold'" in:
-    Material.fromName("gold") shouldBe Some(Material.Gold)
+    Material.fromName("gold").toScala shouldBe Some(Material.Gold)
 
   it should "return Copper for 'copper'" in:
-    Material.fromName("copper") shouldBe Some(Material.Copper)
+    Material.fromName("copper").toScala shouldBe Some(Material.Copper)
 
   it should "return Film for 'film'" in:
-    Material.fromName("film") shouldBe Some(Material.Film)
+    Material.fromName("film").toScala shouldBe Some(Material.Film)
 
   it should "return Parchment for 'parchment'" in:
-    Material.fromName("parchment") shouldBe Some(Material.Parchment)
+    Material.fromName("parchment").toScala shouldBe Some(Material.Parchment)
 
   it should "return a metal for 'metal'" in:
     val mat = Material.fromName("metal")
-    mat shouldBe defined
+    mat.isPresent shouldBe true
     mat.get.metallic shouldBe 1.0f
 
   it should "return a plastic for 'plastic'" in:
     val mat = Material.fromName("plastic")
-    mat shouldBe defined
+    mat.isPresent shouldBe true
     mat.get.metallic shouldBe 0.0f
     mat.get.roughness should be > 0.0f
     mat.get.roughness should be < 1.0f
 
   it should "return a matte for 'matte'" in:
     val mat = Material.fromName("matte")
-    mat shouldBe defined
+    mat.isPresent shouldBe true
     mat.get.roughness shouldBe 1.0f
     mat.get.specular shouldBe 0.0f
 
   it should "be case insensitive" in:
-    Material.fromName("GLASS") shouldBe Some(Material.Glass)
-    Material.fromName("Glass") shouldBe Some(Material.Glass)
-    Material.fromName("gLaSs") shouldBe Some(Material.Glass)
+    Material.fromName("GLASS").toScala shouldBe Some(Material.Glass)
+    Material.fromName("Glass").toScala shouldBe Some(Material.Glass)
+    Material.fromName("gLaSs").toScala shouldBe Some(Material.Glass)
 
-  it should "return None for unknown material" in:
-    Material.fromName("unobtanium") shouldBe None
-    Material.fromName("") shouldBe None
-    Material.fromName("adamantium") shouldBe None
+  it should "return empty Optional for unknown material" in:
+    Material.fromName("unobtanium").isPresent shouldBe false
+    Material.fromName("").isPresent shouldBe false
+    Material.fromName("adamantium").isPresent shouldBe false
 
   // ========== Preset Names Set Tests ==========
 
@@ -205,30 +208,30 @@ class MaterialPresetSuite extends AnyFlatSpec with Matchers:
     Material.Copper.ior shouldBe 1.0f
 
   "All presets" should "have roughness in valid range [0, 1]" in:
-    Material.presetNames.flatMap(Material.fromName).foreach { mat =>
+    Material.presetNames.asScala.flatMap(n => Material.fromName(n).toScala).foreach { mat =>
       mat.roughness should be >= 0.0f
       mat.roughness should be <= 1.0f
     }
 
   they should "have metallic in valid range [0, 1]" in:
-    Material.presetNames.flatMap(Material.fromName).foreach { mat =>
+    Material.presetNames.asScala.flatMap(n => Material.fromName(n).toScala).foreach { mat =>
       mat.metallic should be >= 0.0f
       mat.metallic should be <= 1.0f
     }
 
   they should "have specular in valid range [0, 1]" in:
-    Material.presetNames.flatMap(Material.fromName).foreach { mat =>
+    Material.presetNames.asScala.flatMap(n => Material.fromName(n).toScala).foreach { mat =>
       mat.specular should be >= 0.0f
       mat.specular should be <= 1.0f
     }
 
   they should "have non-negative film thickness" in:
-    Material.presetNames.flatMap(Material.fromName).foreach { mat =>
+    Material.presetNames.asScala.flatMap(n => Material.fromName(n).toScala).foreach { mat =>
       mat.filmThickness should be >= 0.0f
     }
 
   "Non-film presets" should "have zero film thickness" in:
     val nonFilmPresets = List("glass", "water", "diamond", "chrome", "gold", "copper", "parchment", "metal", "plastic", "matte")
-    nonFilmPresets.flatMap(Material.fromName).foreach { mat =>
+    nonFilmPresets.flatMap(n => Material.fromName(n).toScala).foreach { mat =>
       mat.filmThickness shouldBe 0.0f
     }

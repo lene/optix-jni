@@ -1,5 +1,8 @@
 package menger.optix
 
+import scala.jdk.CollectionConverters._
+import scala.jdk.OptionConverters._
+
 import menger.common.Color
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -15,9 +18,9 @@ class MaterialUnitSuite extends AnyFlatSpec with Matchers:
     mat.roughness shouldBe 0.5f
     mat.metallic shouldBe 0.0f
     mat.specular shouldBe 0.5f
-    mat.baseColorTexture shouldBe None
-    mat.normalTexture shouldBe None
-    mat.roughnessTexture shouldBe None
+    mat.baseColorTexture shouldBe -1
+    mat.normalTexture shouldBe -1
+    mat.roughnessTexture shouldBe -1
 
   it should "accept custom ior value" in:
     val mat = Material(testColor, ior = 2.42f)
@@ -64,63 +67,63 @@ class MaterialUnitSuite extends AnyFlatSpec with Matchers:
     matHigh.metallic shouldBe 1.5f
 
   it should "accept texture indices" in:
-    val mat = Material(testColor, baseColorTexture = Some(0), normalTexture = Some(1), roughnessTexture = Some(2))
-    mat.baseColorTexture shouldBe Some(0)
-    mat.normalTexture shouldBe Some(1)
-    mat.roughnessTexture shouldBe Some(2)
+    val mat = Material(testColor, baseColorTexture = 0, normalTexture = 1, roughnessTexture = 2)
+    mat.baseColorTexture shouldBe 0
+    mat.normalTexture shouldBe 1
+    mat.roughnessTexture shouldBe 2
 
   "Material.fromName" should "return Glass for 'glass' (lowercase)" in:
-    Material.fromName("glass") shouldBe Some(Material.Glass)
+    Material.fromName("glass").toScala shouldBe Some(Material.Glass)
 
   it should "return Glass for 'GLASS' (uppercase)" in:
-    Material.fromName("GLASS") shouldBe Some(Material.Glass)
+    Material.fromName("GLASS").toScala shouldBe Some(Material.Glass)
 
   it should "return Glass for 'GlAsS' (mixed case)" in:
-    Material.fromName("GlAsS") shouldBe Some(Material.Glass)
+    Material.fromName("GlAsS").toScala shouldBe Some(Material.Glass)
 
   it should "return Water for 'water'" in:
-    Material.fromName("water") shouldBe Some(Material.Water)
+    Material.fromName("water").toScala shouldBe Some(Material.Water)
 
   it should "return Diamond for 'diamond'" in:
-    Material.fromName("diamond") shouldBe Some(Material.Diamond)
+    Material.fromName("diamond").toScala shouldBe Some(Material.Diamond)
 
   it should "return Chrome for 'chrome'" in:
-    Material.fromName("chrome") shouldBe Some(Material.Chrome)
+    Material.fromName("chrome").toScala shouldBe Some(Material.Chrome)
 
   it should "return Gold for 'gold'" in:
-    Material.fromName("gold") shouldBe Some(Material.Gold)
+    Material.fromName("gold").toScala shouldBe Some(Material.Gold)
 
   it should "return Copper for 'copper'" in:
-    Material.fromName("copper") shouldBe Some(Material.Copper)
+    Material.fromName("copper").toScala shouldBe Some(Material.Copper)
 
   it should "return a metal Material for 'metal'" in:
     val result = Material.fromName("metal")
-    result shouldBe defined
+    result.isPresent shouldBe true
     result.get.metallic shouldBe 1.0f
     result.get.roughness shouldBe 0.1f
 
   it should "return a plastic Material for 'plastic'" in:
     val result = Material.fromName("plastic")
-    result shouldBe defined
+    result.isPresent shouldBe true
     result.get.ior shouldBe 1.5f
     result.get.roughness shouldBe 0.3f
 
   it should "return a matte Material for 'matte'" in:
     val result = Material.fromName("matte")
-    result shouldBe defined
+    result.isPresent shouldBe true
     result.get.roughness shouldBe 1.0f
     result.get.specular shouldBe 0.0f
 
-  it should "return None for empty string" in:
-    Material.fromName("") shouldBe None
+  it should "return empty Optional for empty string" in:
+    Material.fromName("").isPresent shouldBe false
 
-  it should "return None for unknown material name" in:
-    Material.fromName("unknown") shouldBe None
+  it should "return empty Optional for unknown material name" in:
+    Material.fromName("unknown").isPresent shouldBe false
 
-  it should "return None for material name with leading/trailing whitespace" in:
-    Material.fromName(" glass ") shouldBe None
-    Material.fromName("glass ") shouldBe None
-    Material.fromName(" glass") shouldBe None
+  it should "return empty Optional for material name with leading/trailing whitespace" in:
+    Material.fromName(" glass ").isPresent shouldBe false
+    Material.fromName("glass ").isPresent shouldBe false
+    Material.fromName(" glass").isPresent shouldBe false
 
   "Material.matte" should "create material with correct defaults" in:
     val mat = Material.matte(testColor)
@@ -185,94 +188,67 @@ class MaterialUnitSuite extends AnyFlatSpec with Matchers:
     Material.Copper.color.r shouldBe 0.72f +- 0.01f
 
   "Material.presetNames" should "contain all 11 preset names" in:
-    Material.presetNames should have size 11
+    Material.presetNames.asScala should have size 11
 
   it should "contain all expected names" in:
-    Material.presetNames should contain allOf ("glass", "water", "diamond", "chrome", "gold", "copper", "film", "parchment", "metal", "plastic", "matte")
+    Material.presetNames.asScala should contain allOf ("glass", "water", "diamond", "chrome", "gold", "copper", "film", "parchment", "metal", "plastic", "matte")
 
   it should "be consistent with fromName (all names should resolve)" in:
-    Material.presetNames.foreach { name =>
-      Material.fromName(name) shouldBe defined
+    Material.presetNames.asScala.foreach { name =>
+      Material.fromName(name).isPresent shouldBe true
     }
 
-  // Tests for withXxxOpt helper methods
+  // Tests for Material copy behavior (field updates via copy)
 
-  "withColorOpt" should "return the same material when None is passed" in:
-    val mat = Material(testColor)
-    mat.withColorOpt(None) shouldBe mat
-
-  it should "update color when Some is passed" in:
-    val mat = Material(testColor)
-    val newColor = Color(1.0f, 0.0f, 0.0f, 1.0f)
-    mat.withColorOpt(Some(newColor)).color shouldBe newColor
-
-  it should "preserve other fields when color is updated" in:
+  "Material.copy color" should "update color and preserve other fields" in:
     val mat = Material(testColor, ior = 2.0f, roughness = 0.3f)
     val newColor = Color(0.0f, 1.0f, 0.0f, 1.0f)
-    val result = mat.withColorOpt(Some(newColor))
+    val result = mat.copy(color = newColor)
+    result.color shouldBe newColor
     result.ior shouldBe 2.0f
     result.roughness shouldBe 0.3f
 
-  "withIorOpt" should "return the same material when None is passed" in:
+  "Material.copy ior" should "update ior" in:
     val mat = Material(testColor, ior = 1.5f)
-    mat.withIorOpt(None) shouldBe mat
+    mat.copy(ior = 2.42f).ior shouldBe 2.42f
 
-  it should "update ior when Some is passed" in:
+  "Material.copy roughness" should "update roughness" in:
     val mat = Material(testColor)
-    mat.withIorOpt(Some(2.42f)).ior shouldBe 2.42f
+    mat.copy(roughness = 1.0f).roughness shouldBe 1.0f
 
-  "withRoughnessOpt" should "return the same material when None is passed" in:
-    val mat = Material(testColor, roughness = 0.5f)
-    mat.withRoughnessOpt(None) shouldBe mat
-
-  it should "update roughness when Some is passed" in:
+  "Material.copy metallic" should "update metallic" in:
     val mat = Material(testColor)
-    mat.withRoughnessOpt(Some(1.0f)).roughness shouldBe 1.0f
+    mat.copy(metallic = 1.0f).metallic shouldBe 1.0f
 
-  "withMetallicOpt" should "return the same material when None is passed" in:
-    val mat = Material(testColor, metallic = 0.5f)
-    mat.withMetallicOpt(None) shouldBe mat
-
-  it should "update metallic when Some is passed" in:
+  "Material.copy specular" should "update specular" in:
     val mat = Material(testColor)
-    mat.withMetallicOpt(Some(1.0f)).metallic shouldBe 1.0f
+    mat.copy(specular = 1.0f).specular shouldBe 1.0f
 
-  "withSpecularOpt" should "return the same material when None is passed" in:
-    val mat = Material(testColor, specular = 0.5f)
-    mat.withSpecularOpt(None) shouldBe mat
-
-  it should "update specular when Some is passed" in:
-    val mat = Material(testColor)
-    mat.withSpecularOpt(Some(1.0f)).specular shouldBe 1.0f
-
-  "chained withXxxOpt calls" should "apply all updates" in:
+  "Material.copy chained" should "apply all updates in one call" in:
     val mat = Material(testColor)
     val newColor = Color(1.0f, 0.0f, 0.0f, 1.0f)
-    val result = mat
-      .withColorOpt(Some(newColor))
-      .withIorOpt(Some(2.42f))
-      .withRoughnessOpt(Some(0.1f))
-      .withMetallicOpt(Some(1.0f))
-      .withSpecularOpt(Some(0.8f))
-
+    val result = mat.copy(
+      color    = newColor,
+      ior      = 2.42f,
+      roughness = 0.1f,
+      metallic = 1.0f,
+      specular = 0.8f
+    )
     result.color shouldBe newColor
     result.ior shouldBe 2.42f
     result.roughness shouldBe 0.1f
     result.metallic shouldBe 1.0f
     result.specular shouldBe 0.8f
 
-  it should "skip updates for None values in chain" in:
+  it should "preserve unchanged fields" in:
     val mat = Material(testColor, ior = 1.5f, roughness = 0.5f)
     val newColor = Color(0.0f, 0.0f, 1.0f, 1.0f)
-    val result = mat
-      .withColorOpt(Some(newColor))
-      .withIorOpt(None)  // Should keep original
-      .withRoughnessOpt(Some(0.0f))
-      .withMetallicOpt(None)  // Should keep original
-      .withSpecularOpt(None)  // Should keep original
-
+    val result = mat.copy(
+      color    = newColor,
+      roughness = 0.0f
+    )
     result.color shouldBe newColor
-    result.ior shouldBe 1.5f  // Original
+    result.ior shouldBe 1.5f     // Unchanged
     result.roughness shouldBe 0.0f  // Updated
-    result.metallic shouldBe 0.0f  // Original default
-    result.specular shouldBe 0.5f  // Original default
+    result.metallic shouldBe 0.0f   // Original default
+    result.specular shouldBe 0.5f   // Original default
