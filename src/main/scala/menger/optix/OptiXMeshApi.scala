@@ -26,9 +26,7 @@ private[optix] trait OptiXMeshApi:
     *
     * @param facesData length V*4*numFaces — N faces × V corners × (x,y,z,w)
     * @param vertsPerFace number of vertices per face (3=tri, 4=quad, 5=pentagon)
-    * @param uvs optional length vertsPerFace*2*numFaces; None uses computed UVs
-    */
-  /** @param uvs optional UV coordinates; pass null to use computed UVs
+    * @param uvs UV coords, length vertsPerFace*2*numFaces; pass null for computed UVs
     * @return mesh index slot in triangle_meshes[]
     */
   def setProjectedMesh(
