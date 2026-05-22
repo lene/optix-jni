@@ -70,6 +70,7 @@ JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIE
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in initializeNative: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
         return JNI_FALSE;
     }
 }
@@ -825,10 +826,14 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
             return nullptr;
         }
 
-        // Get stats from render
+        // Get stats from render; release buffer even if render throws
         RayStats stats;
-        wrapper->render(width, height, reinterpret_cast<unsigned char*>(buffer), &stats);
-
+        try {
+            wrapper->render(width, height, reinterpret_cast<unsigned char*>(buffer), &stats);
+        } catch (...) {
+            env->ReleaseByteArrayElements(imageArray, buffer, JNI_ABORT);
+            throw;
+        }
         env->ReleaseByteArrayElements(imageArray, buffer, 0);
 
         // Create RenderResult object (image + stats)
