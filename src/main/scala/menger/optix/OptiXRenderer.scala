@@ -206,6 +206,7 @@ class OptiXRenderer
   @native private def setTransparentShadowsNative(enabled: Boolean): Unit
   @native private def setBackgroundColorNative(r: Float, g: Float, b: Float): Unit
   @native private def setFogNative(density: Float, r: Float, g: Float, b: Float): Unit
+  @native private[optix] def setToneMappingNative(operatorId: Int, exposure: Float): Unit
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit

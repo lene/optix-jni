@@ -17,7 +17,9 @@ case class RenderConfig(
   // tesseract-derived meshes upload as raw 4D quads and the kernel
   // does rotation + perspective divide on the GPU at scene-build
   // time (and per-frame via Cut F's update path).
-  gpuProject4D: Boolean = false
+  gpuProject4D: Boolean = false,
+  toneMappingOperator: Int = 0,    // 0=none/clip, 1=reinhard, 2=aces
+  toneMappingExposure: Float = 1.0f
 ):
   require(aaMaxDepth >= 1 && aaMaxDepth <= 4, s"aaMaxDepth must be 1-4, got $aaMaxDepth")
   require(aaThreshold >= 0.0f && aaThreshold <= 1.0f, s"aaThreshold must be 0.0-1.0, got $aaThreshold")

@@ -71,6 +71,11 @@ public:
     void setEnvMapIndex(int idx) { env_map_index = idx; }
     int getEnvMapIndex() const { return env_map_index; }
 
+    // Tone mapping configuration (0=none/clip, 1=reinhard, 2=aces)
+    void setToneMapping(int op, float exp) { tonemap_operator = op; tonemap_exposure = exp; }
+    int getToneMappingOperator() const { return tonemap_operator; }
+    float getToneMappingExposure() const { return tonemap_exposure; }
+
     // Plane appearance configuration
     void clearPlanes();
     void addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b);
@@ -127,6 +132,10 @@ private:
 
     // Environment map
     int env_map_index = -1;
+
+    // Tone mapping
+    int   tonemap_operator = 0;    // 0=none, 1=reinhard, 2=aces
+    float tonemap_exposure = 1.0f;
 
     // Plane appearance
     PlaneParams planes[RayTracingConstants::MAX_PLANES] = {};

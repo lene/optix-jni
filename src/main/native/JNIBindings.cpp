@@ -341,6 +341,18 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setEnvironmentMapNative(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setToneMappingNative(
+    JNIEnv* env, jobject obj, jint operatorId, jfloat exposure) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) {
+            wrapper->setToneMapping((int)operatorId, (float)exposure);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setToneMapping: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setProceduralTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint proceduralType, jfloat proceduralScale) {
     try {

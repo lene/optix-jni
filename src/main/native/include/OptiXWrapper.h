@@ -135,6 +135,9 @@ public:
     // Environment map configuration
     void setEnvironmentMap(int textureIndex);
 
+    // Tone mapping configuration (0=none, 1=reinhard, 2=aces)
+    void setToneMapping(int operatorId, float exposure);
+
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
 

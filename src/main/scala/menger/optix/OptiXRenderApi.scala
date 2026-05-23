@@ -10,6 +10,10 @@ private[optix] trait OptiXRenderApi:
     setTransparentShadows(config.transparentShadows)
     setAntialiasing(config.antialiasing, config.aaMaxDepth, config.aaThreshold)
     setMaxRayDepth(config.maxRayDepth)
+    setToneMapping(config.toneMappingOperator, config.toneMappingExposure)
+
+  def setToneMapping(operator: Int, exposure: Float): Unit =
+    setToneMappingNative(operator, exposure)
 
   def setCausticsConfig(config: CausticsConfig): Unit =
     setCaustics(config.enabled, config.photonsPerIteration, config.iterations, config.initialRadius, config.alpha)

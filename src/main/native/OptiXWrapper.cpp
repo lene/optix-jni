@@ -288,6 +288,10 @@ void OptiXWrapper::setEnvironmentMap(int textureIndex) {
     impl->config.setEnvMapIndex(textureIndex);
 }
 
+void OptiXWrapper::setToneMapping(int operatorId, float exposure) {
+    impl->config.setToneMapping(operatorId, exposure);
+}
+
 void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
                                          float proceduralScale) {
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
@@ -1491,6 +1495,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.env_map_enabled = (envIdx >= 0 && envIdx < (int)impl->textures.size());
         if (params.env_map_enabled)
             params.env_map_texture = impl->textures[envIdx].texture_obj;
+        params.tonemap_operator = impl->config.getToneMappingOperator();
+        params.tonemap_exposure = impl->config.getToneMappingExposure();
 
         params.num_planes = impl->config.getNumPlanes();
         // Copy all MAX_PLANES slots (zero-initialized past num_planes) to avoid

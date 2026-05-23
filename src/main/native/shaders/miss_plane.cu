@@ -87,14 +87,37 @@ __device__ void getBackgroundColor(
     b = static_cast<unsigned int>(params.bg_b * COLOR_SCALE_FACTOR);
 }
 
+__device__ float3 applyToneMapping(float3 c) {
+    const float e = params.tonemap_exposure;
+    if (params.tonemap_operator == 1) {
+        // Reinhard: c*e / (1 + c*e)
+        c.x = c.x * e / (1.0f + c.x * e);
+        c.y = c.y * e / (1.0f + c.y * e);
+        c.z = c.z * e / (1.0f + c.z * e);
+    } else if (params.tonemap_operator == 2) {
+        // ACES filmic approximation (Narkowicz 2015)
+        c.x *= e; c.y *= e; c.z *= e;
+        const float a = 2.51f, b2 = 0.03f, cc = 2.43f, d = 0.59f, e2 = 0.14f;
+        c.x = fminf((c.x*(a*c.x+b2))/(c.x*(cc*c.x+d)+e2), 1.0f);
+        c.y = fminf((c.y*(a*c.y+b2))/(c.y*(cc*c.y+d)+e2), 1.0f);
+        c.z = fminf((c.z*(a*c.z+b2))/(c.z*(cc*c.z+d)+e2), 1.0f);
+    } else {
+        c.x = fminf(c.x, 1.0f);
+        c.y = fminf(c.y, 1.0f);
+        c.z = fminf(c.z, 1.0f);
+    }
+    return c;
+}
+
 __device__ void sampleEnvMap(unsigned int& r, unsigned int& g, unsigned int& b) {
     float3 dir = normalize(optixGetWorldRayDirection());
     float u = 0.5f + atan2f(dir.z, dir.x) * (0.5f * M_1_PIf);
     float v = 0.5f - asinf(fmaxf(-1.f, fminf(1.f, dir.y))) * M_1_PIf;
     float4 c = tex2D<float4>(params.env_map_texture, u, v);
-    r = static_cast<unsigned int>(fminf(c.x, 1.f) * COLOR_SCALE_FACTOR);
-    g = static_cast<unsigned int>(fminf(c.y, 1.f) * COLOR_SCALE_FACTOR);
-    b = static_cast<unsigned int>(fminf(c.z, 1.f) * COLOR_SCALE_FACTOR);
+    float3 mapped = applyToneMapping(make_float3(c.x, c.y, c.z));
+    r = static_cast<unsigned int>(mapped.x * COLOR_SCALE_FACTOR);
+    g = static_cast<unsigned int>(mapped.y * COLOR_SCALE_FACTOR);
+    b = static_cast<unsigned int>(mapped.z * COLOR_SCALE_FACTOR);
 }
 
 //==============================================================================
