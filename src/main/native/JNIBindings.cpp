@@ -46,6 +46,12 @@ static void setWrapper(JNIEnv* env, jobject obj, OptiXWrapper* wrapper) {
     env->SetLongField(obj, fid, reinterpret_cast<jlong>(wrapper));
 }
 
+// Safe throw: if FindClass returns null it already threw OutOfMemoryError; we leave it.
+static void throwException(JNIEnv* env, const char* className, const char* msg) {
+    jclass cls = env->FindClass(className);
+    if (cls) env->ThrowNew(cls, msg);
+}
+
 JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
     try {
         // Check if already initialized (defensive check - Scala layer should prevent this)
@@ -70,7 +76,7 @@ JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIE
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in initializeNative: " << e.what() << std::endl;
-        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        throwException(env, "java/lang/RuntimeException", e.what());
         return JNI_FALSE;
     }
 }
@@ -187,18 +193,16 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
 
         // Validate count BEFORE creating stack array to prevent buffer overflow
         if (count < 0 || count > RayTracingConstants::MAX_LIGHTS) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
             std::string message = "Light count " + std::to_string(count) +
                                 " out of range [0, " + std::to_string(RayTracingConstants::MAX_LIGHTS) + "]";
-            env->ThrowNew(exception_class, message.c_str());
+            throwException(env, "java/lang/IllegalArgumentException", message.c_str());
             return;
         }
 
         // Find Light class and field IDs
         jclass lightClass = env->FindClass("menger/optix/Light");
         if (lightClass == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
-            env->ThrowNew(exception_class, "Failed to find Light class");
+            throwException(env, "java/lang/RuntimeException", "Failed to find Light class");
             return;
         }
 
@@ -216,8 +220,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
             colorField == nullptr || intensityField == nullptr ||
             shapeField == nullptr || normalField == nullptr ||
             radiusField == nullptr || samplesField == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
-            env->ThrowNew(exception_class, "Failed to find Light fields");
+            throwException(env, "java/lang/RuntimeException", "Failed to find Light fields");
             return;
         }
 
@@ -237,17 +240,20 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
             jfloatArray dirArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, directionField));
             jfloat* dirArr = env->GetFloatArrayElements(dirArray, nullptr);
             std::memcpy(lights[i].direction, dirArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(dirArray, dirArr, 0);
+            env->ReleaseFloatArrayElements(dirArray, dirArr, JNI_ABORT);
+            env->DeleteLocalRef(dirArray);
 
             jfloatArray posArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, positionField));
             jfloat* posArr = env->GetFloatArrayElements(posArray, nullptr);
             std::memcpy(lights[i].position, posArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(posArray, posArr, 0);
+            env->ReleaseFloatArrayElements(posArray, posArr, JNI_ABORT);
+            env->DeleteLocalRef(posArray);
 
             jfloatArray colArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, colorField));
             jfloat* colArr = env->GetFloatArrayElements(colArray, nullptr);
             std::memcpy(lights[i].color, colArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(colArray, colArr, 0);
+            env->ReleaseFloatArrayElements(colArray, colArr, JNI_ABORT);
+            env->DeleteLocalRef(colArray);
 
             lights[i].intensity = env->GetFloatField(lightObj, intensityField);
 
@@ -257,7 +263,8 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
             jfloatArray normalArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, normalField));
             jfloat* normalArr = env->GetFloatArrayElements(normalArray, nullptr);
             std::memcpy(lights[i].normal, normalArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(normalArray, normalArr, 0);
+            env->ReleaseFloatArrayElements(normalArray, normalArr, JNI_ABORT);
+            env->DeleteLocalRef(normalArray);
 
             lights[i].radius = env->GetFloatField(lightObj, radiusField);
             lights[i].shadow_samples = env->GetIntField(lightObj, samplesField);
@@ -269,14 +276,9 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
         wrapper->setLights(lights, count);
 
     } catch (const std::invalid_argument& e) {
-        // Convert C++ validation exception to Java IllegalArgumentException
-        jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-        env->ThrowNew(exception_class, e.what());
-
+        throwException(env, "java/lang/IllegalArgumentException", e.what());
     } catch (const std::exception& e) {
-        // Convert other C++ exceptions to Java RuntimeException
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
+        throwException(env, "java/lang/RuntimeException", e.what());
     }
 }
 
@@ -523,6 +525,8 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
     JNIEnv* env, jobject obj,
     jfloatArray vertices, jint numVertices,
     jintArray indices, jint numTriangles, jint vertexStride) {
+    jfloat* vertexArr = nullptr;
+    jint* indexArr = nullptr;
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -531,15 +535,13 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
 
         // Validate input parameters
         if (numVertices <= 0 || numTriangles <= 0) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-            env->ThrowNew(exception_class, "numVertices and numTriangles must be positive");
+            throwException(env, "java/lang/IllegalArgumentException", "numVertices and numTriangles must be positive");
             return;
         }
 
         // Validate vertex stride (6, 8, or 9)
         if (vertexStride != 6 && vertexStride != 8 && vertexStride != 9) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-            env->ThrowNew(exception_class, "vertexStride must be 6, 8, or 9");
+            throwException(env, "java/lang/IllegalArgumentException", "vertexStride must be 6, 8, or 9");
             return;
         }
 
@@ -548,31 +550,28 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
 
         // Validate array sizes
         if (vertexArrayLen != numVertices * vertexStride) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
             std::string msg = "vertices array length (" + std::to_string(vertexArrayLen) +
                 ") must equal numVertices * vertexStride (" +
                 std::to_string(numVertices * vertexStride) + ")";
-            env->ThrowNew(exception_class, msg.c_str());
+            throwException(env, "java/lang/IllegalArgumentException", msg.c_str());
             return;
         }
 
         if (indexArrayLen != numTriangles * 3) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
             std::string msg = "indices array length (" + std::to_string(indexArrayLen) +
                 ") must equal numTriangles * 3 (" + std::to_string(numTriangles * 3) + ")";
-            env->ThrowNew(exception_class, msg.c_str());
+            throwException(env, "java/lang/IllegalArgumentException", msg.c_str());
             return;
         }
 
-        // Get arrays from JNI
-        jfloat* vertexArr = env->GetFloatArrayElements(vertices, nullptr);
-        jint* indexArr = env->GetIntArrayElements(indices, nullptr);
+        // Get arrays from JNI (declared before try for catch-block release)
+        vertexArr = env->GetFloatArrayElements(vertices, nullptr);
+        indexArr = env->GetIntArrayElements(indices, nullptr);
 
         if (vertexArr == nullptr || indexArr == nullptr) {
-            if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, 0);
-            if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, 0);
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
-            env->ThrowNew(exception_class, "Failed to get array elements");
+            if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
+            if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
+            throwException(env, "java/lang/RuntimeException", "Failed to get array elements");
             return;
         }
 
@@ -586,13 +585,16 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
             static_cast<unsigned int>(vertexStride)
         );
 
-        env->ReleaseFloatArrayElements(vertices, vertexArr, 0);
-        env->ReleaseIntArrayElements(indices, indexArr, 0);
+        env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
+        env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
+        vertexArr = nullptr;
+        indexArr = nullptr;
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setTriangleMesh: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
+        if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
+        if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
+        throwException(env, "java/lang/RuntimeException", e.what());
     }
 }
 
@@ -626,23 +628,20 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setProjectedMeshNative(
         }
 
         if (numFaces <= 0) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-            env->ThrowNew(exception_class, "numFaces must be positive");
+            throwException(env, "java/lang/IllegalArgumentException", "numFaces must be positive");
             return -1;
         }
         if (vertsPerFace < 3) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
-            env->ThrowNew(exception_class, "vertsPerFace must be >= 3");
+            throwException(env, "java/lang/IllegalArgumentException", "vertsPerFace must be >= 3");
             return -1;
         }
 
         int stride = vertsPerFace * 4;
         jsize quadsLen = env->GetArrayLength(facesData);
         if (quadsLen != numFaces * stride) {
-            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
             std::string msg = "facesData length (" + std::to_string(quadsLen) +
                 ") must equal numFaces*vertsPerFace*4 (" + std::to_string(numFaces * stride) + ")";
-            env->ThrowNew(exception_class, msg.c_str());
+            throwException(env, "java/lang/IllegalArgumentException", msg.c_str());
             return -1;
         }
 
@@ -650,10 +649,9 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setProjectedMeshNative(
         if (uvs != nullptr) {
             jsize uvsLen = env->GetArrayLength(uvs);
             if (uvsLen != numFaces * vertsPerFace * 2) {
-                jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
                 std::string msg = "uvs length (" + std::to_string(uvsLen) +
                     ") must equal numFaces*vertsPerFace*2";
-                env->ThrowNew(exception_class, msg.c_str());
+                throwException(env, "java/lang/IllegalArgumentException", msg.c_str());
                 return -1;
             }
             uvsArr = env->GetFloatArrayElements(uvs, nullptr);
@@ -661,9 +659,8 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setProjectedMeshNative(
 
         jfloat* quadsArr = env->GetFloatArrayElements(facesData, nullptr);
         if (quadsArr == nullptr) {
-            if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, 0);
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
-            env->ThrowNew(exception_class, "Failed to get facesData array elements");
+            if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, JNI_ABORT);
+            throwException(env, "java/lang/RuntimeException", "Failed to get facesData array elements");
             return -1;
         }
 
@@ -683,8 +680,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setProjectedMeshNative(
         return meshIndex;
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setProjectedMesh: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
+        throwException(env, "java/lang/RuntimeException", e.what());
         return -1;
     }
 }
@@ -713,8 +709,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMesh4DProjectionNat
         );
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in updateMesh4DProjection: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
+        throwException(env, "java/lang/RuntimeException", e.what());
         return -1;
     }
 }
@@ -749,8 +744,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateCpuTriangleMeshNati
         return static_cast<jint>(rc);
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in updateCpuTriangleMesh: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
+        throwException(env, "java/lang/RuntimeException", e.what());
         return -1;
     }
 }
