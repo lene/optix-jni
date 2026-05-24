@@ -12,28 +12,28 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
   "Ray statistics" should "have primary rays equal to pixel count" in:
     TestScenario.default().applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     result.primaryRays shouldBe STANDARD_IMAGE_SIZE.width * STANDARD_IMAGE_SIZE.height
 
   it should "have total rays greater than primary rays" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     result.totalRays should be > result.primaryRays
 
   it should "have refracted rays > 0 for transparent sphere" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     result.refractedRays should be > 0L
 
   it should "have reflected rays > 0 for glass sphere" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     result.reflectedRays should be > 0L
 
@@ -46,7 +46,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
       .withHorizontalFOV(60f)
       .applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     result.refractedRays shouldBe 0L
     result.reflectedRays shouldBe 0L  // Opaque sphere doesn't trace rays
@@ -60,7 +60,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
       .withHorizontalFOV(60f)
       .applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // Fully transparent means rays pass through without refraction/reflection
     result.refractedRays shouldBe 0L
@@ -69,7 +69,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "track minimum depth correctly" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // Minimum depth should be 1 (rays that hit the sphere once)
     result.minDepthReached shouldBe 1
@@ -77,7 +77,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "track maximum depth > minimum depth for glass sphere" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // Glass sphere with refraction should have multiple bounces
     result.maxDepthReached should be > result.minDepthReached
@@ -87,8 +87,8 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "have more rays for larger image dimensions" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val small = renderer.renderWithStats(ImageSize(100, 100))
-    val large = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val small = Option(renderer.renderWithStats(ImageSize(100, 100))).get
+    val large = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     large.primaryRays should be > small.primaryRays
     large.totalRays should be > small.totalRays
@@ -102,7 +102,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
       .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
-    val semiTransparent = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val semiTransparent = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // More transparent sphere
     TestScenario.default()
@@ -112,7 +112,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
       .withCameraEye(Vector[3](0f, 0f, 3f))
       .withHorizontalFOV(60f)
       .applyTo(renderer)
-    val moreTransparent = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val moreTransparent = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // More transparent = less absorption = more refracted rays
     moreTransparent.refractedRays should be >= semiTransparent.refractedRays
@@ -120,8 +120,8 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "have consistent stats across multiple renders" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val result1 = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
-    val result2 = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result1 = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
+    val result2 = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // Same scene should produce same statistics
     result1.primaryRays shouldBe result2.primaryRays
@@ -134,7 +134,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "return valid RayStats via stats accessor" in:
     TestScenario.glassSphere().applyTo(renderer)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
     val stats = result.stats
 
     stats.totalRays shouldBe result.totalRays
@@ -148,7 +148,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.glassSphere().applyTo(renderer)
 
     val standardRender = renderImage(STANDARD_IMAGE_SIZE)
-    val statsRender = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val statsRender = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     statsRender.image.length shouldBe standardRender.length
     // Images should be identical (same rendering)
@@ -158,7 +158,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default().applyTo(renderer)
     // Shadows disabled by default
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     result.shadowRays shouldBe 0L
 
@@ -166,7 +166,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default().applyTo(renderer)
     renderer.setShadows(true)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // Should have cast shadow rays for lit pixels
     result.shadowRays should be > 0L
@@ -175,7 +175,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default().applyTo(renderer)
     renderer.setShadows(true)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // Total rays should include primary + shadow rays (at minimum)
     result.totalRays should be >= (result.primaryRays + result.shadowRays)
@@ -194,7 +194,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     )
     renderer.setShadows(true)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     // All visible surfaces face away from light, so diffuse=0, no shadow rays
     result.shadowRays shouldBe 0L
@@ -203,8 +203,8 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default().applyTo(renderer)
     renderer.setShadows(true)
 
-    val result1 = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
-    val result2 = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result1 = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
+    val result2 = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
 
     result1.shadowRays shouldBe result2.shadowRays
 
@@ -212,7 +212,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     TestScenario.default().applyTo(renderer)
     renderer.setShadows(true)
 
-    val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE)
+    val result = Option(renderer.renderWithStats(STANDARD_IMAGE_SIZE)).get
     val stats = result.stats
 
     stats.shadowRays shouldBe result.shadowRays

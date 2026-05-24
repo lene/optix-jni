@@ -167,7 +167,7 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
     setupReferenceScene()
     renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
 
-    val result = renderer.renderWithStats(ReferenceScene.imageSize)
+    val result = Option(renderer.renderWithStats(ReferenceScene.imageSize)).get
 
     // Detect caustic region
     val (x, y, w, h) = detectCausticRegion(result.image, ReferenceScene.imageSize)
@@ -189,7 +189,7 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
     setupReferenceScene()
     renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
 
-    val result = renderer.renderWithStats(ReferenceScene.imageSize)
+    val result = Option(renderer.renderWithStats(ReferenceScene.imageSize)).get
 
     // Sample caustic region (detected)
     val (causticX, causticY, causticW, causticH) =
@@ -249,7 +249,7 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
     // Render our caustics at test size
     setupReferenceScene()
     renderer.enableCaustics(photonsPerIter = 10000, iterations = 3)
-    val result = renderer.renderWithStats(ReferenceScene.imageSize)
+    val result = Option(renderer.renderWithStats(ReferenceScene.imageSize)).get
 
     val (ourX, ourY, ourW, ourH) = detectCausticRegion(result.image, ReferenceScene.imageSize)
     val ourBrightness = regionBrightness(result.image, ReferenceScene.imageSize, ourX, ourY, ourW, ourH)
