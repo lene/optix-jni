@@ -81,7 +81,7 @@ struct OptiXWrapper::Impl {
         float specular;                       // Specular intensity (default: 0.5)
         float emission;                       // Emission intensity (default: 0.0)
         float film_thickness;                 // Thin-film thickness in nm (0 = none)
-        int texture_index;                    // Index into textures array (-1 = no texture)
+        int geometry_data_index;              // Index into geometry-specific data buffer (-1 = unused)
         int procedural_type;                  // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
         float procedural_scale;               // Noise coordinate scale (default 1.0)
         int normal_texture_index;             // Normal map index (-1 = no normal map)
@@ -335,22 +335,22 @@ void OptiXWrapper::addPlaneSolidColorWithMaterial(
     int axis, bool positive, float value,
     float r, float g, float b,
     float roughness, float metallic, float specular, float emission,
-    int texture_index
+    int imageTextureIndex
 ) {
     impl->config.addPlaneSolidColorWithMaterial(
         axis, positive, value, r, g, b,
-        roughness, metallic, specular, emission, texture_index);
+        roughness, metallic, specular, emission, imageTextureIndex);
 }
 
 void OptiXWrapper::addPlaneCheckerColorsWithMaterial(
     int axis, bool positive, float value,
     float r1, float g1, float b1, float r2, float g2, float b2,
     float roughness, float metallic, float specular, float emission,
-    int texture_index
+    int imageTextureIndex
 ) {
     impl->config.addPlaneCheckerColorsWithMaterial(
         axis, positive, value, r1, g1, b1, r2, g2, b2,
-        roughness, metallic, specular, emission, texture_index);
+        roughness, metallic, specular, emission, imageTextureIndex);
 }
 
 void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) {
@@ -1095,7 +1095,7 @@ void OptiXWrapper::buildIAS() {
         mat.specular = inst.specular;
         mat.emission = inst.emission;
         mat.geometry_type = inst.geometry_type;
-        mat.texture_index = inst.texture_index;
+        mat.geometry_data_index = inst.geometry_data_index;
         mat.film_thickness = inst.film_thickness;
         mat.procedural_type = inst.procedural_type;
         mat.procedural_scale = inst.procedural_scale;
@@ -1709,7 +1709,7 @@ int OptiXWrapper::addSphereInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index = -1;  // Spheres don't support textures
+    inst.geometry_data_index = -1;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
@@ -1782,12 +1782,12 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index = textureIndex;
+    inst.geometry_data_index = -1;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
-    inst.image_texture_index = -1;
+    inst.image_texture_index = textureIndex;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -1979,12 +1979,12 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index = textureIndex;
+    inst.geometry_data_index = -1;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
-    inst.image_texture_index = -1;
+    inst.image_texture_index = textureIndex;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -2107,7 +2107,7 @@ int OptiXWrapper::addCylinderInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index = cylinder_index;  // For cylinders: index into cylinder_data array
+    inst.geometry_data_index = cylinder_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
@@ -2231,7 +2231,7 @@ int OptiXWrapper::addConeInstance(
     inst.specular      = specular;
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index = cone_index;
+    inst.geometry_data_index = cone_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
@@ -2356,7 +2356,7 @@ int OptiXWrapper::addPlaneInstance(
     inst.specular      = specular;
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index = plane_index;
+    inst.geometry_data_index = plane_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
@@ -2453,7 +2453,7 @@ int OptiXWrapper::addMenger4DInstance(
     inst.specular      = specular;
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index = m4d_index;
+    inst.geometry_data_index = m4d_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
@@ -2493,7 +2493,7 @@ int OptiXWrapper::updateMenger4DProjection(
                   << instanceId << " is not a Menger4D instance" << std::endl;
         return -2;
     }
-    int m4d_index = inst.texture_index;
+    int m4d_index = inst.geometry_data_index;
     if (m4d_index < 0 || m4d_index >= (int)impl->menger4d_data.size()) {
         return -3;
     }
@@ -2575,7 +2575,7 @@ int OptiXWrapper::addSierpinski4DInstance(
     inst.specular       = specular;
     inst.emission       = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index  = s4d_index;
+    inst.geometry_data_index = s4d_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
@@ -2614,7 +2614,7 @@ int OptiXWrapper::updateSierpinski4DProjection(
                   << instanceId << " is not a Sierpinski4D instance" << std::endl;
         return -2;
     }
-    int s4d_index = inst.texture_index;
+    int s4d_index = inst.geometry_data_index;
     if (s4d_index < 0 || s4d_index >= (int)impl->sierpinski4d_data.size()) {
         return -3;
     }
@@ -2696,7 +2696,7 @@ int OptiXWrapper::addHexadecachoron4DInstance(
     inst.specular       = specular;
     inst.emission       = emission;
     inst.film_thickness = film_thickness;
-    inst.texture_index  = h4d_index;
+    inst.geometry_data_index = h4d_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1;
@@ -2735,7 +2735,7 @@ int OptiXWrapper::updateHexadecachoron4DProjection(
                   << instanceId << " is not a Hexadecachoron4D instance" << std::endl;
         return -2;
     }
-    int h4d_index = inst.texture_index;
+    int h4d_index = inst.geometry_data_index;
     if (h4d_index < 0 || h4d_index >= (int)impl->hexadecachoron4d_data.size()) {
         return -3;
     }

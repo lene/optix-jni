@@ -88,12 +88,12 @@ public:
         int axis, bool positive, float value,
         float r, float g, float b,
         float roughness, float metallic, float specular, float emission,
-        int texture_index);
+        int imageTextureIndex);
     void addPlaneCheckerColorsWithMaterial(
         int axis, bool positive, float value,
         float r1, float g1, float b1, float r2, float g2, float b2,
         float roughness, float metallic, float specular, float emission,
-        int texture_index);
+        int imageTextureIndex);
     const PlaneParams* getPlanes() const { return planes; }
     int getNumPlanes() const { return num_planes; }
 

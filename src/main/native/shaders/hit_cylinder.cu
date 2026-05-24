@@ -22,7 +22,7 @@
  * - Caps: disk intersections at p0 and p1
  */
 extern "C" __global__ void __intersection__cylinder() {
-    // Get cylinder index from instance material's texture_index field
+    // Get cylinder index from instance material's geometry_data_index field
     const unsigned int instanceId = optixGetInstanceId();
 
     // Bounds check: ensure instanceId is valid
@@ -36,7 +36,7 @@ extern "C" __global__ void __intersection__cylinder() {
     }
 
     const InstanceMaterial& mat = params.instance_materials[instanceId];
-    const int cylinder_index = mat.texture_index;
+    const int cylinder_index = mat.geometry_data_index;
 
     // Bounds check: ensure cylinder_index is valid
     if (cylinder_index < 0 || cylinder_index >= static_cast<int>(params.num_cylinders)) {

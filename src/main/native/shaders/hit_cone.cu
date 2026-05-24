@@ -11,7 +11,7 @@ extern "C" __global__ void __intersection__cone() {
     if (!params.instance_materials) return;
 
     const InstanceMaterial& mat = params.instance_materials[instanceId];
-    const int cone_index = mat.texture_index;
+    const int cone_index = mat.geometry_data_index;
 
     if (cone_index < 0 || cone_index >= static_cast<int>(params.num_cones)) return;
     if (!params.cone_data) return;
@@ -136,7 +136,7 @@ extern "C" __global__ void __closesthit__cone() {
     {
         const unsigned int instanceId = optixGetInstanceId();
         if (params.instance_materials && params.cone_data) {
-            const int cone_idx = params.instance_materials[instanceId].texture_index;
+            const int cone_idx = params.instance_materials[instanceId].geometry_data_index;
             if (cone_idx >= 0 && cone_idx < static_cast<int>(params.num_cones)) {
                 const ConeData& cone = params.cone_data[cone_idx];
                 const float3 apex_pt = make_float3(cone.apex[0], cone.apex[1], cone.apex[2]);

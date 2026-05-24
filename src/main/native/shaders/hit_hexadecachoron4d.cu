@@ -143,7 +143,7 @@ extern "C" __global__ void __intersection__hexadecachoron4d() {
     if (instanceId >= params.num_instances || !params.instance_materials) return;
 
     const InstanceMaterial& mat = params.instance_materials[instanceId];
-    const int h4d_idx = mat.texture_index;
+    const int h4d_idx = mat.geometry_data_index;
     if (h4d_idx < 0 || h4d_idx >= static_cast<int>(params.num_hexadecachoron4d)) return;
     if (!params.hexadecachoron4d_data) return;
 

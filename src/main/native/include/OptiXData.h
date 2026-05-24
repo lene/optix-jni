@@ -172,13 +172,13 @@ struct InstanceMaterial {
     float specular;             // Specular intensity (default: 0.5)
     float emission;             // Emission intensity (0.0-10.0, default: 0.0)
     unsigned int geometry_type; // GeometryType enum value
-    int texture_index;          // Index into Params.textures array (-1 = no texture)
+    int geometry_data_index;    // Index into geometry-specific data buffer (cone_data, plane_data, etc.; -1 = unused)
     float film_thickness;       // Thin-film thickness in nm (0 = no thin-film interference)
     int procedural_type;        // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
     float procedural_scale;     // Noise coordinate scale (default 1.0)
     int normal_texture_index;   // Normal map index (-1 = no normal map)
     int roughness_texture_index; // Roughness map index (-1 = no roughness map)
-    int image_texture_index;    // Image texture index for cone/plane (-1 = no texture; for these geometry types texture_index is the geometry data index)
+    int image_texture_index;    // Image texture index (-1 = no texture)
     // Per-mesh triangle buffer pointers (IAS mode only)
     // Populated for triangle instances; nullptr/0 for spheres/cylinders
     float* vertices;            // Device pointer to vertex data
@@ -434,7 +434,7 @@ struct PlaneParams {
 };
 
 // Cylinder geometry data for ray intersection
-// Stored in params.cylinder_data buffer, accessed in intersection shader via instance material's texture_index
+// Stored in params.cylinder_data buffer, accessed in intersection shader via instance material's geometry_data_index
 struct CylinderData {
     float p0[3];      // Start point (12 bytes)
     float radius;     // Radius (4 bytes)
@@ -444,7 +444,7 @@ struct CylinderData {
 };
 
 // Cone geometry data for ray intersection
-// Stored in params.cone_data buffer, indexed via InstanceMaterial.texture_index
+// Stored in params.cone_data buffer, indexed via InstanceMaterial.geometry_data_index
 struct ConeData {
     float apex[3];    // Apex point (12 bytes)
     float radius;     // Base radius (4 bytes)
@@ -454,7 +454,7 @@ struct ConeData {
 };
 
 // Plane geometry data for ray intersection
-// Stored in params.plane_data buffer, indexed via InstanceMaterial.texture_index
+// Stored in params.plane_data buffer, indexed via InstanceMaterial.geometry_data_index
 struct PlaneData {
     float normal[3];      // Unit normal vector (12 bytes)
     float distance;       // Signed distance from origin: dot(normal, point) = distance (4 bytes)
@@ -466,7 +466,7 @@ struct PlaneData {
 };
 
 // 4D Menger sponge per-instance data for the IFS intersection shader.
-// Stored in params.menger4d_data buffer, indexed via InstanceMaterial.texture_index
+// Stored in params.menger4d_data buffer, indexed via InstanceMaterial.geometry_data_index
 struct Menger4DData {
     float pos[3];          // 3D world position of the sponge center (12 bytes)
     float scale;           // World scale (projected coords multiplied by this) (4 bytes)
@@ -479,7 +479,7 @@ struct Menger4DData {
 };
 
 // 4D Sierpinski pentachoron per-instance data for the IFS intersection shader.
-// Stored in params.sierpinski4d_data buffer, indexed via InstanceMaterial.texture_index
+// Stored in params.sierpinski4d_data buffer, indexed via InstanceMaterial.geometry_data_index
 struct Sierpinski4DData {
     float pos[3];          // 3D world position of the fractal center (12 bytes)
     float scale;           // World scale (projected coords multiplied by this) (4 bytes)
@@ -492,7 +492,7 @@ struct Sierpinski4DData {
 };
 
 // 4D Sierpinski 16-cell (hexadecachoron) per-instance data for the IFS intersection shader.
-// Stored in params.hexadecachoron4d_data buffer, indexed via InstanceMaterial.texture_index
+// Stored in params.hexadecachoron4d_data buffer, indexed via InstanceMaterial.geometry_data_index
 struct Hexadecachoron4DData {
     float pos[3];          // 3D world position of the fractal center (12 bytes)
     float scale;           // World scale (projected coords multiplied by this) (4 bytes)
@@ -544,7 +544,7 @@ struct Params {
     RayStats* stats;            // Pointer to GPU stats buffer
 
     // Cylinder geometry data buffer (for cylinder intersection shader)
-    // Indexed by cylinder_index stored in InstanceMaterial.texture_index for cylinder instances
+    // Indexed by cylinder_index stored in InstanceMaterial.geometry_data_index for cylinder instances
     CylinderData* cylinder_data;    // Device pointer to array of cylinder geometry
     unsigned int num_cylinders;     // Number of cylinders in array
 

@@ -15,7 +15,7 @@ extern "C" __global__ void __intersection__plane() {
     if (!params.instance_materials) return;
 
     const InstanceMaterial& mat = params.instance_materials[instanceId];
-    const int plane_index = mat.texture_index;
+    const int plane_index = mat.geometry_data_index;
 
     if (plane_index < 0 || plane_index >= static_cast<int>(params.num_plane_data)) return;
     if (!params.plane_data) return;
@@ -76,7 +76,7 @@ extern "C" __global__ void __closesthit__plane() {
     // Apply checker pattern from plane geometry data
     const unsigned int instanceId = optixGetInstanceId();
     if (params.instance_materials && params.plane_data) {
-        const int plane_index = params.instance_materials[instanceId].texture_index;
+        const int plane_index = params.instance_materials[instanceId].geometry_data_index;
         if (plane_index >= 0 && plane_index < static_cast<int>(params.num_plane_data)) {
             const PlaneData& pd = params.plane_data[plane_index];
             float3 base_color;

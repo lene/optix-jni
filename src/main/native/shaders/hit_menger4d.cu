@@ -233,7 +233,7 @@ extern "C" __global__ void __intersection__menger4d() {
     if (instanceId >= params.num_instances || !params.instance_materials) return;
 
     const InstanceMaterial& mat = params.instance_materials[instanceId];
-    const int m4d_idx = mat.texture_index;
+    const int m4d_idx = mat.geometry_data_index;
     if (m4d_idx < 0 || m4d_idx >= static_cast<int>(params.num_menger4d)) return;
     if (!params.menger4d_data) return;
 

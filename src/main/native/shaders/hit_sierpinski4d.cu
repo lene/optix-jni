@@ -115,7 +115,7 @@ extern "C" __global__ void __intersection__sierpinski4d() {
     if (instanceId >= params.num_instances || !params.instance_materials) return;
 
     const InstanceMaterial& mat = params.instance_materials[instanceId];
-    const int s4d_idx = mat.texture_index;
+    const int s4d_idx = mat.geometry_data_index;
     if (s4d_idx < 0 || s4d_idx >= static_cast<int>(params.num_sierpinski4d)) return;
     if (!params.sierpinski4d_data) return;
 

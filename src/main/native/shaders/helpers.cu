@@ -1417,7 +1417,7 @@ __device__ void getInstanceMaterialPBR(
 __device__ int getInstanceTextureIndex() {
     if (params.use_ias && params.instance_materials) {
         const unsigned int instance_id = optixGetInstanceId();
-        return params.instance_materials[instance_id].texture_index;
+        return params.instance_materials[instance_id].image_texture_index;
     }
     return -1;  // No texture in single-object mode
 }
@@ -1440,7 +1440,7 @@ __device__ int getInstanceRoughnessTextureIndex() {
 
 /**
  * Returns the image_texture_index for the current instance.
- * Used by cone and plane shaders where texture_index is repurposed for geometry data.
+ * Equivalent to getInstanceTextureIndex(); kept for call-site clarity in geometry shaders.
  */
 __device__ int getInstanceImageTextureIndex() {
     if (params.use_ias && params.instance_materials) {
