@@ -517,6 +517,8 @@ OptiXContext::GASBuildResult OptiXContext::buildCustomPrimitiveGAS(
         reinterpret_cast<void**>(&d_temp_buffer),
         gas_buffer_sizes.tempSizeInBytes
     ));
+    auto d_temp_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp_buffer), cudaFree);
 
     // Allocate output buffer
     CUdeviceptr d_gas_output_buffer;
@@ -524,6 +526,8 @@ OptiXContext::GASBuildResult OptiXContext::buildCustomPrimitiveGAS(
         reinterpret_cast<void**>(&d_gas_output_buffer),
         gas_buffer_sizes.outputSizeInBytes
     ));
+    auto d_gas_output_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_gas_output_buffer), cudaFree);
 
     // Build acceleration structure
     OptixTraversableHandle gas_handle;
@@ -542,8 +546,9 @@ OptiXContext::GASBuildResult OptiXContext::buildCustomPrimitiveGAS(
         0        // num emitted properties
     ));
 
-    // Clean up temporary buffers (but keep AABB alive for IAS traversal)
-    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
+    // d_temp_buffer_guard frees d_temp_buffer at end of scope
+    // Transfer ownership of d_gas_output_buffer to caller
+    d_gas_output_buffer_guard.release();
 
     GASBuildResult result;
     result.gas_buffer = d_gas_output_buffer;
@@ -602,6 +607,8 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
         reinterpret_cast<void**>(&d_temp_buffer),
         gas_buffer_sizes.tempSizeInBytes
     ));
+    auto d_temp_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp_buffer), cudaFree);
 
     // Allocate output buffer
     CUdeviceptr d_gas_output_buffer;
@@ -609,6 +616,8 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
         reinterpret_cast<void**>(&d_gas_output_buffer),
         gas_buffer_sizes.outputSizeInBytes
     ));
+    auto d_gas_output_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_gas_output_buffer), cudaFree);
 
     // Build acceleration structure
     OptixTraversableHandle gas_handle;
@@ -627,8 +636,9 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
         0        // num emitted properties
     ));
 
-    // Clean up temporary buffer
-    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
+    // d_temp_buffer_guard frees d_temp_buffer at end of scope
+    // Transfer ownership of d_gas_output_buffer to caller
+    d_gas_output_buffer_guard.release();
 
     GASBuildResult result;
     result.gas_buffer = d_gas_output_buffer;
