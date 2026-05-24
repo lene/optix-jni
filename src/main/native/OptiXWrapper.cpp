@@ -2952,6 +2952,10 @@ int OptiXWrapper::uploadTexture(
         cudaArray_t cuda_array;
         CUDA_CHECK(cudaMallocArray(&cuda_array, &channel_desc, width, height));
 
+        // Track cuda_array immediately so releaseTextures() cleans it up even on later failure
+        int index = static_cast<int>(impl->textures.size());
+        impl->textures.push_back({cuda_array, 0, width, height});
+
         // Copy image data to CUDA array
         CUDA_CHECK(cudaMemcpy2DToArray(
             cuda_array, 0, 0,
@@ -2976,10 +2980,7 @@ int OptiXWrapper::uploadTexture(
 
         cudaTextureObject_t texture_obj;
         CUDA_CHECK(cudaCreateTextureObject(&texture_obj, &res_desc, &tex_desc, nullptr));
-
-        // Store texture data
-        int index = static_cast<int>(impl->textures.size());
-        impl->textures.push_back({cuda_array, texture_obj, width, height});
+        impl->textures.back().texture_obj = texture_obj;
         impl->texture_name_to_index[name] = index;
 
         return index;
@@ -3012,6 +3013,10 @@ int OptiXWrapper::uploadTextureFloat(
         cudaArray_t cuda_array;
         CUDA_CHECK(cudaMallocArray(&cuda_array, &channel_desc, width, height));
 
+        // Track cuda_array immediately so releaseTextures() cleans it up even on later failure
+        int index = static_cast<int>(impl->textures.size());
+        impl->textures.push_back({cuda_array, 0, width, height});
+
         CUDA_CHECK(cudaMemcpy2DToArray(
             cuda_array, 0, 0,
             float_rgba,
@@ -3034,9 +3039,7 @@ int OptiXWrapper::uploadTextureFloat(
 
         cudaTextureObject_t texture_obj;
         CUDA_CHECK(cudaCreateTextureObject(&texture_obj, &res_desc, &tex_desc, nullptr));
-
-        int index = static_cast<int>(impl->textures.size());
-        impl->textures.push_back({cuda_array, texture_obj, width, height});
+        impl->textures.back().texture_obj = texture_obj;
         impl->texture_name_to_index[name] = index;
 
         return index;
