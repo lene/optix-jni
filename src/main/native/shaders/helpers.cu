@@ -343,7 +343,10 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out) {
     const float4 texel   = tex2D<float4>(params.env_map_texture, u, v);
 
     // 5. Solid-angle PDF: lum_pdf * W * H / (2π² * sin_theta)
-    const float lum_pdf  = tex2D<float>(params.env_pdf, u, v);
+    // env_pdf uses normalizedCoords=0 (pixel coords); use (col, row) not (u, v).
+    const float lum_pdf  = tex2D<float>(params.env_pdf,
+                                        static_cast<float>(col) + 0.5f,
+                                        static_cast<float>(row) + 0.5f);
     const float area     = static_cast<float>(params.env_width * params.env_height);
     pdf_out = (sin_theta > 1.0e-4f)
         ? lum_pdf * area / (2.0f * M_PIf * M_PIf * sin_theta)
