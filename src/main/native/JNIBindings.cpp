@@ -355,6 +355,28 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setToneMappingNative(
     }
 }
 
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIBLNative(
+    JNIEnv* env, jobject obj, jboolean enabled, jfloat strength, jint samples) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr)
+            wrapper->setIBL((bool)enabled, (float)strength, (int)samples);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setIBL: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAccumulationFramesNative(
+    JNIEnv* env, jobject obj, jint n) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr)
+            wrapper->setAccumulationFrames((int)n);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setAccumulationFrames: " << e.what() << std::endl;
+    }
+}
+
 JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setProceduralTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint proceduralType, jfloat proceduralScale) {
     try {

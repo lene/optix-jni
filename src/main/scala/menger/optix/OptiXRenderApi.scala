@@ -17,6 +17,12 @@ private[optix] trait OptiXRenderApi:
   def setToneMapping(operator: Int, exposure: Float): Unit =
     setToneMappingNative(operator, exposure)
 
+  def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
+    setIBLNative(enabled, strength, samples)
+
+  def setAccumulationFrames(n: Int): Unit =
+    setAccumulationFramesNative(n)
+
   def setCausticsConfig(config: CausticsConfig): Unit =
     setCaustics(config.enabled, config.photonsPerIteration, config.iterations, config.initialRadius, config.alpha)
 
