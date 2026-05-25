@@ -430,6 +430,36 @@ __device__ float3 calculateLighting(
         total_lighting = total_lighting + shadowed_contribution;
     }
 
+    // IBL contribution (importance-sampled env map lighting)
+    if (params.ibl_enabled && params.env_cdf_marginal != 0) {
+        for (int s = 0; s < params.ibl_samples; ++s) {
+            float3       ibl_dir;
+            float        ibl_pdf;
+            const float3 ibl_radiance = sampleEnvLight(ibl_dir, ibl_pdf);
+
+            if (ibl_pdf < 1.0e-6f) continue;   // degenerate sample
+
+            const float cos_theta = fmaxf(0.0f, dot(ibl_dir, normal));
+            if (cos_theta < 1.0e-6f) continue; // below horizon
+
+            // Shadow test
+            const float3 fully_lit = make_float3(1.0f, 1.0f, 1.0f);
+            const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
+                ? traceShadowRay(hit_point, normal, ibl_dir)
+                : fully_lit;
+
+            // MIS balance heuristic (β=2): diffuse BSDF pdf = cos_theta / π
+            const float pdf_bsdf = cos_theta * M_1_PIf;
+            const float pd2 = ibl_pdf  * ibl_pdf;
+            const float pb2 = pdf_bsdf * pdf_bsdf;
+            const float w_env = pd2 / (pd2 + pb2);
+
+            // L * cos_theta * w_env / pdf_env
+            const float3 contrib = ibl_radiance * (cos_theta * w_env / ibl_pdf);
+            total_lighting = total_lighting + contrib * shadow_factor;
+        }
+    }
+
     // Add ambient lighting (prevents pure black shadows)
     const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
     
