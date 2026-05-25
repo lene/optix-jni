@@ -138,6 +138,10 @@ public:
     // Tone mapping configuration (0=none, 1=reinhard, 2=aces)
     void setToneMapping(int operatorId, float exposure);
 
+    // IBL configuration
+    void setIBL(bool enabled, float strength, int samples);
+    void setAccumulationFrames(int n);
+
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
 

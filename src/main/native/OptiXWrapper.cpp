@@ -115,6 +115,14 @@ struct OptiXWrapper::Impl {
     std::map<std::string, int> texture_name_to_index;
     CUdeviceptr d_texture_objects = 0;        // Device array of cudaTextureObject_t for Params
 
+    // IBL CDF textures
+    cudaTextureObject_t m_env_cdf_marginal = 0;
+    cudaTextureObject_t m_env_cdf_cond     = 0;
+    cudaTextureObject_t m_env_pdf          = 0;
+    int                 m_env_width        = 0;
+    int                 m_env_height       = 0;
+    std::vector<cudaArray_t> m_cdf_arrays;   // for cleanup
+
     // Cylinder geometry data (host-side storage, uploaded to GPU before render)
     std::vector<CylinderData> cylinder_data;
     CUdeviceptr d_cylinder_data = 0;          // Device array of CylinderData for Params
@@ -172,6 +180,9 @@ struct OptiXWrapper::Impl {
         , caustics_renderer(optix_context, pipeline_manager, buffer_manager)
     {
     }
+
+    void releaseCDFTextures();
+    void computeAndUploadEnvMapCDF(const float* rgba, int width, int height);
 };
 
 OptiXWrapper::OptiXWrapper() : impl(std::make_unique<Impl>()) {
@@ -290,6 +301,14 @@ void OptiXWrapper::setEnvironmentMap(int textureIndex) {
 
 void OptiXWrapper::setToneMapping(int operatorId, float exposure) {
     impl->config.setToneMapping(operatorId, exposure);
+}
+
+void OptiXWrapper::setIBL(bool enabled, float strength, int samples) {
+    impl->config.setIBL(enabled, strength, samples);
+}
+
+void OptiXWrapper::setAccumulationFrames(int n) {
+    impl->config.setAccumulationFrames(n);
 }
 
 void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
@@ -3062,6 +3081,7 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
             return -1;
         }
         int idx = uploadTextureFloat(path, data, static_cast<unsigned int>(w), static_cast<unsigned int>(h));
+        impl->computeAndUploadEnvMapCDF(data, w, h);
         stbi_image_free(data);
         return idx;
     }
@@ -3075,6 +3095,143 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
     int idx = uploadTexture(path, data, static_cast<unsigned int>(w), static_cast<unsigned int>(h));
     stbi_image_free(data);
     return idx;
+}
+
+// ---------------------------------------------------------------------------
+// IBL CDF helpers
+// ---------------------------------------------------------------------------
+
+// Upload a 1D float array as a point-sampled CUDA texture.
+// Appends the cudaArray to arrays for later cleanup.
+static cudaTextureObject_t uploadFloat1DTex(
+    std::vector<cudaArray_t>& arrays, const float* data, int n) {
+    cudaChannelFormatDesc fmt = cudaCreateChannelDesc<float>();
+    cudaArray_t arr = nullptr;
+    CUDA_CHECK(cudaMallocArray(&arr, &fmt, n));
+    CUDA_CHECK(cudaMemcpy2DToArray(arr, 0, 0, data, n * sizeof(float),
+                                   n * sizeof(float), 1,
+                                   cudaMemcpyHostToDevice));
+    arrays.push_back(arr);
+
+    cudaResourceDesc rd{};
+    rd.resType         = cudaResourceTypeArray;
+    rd.res.array.array = arr;
+
+    cudaTextureDesc td{};
+    td.addressMode[0]   = cudaAddressModeClamp;
+    td.filterMode       = cudaFilterModePoint;
+    td.readMode         = cudaReadModeElementType;
+    td.normalizedCoords = 0;
+
+    cudaTextureObject_t tex = 0;
+    CUDA_CHECK(cudaCreateTextureObject(&tex, &rd, &td, nullptr));
+    return tex;
+}
+
+// Upload a width×height float array as a 2D point-sampled CUDA texture.
+// Appends the cudaArray to arrays for later cleanup.
+static cudaTextureObject_t uploadFloat2DTex(
+    std::vector<cudaArray_t>& arrays, const float* data, int width, int height) {
+    cudaChannelFormatDesc fmt = cudaCreateChannelDesc<float>();
+    cudaArray_t arr = nullptr;
+    CUDA_CHECK(cudaMallocArray(&arr, &fmt, width, height));
+    CUDA_CHECK(cudaMemcpy2DToArray(arr, 0, 0, data, width * sizeof(float),
+                                   width * sizeof(float), height,
+                                   cudaMemcpyHostToDevice));
+    arrays.push_back(arr);
+
+    cudaResourceDesc rd{};
+    rd.resType         = cudaResourceTypeArray;
+    rd.res.array.array = arr;
+
+    cudaTextureDesc td{};
+    td.addressMode[0]   = cudaAddressModeClamp;
+    td.addressMode[1]   = cudaAddressModeClamp;
+    td.filterMode       = cudaFilterModePoint;
+    td.readMode         = cudaReadModeElementType;
+    td.normalizedCoords = 0;
+
+    cudaTextureObject_t tex = 0;
+    CUDA_CHECK(cudaCreateTextureObject(&tex, &rd, &td, nullptr));
+    return tex;
+}
+
+void OptiXWrapper::Impl::releaseCDFTextures() {
+    auto destroy = [](cudaTextureObject_t& t) {
+        if (t) { cudaDestroyTextureObject(t); t = 0; }
+    };
+    destroy(m_env_cdf_marginal);
+    destroy(m_env_cdf_cond);
+    destroy(m_env_pdf);
+    for (cudaArray_t arr : m_cdf_arrays)
+        if (arr) cudaFreeArray(arr);
+    m_cdf_arrays.clear();
+    m_env_width  = 0;
+    m_env_height = 0;
+}
+
+void OptiXWrapper::Impl::computeAndUploadEnvMapCDF(
+    const float* rgba, int width, int height) {
+    // Step 1: weighted luminance
+    std::vector<float> wlum(width * height);
+    float total = 0.f;
+    for (int y = 0; y < height; ++y) {
+        const float sin_w =
+            sinf((float)M_PI * (y + 0.5f) / static_cast<float>(height));
+        for (int x = 0; x < width; ++x) {
+            const int   i = (y * width + x) * 4;
+            const float l = 0.2126f * rgba[i] + 0.7152f * rgba[i+1]
+                          + 0.0722f * rgba[i+2];
+            wlum[y * width + x] = l * sin_w;
+            total += l * sin_w;
+        }
+    }
+
+    // Step 2: marginal CDF over rows
+    std::vector<float> row_sums(height, 0.f);
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            row_sums[y] += wlum[y * width + x];
+    float marg_total = 0.f;
+    for (float v : row_sums) marg_total += v;
+    std::vector<float> marg_cdf(height);
+    float mrunning = 0.f;
+    for (int y = 0; y < height; ++y) {
+        mrunning +=
+            (marg_total > 0.f ? row_sums[y] / marg_total : 1.f / height);
+        marg_cdf[y] = mrunning;
+    }
+    marg_cdf[height - 1] = 1.0f;
+
+    // Step 3: conditional CDF per row
+    std::vector<float> cond_cdf(width * height);
+    for (int y = 0; y < height; ++y) {
+        float rt = row_sums[y];
+        float crunning = 0.f;
+        for (int x = 0; x < width; ++x) {
+            crunning +=
+                (rt > 0.f ? wlum[y * width + x] / rt : 1.f / width);
+            cond_cdf[y * width + x] = crunning;
+        }
+        cond_cdf[y * width + width - 1] = 1.0f;
+    }
+
+    // Step 4: PDF texture (wlum / total, uniform fallback if all black)
+    std::vector<float> pdf(width * height);
+    const float inv_total =
+        (total > 0.f ? 1.f / total : 1.f / (width * height));
+    for (int i = 0; i < width * height; ++i)
+        pdf[i] = wlum[i] * inv_total;
+
+    // Release any previous CDF textures before re-uploading
+    releaseCDFTextures();
+
+    // Upload
+    m_env_cdf_marginal = uploadFloat1DTex(m_cdf_arrays, marg_cdf.data(), height);
+    m_env_cdf_cond     = uploadFloat2DTex(m_cdf_arrays, cond_cdf.data(), width, height);
+    m_env_pdf          = uploadFloat2DTex(m_cdf_arrays, pdf.data(),      width, height);
+    m_env_width        = width;
+    m_env_height       = height;
 }
 
 void OptiXWrapper::releaseTextures() {
@@ -3102,6 +3259,9 @@ void OptiXWrapper::dispose() {
         try {
             // Release textures
             releaseTextures();
+
+            // Release IBL CDF textures
+            impl->releaseCDFTextures();
 
             // Clean up IAS resources
             clearAllInstances();

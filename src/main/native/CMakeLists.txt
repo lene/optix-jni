@@ -252,6 +252,7 @@ if(BUILD_OPTIX_TESTS)
     # Create test executable
     add_executable(optixcontext_test
         tests/OptiXContextTest.cpp
+        tests/EnvMapCDFTest.cpp
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
     )
