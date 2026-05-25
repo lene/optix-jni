@@ -267,6 +267,91 @@ __device__ float calculateDiffuseTerm(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Pseudo-random number generation (tea4 + LCG from NVIDIA OptiX samples)
+// ---------------------------------------------------------------------------
+
+static __forceinline__ __device__ unsigned int tea4(unsigned int v0, unsigned int v1) {
+    unsigned int s0 = 0u;
+    for (int n = 0; n < 4; ++n) {
+        s0  += 0x9e3779b9u;
+        v0  += ((v1 << 4) + 0xa341316cu) ^ (v1 + s0) ^ ((v1 >> 5) + 0xc8013ea4u);
+        v1  += ((v0 << 4) + 0xad90777du) ^ (v0 + s0) ^ ((v0 >> 5) + 0x7e95761eu);
+    }
+    return v0;
+}
+
+static __forceinline__ __device__ float lcg(unsigned int& prev) {
+    prev = 1664525u * prev + 1013904223u;
+    return static_cast<float>(prev & 0x00FFFFFFu) / static_cast<float>(0x01000000u);
+}
+
+// ---------------------------------------------------------------------------
+// IBL: importance-sample the env map using pre-computed CDF textures.
+// Returns env radiance * ibl_strength; sets light_dir_out and pdf_out.
+// Call only when params.ibl_enabled and params.env_cdf_marginal != 0.
+// ---------------------------------------------------------------------------
+
+static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out) {
+    // Per-pixel seed: varies across pixels and across accumulation frames
+    const uint3 idx  = optixGetLaunchIndex();
+    unsigned int seed = tea4(
+        idx.x + idx.y * static_cast<unsigned int>(params.image_width),
+        params.frame_seed_offset + 1u);
+
+    // 1. Sample row v from marginal CDF (binary search on 1D texture)
+    const float xi_v = lcg(seed);
+    int lo = 0, hi = params.env_height - 1;
+    while (lo < hi) {
+        const int mid = (lo + hi) >> 1;
+        if (tex1D<float>(params.env_cdf_marginal,
+                         static_cast<float>(mid) + 0.5f) < xi_v)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    const int   row = lo;
+    const float v   = (static_cast<float>(row) + 0.5f)
+                    / static_cast<float>(params.env_height);
+
+    // 2. Sample column u from conditional CDF for this row
+    const float xi_u = lcg(seed);
+    lo = 0; hi = params.env_width - 1;
+    while (lo < hi) {
+        const int mid = (lo + hi) >> 1;
+        if (tex2D<float>(params.env_cdf_cond,
+                         static_cast<float>(mid)  + 0.5f,
+                         static_cast<float>(row)  + 0.5f) < xi_u)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    const int   col = lo;
+    const float u   = (static_cast<float>(col) + 0.5f)
+                    / static_cast<float>(params.env_width);
+
+    // 3. Convert (u,v) → equirectangular world-space direction
+    const float theta     = v * M_PIf;
+    const float phi       = u * 2.0f * M_PIf;
+    const float sin_theta = sinf(theta);
+    light_dir_out = make_float3(
+        sin_theta * cosf(phi),
+        cosf(theta),
+        sin_theta * sinf(phi));
+
+    // 4. Env map radiance at (u,v)
+    const float4 texel   = tex2D<float4>(params.env_map_texture, u, v);
+
+    // 5. Solid-angle PDF: lum_pdf * W * H / (2π² * sin_theta)
+    const float lum_pdf  = tex2D<float>(params.env_pdf, u, v);
+    const float area     = static_cast<float>(params.env_width * params.env_height);
+    pdf_out = (sin_theta > 1.0e-4f)
+        ? lum_pdf * area / (2.0f * M_PIf * M_PIf * sin_theta)
+        : 0.0f;
+
+    return make_float3(texel.x, texel.y, texel.z) * params.ibl_strength;
+}
+
 /**
  * Calculate total lighting contribution from all lights in scene.
  *

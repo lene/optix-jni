@@ -1517,6 +1517,17 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.tonemap_operator = impl->config.getToneMappingOperator();
         params.tonemap_exposure = impl->config.getToneMappingExposure();
 
+        // IBL
+        params.ibl_enabled       = impl->config.getIBLEnabled();
+        params.ibl_strength      = impl->config.getIBLStrength();
+        params.ibl_samples       = impl->config.getIBLSamples();
+        params.env_width         = impl->m_env_width;
+        params.env_height        = impl->m_env_height;
+        params.frame_seed_offset = 0u;   // overridden per-frame during accumulation
+        params.env_cdf_marginal  = impl->m_env_cdf_marginal;
+        params.env_cdf_cond      = impl->m_env_cdf_cond;
+        params.env_pdf           = impl->m_env_pdf;
+
         params.num_planes = impl->config.getNumPlanes();
         // Copy all MAX_PLANES slots (zero-initialized past num_planes) to avoid
         // conditional logic; shader gates on num_planes.
