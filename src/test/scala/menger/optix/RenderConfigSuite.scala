@@ -1,5 +1,8 @@
 package menger.optix
 
+import menger.common.CausticsConfig
+import menger.common.RenderConfig
+import menger.common.RenderLimits
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

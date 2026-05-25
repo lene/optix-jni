@@ -1,6 +1,8 @@
 package menger.optix
 
+import menger.common.CausticsConfig
 import menger.common.ImageSize
+import menger.common.RenderConfig
 
 private[optix] trait OptiXRenderApi:
   this: OptiXRenderer =>
