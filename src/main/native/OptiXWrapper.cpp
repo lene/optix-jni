@@ -1628,33 +1628,69 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         params.stats = reinterpret_cast<RayStats*>(impl->buffer_manager.getStatsBuffer());
 
-        // Upload params to GPU
-        impl->buffer_manager.uploadParams(params);
+        const int n_frames = impl->config.getAccumulationFrames();
 
-        // Launch OptiX rendering
-        if (impl->config.getCausticsEnabled()) {
-            // Multi-pass Progressive Photon Mapping rendering
-            impl->caustics_renderer.renderWithCaustics(width, height, impl->config, impl->scene, params);
+        // Lambda: upload params with a given seed offset, launch, and sync.
+        auto launchOneFrame = [&](unsigned int seed_offset) {
+            params.frame_seed_offset = seed_offset;
+            impl->buffer_manager.uploadParams(params);
+
+            if (impl->config.getCausticsEnabled()) {
+                // Multi-pass Progressive Photon Mapping rendering
+                impl->caustics_renderer.renderWithCaustics(
+                    width, height, impl->config, impl->scene, params);
+            } else {
+                // Standard single-pass rendering
+                impl->optix_context.launch(
+                    impl->pipeline_manager.getPipeline(),
+                    impl->pipeline_manager.getSBT(),
+                    impl->buffer_manager.getParamsBuffer(),
+                    width,
+                    height
+                );
+            }
+
+            // Synchronize to flush printf output
+            CUDA_CHECK(cudaDeviceSynchronize());
+        };
+
+        if (n_frames <= 1) {
+            // Single-frame path: no accumulation overhead
+            launchOneFrame(0u);
+            impl->buffer_manager.downloadImage(output, width, height);
+            if (stats) {
+                impl->buffer_manager.downloadStats(stats);
+            }
         } else {
-            // Standard single-pass rendering
-            impl->optix_context.launch(
-                impl->pipeline_manager.getPipeline(),
-                impl->pipeline_manager.getSBT(),
-                impl->buffer_manager.getParamsBuffer(),
-                width,
-                height
-            );
-        }
+            // Multi-frame accumulation: average N renders with different seed offsets
+            const int npix = width * height;
+            std::vector<float>         accum(npix * 3, 0.f);
+            std::vector<unsigned char> frame_buf(npix * 4);
 
-        // Synchronize to flush printf output
-        CUDA_CHECK(cudaDeviceSynchronize());
+            for (int f = 0; f < n_frames; ++f) {
+                launchOneFrame(static_cast<unsigned int>(f));
+                impl->buffer_manager.downloadImage(frame_buf.data(), width, height);
+                for (int i = 0; i < npix; ++i) {
+                    accum[i * 3 + 0] += frame_buf[i * 4 + 0] / 255.f;
+                    accum[i * 3 + 1] += frame_buf[i * 4 + 1] / 255.f;
+                    accum[i * 3 + 2] += frame_buf[i * 4 + 2] / 255.f;
+                }
+                // Stats from first frame only (ray counts don't accumulate meaningfully)
+                if (f == 0 && stats) {
+                    impl->buffer_manager.downloadStats(stats);
+                }
+            }
 
-        // Download results
-        impl->buffer_manager.downloadImage(output, width, height);
-
-        // Copy stats back if requested
-        if (stats) {
-            impl->buffer_manager.downloadStats(stats);
+            const float inv_n = 1.f / static_cast<float>(n_frames);
+            for (int i = 0; i < npix; ++i) {
+                output[i * 4 + 0] = static_cast<unsigned char>(
+                    std::min(accum[i * 3 + 0] * inv_n * 255.f, 255.f));
+                output[i * 4 + 1] = static_cast<unsigned char>(
+                    std::min(accum[i * 3 + 1] * inv_n * 255.f, 255.f));
+                output[i * 4 + 2] = static_cast<unsigned char>(
+                    std::min(accum[i * 3 + 2] * inv_n * 255.f, 255.f));
+                output[i * 4 + 3] = 255u;
+            }
         }
 
     } catch (const std::exception& e) {
