@@ -76,6 +76,20 @@ public:
     int getToneMappingOperator() const { return tonemap_operator; }
     float getToneMappingExposure() const { return tonemap_exposure; }
 
+    // IBL
+    void setIBL(bool enabled, float strength, int samples) {
+        ibl_enabled  = enabled;
+        ibl_strength = strength;
+        ibl_samples  = samples;
+    }
+    bool  getIBLEnabled()  const { return ibl_enabled;  }
+    float getIBLStrength() const { return ibl_strength; }
+    int   getIBLSamples()  const { return ibl_samples;  }
+
+    // Accumulation
+    void setAccumulationFrames(int n) { accumulation_frames = n; }
+    int  getAccumulationFrames() const { return accumulation_frames; }
+
     // Plane appearance configuration
     void clearPlanes();
     void addPlaneSolidColor(int axis, bool positive, float value, float r, float g, float b);
@@ -136,6 +150,12 @@ private:
     // Tone mapping
     int   tonemap_operator = 0;    // 0=none, 1=reinhard, 2=aces
     float tonemap_exposure = 1.0f;
+
+    // IBL
+    bool  ibl_enabled         = false;
+    float ibl_strength        = 1.0f;
+    int   ibl_samples         = 1;
+    int   accumulation_frames = 1;
 
     // Plane appearance
     PlaneParams planes[RayTracingConstants::MAX_PLANES] = {};

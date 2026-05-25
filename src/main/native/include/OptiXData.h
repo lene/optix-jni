@@ -540,6 +540,17 @@ struct Params {
     int   tonemap_operator;  // 0=none (clip), 1=reinhard, 2=aces
     float tonemap_exposure;  // pre-tone-map exposure multiplier (default 1.0)
 
+    // IBL — image-based lighting
+    bool                ibl_enabled;
+    float               ibl_strength;
+    int                 ibl_samples;
+    int                 env_width;           // HDR env map pixel width
+    int                 env_height;          // HDR env map pixel height
+    unsigned int        frame_seed_offset;   // varies per accumulation frame
+    cudaTextureObject_t env_cdf_marginal;    // 1D, height floats — marginal CDF
+    cudaTextureObject_t env_cdf_cond;        // 2D, width×height floats — conditional CDF
+    cudaTextureObject_t env_pdf;             // 2D, width×height floats — luminance PDF
+
     // Ray statistics (GPU buffer)
     RayStats* stats;            // Pointer to GPU stats buffer
 
