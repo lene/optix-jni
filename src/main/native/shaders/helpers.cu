@@ -292,12 +292,17 @@ static __forceinline__ __device__ float lcg(unsigned int& prev) {
 // Call only when params.ibl_enabled and params.env_cdf_marginal != 0.
 // ---------------------------------------------------------------------------
 
-static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out) {
-    // Per-pixel seed: varies across pixels and across accumulation frames
+static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
+                                         int sample_index) {
     const uint3 idx  = optixGetLaunchIndex();
+    // Per-pixel seed: varies across pixels, accumulation frames, and IBL samples.
+    // Multiplicative stride (ibl_samples) ensures no aliasing between frame and
+    // sample dimensions when accumulation > 1 is eventually enabled.
+    // +1u avoids key2=0 when frame_seed_offset=0 and sample_index=0.
     unsigned int seed = tea4(
         idx.x + idx.y * static_cast<unsigned int>(params.image_width),
-        params.frame_seed_offset + 1u);
+        params.frame_seed_offset * static_cast<unsigned int>(params.ibl_samples)
+            + static_cast<unsigned int>(sample_index) + 1u);
 
     // 1. Sample row v from marginal CDF (binary search on 1D texture)
     const float xi_v = lcg(seed);
@@ -438,7 +443,7 @@ __device__ float3 calculateLighting(
         for (int s = 0; s < params.ibl_samples; ++s) {
             float3       ibl_dir;
             float        ibl_pdf;
-            const float3 ibl_radiance = sampleEnvLight(ibl_dir, ibl_pdf);
+            const float3 ibl_radiance = sampleEnvLight(ibl_dir, ibl_pdf, s);
 
             if (ibl_pdf < 1.0e-6f) continue;   // degenerate sample
 
@@ -458,7 +463,9 @@ __device__ float3 calculateLighting(
             const float w_env = pd2 / (pd2 + pb2);
 
             // L * cos_theta * w_env / pdf_env
-            const float3 contrib = ibl_radiance * (cos_theta * w_env / ibl_pdf);
+            const float3 contrib = ibl_radiance
+                * (cos_theta * w_env / ibl_pdf)
+                / static_cast<float>(params.ibl_samples);
             total_lighting = total_lighting + contrib * shadow_factor;
         }
     }
