@@ -1,4 +1,5 @@
 #include "include/OptiXWrapper.h"
+#include "include/EnvMapCDF.h"
 #include "include/SceneParameters.h"
 #include "include/RenderConfig.h"
 #include "include/PipelineManager.h"
@@ -3219,64 +3220,13 @@ void OptiXWrapper::Impl::releaseCDFTextures() {
 
 void OptiXWrapper::Impl::computeAndUploadEnvMapCDF(
     const float* rgba, int width, int height) {
-    // Step 1: weighted luminance
-    std::vector<float> wlum(width * height);
-    float total = 0.f;
-    for (int y = 0; y < height; ++y) {
-        const float sin_w =
-            sinf((float)M_PI * (y + 0.5f) / static_cast<float>(height));
-        for (int x = 0; x < width; ++x) {
-            const int   i = (y * width + x) * 4;
-            const float l = 0.2126f * rgba[i] + 0.7152f * rgba[i+1]
-                          + 0.0722f * rgba[i+2];
-            wlum[y * width + x] = l * sin_w;
-            total += l * sin_w;
-        }
-    }
+    const EnvMapCDFData cdf = computeEnvMapCDF(rgba, width, height);
 
-    // Step 2: marginal CDF over rows
-    std::vector<float> row_sums(height, 0.f);
-    for (int y = 0; y < height; ++y)
-        for (int x = 0; x < width; ++x)
-            row_sums[y] += wlum[y * width + x];
-    float marg_total = 0.f;
-    for (float v : row_sums) marg_total += v;
-    std::vector<float> marg_cdf(height);
-    float mrunning = 0.f;
-    for (int y = 0; y < height; ++y) {
-        mrunning +=
-            (marg_total > 0.f ? row_sums[y] / marg_total : 1.f / height);
-        marg_cdf[y] = mrunning;
-    }
-    marg_cdf[height - 1] = 1.0f;
-
-    // Step 3: conditional CDF per row
-    std::vector<float> cond_cdf(width * height);
-    for (int y = 0; y < height; ++y) {
-        float rt = row_sums[y];
-        float crunning = 0.f;
-        for (int x = 0; x < width; ++x) {
-            crunning +=
-                (rt > 0.f ? wlum[y * width + x] / rt : 1.f / width);
-            cond_cdf[y * width + x] = crunning;
-        }
-        cond_cdf[y * width + width - 1] = 1.0f;
-    }
-
-    // Step 4: PDF texture (wlum / total, uniform fallback if all black)
-    std::vector<float> pdf(width * height);
-    const float inv_total =
-        (total > 0.f ? 1.f / total : 1.f / (width * height));
-    for (int i = 0; i < width * height; ++i)
-        pdf[i] = wlum[i] * inv_total;
-
-    // Release any previous CDF textures before re-uploading
     releaseCDFTextures();
 
-    // Upload
-    m_env_cdf_marginal = uploadFloat1DTex(m_cdf_arrays, marg_cdf.data(), height);
-    m_env_cdf_cond     = uploadFloat2DTex(m_cdf_arrays, cond_cdf.data(), width, height);
-    m_env_pdf          = uploadFloat2DTex(m_cdf_arrays, pdf.data(),      width, height);
+    m_env_cdf_marginal = uploadFloat1DTex(m_cdf_arrays, cdf.marg_cdf.data(), height);
+    m_env_cdf_cond     = uploadFloat2DTex(m_cdf_arrays, cdf.cond_cdf.data(), width, height);
+    m_env_pdf          = uploadFloat2DTex(m_cdf_arrays, cdf.pdf.data(),      width, height);
     m_env_width        = width;
     m_env_height       = height;
 }
