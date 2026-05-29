@@ -56,7 +56,7 @@ void CausticsRenderer::renderWithCaustics(
     int height,
     const RenderConfig& config,
     const SceneParameters& scene,
-    Params& params
+    BaseParams& params
 ) {
     // Progressive Photon Mapping multi-pass rendering:
     // 1. Hit Point Generation: Trace camera rays, store hit points on diffuse surfaces
@@ -191,7 +191,7 @@ void CausticsRenderer::buildGrid(
     const SceneParameters& scene,
     int width,
     int height,
-    Params& params
+    BaseParams& params
 ) {
     // Step 1: Zero grid counts
     buffer_manager.zeroCausticsGridCounts();

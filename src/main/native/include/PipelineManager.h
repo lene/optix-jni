@@ -7,7 +7,7 @@
 #include "SceneParameters.h"
 
 // Forward declarations
-struct Params;
+struct BaseParams;
 
 /**
  * Manages OptiX pipeline resources and Shader Binding Table (SBT).

@@ -603,7 +603,7 @@ void PipelineManager::buildPipeline(const SceneParameters& scene, OptixTraversab
 
     // Allocate params buffer (only on first build)
     if (!d_params) {
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(Params)));
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_params), sizeof(BaseParams)));
     }
 }
 

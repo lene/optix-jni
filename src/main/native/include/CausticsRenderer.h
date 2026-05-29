@@ -8,7 +8,7 @@
 #include "RenderConfig.h"
 
 // Forward declaration
-struct Params;
+struct BaseParams;
 
 /**
  * Handles Progressive Photon Mapping (PPM) for caustics rendering.
@@ -31,7 +31,7 @@ public:
         int height,
         const RenderConfig& config,
         const SceneParameters& scene,
-        Params& params
+        BaseParams& params
     );
 
     // Get statistics from last render
@@ -60,7 +60,7 @@ private:
         const SceneParameters& scene,
         int width,
         int height,
-        Params& params
+        BaseParams& params
     );
 };
 

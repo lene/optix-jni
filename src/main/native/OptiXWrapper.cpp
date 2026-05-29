@@ -1281,7 +1281,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         }
 
         // Set up launch parameters
-        Params params;
+        BaseParams params;
         params.image = reinterpret_cast<unsigned char*>(impl->buffer_manager.getImageBuffer());
         params.image_width = width;
         params.image_height = height;

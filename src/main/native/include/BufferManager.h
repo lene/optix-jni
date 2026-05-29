@@ -57,14 +57,14 @@ public:
     void downloadCausticsStats(CausticsStats* stats);
 
     // Upload data to GPU
-    void uploadParams(const Params& params);
+    void uploadParams(const BaseParams& params);
 
 private:
     OptiXContext& optix_context;
 
     // Core buffers
     CudaBuffer<unsigned char> image_buffer;     // RGBA image output
-    CudaBuffer<Params> params_buffer;           // Launch parameters
+    CudaBuffer<BaseParams> params_buffer;           // Launch parameters
     CudaBuffer<RayStats> stats_buffer;          // Ray statistics
     CUdeviceptr gas_buffer = 0;                 // Geometry Acceleration Structure (managed by OptiXContext)
 

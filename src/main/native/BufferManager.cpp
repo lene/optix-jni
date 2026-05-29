@@ -118,7 +118,7 @@ void BufferManager::downloadCausticsStats(CausticsStats* stats) {
     }
 }
 
-void BufferManager::uploadParams(const Params& params) {
+void BufferManager::uploadParams(const BaseParams& params) {
     if (params_buffer.isAllocated()) {
         params_buffer.uploadFrom(&params, 1);
     }

@@ -3,7 +3,7 @@
 #include "../include/VectorMath.h"
 
 extern "C" {
-    __constant__ Params params;
+    __constant__ BaseParams params;
 }
 
 // Import ray tracing constants from OptiXData.h

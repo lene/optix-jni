@@ -52,7 +52,7 @@ static void throwException(JNIEnv* env, const char* className, const char* msg) 
     if (cls) env->ThrowNew(cls, msg);
 }
 
-JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
     try {
         // Check if already initialized (defensive check - Scala layer should prevent this)
         OptiXWrapper* existing = getWrapper(env, obj);
@@ -81,7 +81,7 @@ JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_initializeNative(JNIE
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphere(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphere(
     JNIEnv* env, jobject obj, jfloat x, jfloat y, jfloat z, jfloat radius) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -94,7 +94,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphere(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphereColorNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphereColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b, jfloat a) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -107,7 +107,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setSphereColorNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIOR(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIOR(
     JNIEnv* env, jobject obj, jfloat ior) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -120,7 +120,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIOR(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setScale(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setScale(
     JNIEnv* env, jobject obj, jfloat scale) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -133,7 +133,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setScale(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCameraNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
     JNIEnv* env, jobject obj, jfloatArray eye, jfloatArray lookAt, jfloatArray up, jfloat horizontalFovDegrees) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -154,7 +154,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCameraNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_updateImageDimensions(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_updateImageDimensions(
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -166,7 +166,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_updateImageDimensions(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLight(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLight(
     JNIEnv* env, jobject obj, jfloatArray direction, jfloat intensity) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -181,7 +181,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLight(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
     JNIEnv* env, jobject obj, jobjectArray lightsArray) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -200,7 +200,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
         }
 
         // Find Light class and field IDs
-        jclass lightClass = env->FindClass("menger/optix/Light");
+        jclass lightClass = env->FindClass("io/github/lene/optix/Light");
         if (lightClass == nullptr) {
             throwException(env, "java/lang/RuntimeException", "Failed to find Light class");
             return;
@@ -282,7 +282,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setLights(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setShadows(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setShadows(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -294,7 +294,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setShadows(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTransparentShadowsNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTransparentShadowsNative(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -306,7 +306,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTransparentShadowsNati
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setBackgroundColorNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setBackgroundColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -318,7 +318,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setBackgroundColorNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setFogNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setFogNative(
     JNIEnv* env, jobject obj, jfloat density, jfloat r, jfloat g, jfloat b)
 {
     try {
@@ -331,7 +331,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setFogNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setEnvironmentMapNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setEnvironmentMapNative(
     JNIEnv* env, jobject obj, jint textureIndex) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -343,7 +343,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setEnvironmentMapNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setToneMappingNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setToneMappingNative(
     JNIEnv* env, jobject obj, jint operatorId, jfloat exposure) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -355,7 +355,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setToneMappingNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIBLNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
     JNIEnv* env, jobject obj, jboolean enabled, jfloat strength, jint samples) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -366,7 +366,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIBLNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAccumulationFramesNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFramesNative(
     JNIEnv* env, jobject obj, jint n) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -377,7 +377,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAccumulationFramesNati
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setProceduralTextureNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint proceduralType, jfloat proceduralScale) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -389,7 +389,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setProceduralTextureNativ
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setMapTexturesNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMapTexturesNative(
     JNIEnv* env, jobject obj, jint instanceId, jint normalTextureIndex, jint roughnessTextureIndex) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -401,7 +401,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setMapTexturesNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setImageTextureNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setImageTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint imageTextureIndex) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -413,7 +413,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setImageTextureNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAntialiasing(
     JNIEnv* env, jobject obj, jboolean enabled, jint maxDepth, jfloat threshold) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -425,7 +425,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setAntialiasing(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setMaxRayDepth(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMaxRayDepth(
     JNIEnv* env, jobject obj, jint depth) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -437,7 +437,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setMaxRayDepth(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCaustics(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCaustics(
     JNIEnv* env, jobject obj, jboolean enabled, jint photonsPerIter, jint iterations,
     jfloat initialRadius, jfloat alpha) {
     try {
@@ -450,7 +450,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setCaustics(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearPlanesNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearPlanesNative(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -462,7 +462,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearPlanesNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneNative(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -474,7 +474,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneSolidColorNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColorNative(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
     jfloat r, jfloat g, jfloat b) {
     try {
@@ -487,7 +487,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneSolidColorNative(
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneCheckerColorsNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerColorsNative(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
     jfloat r1, jfloat g1, jfloat b1, jfloat r2, jfloat g2, jfloat b2) {
     try {
@@ -500,7 +500,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneCheckerColorsNati
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneSolidColorWithMaterialNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColorWithMaterialNative(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
     jfloat r, jfloat g, jfloat b,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
@@ -517,7 +517,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneSolidColorWithMat
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneCheckerColorsWithMaterialNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerColorsWithMaterialNative(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value,
     jfloat r1, jfloat g1, jfloat b1, jfloat r2, jfloat g2, jfloat b2,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
@@ -543,7 +543,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_addPlaneCheckerColorsWith
  * @param numTriangles Number of triangles
  * @param vertexStride Floats per vertex (6 for pos+normal, 8 for pos+normal+uv, 9 for pos+normal+uv+alpha)
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNative(
     JNIEnv* env, jobject obj,
     jfloatArray vertices, jint numVertices,
     jintArray indices, jint numTriangles, jint vertexStride) {
@@ -636,7 +636,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshNative(
  * @param centerZ 3D translation Z applied after projection
  * @return mesh index (slot in triangle_meshes[]), or -1 on error
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setProjectedMeshNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshNative(
     JNIEnv* env, jobject obj,
     jfloatArray facesData, jint numFaces, jint vertsPerFace,
     jfloatArray uvs,
@@ -712,7 +712,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_setProjectedMeshNative(
  * uploaded via setTriangleMesh4DQuads. Returns 0 on success or a negative
  * error code from OptiXWrapper::updateMesh4DProjection.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMesh4DProjectionNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateMesh4DProjectionNative(
     JNIEnv* env, jobject obj,
     jint meshIndex,
     jfloat eyeW, jfloat screenW,
@@ -740,7 +740,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMesh4DProjectionNat
  * In-place CPU mesh update for the interactive 4D-rotation fast path.
  * Returns 0 on success, -1 on error.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateCpuTriangleMeshNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCpuTriangleMeshNative(
     JNIEnv* env, jobject obj,
     jint meshIndex,
     jfloatArray vertices, jint numVertices,
@@ -774,7 +774,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateCpuTriangleMeshNati
 /**
  * Set triangle mesh material color.
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshColorNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b, jfloat a) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -789,7 +789,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshColorNativ
 /**
  * Set triangle mesh index of refraction.
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshIOR(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshIOR(
     JNIEnv* env, jobject obj, jfloat ior) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -804,7 +804,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setTriangleMeshIOR(
 /**
  * Clear triangle mesh (removes mesh data, falls back to sphere rendering).
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearTriangleMesh(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearTriangleMesh(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -819,7 +819,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearTriangleMesh(
 /**
  * Check if triangle mesh is set.
  */
-JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_hasTriangleMesh(
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_hasTriangleMesh(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -833,7 +833,7 @@ JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_hasTriangleMesh(
     }
 }
 
-JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
+JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStats(
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -865,7 +865,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
         env->ReleaseByteArrayElements(imageArray, buffer, 0);
 
         // Create RenderResult object (image + stats)
-        jclass resultClass = env->FindClass("menger/optix/RenderResult");
+        jclass resultClass = env->FindClass("io/github/lene/optix/RenderResult");
         if (resultClass == nullptr) {
             std::cerr << "[JNI] Failed to find RenderResult class" << std::endl;
             return nullptr;
@@ -902,7 +902,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_renderWithStats(
  * Get caustics statistics for PPM validation (C1-C8 test ladder).
  * Returns a CausticsStats object with all tracked metrics.
  */
-JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_getCausticsStatsNative(JNIEnv* env, jobject obj) {
+JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsStatsNative(JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -916,7 +916,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_getCausticsStatsNative
         }
 
         // Find CausticsStats Scala class
-        jclass statsClass = env->FindClass("menger/optix/OptiXRenderer$CausticsStats");
+        jclass statsClass = env->FindClass("io/github/lene/optix/OptiXRenderer$CausticsStats");
         if (statsClass == nullptr) {
             std::cerr << "[JNI] Failed to find CausticsStats class" << std::endl;
             return nullptr;
@@ -970,7 +970,7 @@ JNIEXPORT jobject JNICALL Java_menger_optix_OptiXRenderer_getCausticsStatsNative
     }
 }
 
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_disposeNative(JNIEnv* env, jobject obj) {
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_disposeNative(JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
@@ -993,7 +993,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_disposeNative(JNIEnv* env
  * where m03, m13, m23 are translation components.
  * Returns instance ID (>= 0) on success, -1 on failure.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSphereInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstanceNative(
     JNIEnv* env, jobject obj,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jfloat filmThickness) {
@@ -1041,7 +1041,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSphereInstanceNative(
  * @param textureIndex Index of texture to use (-1 for no texture)
  * Returns instance ID (>= 0) on success, -1 on failure.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addTriangleMeshInstanceNative(
     JNIEnv* env, jobject obj,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jint textureIndex,
@@ -1092,7 +1092,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addTriangleMeshInstanceNa
  * Builds `level` nested IAS layers around that GAS using the 20 Menger
  * generators. Returns instance ID (>= 0) on success, -1 on failure.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addRecursiveIASSpongeInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addRecursiveIASSpongeInstanceNative(
     JNIEnv* env, jobject obj,
     jint level,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
@@ -1149,7 +1149,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addRecursiveIASSpongeInst
  * @param emission Emission intensity
  * Returns instance ID (>= 0) on success, -1 on failure.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addCylinderInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCylinderInstanceNative(
     JNIEnv* env, jobject obj,
     jfloat p0_x, jfloat p0_y, jfloat p0_z,
     jfloat p1_x, jfloat p1_y, jfloat p1_z,
@@ -1182,7 +1182,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addCylinderInstanceNative
     }
 }
 
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addConeInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addConeInstanceNative(
     JNIEnv* env, jobject obj,
     jfloat apex_x, jfloat apex_y, jfloat apex_z,
     jfloat base_x, jfloat base_y, jfloat base_z,
@@ -1218,7 +1218,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addConeInstanceNative(
 /**
  * Add a plane instance (analytical primitive).
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addPlaneInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneInstanceNative(
     JNIEnv* env, jobject obj,
     jfloat normal_x, jfloat normal_y, jfloat normal_z,
     jfloat distance,
@@ -1256,7 +1256,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addPlaneInstanceNative(
 /**
  * Add a 4D Menger sponge analog instance (iterative IFS, O(1) VRAM).
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addMenger4DInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addMenger4DInstanceNative(
     JNIEnv* env, jobject obj,
     jint level, jint distThreshold,
     jfloat x, jfloat y, jfloat z, jfloat scale,
@@ -1288,7 +1288,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addMenger4DInstanceNative
 /**
  * Update 4D projection params for an existing menger4d instance.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMenger4DProjectionNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateMenger4DProjectionNative(
     JNIEnv* env, jobject obj,
     jint instanceId,
     jfloat eyeW, jfloat screenW,
@@ -1308,7 +1308,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateMenger4DProjectionN
 /**
  * Add a 4D Sierpinski pentachoron analog instance (iterative IFS, O(1) VRAM).
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSierpinski4DInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSierpinski4DInstanceNative(
     JNIEnv* env, jobject obj,
     jint level,
     jfloat x, jfloat y, jfloat z, jfloat scale,
@@ -1340,7 +1340,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addSierpinski4DInstanceNa
 /**
  * Update 4D projection params for an existing sierpinski4d instance.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateSierpinski4DProjectionNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateSierpinski4DProjectionNative(
     JNIEnv* env, jobject obj,
     jint instanceId,
     jfloat eyeW, jfloat screenW,
@@ -1357,7 +1357,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateSierpinski4DProject
     }
 }
 
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addHexadecachoron4DInstanceNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addHexadecachoron4DInstanceNative(
     JNIEnv* env, jobject obj,
     jint level,
     jfloat x, jfloat y, jfloat z, jfloat scale,
@@ -1389,7 +1389,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_addHexadecachoron4DInstan
 /**
  * Update 4D projection params for an existing hexadecachoron4d instance.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateHexadecachoron4DProjectionNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateHexadecachoron4DProjectionNative(
     JNIEnv* env, jobject obj,
     jint instanceId,
     jfloat eyeW, jfloat screenW,
@@ -1409,7 +1409,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_updateHexadecachoron4DPro
 /**
  * Remove an instance by ID.
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_removeInstance(
     JNIEnv* env, jobject obj, jint instanceId) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -1424,7 +1424,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_removeInstance(
 /**
  * Clear all instances from the scene.
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearAllInstances(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstances(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -1439,7 +1439,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_clearAllInstances(
 /**
  * Get the number of active instances.
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_getInstanceCount(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanceCount(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -1456,7 +1456,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_getInstanceCount(
 /**
  * Check if IAS mode is enabled.
  */
-JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_isIASMode(
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isIASMode(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -1473,7 +1473,7 @@ JNIEXPORT jboolean JNICALL Java_menger_optix_OptiXRenderer_isIASMode(
 /**
  * Enable or disable IAS mode.
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIASMode(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIASMode(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -1497,7 +1497,7 @@ JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_setIASMode(
  * @param height Texture height in pixels
  * @return Texture index (>= 0) on success, -1 on failure
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_uploadTextureNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureNative(
     JNIEnv* env, jobject obj,
     jstring name, jbyteArray imageData, jint width, jint height) {
     try {
@@ -1566,7 +1566,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_uploadTextureNative(
  * @param path Absolute or relative file path
  * @return Texture index (>= 0) on success, -1 on failure
  */
-JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_uploadTextureFromFileNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureFromFileNative(
     JNIEnv* env, jobject obj, jstring jpath) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -1588,7 +1588,7 @@ JNIEXPORT jint JNICALL Java_menger_optix_OptiXRenderer_uploadTextureFromFileNati
 /**
  * Release all uploaded textures.
  */
-JNIEXPORT void JNICALL Java_menger_optix_OptiXRenderer_releaseTexturesNative(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_releaseTexturesNative(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);

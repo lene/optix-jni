@@ -707,7 +707,7 @@ void OptiXContext::launch(
         pipeline,
         0, // CUDA stream
         params_buffer,
-        sizeof(Params),
+        sizeof(BaseParams),
         &sbt,
         width,
         height,

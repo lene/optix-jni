@@ -507,7 +507,7 @@ struct Hexadecachoron4DData {
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
-struct Params {
+struct BaseParams {
     unsigned char* image;        // Output image buffer (RGBA)
     unsigned int   image_width;
     unsigned int   image_height;
