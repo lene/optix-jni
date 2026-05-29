@@ -1,0 +1,46 @@
+package io.github.lene.optix
+
+import io.github.lene.optix.ColorConstants.OPAQUE_GREEN
+import io.github.lene.optix.ImageMatchers.haveSphereCenteredInImage
+import io.github.lene.optix.ThresholdConstants.MAX_ASPECT_RATIO_4_3
+import io.github.lene.optix.ThresholdConstants.MIN_ASPECT_RATIO_4_3
+import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+
+
+class GeometrySuite extends AnyFlatSpec with Matchers with RendererFixture:
+
+  // Ensure library is loaded before running tests
+  OptiXRenderer.isLibraryLoaded shouldBe true
+
+  "Sphere geometry" should "scale area with radius²" in:
+    // Render at radius 0.5
+    TestScenario.default()
+      .withSphereColor(OPAQUE_GREEN)
+      .withSphereRadius(0.5f)
+      .applyTo(renderer)
+    val img1 = renderImage(TEST_IMAGE_SIZE)
+    val area1 = ImageValidation.spherePixelArea(img1, TEST_IMAGE_SIZE)
+
+    // Render at radius 1.0 (double radius)
+    TestScenario.default()
+      .withSphereColor(OPAQUE_GREEN)
+      .withSphereRadius(1.0f)
+      .applyTo(renderer)
+    val img2 = renderImage(TEST_IMAGE_SIZE)
+    val area2 = ImageValidation.spherePixelArea(img2, TEST_IMAGE_SIZE)
+
+    // Area should scale with radius² → area2 ≈ 4 × area1
+    val ratio = area2.toDouble / area1.toDouble
+    ratio should (be >= MIN_ASPECT_RATIO_4_3 and be <= MAX_ASPECT_RATIO_4_3)
+
+  it should "detect center position correctly" in:
+    TestScenario.default()
+      .withSphereColor(OPAQUE_GREEN)
+      .applyTo(renderer)
+
+    val imageData = renderImage(TEST_IMAGE_SIZE)
+
+    // Use custom matcher for cleaner assertion
+    imageData should haveSphereCenteredInImage(TEST_IMAGE_SIZE)

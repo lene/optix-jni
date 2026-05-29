@@ -1,0 +1,47 @@
+package io.github.lene.optix
+
+import menger.common.Const
+import io.github.lene.optix.ColorConstants.OPAQUE_LIGHT_GRAY
+import io.github.lene.optix.ColorConstants.VERY_TRANSPARENT_WHITE
+import io.github.lene.optix.ImageMatchers.showPlaneInRegion
+import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
+
+
+class PlaneSuite extends AnyFlatSpec with Matchers with RendererFixture:
+
+  // Ensure library is loaded before running tests
+  OptiXRenderer.isLibraryLoaded shouldBe true
+
+  "Plane rendering" should "show floor at bottom of image" in:
+    TestScenario.default()
+      .withSphereColor(OPAQUE_LIGHT_GRAY)
+      .withPlane(1, false, -2.0f)  // Floor at y=-2
+      .applyTo(renderer)
+
+    val imageData = renderImage(TEST_IMAGE_SIZE)
+
+    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)
+
+  it should "show ceiling at top of image" in:
+    TestScenario.default()
+      .withSphereColor(OPAQUE_LIGHT_GRAY)
+      .withPlane(1, true, 2.0f)  // Ceiling at y=2
+      .applyTo(renderer)
+
+    val imageData = renderImage(TEST_IMAGE_SIZE)
+
+    imageData should showPlaneInRegion("top", TEST_IMAGE_SIZE)
+
+  it should "be visible through transparent sphere" in:
+    TestScenario.default()
+      .withSphereColor(VERY_TRANSPARENT_WHITE)
+      .withIOR(Const.iorGlass)
+      .withPlane(1, false, Const.defaultFloorPlaneY)
+      .applyTo(renderer)
+
+    val imageData = renderImage(TEST_IMAGE_SIZE)
+
+    // Floor should be visible through transparent sphere
+    imageData should showPlaneInRegion("bottom", TEST_IMAGE_SIZE)
