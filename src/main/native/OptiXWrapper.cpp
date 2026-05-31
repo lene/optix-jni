@@ -5,6 +5,7 @@
 #include "include/PipelineManager.h"
 #include "include/BufferManager.h"
 #include "include/CausticsRenderer.h"
+#include "include/ICausticsRenderer.h"
 #include "include/OptiXContext.h"
 #include "include/OptiXConstants.h"
 #include "include/OptiXErrorChecking.h"
@@ -25,7 +26,7 @@
 
 /**
  * OptiXWrapper implementation using composition.
- * Coordinates SceneParameters, RenderConfig, PipelineManager, BufferManager, and CausticsRenderer.
+ * Coordinates SceneParameters, RenderConfig, PipelineManager, BufferManager, and ICausticsRenderer.
  *
  * This refactored version reduces OptiXWrapper from 1040 lines to ~250 lines by delegating
  * responsibilities to focused component classes.
@@ -36,7 +37,8 @@ struct OptiXWrapper::Impl {
     RenderConfig config;
     PipelineManager pipeline_manager;
     BufferManager buffer_manager;
-    CausticsRenderer caustics_renderer;
+    std::unique_ptr<CausticsRenderer> default_caustics_renderer;
+    ICausticsRenderer* caustics_renderer = nullptr; // points to default or injected override
 
     OptixTraversableHandle gas_handle = 0;
     bool pipeline_built = false;
@@ -178,8 +180,10 @@ struct OptiXWrapper::Impl {
     Impl()
         : pipeline_manager(optix_context)
         , buffer_manager(optix_context)
-        , caustics_renderer(optix_context, pipeline_manager, buffer_manager)
     {
+        default_caustics_renderer = std::make_unique<CausticsRenderer>(
+            optix_context, pipeline_manager, buffer_manager);
+        caustics_renderer = default_caustics_renderer.get();
     }
 
     void releaseCDFTextures();
@@ -1636,9 +1640,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.frame_seed_offset = seed_offset;
             impl->buffer_manager.uploadParams(params);
 
-            if (impl->config.getCausticsEnabled()) {
+            if (impl->config.getCausticsEnabled() && impl->caustics_renderer != nullptr) {
                 // Multi-pass Progressive Photon Mapping rendering
-                impl->caustics_renderer.renderWithCaustics(
+                impl->caustics_renderer->renderWithCaustics(
                     width, height, impl->config, impl->scene, params);
             } else {
                 // Standard single-pass rendering
@@ -1707,13 +1711,17 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 }
 
 bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
-    if (!impl->initialized || !impl->config.getCausticsEnabled() || !stats) {
+    if (!impl->initialized || !impl->config.getCausticsEnabled() || !stats
+            || impl->caustics_renderer == nullptr) {
         return false;
     }
-
-    // Return the cached stats from the last render
-    *stats = impl->caustics_renderer.getLastStats();
+    *stats = impl->caustics_renderer->getLastStats();
     return true;
+}
+
+void OptiXWrapper::setCausticsRenderer(ICausticsRenderer* renderer) {
+    impl->default_caustics_renderer.reset();
+    impl->caustics_renderer = renderer;
 }
 
 // Multi-object instance management (IAS mode)

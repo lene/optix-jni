@@ -7,6 +7,7 @@
 
 // Shared data structures for OptiX shaders (used by both C++ and CUDA code)
 #include "OptiXData.h"
+#include "ICausticsRenderer.h"
 
 /**
  * C++ wrapper for OptiX ray tracing context and rendering.
@@ -125,6 +126,9 @@ public:
 
     // Caustics (Progressive Photon Mapping) configuration
     void setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha);
+
+    // Inject a caustics renderer (owned by caller — typically menger-geometry)
+    void setCausticsRenderer(ICausticsRenderer* renderer);
 
     // Background color configuration
     void setBackgroundColor(float r, float g, float b);
