@@ -80,6 +80,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createModul
     try {
         jsize len = env->GetArrayLength(ptxBytes);
         jbyte* raw = env->GetByteArrayElements(ptxBytes, nullptr);
+        if (!raw) return 0L;
         std::string ptx(reinterpret_cast<const char*>(raw), static_cast<size_t>(len));
         env->ReleaseByteArrayElements(ptxBytes, raw, JNI_ABORT);
 
@@ -111,7 +112,10 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createRayge
     if (!ctx || !mod) return 0L;
     try {
         const char* entry = env->GetStringUTFChars(entryPoint, nullptr);
-        OptixProgramGroup pg = ctx->createRaygenProgramGroup(mod, entry);
+        if (!entry) return 0L;
+        OptixProgramGroup pg = nullptr;
+        try { pg = ctx->createRaygenProgramGroup(mod, entry); }
+        catch (...) { env->ReleaseStringUTFChars(entryPoint, entry); throw; }
         env->ReleaseStringUTFChars(entryPoint, entry);
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
@@ -127,7 +131,10 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createMissG
     if (!ctx || !mod) return 0L;
     try {
         const char* entry = env->GetStringUTFChars(entryPoint, nullptr);
-        OptixProgramGroup pg = ctx->createMissProgramGroup(mod, entry);
+        if (!entry) return 0L;
+        OptixProgramGroup pg = nullptr;
+        try { pg = ctx->createMissProgramGroup(mod, entry); }
+        catch (...) { env->ReleaseStringUTFChars(entryPoint, entry); throw; }
         env->ReleaseStringUTFChars(entryPoint, entry);
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
@@ -145,8 +152,16 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createHitGr
     if (!ctx || !mod) return 0L;
     try {
         const char* ch = env->GetStringUTFChars(chEntry, nullptr);
+        if (!ch) return 0L;
         const char* is = env->GetStringUTFChars(isEntry, nullptr);
-        OptixProgramGroup pg = ctx->createHitgroupProgramGroup(mod, ch, mod, is);
+        if (!is) { env->ReleaseStringUTFChars(chEntry, ch); return 0L; }
+        OptixProgramGroup pg = nullptr;
+        try { pg = ctx->createHitgroupProgramGroup(mod, ch, mod, is); }
+        catch (...) {
+            env->ReleaseStringUTFChars(chEntry, ch);
+            env->ReleaseStringUTFChars(isEntry, is);
+            throw;
+        }
         env->ReleaseStringUTFChars(chEntry, ch);
         env->ReleaseStringUTFChars(isEntry, is);
         return reinterpret_cast<jlong>(pg);
@@ -164,7 +179,10 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createTrian
     if (!ctx || !mod) return 0L;
     try {
         const char* ch = env->GetStringUTFChars(chEntry, nullptr);
-        OptixProgramGroup pg = ctx->createTriangleHitgroupProgramGroup(mod, ch);
+        if (!ch) return 0L;
+        OptixProgramGroup pg = nullptr;
+        try { pg = ctx->createTriangleHitgroupProgramGroup(mod, ch); }
+        catch (...) { env->ReleaseStringUTFChars(chEntry, ch); throw; }
         env->ReleaseStringUTFChars(chEntry, ch);
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
@@ -191,9 +209,15 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createPipel
     try {
         jsize count = env->GetArrayLength(groupHandles);
         jlong* raw = env->GetLongArrayElements(groupHandles, nullptr);
+        if (!raw) return 0L;
         std::vector<OptixProgramGroup> groups(static_cast<size_t>(count));
         for (jsize i = 0; i < count; ++i) {
             groups[static_cast<size_t>(i)] = reinterpret_cast<OptixProgramGroup>(raw[i]);
+            if (!groups[static_cast<size_t>(i)]) {
+                env->ReleaseLongArrayElements(groupHandles, raw, JNI_ABORT);
+                std::cerr << "[OptiXApi] createPipeline: null group handle at index " << i << std::endl;
+                return 0L;
+            }
         }
         env->ReleaseLongArrayElements(groupHandles, raw, JNI_ABORT);
 
