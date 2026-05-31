@@ -2,6 +2,60 @@
 
 This module provides JNI bindings for NVIDIA OptiX ray tracing API.
 
+## Standalone Usage
+
+`optix-jni` is published as `io.github.lene:optix-jni`. Add to `build.sbt`:
+
+```scala
+libraryDependencies += "io.github.lene" %% "optix-jni" % "0.7.1"
+```
+
+**Requirements:** CUDA toolkit and OptiX SDK 9.0 installed; NVIDIA GPU.
+
+### Basic sphere render
+
+```scala
+import io.github.lene.optix.OptiXRenderer
+
+if !OptiXRenderer.isLibraryLoaded then
+  sys.error("OptiX native library failed to load — check CUDA/OptiX installation")
+
+val renderer = new OptiXRenderer()
+renderer.initialize()                           // max 64 instances (default)
+
+renderer.setSphere(0f, 0f, 0f, 1f)             // x, y, z, radius
+renderer.setSphereColor(1f, 0.5f, 0.2f, 1f)    // r, g, b, a (a=1.0 = opaque)
+renderer.setCamera(
+  eye    = Array(0f, 0f, 5f),
+  lookAt = Array(0f, 0f, 0f),
+  up     = Array(0f, 1f, 0f),
+  horizontalFovDegrees = 45f
+)
+
+val result = renderer.renderWithStats(800, 600) // returns RenderResult(pixels, stats)
+// result.image: Array[Byte] RGBA, length = width * height * 4
+
+renderer.dispose()
+```
+
+### Library loading
+
+`OptiXRenderer` loads `liboptixjni.so` at class-load time. The loader searches:
+
+1. `java.library.path` system property
+2. JVM-internal library path
+
+Set the path at JVM startup:
+```
+-Djava.library.path=/path/to/optix-jni/target/native/x86_64-linux/bin
+```
+
+### Alpha convention
+
+`alpha = 0.0` → fully transparent. `alpha = 1.0` → fully opaque.
+
+---
+
 ## CI Configuration
 
 ### Docker Image
