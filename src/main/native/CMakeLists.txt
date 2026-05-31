@@ -228,6 +228,10 @@ install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/optix_shaders.dir/shaders/optix_sh
 set_target_properties(optixjni PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
+# Set SONAME so the dynamic linker can match this library by name when
+# libmengergeometry.so lists it as DT_NEEDED, regardless of the file path
+# from which liboptixjni.so was loaded (e.g. a JVM temp file).
+target_link_options(optixjni PRIVATE "LINKER:-soname,liboptixjni.so")
 
 #=============================================================================
 # Google Test for Unit Tests
