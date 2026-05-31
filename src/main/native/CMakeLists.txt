@@ -193,6 +193,7 @@ add_library(optixjni SHARED
     BufferManager.cpp
     CausticsRenderer.cpp
     JNIBindings.cpp
+    OptiXApiBindings.cpp
     project4d.cu
     stb_image_impl.cpp
 )
