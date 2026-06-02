@@ -1,9 +1,16 @@
 package io.github.lene.optix.api
 
-/** Thin JNI bindings for the core OptiX 7.x API.
+/** Thin JNI bindings for selected OptiX 7.x context operations.
  *
- *  Each method wraps one C++ OptiXContext operation. Handles are raw Long values
- *  (opaque pointers); callers are responsible for lifecycle.
+ *  Each method wraps one C++ `OptiXContext` operation and exposes native handles
+ *  as raw `Long` values. A non-zero handle represents ownership of a native
+ *  resource and must be destroyed with the matching destroy method. A `0L`
+ *  handle means creation failed or the resource is absent; destroy methods are
+ *  safe to call with `0L` so callers can clean up conditionally-created graphs.
+ *
+ *  Ownership is hierarchical: modules, program groups, and pipelines belong to
+ *  the context handle they were created from. Destroy child handles before the
+ *  context. Entry point names must match symbols compiled into the supplied PTX.
  *
  *  Usage:
  *  {{{
@@ -30,50 +37,96 @@ class NativeOptiXApi:
 
   // ---- Context lifecycle ----
 
-  /** Creates and initialises a new OptiX device context. Returns 0L on failure. */
+  /** Creates and initializes a new OptiX device context.
+    *
+    * @return non-zero context handle on success, or `0L` when CUDA or OptiX
+    *         initialization fails
+    */
   @native def createContext(): Long
 
-  /** Destroys a context created by [[createContext]]. Safe to call with 0L. */
+  /** Destroys a context created by [[createContext]].
+    *
+    * Safe to call with `0L`. Other handles created from the context should be
+    * destroyed before this call.
+    */
   @native def destroyContext(contextHandle: Long): Unit
 
   // ---- Module lifecycle ----
 
-  /** Creates an OptiX module from PTX bytecode. Returns 0L on failure. */
+  /** Creates an OptiX module from PTX bytecode.
+    *
+    * @param contextHandle owning context returned by [[createContext]]
+    * @param ptxBytes UTF-8 PTX source bytes
+    * @return non-zero module handle, or `0L` when compilation fails
+    */
   @native def createModuleFromPTX(contextHandle: Long, ptxBytes: Array[Byte]): Long
 
-  /** Destroys a module created by [[createModuleFromPTX]]. */
+  /** Destroys a module created by [[createModuleFromPTX]].
+    *
+    * Safe to call with `0L`. Destroy program groups that reference the module
+    * before destroying the module.
+    */
   @native def destroyModule(contextHandle: Long, moduleHandle: Long): Unit
 
   // ---- Program group lifecycle ----
 
-  /** Creates a raygen program group. Returns 0L on failure. */
+  /** Creates a ray-generation program group from a module entry point.
+    *
+    * @return non-zero program-group handle, or `0L` on failure
+    */
   @native def createRaygenGroup(contextHandle: Long, moduleHandle: Long, entryPoint: String): Long
 
-  /** Creates a miss program group. Returns 0L on failure. */
+  /** Creates a miss program group from a module entry point.
+    *
+    * @return non-zero program-group handle, or `0L` on failure
+    */
   @native def createMissGroup(contextHandle: Long, moduleHandle: Long, entryPoint: String): Long
 
-  /** Creates a hitgroup for custom primitives (closesthit + intersection shaders). Returns 0L on failure. */
-  @native def createHitGroup(contextHandle: Long, moduleHandle: Long, closestHitEntry: String, isEntry: String): Long
+  /** Creates a custom-primitive hitgroup.
+    *
+    * `closestHitEntry` and `isEntry` name closest-hit and intersection symbols
+    * in the module.
+    *
+    * @return non-zero program-group handle, or `0L` on failure
+    */
+  @native def createHitGroup(
+    contextHandle: Long,
+    moduleHandle: Long,
+    closestHitEntry: String,
+    isEntry: String
+  ): Long
 
-  /** Creates a hitgroup for triangle geometry (built-in intersection, no IS shader). Returns 0L on failure. */
-  @native def createTriangleHitGroup(contextHandle: Long, moduleHandle: Long, closestHitEntry: String): Long
+  /** Creates a triangle-geometry hitgroup using OptiX built-in intersection.
+    *
+    * @return non-zero program-group handle, or `0L` on failure
+    */
+  @native def createTriangleHitGroup(
+    contextHandle: Long,
+    moduleHandle: Long,
+    closestHitEntry: String
+  ): Long
 
-  /** Destroys a program group. */
+  /** Destroys a program group. Safe to call with `0L`. */
   @native def destroyProgramGroup(contextHandle: Long, groupHandle: Long): Unit
 
   // ---- Pipeline lifecycle ----
 
-  /** Creates a pipeline from a set of program groups. Returns 0L on failure.
-   *  @param maxTraceDepth maximum ray recursion depth
-   */
+  /** Creates a pipeline from program groups.
+    *
+    * @param groupHandles raygen, miss, and hitgroup handles from this context
+    * @param maxTraceDepth maximum ray recursion depth
+    * @return non-zero pipeline handle, or `0L` on failure
+    */
   @native def createPipeline(
     contextHandle: Long,
     groupHandles: Array[Long],
     maxTraceDepth: Int
   ): Long
 
-  /** Destroys a pipeline. */
+  /** Destroys a pipeline. Safe to call with `0L`. */
   @native def destroyPipeline(contextHandle: Long, pipelineHandle: Long): Unit
 
+/** Singleton access to low-level native OptiX bindings. */
 object NativeOptiXApi:
+  /** Shared stateless JNI binding instance. */
   val api: NativeOptiXApi = new NativeOptiXApi()

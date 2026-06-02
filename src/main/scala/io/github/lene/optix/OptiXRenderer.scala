@@ -22,13 +22,17 @@ private object LightTypeJNI:
   val POINT: Int = 1         // Radiate from position, inverse-square falloff
   val AREA: Int = 2          // Finite-size disk emitter, soft shadows via multi-sample
 
-// Area light shape (must match C++ AreaLightShape enum)
+/** Area-light shape ids passed through JNI to the native renderer. */
 object AreaLightShape:
-  val DISK: Int = 0  // Circular disk emitter (only shape currently supported)
+  /** Circular disk emitter. This is the only supported area-light shape. */
+  val DISK: Int = 0
 
-// Package-private case class for JNI boundary (matches C++ expectations)
-// Must be accessible to JNI (not private) but kept in menger.optix package
-// The C++ code looks for "menger/optix/Light" class
+/** JNI light payload consumed by native `OptiXRenderer.setLights`.
+  *
+  * The class must remain accessible to JNI as `io/github/lene/optix/Light`.
+  * Direction arrays are used by directional lights; position arrays are used by
+  * point and area lights. RGB color channels and intensity are linear values.
+  */
 case class Light(
   lightType: Int,
   direction: Array[Float],
@@ -73,7 +77,12 @@ private def toJNILight(light: CommonLight): Light =
         shadowSamples = samples
       )
 
-// Ray statistics from OptiX rendering
+/** Per-frame ray counters returned by the native renderer.
+  *
+  * Counters are monotonically accumulated for a single render call. Depth fields
+  * report the deepest and shallowest recursive ray depths reached in that frame.
+  * `frameMs` is elapsed render time in milliseconds.
+  */
 case class RayStats(
   totalRays: Long,
   primaryRays: Long,
@@ -91,8 +100,12 @@ case class RayStats(
     if totalRays == 0L then 0.0f
     else frameMs / (totalRays.toFloat / 1_000_000f)
 
-// Caustics statistics for validation (C1-C8 test ladder)
-// Matches CausticsStats struct in OptiXData.h
+/** Progressive photon mapping caustics counters from native OptiX code.
+  *
+  * The field order matches `CausticsStats` in `OptiXData.h`. Flux fields are
+  * linear energy estimates; timing fields are milliseconds for the corresponding
+  * caustics stage.
+  */
 case class CausticsStats(
   // C1: Photon emission
   photonsEmitted: Long,
@@ -137,7 +150,20 @@ case class CausticsStats(
   def fresnelTransmission: Double =
     if totalFluxEmitted > 0 then totalFluxDeposited / totalFluxEmitted else 0.0
 
-// Combined result from rendering with statistics
+/** Image and ray-statistics result for one render.
+  *
+  * @param image row-major RGBA8 image bytes, length `width * height * 4`
+  * @param totalRays total rays traced during the frame
+  * @param primaryRays camera rays launched from the image plane
+  * @param reflectedRays recursive reflection rays
+  * @param refractedRays recursive transmission/refraction rays
+  * @param shadowRays visibility rays used for direct-light shadow testing
+  * @param aaRays extra adaptive antialiasing rays
+  * @param aaStackOverflows adaptive antialiasing stack overflow count
+  * @param maxDepthReached deepest recursive ray depth reached
+  * @param minDepthReached shallowest recursive ray depth reached
+  * @param frameMs elapsed frame time in milliseconds
+  */
 case class RenderResult(
   image: Array[Byte],
   totalRays: Long,
@@ -164,10 +190,29 @@ case class RenderResult(
     frameMs
   )
 
+/** Axis-aligned clipping or ground plane description.
+  *
+  * `axis` uses native axis ids (`0 = x`, `1 = y`, `2 = z`). `positive` selects
+  * the positive-facing side and `value` is the plane offset along that axis.
+  */
 case class PlaneSpec(axis: Int, positive: Boolean, value: Float)
+
+/** Two-color checker pattern used by plane helpers. */
 case class CheckerPattern(color1: Color, color2: Color)
 
-// JNI interface to OptiX ray tracing renderer
+/** High-level Scala facade for the native OptiX renderer.
+  *
+  * A renderer owns one native `OptiXWrapper` handle after [[initialize]] succeeds.
+  * Call [[dispose]] when the renderer is no longer needed; calling [[initialize]]
+  * more than once is idempotent, and calling [[reinitialize]] disposes the old
+  * handle before creating a new one.
+  *
+  * Typical render flow: construct the renderer, call [[initialize]], upload scene
+  * geometry and material state, configure camera/lights/render options, call
+  * [[renderWithStats]] or [[render]], then call [[dispose]]. Scene units are
+  * application-defined world units. Angles are degrees unless a method name
+  * explicitly describes a 4D rotation parameter.
+  */
 class OptiXRenderer
   extends OptiXSphereApi
   with OptiXMeshApi
@@ -195,13 +240,19 @@ class OptiXRenderer
 
   // ---- Camera/scene @native declarations ----
   @native private def setCameraNative(eye: Array[Float], lookAt: Array[Float], up: Array[Float], horizontalFovDegrees: Float): Unit
+  /** Sets native render target dimensions in pixels. */
   @native def updateImageDimensions(width: Int, height: Int): Unit
+
+  /** Sets the legacy single-sphere index of refraction. */
   @native def setIOR(ior: Float): Unit
+
+  /** Sets the legacy single-sphere scale multiplier. */
   @native def setScale(scale: Float): Unit
 
   // ---- Lights @native declarations ----
   @native private def setLight(direction: Array[Float], intensity: Float): Unit
   @native private def setLights(lights: Array[Light]): Unit
+  /** Enables or disables direct-light shadow rays. */
   @native def setShadows(enabled: Boolean): Unit
   @native private def setTransparentShadowsNative(enabled: Boolean): Unit
   @native private def setBackgroundColorNative(r: Float, g: Float, b: Float): Unit
@@ -220,10 +271,37 @@ class OptiXRenderer
   @native private[optix] def releaseTexturesNative(): Unit
 
   // ---- Render @native declarations ----
+  /** Configures adaptive antialiasing.
+    *
+    * @param maxDepth maximum adaptive subdivision depth
+    * @param threshold color-difference threshold that triggers extra samples
+    */
   @native def setAntialiasing(enabled: Boolean, maxDepth: Int, threshold: Float): Unit
+
+  /** Sets the maximum recursive reflection/refraction ray depth. */
   @native def setMaxRayDepth(depth: Int): Unit
-  @native def setCaustics(enabled: Boolean, photonsPerIter: Int, iterations: Int, initialRadius: Float, alpha: Float): Unit
+
+  /** Configures progressive photon-mapping caustics.
+    *
+    * @param photonsPerIter photons emitted per iteration
+    * @param iterations number of photon-map iterations
+    * @param initialRadius initial photon gather radius in world units
+    * @param alpha progressive radius reduction coefficient
+    */
+  @native def setCaustics(
+    enabled: Boolean,
+    photonsPerIter: Int,
+    iterations: Int,
+    initialRadius: Float,
+    alpha: Float
+  ): Unit
   @native private[optix] def getCausticsStatsNative(): CausticsStats
+
+  /** Renders an RGBA8 frame and native ray statistics for the given dimensions.
+    *
+    * Current native error paths may return `null`; Task 26.4 tracks replacing
+    * that contract with `Option[RenderResult]`.
+    */
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
   // ---- Plane @native declarations (called from OptiXPlaneApi) ----
@@ -282,8 +360,13 @@ class OptiXRenderer
   ): Int
 
   @native private[optix] def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
+  /** Sets the legacy single triangle-mesh index of refraction. */
   @native def setTriangleMeshIOR(ior: Float): Unit
+
+  /** Removes the legacy single triangle mesh from native scene state. */
   @native def clearTriangleMesh(): Unit
+
+  /** Returns whether legacy single triangle-mesh state is present. */
   @native def hasTriangleMesh(): Boolean
 
   @native private[optix] def updateCpuTriangleMeshNative(
@@ -385,10 +468,19 @@ class OptiXRenderer
     rotXW: Float, rotYW: Float, rotZW: Float
   ): Int
 
+  /** Removes one IAS instance by id. Invalid ids are ignored by native code. */
   @native def removeInstance(instanceId: Int): Unit
+
+  /** Removes all IAS instances from native scene state. */
   @native def clearAllInstances(): Unit
+
+  /** Returns the number of currently active IAS instances. */
   @native def getInstanceCount(): Int
+
+  /** Returns whether native rendering uses IAS instance mode. */
   @native def isIASMode(): Boolean
+
+  /** Enables or disables native IAS instance mode. */
   @native def setIASMode(enabled: Boolean): Unit
 
   @native private[optix] def addPlaneInstanceNative(
@@ -402,6 +494,13 @@ class OptiXRenderer
   ): Int
 
   // ---- Camera ----
+  /** Sets the camera in world space.
+    *
+    * @param eye camera position
+    * @param lookAt target point
+    * @param up camera up vector
+    * @param horizontalFovDegrees horizontal field of view in `(0, 180)` degrees
+    */
   def setCamera(eye: Vector[3], lookAt: Vector[3], up: Vector[3], horizontalFovDegrees: Float): Unit =
     require(
       horizontalFovDegrees > 0 && horizontalFovDegrees < 180,
@@ -409,28 +508,46 @@ class OptiXRenderer
     )
     setCameraNative(eye.toArray, lookAt.toArray, up.toArray, horizontalFovDegrees)
 
+  /** Sets native render target dimensions from an [[menger.common.ImageSize]]. */
   def updateImageDimensions(size: ImageSize): Unit =
     updateImageDimensions(size.width, size.height)
 
   // ---- Lights ----
+  /** Sets one directional light for backward-compatible callers.
+    *
+    * @param direction light direction vector in world space
+    * @param intensity linear light intensity multiplier
+    */
   def setLight(direction: Vector[3], intensity: Float): Unit =
     setLight(direction.toArray, intensity)
 
+  /** Replaces the native light list.
+    *
+    * Supports directional, point, and disk-area lights from `menger.common.Light`.
+    */
   def setLights(lights: Array[CommonLight]): Unit =
     val jniLights = lights.map(toJNILight)
     setLights(jniLights)
 
+  /** Enables Beer-Lambert attenuation for transparent shadow rays. */
   def setTransparentShadows(enabled: Boolean): Unit =
     setTransparentShadowsNative(enabled)
 
+  /** Sets linear RGB background color used by miss shaders. */
   def setBackgroundColor(r: Float, g: Float, b: Float): Unit =
     setBackgroundColorNative(r, g, b)
 
+  /** Sets exponential fog density and linear RGB fog color. */
   def setFog(density: Float, r: Float, g: Float, b: Float): Unit =
     setFogNative(density, r, g, b)
 
   // ---- Lifecycle ----
-  // Idempotent initialization - safe to call multiple times
+  /** Initializes the native OptiX wrapper if it is not already initialized.
+    *
+    * The method is idempotent: after a successful initialization, later calls
+    * return `true` without creating another native handle. `maxInstances` sets
+    * the initial IAS instance capacity.
+    */
   def initialize(maxInstances: Int = 64): Boolean =
     if isInitialized then
       true  // Already initialized, return success
@@ -440,21 +557,26 @@ class OptiXRenderer
         logger.error("Failed to initialize OptiX renderer")
       result
 
-  /**
-   * Reinitialize the renderer with a new maxInstances value.
-   * Disposes the current renderer and creates a new one.
-   * Use this when auto-adjustment determines a higher limit is needed.
-   */
+  /** Reinitializes the renderer with a new IAS instance capacity.
+    *
+    * Disposes the current native handle, if one exists, and creates a new one.
+    * Use this when scene analysis determines a higher instance limit is needed.
+    */
   def reinitialize(newMaxInstances: Int): Boolean =
     if isInitialized then
       dispose()
     initialize(newMaxInstances)
 
-  // Can be re-initialized after dispose by calling initialize() again
+  /** Releases native resources owned by this renderer.
+    *
+    * The renderer can be initialized again after disposal. Calling `dispose` on
+    * an uninitialized renderer is a no-op.
+    */
   def dispose(): Unit =
     if isInitialized then
       disposeNative()
 
+  /** Returns whether the native library loads and OptiX initialization succeeds. */
   def isAvailable: Boolean =
     Try(initialize()).recover:
       case e: UnsatisfiedLinkError =>
@@ -477,11 +599,13 @@ class OptiXRenderer
     else
       this
 
+/** Native-library loader and availability helpers for [[OptiXRenderer]]. */
 object OptiXRenderer extends LazyLogging:
   private val libraryName = "optixjni"
 
   private val libraryLoaded: Boolean = loadNativeLibrary().isSuccess
 
+  /** Returns whether `liboptixjni.so` was loaded from `java.library.path` or the classpath. */
   def isLibraryLoaded: Boolean = libraryLoaded
 
   // Functional helper methods for library loading
@@ -565,9 +689,10 @@ object OptiXRenderer extends LazyLogging:
         logger.error(s"Failed to load native library '$libraryName'", e)
         Failure(e)
 
-// Exception thrown when OptiX is not available
+/** Raised by [[OptiXRenderer.ensureAvailable]] when native OptiX cannot be used. */
 case class OptiXNotAvailableException(message: String) extends Exception(message)
 
+/** Procedural texture ids passed to [[OptiXTextureApi.setProceduralTexture]]. */
 object ProceduralType:
   val None         = 0
   val ValueNoise   = 1
@@ -580,4 +705,5 @@ object ProceduralType:
   val XYZToRGB     = 8
   val HeatMap      = 9
   val Triplanar    = 10
+/** Raised when [[OptiXTextureApi.uploadTexture]] receives a negative native result code. */
 case class TextureUploadException(message: String, cause: Throwable = null) extends Exception(message, cause) // scalafix:ok DisableSyntax.null

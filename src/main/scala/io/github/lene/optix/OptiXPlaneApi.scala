@@ -6,21 +6,32 @@ import menger.common.x
 import menger.common.y
 import menger.common.z
 
+/** Plane helpers exposed through [[OptiXRenderer]].
+  *
+  * Axis ids use native convention: `0 = x`, `1 = y`, `2 = z`. Plane distances
+  * and positions are world units. Instance-returning methods return a native
+  * instance id, or `-1` on native failure.
+  */
 private[optix] trait OptiXPlaneApi:
   this: OptiXRenderer =>
 
+  /** Removes all legacy clipping or ground-plane definitions. */
   def clearPlanes(): Unit = clearPlanesNative()
 
+  /** Adds an axis-aligned legacy plane. */
   def addPlane(axis: Int, positive: Boolean, value: Float): Unit = addPlaneNative(axis, positive, value)
 
+  /** Adds an axis-aligned legacy plane with one RGB color. */
   def addPlaneSolidColor(axis: Int, positive: Boolean, value: Float, r: Float, g: Float, b: Float): Unit =
     addPlaneSolidColorNative(axis, positive, value, r, g, b)
 
+  /** Adds an axis-aligned legacy plane with a two-color checker pattern. */
   def addPlaneCheckerColors(axis: Int, positive: Boolean, value: Float,
                             r1: Float, g1: Float, b1: Float,
                             r2: Float, g2: Float, b2: Float): Unit =
     addPlaneCheckerColorsNative(axis, positive, value, r1, g1, b1, r2, g2, b2)
 
+  /** Adds an axis-aligned legacy plane with material properties and optional texture. */
   def addPlaneSolidColorWithMaterial(
     axis: Int, positive: Boolean, value: Float,
     color: Color, material: Material, textureIndex: Int = -1): Unit =
@@ -30,6 +41,7 @@ private[optix] trait OptiXPlaneApi:
       material.roughness, material.metallic, material.specular, material.emission,
       textureIndex)
 
+  /** Adds an axis-aligned checker plane with material properties and optional texture. */
   def addPlaneCheckerColorsWithMaterial(
     axis: Int, positive: Boolean, value: Float,
     color1: Color, color2: Color, material: Material, textureIndex: Int = -1): Unit =
@@ -40,20 +52,27 @@ private[optix] trait OptiXPlaneApi:
       material.roughness, material.metallic, material.specular, material.emission,
       textureIndex)
 
+  /** Adds a checker plane from reusable plane and checker descriptors. */
   def addPlaneCheckerColorsWithMaterial(
     plane: PlaneSpec, checker: CheckerPattern, material: Material): Unit =
     addPlaneCheckerColorsWithMaterial(
       plane.axis, plane.positive, plane.value,
       checker.color1, checker.color2, material)
 
+  /** Adds a checker plane from descriptors and a base-color texture index. */
   def addPlaneCheckerColorsWithMaterial(
     plane: PlaneSpec, checker: CheckerPattern, material: Material, textureIndex: Int): Unit =
     addPlaneCheckerColorsWithMaterial(
       plane.axis, plane.positive, plane.value,
       checker.color1, checker.color2, material, textureIndex)
 
-  /** @param checkerColor second checker color, or null for solid-color plane
-    * @return instance ID (>= 0), or -1 on failure
+  /** Adds a general plane IAS instance.
+    *
+    * @param normal world-space plane normal
+    * @param distance signed distance from origin in world units
+    * @param checkerColor second checker color, or `null` for a solid-color plane
+    * @param checkerSize checker tile size in world units
+    * @return instance id `>= 0`, or `-1` on native failure
     */
   def addPlaneInstance(
     normal: Vector[3],
@@ -74,7 +93,10 @@ private[optix] trait OptiXPlaneApi:
       r2, g2, b2, solidColor, checkerSize
     )
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a solid-color plane IAS instance from color and IOR.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addPlaneInstance(
     normal: Vector[3],
     distance: Float,

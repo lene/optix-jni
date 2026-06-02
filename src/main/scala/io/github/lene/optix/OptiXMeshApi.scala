@@ -8,9 +8,17 @@ import menger.common.x
 import menger.common.y
 import menger.common.z
 
+/** Mesh, primitive-instance, and 4D GPU-projection helpers exposed through [[OptiXRenderer]].
+  *
+  * Transform arrays are row-major 4x3 affine matrices with
+  * [[menger.common.Const.Renderer.transformMatrixSize]] elements. Methods that
+  * return an instance id return `-1` on native failure. Update methods throw
+  * when native code reports an invalid id or failed projection update.
+  */
 private[optix] trait OptiXMeshApi:
   this: OptiXRenderer =>
 
+  /** Uploads a legacy single triangle mesh to native scene state. */
   def setTriangleMesh(mesh: TriangleMeshData): Unit =
     setTriangleMeshNative(
       mesh.vertices,
@@ -20,9 +28,11 @@ private[optix] trait OptiXMeshApi:
       mesh.vertexStride
     )
 
-  /** Upload a 4D face mesh; the GPU does rotation + perspective projection at
-    * upload time (and on Cut F's update path). Returns the mesh index slot in
-    * triangle_meshes[], or throws on validation failure.
+  /** Uploads a 4D face mesh and projects it on the GPU.
+    *
+    * The GPU applies rotation and perspective projection at upload time and on
+    * later update paths. Returns the mesh index slot in the native triangle mesh
+    * array, or throws on validation/native failure.
     *
     * @param facesData length V*4*numFaces — N faces × V corners × (x,y,z,w)
     * @param vertsPerFace number of vertices per face (3=tri, 4=quad, 5=pentagon)
@@ -55,8 +65,11 @@ private[optix] trait OptiXMeshApi:
     require(result >= 0, s"setProjectedMesh failed with code $result")
     result
 
-  /** Backward-compatible alias. Pass null for uvs to use computed UVs.
-    * @return mesh index slot in triangle_meshes[]
+  /** Backward-compatible quad-specific alias for [[setProjectedMesh]].
+    *
+    * Pass `null` for `uvs` to use computed UVs.
+    *
+    * @return mesh index slot in the native triangle mesh array
     */
   def setTriangleMesh4DQuads(
     quads4D: Array[Float],
@@ -68,9 +81,10 @@ private[optix] trait OptiXMeshApi:
     setProjectedMesh(quads4D, 4, uvs, eyeW, screenW, rotXW, rotYW, rotZW,
       centerX, centerY, centerZ)
 
-  /** Re-project a previously-uploaded 4D-quad mesh with new rotation/projection
-    * params, refitting its GAS (and the IAS, if active) in place. Throws on
-    * native error (invalid index, mesh not 4D-projected, kernel launch failure).
+  /** Re-projects a previously uploaded GPU-projected 4D mesh.
+    *
+    * Refits the mesh GAS, and the IAS if active, in place. Throws on native
+    * error: invalid index, non-4D mesh slot, or projection kernel failure.
     */
   def updateMesh4DProjection(
     meshIndex: Int,
@@ -85,11 +99,11 @@ private[optix] trait OptiXMeshApi:
     )
     require(rc == 0, s"updateMesh4DProjection failed with code $rc (meshIndex=$meshIndex)")
 
-  /** Replace the CPU-uploaded mesh in slot `meshIndex` with new vertex/index data,
-    * rebuild its GAS in place, and mark the IAS dirty — without calling
-    * clearAllInstances(). Used by the CPU-mode 4D-rotation fast path in
-    * InteractiveEngine to avoid the full rebuild that causes a hang.
-    * Throws if the mesh_index is invalid or the slot holds a GPU-projected mesh.
+  /** Replaces a CPU-uploaded mesh slot with new vertex/index data.
+    *
+    * Rebuilds its GAS in place and marks the IAS dirty without clearing all
+    * instances. Throws when the index is invalid or the slot holds a GPU-projected
+    * mesh.
     */
   def updateCpuTriangleMesh(
     meshIndex: Int,
@@ -104,10 +118,14 @@ private[optix] trait OptiXMeshApi:
     )
     require(rc == 0, s"updateCpuTriangleMesh failed with code $rc (meshIndex=$meshIndex)")
 
+  /** Sets the legacy single triangle-mesh RGBA color. */
   def setTriangleMeshColor(color: Color): Unit =
     setTriangleMeshColorNative(color.r, color.g, color.b, color.a)
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a triangle-mesh IAS instance with an explicit transform.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addTriangleMeshInstance(
     transform: Array[Float],
     material: Material,
@@ -121,7 +139,10 @@ private[optix] trait OptiXMeshApi:
       textureIndex, material.filmThickness
     )
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a triangle-mesh IAS instance from color, IOR, and texture index.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addTriangleMeshInstance(
     transform: Array[Float],
     color: Color,
@@ -130,7 +151,10 @@ private[optix] trait OptiXMeshApi:
   ): Int =
     addTriangleMeshInstance(transform, Material(color, ior), textureIndex)
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a triangle-mesh IAS instance from color and IOR.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addTriangleMeshInstance(
     transform: Array[Float],
     color: Color,
@@ -138,7 +162,10 @@ private[optix] trait OptiXMeshApi:
   ): Int =
     addTriangleMeshInstance(transform, Material(color, ior), -1)
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a translated triangle-mesh IAS instance with a texture index.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addTriangleMeshInstance(
     position: Vector[3],
     material: Material,
@@ -151,7 +178,10 @@ private[optix] trait OptiXMeshApi:
     )
     addTriangleMeshInstance(transform, material, textureIndex)
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a translated triangle-mesh IAS instance from color, IOR, and texture index.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addTriangleMeshInstance(
     position: Vector[3],
     color: Color,
@@ -160,11 +190,14 @@ private[optix] trait OptiXMeshApi:
   ): Int =
     addTriangleMeshInstance(position, Material(color, ior), textureIndex)
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a translated triangle-mesh IAS instance from color and IOR.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Int =
     addTriangleMeshInstance(position, Material(color, ior), -1)
 
-  /** Add a recursive-IAS Menger sponge instance (Sprint 18.4).
+  /** Adds a recursive-IAS Menger sponge instance with an explicit transform.
     *
     * Wraps the most-recently-uploaded triangle mesh (caller must have called
     * `setTriangleMesh` with a unit cube) in `level` nested IAS layers using
@@ -176,8 +209,8 @@ private[optix] trait OptiXMeshApi:
     * that becomes stale if the active-instance list shifts.
     *
     * @param level recursion depth; must be in [1, 14]
+    * @return instance id `>= 0`, or `-1` on native failure
     */
-  /** @return instance ID (>= 0), or -1 on failure */
   def addRecursiveIASSpongeInstance(
     level: Int,
     transform: Array[Float],
@@ -194,7 +227,10 @@ private[optix] trait OptiXMeshApi:
       textureIndex, material.filmThickness
     )
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a recursive-IAS sponge from a translated unit transform.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addRecursiveIASSpongeInstance(
     level: Int,
     position: Vector[3],
@@ -208,11 +244,18 @@ private[optix] trait OptiXMeshApi:
     )
     addRecursiveIASSpongeInstance(level, transform, material, textureIndex)
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a recursive-IAS sponge from translated color and IOR.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): Int =
     addRecursiveIASSpongeInstance(level, position, Material(color, ior), -1)
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a cylinder IAS instance between two endpoints.
+    *
+    * @param radius cylinder radius in world units
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addCylinderInstance(
     p0: Vector[3],
     p1: Vector[3],
@@ -228,7 +271,10 @@ private[optix] trait OptiXMeshApi:
       material.filmThickness
     )
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a cylinder IAS instance from color and IOR.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addCylinderInstance(
     p0: Vector[3],
     p1: Vector[3],
@@ -238,7 +284,11 @@ private[optix] trait OptiXMeshApi:
   ): Int =
     addCylinderInstance(p0, p1, radius, Material(color, ior))
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a cone IAS instance from apex to base center.
+    *
+    * @param radius base radius in world units
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addConeInstance(
     apex: Vector[3],
     base: Vector[3],
@@ -254,7 +304,10 @@ private[optix] trait OptiXMeshApi:
       material.filmThickness
     )
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a cone IAS instance from color and IOR.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addConeInstance(
     apex: Vector[3],
     base: Vector[3],
@@ -264,7 +317,13 @@ private[optix] trait OptiXMeshApi:
   ): Int =
     addConeInstance(apex, base, radius, Material(color, ior))
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a GPU-projected 4D Menger sponge instance.
+    *
+    * 4D rotation parameters are radians. Projection distance values are in
+    * 4D scene units.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addMenger4DInstance(
     level: Int,
     distanceThreshold: Int,
@@ -283,6 +342,7 @@ private[optix] trait OptiXMeshApi:
       material.filmThickness
     )
 
+  /** Updates projection parameters for a GPU-projected 4D Menger instance. */
   def updateMenger4DProjection(
     instanceId: Int,
     eyeW: Float, screenW: Float,
@@ -292,7 +352,10 @@ private[optix] trait OptiXMeshApi:
     val rc = updateMenger4DProjectionNative(instanceId, eyeW, screenW, rotXW, rotYW, rotZW)
     require(rc == 0, s"updateMenger4DProjection failed with code $rc (instanceId=$instanceId)")
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a GPU-projected 4D Sierpinski instance.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addSierpinski4DInstance(
     level: Int,
     position: Vector[3],
@@ -310,6 +373,7 @@ private[optix] trait OptiXMeshApi:
       material.filmThickness
     )
 
+  /** Updates projection parameters for a GPU-projected 4D Sierpinski instance. */
   def updateSierpinski4DProjection(
     instanceId: Int,
     eyeW: Float, screenW: Float,
@@ -319,7 +383,10 @@ private[optix] trait OptiXMeshApi:
     val rc = updateSierpinski4DProjectionNative(instanceId, eyeW, screenW, rotXW, rotYW, rotZW)
     require(rc == 0, s"updateSierpinski4DProjection failed with code $rc (instanceId=$instanceId)")
 
-  /** @return instance ID (>= 0), or -1 on failure */
+  /** Adds a GPU-projected 4D hexadecachoron instance.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
   def addHexadecachoron4DInstance(
     level: Int,
     position: Vector[3],
@@ -337,6 +404,7 @@ private[optix] trait OptiXMeshApi:
       material.filmThickness
     )
 
+  /** Updates projection parameters for a GPU-projected 4D hexadecachoron instance. */
   def updateHexadecachoron4DProjection(
     instanceId: Int,
     eyeW: Float, screenW: Float,

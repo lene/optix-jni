@@ -4,50 +4,154 @@ This module provides JNI bindings for NVIDIA OptiX ray tracing API.
 
 ## Standalone Usage
 
-`optix-jni` is published as `io.github.lene:optix-jni`. Add to `build.sbt`:
+`optix-jni` publishes JNI bindings and native resources for Linux x86_64.
+It depends on `menger-common` for shared scene types such as `Color`, `Vector`,
+`ImageSize`, and `Material`.
+
+Current test publication target: GitLab Package Registry.
+
+### sbt
 
 ```scala
-libraryDependencies += "io.github.lene" %% "optix-jni" % "0.7.1"
+ThisBuild / scalaVersion := "3.8.3"
+
+resolvers += "GitLab Menger" at
+  "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
+
+credentials += Credentials(
+  "GitLab Packages Registry",
+  "gitlab.com",
+  "Private-Token",
+  sys.env("GITLAB_PAT")
+)
+
+libraryDependencies ++= Seq(
+  "io.github.lene" %% "menger-common" % "0.1.0",
+  "io.github.lene" % "optix-jni" % "0.1.0"
+)
 ```
 
-**Requirements:** CUDA toolkit and OptiX SDK 9.0 installed; NVIDIA GPU.
+In GitLab CI, use username `gitlab-ci-token` with `CI_JOB_TOKEN` instead of a
+personal access token.
+
+### Maven
+
+```xml
+<repositories>
+  <repository>
+    <id>gitlab-menger</id>
+    <url>https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven</url>
+  </repository>
+</repositories>
+
+<dependencies>
+  <dependency>
+    <groupId>io.github.lene</groupId>
+    <artifactId>menger-common_3</artifactId>
+    <version>0.1.0</version>
+  </dependency>
+  <dependency>
+    <groupId>io.github.lene</groupId>
+    <artifactId>optix-jni</artifactId>
+    <version>0.1.0</version>
+  </dependency>
+</dependencies>
+```
+
+Configure Maven credentials for repository id `gitlab-menger` in `settings.xml`.
+For GitLab Package Registry, authenticate with a private token or CI job token.
+
+### Gradle Kotlin DSL
+
+```kotlin
+repositories {
+    maven {
+        url = uri("https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven")
+        credentials(HttpHeaderCredentials::class) {
+            name = "Private-Token"
+            value = System.getenv("GITLAB_PAT")
+        }
+        authentication {
+            create<HttpHeaderAuthentication>("header")
+        }
+    }
+}
+
+dependencies {
+    implementation("io.github.lene:menger-common_3:0.1.0")
+    implementation("io.github.lene:optix-jni:0.1.0")
+}
+```
+
+### Runtime Requirements
+
+- Linux x86_64.
+- NVIDIA GPU with OptiX support.
+- NVIDIA driver new enough for CUDA 12.8 runtime and OptiX SDK 9.0.
+- CUDA runtime libraries available to the dynamic linker. In local shells this is
+  usually `LD_LIBRARY_PATH=/usr/local/cuda/lib64` unless the system linker cache
+  already contains CUDA.
+- For containerized execution, expose GPU devices and set
+  `NVIDIA_DRIVER_CAPABILITIES=graphics,compute,utility`.
+
+### JVM Flags and Native Library Loading
+
+Published `optix-jni` artifacts bundle `liboptixjni.so` and `optix_shaders.ptx`
+as classpath resources. In that case no `java.library.path` flag is normally
+needed.
+
+For local unpublished builds, point the JVM at the native build output:
+
+```bash
+java \
+  -Djava.library.path=/path/to/menger/optix-jni/target/native/x86_64-linux/bin \
+  -cp your-app.jar your.Main
+```
+
+When running through sbt:
+
+```bash
+sbt -Djava.library.path=/path/to/menger/optix-jni/target/native/x86_64-linux/bin run
+```
+
+If CUDA libraries are not in the system linker cache, also set:
+
+```bash
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+```
 
 ### Basic sphere render
 
 ```scala
 import io.github.lene.optix.OptiXRenderer
+import menger.common.Color
+import menger.common.ImageSize
+import menger.common.Vector
 
 if !OptiXRenderer.isLibraryLoaded then
-  sys.error("OptiX native library failed to load — check CUDA/OptiX installation")
+  sys.error("OptiX native library failed to load; check CUDA and OptiX setup")
 
 val renderer = new OptiXRenderer()
-renderer.initialize()                           // max 64 instances (default)
+try
+  if !renderer.initialize() then
+    sys.error("OptiX renderer failed to initialize")
 
-renderer.setSphere(0f, 0f, 0f, 1f)             // x, y, z, radius
-renderer.setSphereColor(1f, 0.5f, 0.2f, 1f)    // r, g, b, a (a=1.0 = opaque)
-renderer.setCamera(
-  eye    = Array(0f, 0f, 5f),
-  lookAt = Array(0f, 0f, 0f),
-  up     = Array(0f, 1f, 0f),
-  horizontalFovDegrees = 45f
-)
+  renderer.setSphere(Vector[3](0f, 0f, 0f), radius = 1f)
+  renderer.setSphereColor(Color(1f, 0.5f, 0.2f, 1f))
+  renderer.setCamera(
+    eye = Vector[3](0f, 0f, 5f),
+    lookAt = Vector[3](0f, 0f, 0f),
+    up = Vector[3](0f, 1f, 0f),
+    horizontalFovDegrees = 45f
+  )
 
-val result = renderer.renderWithStats(800, 600) // returns RenderResult(pixels, stats)
-// result.image: Array[Byte] RGBA, length = width * height * 4
+  val result = renderer.renderWithStats(ImageSize(800, 600))
+  if result == null then
+    sys.error("render failed")
 
-renderer.dispose()
-```
-
-### Library loading
-
-`OptiXRenderer` loads `liboptixjni.so` at class-load time. The loader searches:
-
-1. `java.library.path` system property
-2. JVM-internal library path
-
-Set the path at JVM startup:
-```
--Djava.library.path=/path/to/optix-jni/target/native/x86_64-linux/bin
+  println(s"Rendered ${result.image.length} RGBA bytes")
+finally
+  renderer.dispose()
 ```
 
 ### Alpha convention
