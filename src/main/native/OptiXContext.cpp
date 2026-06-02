@@ -480,6 +480,10 @@ OptiXContext::GASBuildResult OptiXContext::buildCustomPrimitiveGAS(
     // Allocate and copy AABB to GPU
     CUdeviceptr d_aabb;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_aabb), sizeof(OptixAabb)));
+    // Guard d_aabb so it is freed if any subsequent step throws; ownership is
+    // transferred to the caller via .release() once the build succeeds.
+    auto d_aabb_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_aabb), cudaFree);
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<void*>(d_aabb),
         &aabb,
@@ -547,8 +551,9 @@ OptiXContext::GASBuildResult OptiXContext::buildCustomPrimitiveGAS(
     ));
 
     // d_temp_buffer_guard frees d_temp_buffer at end of scope
-    // Transfer ownership of d_gas_output_buffer to caller
+    // Transfer ownership of d_gas_output_buffer and d_aabb to caller
     d_gas_output_buffer_guard.release();
+    d_aabb_guard.release();
 
     GASBuildResult result;
     result.gas_buffer = d_gas_output_buffer;
