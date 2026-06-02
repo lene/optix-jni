@@ -3164,10 +3164,11 @@ static cudaTextureObject_t uploadFloat1DTex(
     cudaChannelFormatDesc fmt = cudaCreateChannelDesc<float>();
     cudaArray_t arr = nullptr;
     CUDA_CHECK(cudaMallocArray(&arr, &fmt, n));
+    // Track immediately so releaseCDFTextures() frees arr even if a later step throws
+    arrays.push_back(arr);
     CUDA_CHECK(cudaMemcpy2DToArray(arr, 0, 0, data, n * sizeof(float),
                                    n * sizeof(float), 1,
                                    cudaMemcpyHostToDevice));
-    arrays.push_back(arr);
 
     cudaResourceDesc rd{};
     rd.resType         = cudaResourceTypeArray;
@@ -3191,10 +3192,11 @@ static cudaTextureObject_t uploadFloat2DTex(
     cudaChannelFormatDesc fmt = cudaCreateChannelDesc<float>();
     cudaArray_t arr = nullptr;
     CUDA_CHECK(cudaMallocArray(&arr, &fmt, width, height));
+    // Track immediately so releaseCDFTextures() frees arr even if a later step throws
+    arrays.push_back(arr);
     CUDA_CHECK(cudaMemcpy2DToArray(arr, 0, 0, data, width * sizeof(float),
                                    width * sizeof(float), height,
                                    cudaMemcpyHostToDevice));
-    arrays.push_back(arr);
 
     cudaResourceDesc rd{};
     rd.resType         = cudaResourceTypeArray;
