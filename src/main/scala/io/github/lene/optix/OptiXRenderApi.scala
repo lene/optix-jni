@@ -1,5 +1,7 @@
 package io.github.lene.optix
 
+import java.util.Optional
+
 import menger.common.CausticsConfig
 import menger.common.ImageSize
 import menger.common.RenderConfig
@@ -45,16 +47,17 @@ private[optix] trait OptiXRenderApi:
     catch
       case _: Exception => null // scalafix:ok DisableSyntax.null
 
-  def renderWithStats(size: ImageSize): RenderResult =
+  /** @return the render result with timing, or an empty Optional on failure.
+    *  java.util.Optional (not scala.Option) keeps this JNI API consumable from Java/Kotlin. */
+  def renderWithStats(size: ImageSize): Optional[RenderResult] =
     val startNs = System.nanoTime()
     val raw = renderWithStats(size.width, size.height)
     val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
-    if raw != null then raw.copy(frameMs = elapsedMs) else null // scalafix:ok DisableSyntax.null
+    Optional.ofNullable(raw).map((r: RenderResult) => r.copy(frameMs = elapsedMs))
 
   /** @return rendered image bytes, or null on failure */
   def render(size: ImageSize): Array[Byte] =
-    val result = renderWithStats(size)
-    if result != null then result.image else null // scalafix:ok DisableSyntax.null
+    renderWithStats(size).map((r: RenderResult) => r.image).orElse(null) // scalafix:ok DisableSyntax.null
 
   /** @return rendered image bytes, or null on failure */
   def render(width: Int, height: Int): Array[Byte] =

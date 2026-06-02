@@ -72,7 +72,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
     setupCanonicalScene()
     renderer.enableCaustics(photonsPerIter = 1000, iterations = 1)
 
-    val result = Option(renderer.renderWithStats(CanonicalScene.imageSize)).get
+    val result = renderer.renderWithStats(CanonicalScene.imageSize).get
 
     // Basic sanity check - render should succeed
     result.image should not be empty
@@ -81,7 +81,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
     setupCanonicalScene()
     renderer.disableCaustics()
 
-    val result = Option(renderer.renderWithStats(CanonicalScene.imageSize)).get
+    val result = renderer.renderWithStats(CanonicalScene.imageSize).get
 
     // Render should succeed without caustics
     result.image should not be empty
@@ -227,11 +227,11 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
 
     // Render without caustics
     renderer.disableCaustics()
-    val withoutCaustics = Option(renderer.renderWithStats(CanonicalScene.imageSize)).get
+    val withoutCaustics = renderer.renderWithStats(CanonicalScene.imageSize).get
 
     // Render with caustics
     renderer.enableCaustics(photonsPerIter = 10000, iterations = 2)
-    val withCaustics = Option(renderer.renderWithStats(CanonicalScene.imageSize)).get
+    val withCaustics = renderer.renderWithStats(CanonicalScene.imageSize).get
 
     // Images should differ
     withCaustics.image should not equal withoutCaustics.image
@@ -243,7 +243,7 @@ class CausticsValidationSuite extends AnyFlatSpec with Matchers with RendererFix
 
     // Render with caustics
     renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
-    val result = Option(renderer.renderWithStats(CanonicalScene.imageSize)).get
+    val result = renderer.renderWithStats(CanonicalScene.imageSize).get
 
     // Sample pixels in the center-bottom region (where caustic should be)
     val centerX = CanonicalScene.imageSize.width / 2
