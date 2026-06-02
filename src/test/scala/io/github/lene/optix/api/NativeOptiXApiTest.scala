@@ -20,7 +20,7 @@ class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
     noException should be thrownBy NativeOptiXApi.api
   }
 
-  it should "return 0L from createContext when GPU is unavailable" in {
+  it should "create a context when GPU is available" in {
     assume(gpuAvailable, "GPU/OptiX required")
     val ctx = api.createContext()
     ctx should not be 0L
