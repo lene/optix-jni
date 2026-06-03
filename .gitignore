@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+
+# sbt
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+project/local-plugins.sbt
+.history
+.sbt-scripted/
+local.sbt
+
+# Generated native artifacts
+native/
+src/main/native/standalone_test
+*.o
+
+# Generated images and logs
+*.png
+!src/test/resources/*.png
+*.ppm
+*.log
+
+# Local credentials
+.set-gitlab-token.sh
+
+# Local tools
+.jvmopts
+.bsp
+.bloop/
+.metals/
+metals.sbt
+.vscode/
+.idea
+.idea_modules
+/.worksheet/
+
+# Scaladoc
+index.html
+index.js
+index
+lib
+package.html
+
+# OptiX SDK installer
+NVIDIA-OptiX-SDK-*.sh

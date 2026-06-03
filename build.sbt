@@ -4,16 +4,18 @@ name := "optix-jni"
 version := "0.1.0"
 scalaVersion := "3.8.3"
 
+enablePlugins(JniNative)
+
 organization := "io.github.lene"
 description := "JNI bindings for NVIDIA OptiX ray tracing"
-homepage := Some(url("https://gitlab.com/lilacashes/menger"))
+homepage := Some(url("https://github.com/lene/optix-jni"))
 licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 scmInfo := Some(ScmInfo(
-  url("https://gitlab.com/lilacashes/menger"),
-  "scm:git:git@gitlab.com:lilacashes/menger.git"
+  url("https://github.com/lene/optix-jni"),
+  "scm:git:git@github.com:lene/optix-jni.git"
 ))
 developers := List(
-  Developer("lene", "Lene Preuss", "lene.preuss@gmail.com", url("https://gitlab.com/lilacashes"))
+  Developer("lene", "Lene Preuss", "lene.preuss@gmail.com", url("https://github.com/lene"))
 )
 
 // Publication targets (mirrors menger-common setup)
@@ -27,13 +29,20 @@ credentials += Credentials(
   "GitLab Packages Registry",
   "gitlab.com",
   if (sys.env.contains("CI_JOB_TOKEN")) "gitlab-ci-token" else "Private-Token",
-  sys.env.getOrElse("CI_JOB_TOKEN", sys.env.getOrElse("GITLAB_PAT", ""))
+  sys.env.getOrElse(
+    "CI_JOB_TOKEN",
+    sys.env.getOrElse("GITLAB_PAT", sys.env.getOrElse("GITLAB_ACCESS_TOKEN", ""))
+  )
 )
 
 sonatypeCredentialHost := "central.sonatype.com"
 publishMavenStyle := true
+crossPaths := false
 
 scalacOptions ++= Seq("-deprecation", "-explain", "-feature", "-Wunused:imports")
+
+resolvers += "GitLab Menger" at
+  "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
 
 Compile / semanticdbEnabled := true
 
@@ -80,9 +89,22 @@ Compile / resourceGenerators += Def.task {
   val log = streams.value.log
   val platform = "x86_64-linux"
   val ptxSource = target.value / "native" / platform / "bin" / "optix_shaders.ptx"
+  val nativeApiResourceRoot = (Compile / resourceManaged).value / "optix-jni-native"
+  val nativeApiResources = Seq(
+    sourceDirectory.value / "main" / "native" / "include" -> nativeApiResourceRoot / "include",
+    sourceDirectory.value / "main" / "native" / "shaders" -> nativeApiResourceRoot / "shaders"
+  ).flatMap { case (sourceRoot, targetRoot) =>
+    (sourceRoot ** "*").get.filter(_.isFile).map { sourceFile =>
+      val relativePath = sourceFile.relativeTo(sourceRoot).fold(sourceFile.getName)(_.getPath)
+      val targetFile = targetRoot / relativePath
+      IO.copyFile(sourceFile, targetFile)
+      targetFile
+    }
+  }
+
   // Trigger the native build first so the PTX file exists
   nativeCompile.value
-  if (ptxSource.exists()) {
+  val ptxResources = if (ptxSource.exists()) {
     val ptxResource = (Compile / resourceManaged).value / "native" / platform / "optix_shaders.ptx"
     IO.copyFile(ptxSource, ptxResource)
     log.debug(s"Bundled PTX into managed resources: $ptxResource")
@@ -91,6 +113,8 @@ Compile / resourceGenerators += Def.task {
     log.warn(s"PTX file not found after nativeCompile: $ptxSource")
     Seq.empty
   }
+
+  ptxResources ++ nativeApiResources
 }.taskValue
 
 // Native test task to run C++ Google Test suite
@@ -136,6 +160,7 @@ Test / javaOptions ++= Seq(
 Test / fork := true
 
 libraryDependencies ++= Seq(
+  "io.github.lene" %% "menger-common" % "0.1.0",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
   "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.scalatest" %% "scalatest" % "3.2.20" % Test,

@@ -1,0 +1,14 @@
+---
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-avoid-c-arrays,
+  readability-braces-around-statements,
+  readability-misleading-indentation,
+  performance-unnecessary-copy-initialization,
+  -clang-analyzer-*
+WarningsAsErrors: ""
+HeaderFilterRegex: "src/main/native/include/.*\\.h"
+FormatStyle: none
