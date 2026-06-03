@@ -144,9 +144,10 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
 
             wrapper->setCamera(eyeArr, lookAtArr, upArr, horizontalFovDegrees);
 
-            env->ReleaseFloatArrayElements(eye, eyeArr, 0);
-            env->ReleaseFloatArrayElements(lookAt, lookAtArr, 0);
-            env->ReleaseFloatArrayElements(up, upArr, 0);
+            // Read-only inputs: JNI_ABORT skips the needless copy-back.
+            env->ReleaseFloatArrayElements(eye, eyeArr, JNI_ABORT);
+            env->ReleaseFloatArrayElements(lookAt, lookAtArr, JNI_ABORT);
+            env->ReleaseFloatArrayElements(up, upArr, JNI_ABORT);
         } else {
         }
     } catch (const std::exception& e) {
@@ -173,7 +174,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLight(
         if (wrapper != nullptr) {
             jfloat* dirArr = env->GetFloatArrayElements(direction, nullptr);
             wrapper->setLight(dirArr, intensity);
-            env->ReleaseFloatArrayElements(direction, dirArr, 0);
+            env->ReleaseFloatArrayElements(direction, dirArr, JNI_ABORT); // read-only input
         } else {
         }
     } catch (const std::exception& e) {
@@ -696,8 +697,9 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshN
             centerX, centerY, centerZ
         );
 
-        env->ReleaseFloatArrayElements(facesData, quadsArr, 0);
-        if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, 0);
+        // Read-only inputs: JNI_ABORT skips the needless copy-back.
+        env->ReleaseFloatArrayElements(facesData, quadsArr, JNI_ABORT);
+        if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, JNI_ABORT);
 
         return meshIndex;
     } catch (const std::exception& e) {

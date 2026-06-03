@@ -18,6 +18,7 @@
 #include <cfloat>
 #include <vector>
 #include <map>
+#include <functional>
 #include <optix.h>
 #include <optix_function_table_definition.h>
 #include <optix_stubs.h>
@@ -649,7 +650,11 @@ int OptiXWrapper::setProjectedMesh(
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
         return -1;
     }
-    cudaDeviceSynchronize();
+    if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
+        std::cerr << "[OptiX] cudaDeviceSynchronize failed after project4d kernel launch: "
+                  << cudaGetErrorString(syncErr) << std::endl;
+        cudaGetLastError();  // clear sticky error so later launches are not poisoned
+    }
 
     mesh_entry.num_vertices = num_vertices;
     mesh_entry.num_triangles = num_triangles;
@@ -687,6 +692,12 @@ int OptiXWrapper::setProjectedMesh(
     return mesh_index;
 }
 
+// Re-projects an already-uploaded 4D mesh in place.
+// Return codes (the Scala side requires rc == 0):
+//   0  success
+//  -1  invalid argument / mesh not found / no 4D face data for this mesh
+//  -2  device memory operation failed (alloc or copy)
+//  -3  project4d projection kernel launch failed
 int OptiXWrapper::updateMesh4DProjection(
     int mesh_index,
     float eyeW, float screenW,
@@ -739,7 +750,11 @@ int OptiXWrapper::updateMesh4DProjection(
             << cudaGetErrorString(err) << std::endl;
         return -3;
     }
-    cudaDeviceSynchronize();
+    if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
+        std::cerr << "[OptiX] cudaDeviceSynchronize failed after project4d kernel relaunch: "
+                  << cudaGetErrorString(syncErr) << std::endl;
+        cudaGetLastError();  // clear sticky error so later launches are not poisoned
+    }
 
     // GAS refit. Cut A flagged this mesh's GAS with ALLOW_UPDATE so we can
     // refit in place rather than rebuild.
@@ -1913,6 +1928,10 @@ const float (*getMengerGenerators())[12] {
 
 constexpr int MENGER_GENERATOR_COUNT = 20;
 constexpr int MAX_RECURSIVE_IAS_LEVEL = 14;  // matches MAX_TRAVERSABLE_GRAPH_DEPTH = 16
+// Recursion-depth bounds for GPU-projected 4D fractals (Menger4D, Sierpinski4D,
+// Hexadecachoron4D). Upper bound matches MAX_TRAVERSABLE_GRAPH_DEPTH constraints.
+constexpr int MIN_4D_LEVEL = 0;
+constexpr int MAX_4D_LEVEL = 14;
 
 }  // namespace
 
@@ -2471,7 +2490,7 @@ int OptiXWrapper::addMenger4DInstance(
         }
         return -1;
     }
-    if (level < 0 || level > 14) {
+    if (level < MIN_4D_LEVEL || level > MAX_4D_LEVEL) {
         std::cerr << "[OptiX][Menger4D] Level must be 0-14, got " << level << std::endl;
         return -1;
     }
@@ -2595,7 +2614,7 @@ int OptiXWrapper::addSierpinski4DInstance(
         }
         return -1;
     }
-    if (level < 0 || level > 14) {
+    if (level < MIN_4D_LEVEL || level > MAX_4D_LEVEL) {
         std::cerr << "[OptiX][Sierpinski4D] Level must be 0-14, got " << level << std::endl;
         return -1;
     }
@@ -2716,7 +2735,7 @@ int OptiXWrapper::addHexadecachoron4DInstance(
         }
         return -1;
     }
-    if (level < 0 || level > 14) {
+    if (level < MIN_4D_LEVEL || level > MAX_4D_LEVEL) {
         std::cerr << "[OptiX][Hexadecachoron4D] Level must be 0-14, got " << level << std::endl;
         return -1;
     }
@@ -3262,50 +3281,50 @@ void OptiXWrapper::releaseTextures() {
 }
 
 void OptiXWrapper::dispose() {
-    if (impl->initialized) {
-        try {
-            // Release textures
-            releaseTextures();
-
-            // Release IBL CDF textures
-            impl->releaseCDFTextures();
-
-            // Clean up IAS resources
-            clearAllInstances();
-
-            // Free GAS buffers in registry before clearing
-            for (auto& entry : impl->gas_registry) {
-                if (entry.second.gas_buffer) {
-                    cudaFree(reinterpret_cast<void*>(entry.second.gas_buffer));
-                }
-                if (entry.second.aabb_buffer) {
-                    cudaFree(reinterpret_cast<void*>(entry.second.aabb_buffer));
-                }
-            }
-            impl->gas_registry.clear();
-
-            // Clean up pipeline resources (including caustics)
-            impl->pipeline_manager.cleanup(true);
-
-            // BufferManager automatically cleans up buffers via RAII
-            // Just need to reset state
-            impl->pipeline_built = false;
-
-            // Clean up OptiX context
-            impl->optix_context.destroy();
-
-            // Synchronize CUDA device to clear any pending errors
-            cudaError_t err = cudaDeviceSynchronize();
-            if (err != cudaSuccess) {
-                std::cerr << "[OptiX] CUDA synchronization warning during dispose: "
-                          << cudaGetErrorString(err) << std::endl;
-                // Clear the error
-                cudaGetLastError();
-            }
-
-        } catch (const std::exception& e) {
-            std::cerr << "[OptiX] Cleanup error: " << e.what() << std::endl;
-        }
-        impl->initialized = false;
+    if (!impl->initialized) {
+        return;
     }
+
+    // Isolate each cleanup step in its own try-catch so a failure in one step
+    // does not skip the remaining steps (which would leak GPU resources).
+    auto step = [](const char* what, const std::function<void()>& fn) {
+        try {
+            fn();
+        } catch (const std::exception& e) {
+            std::cerr << "[OptiX] Cleanup error during " << what << ": "
+                      << e.what() << std::endl;
+        }
+    };
+
+    step("releaseTextures", [this] { releaseTextures(); });
+    step("releaseCDFTextures", [this] { impl->releaseCDFTextures(); });
+    step("clearAllInstances", [this] { clearAllInstances(); });
+    step("freeGASBuffers", [this] {
+        for (auto& entry : impl->gas_registry) {
+            if (entry.second.gas_buffer) {
+                cudaFree(reinterpret_cast<void*>(entry.second.gas_buffer));
+            }
+            if (entry.second.aabb_buffer) {
+                cudaFree(reinterpret_cast<void*>(entry.second.aabb_buffer));
+            }
+        }
+        impl->gas_registry.clear();
+    });
+    step("pipelineCleanup", [this] {
+        impl->pipeline_manager.cleanup(true);
+        // BufferManager automatically cleans up buffers via RAII; just reset state.
+        impl->pipeline_built = false;
+    });
+    step("destroyContext", [this] { impl->optix_context.destroy(); });
+    step("deviceSynchronize", [] {
+        // Synchronize CUDA device to clear any pending errors
+        cudaError_t err = cudaDeviceSynchronize();
+        if (err != cudaSuccess) {
+            std::cerr << "[OptiX] CUDA synchronization warning during dispose: "
+                      << cudaGetErrorString(err) << std::endl;
+            cudaGetLastError();  // Clear the error
+        }
+    });
+
+    impl->initialized = false;
 }

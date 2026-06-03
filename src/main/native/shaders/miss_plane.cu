@@ -87,14 +87,18 @@ __device__ void getBackgroundColor(
     b = static_cast<unsigned int>(params.bg_b * COLOR_SCALE_FACTOR);
 }
 
+// Tone-mapping operator ids — MUST match SceneConverter.ToneMapOp (Scala side).
+constexpr int TONEMAP_REINHARD = 1;
+constexpr int TONEMAP_ACES     = 2;
+
 __device__ float3 applyToneMapping(float3 c) {
     const float e = params.tonemap_exposure;
-    if (params.tonemap_operator == 1) {
+    if (params.tonemap_operator == TONEMAP_REINHARD) {
         // Reinhard: c*e / (1 + c*e)
         c.x = c.x * e / (1.0f + c.x * e);
         c.y = c.y * e / (1.0f + c.y * e);
         c.z = c.z * e / (1.0f + c.z * e);
-    } else if (params.tonemap_operator == 2) {
+    } else if (params.tonemap_operator == TONEMAP_ACES) {
         // ACES filmic approximation (Narkowicz 2015)
         c.x *= e; c.y *= e; c.z *= e;
         const float a = 2.51f, b2 = 0.03f, cc = 2.43f, d = 0.59f, e2 = 0.14f;
