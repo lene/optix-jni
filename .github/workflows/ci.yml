@@ -3,18 +3,178 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
 
 jobs:
-  test:
-    runs-on: [self-hosted, linux, x64, nvidia]
+  # ── preconditions ──────────────────────────────────────────────────────────
+
+  changelog-updated:
+    name: Changelog Updated
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check changelog entry exists and is dated
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          test -n "$VERSION"
+          grep -F "## [$VERSION]" CHANGELOG.md
+          grep -F "...$VERSION" CHANGELOG.md
+          if ! echo "${{ github.event.pull_request.title }}" | grep -q '^Draft:'; then
+            grep -F "## [$VERSION] - $(date +%Y-%m-%d)" CHANGELOG.md
+          fi
+
+  version-not-tagged:
+    name: Version Not Yet Tagged
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check tag does not already exist
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          test -n "$VERSION"
+          git fetch --tags
+          if git tag | grep -q "^${VERSION}$"; then
+            echo "ERROR: Tag $VERSION already exists"
+            exit 1
+          fi
+
+  # ── check ──────────────────────────────────────────────────────────────────
+
+  scalafix:
+    name: Scalafix
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "25"
-          cache: sbt
-      - run: sbt --script-version
-      - run: sbt clean "scalafix --check" test
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'sbt'
+      - run: sbt "scalafix --check"
+
+  archunit:
+    name: ArchUnit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'sbt'
+      - run: sbt "testOnly *ArchUnit*"
+
+  cppcheck:
+    name: cppcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+      - name: Run cppcheck
+        run: |
+          find src/main/native -name "*.cpp" -o -name "*.h" | \
+            xargs cppcheck --error-exitcode=1 --enable=warning,style \
+            --suppressions-list=.cppcheck-suppress
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-tidy
+        run: sudo apt-get install -y clang-tidy
+      - name: Run clang-tidy
+        run: |
+          find src/main/native -name "*.cpp" | \
+            xargs clang-tidy --config-file=.clang-tidy --warnings-as-errors='*' \
+            -- -std=c++17
+
+  doc-completeness:
+    name: JNI API Doc Completeness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run doc completeness check
+        run: bash scripts/check-doc-completeness.sh
+
+  # ── test ───────────────────────────────────────────────────────────────────
+
+  scala-tests:
+    name: Scala Tests (GPU)
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Scala tests
+        run: sbt test
+
+  # ── build ──────────────────────────────────────────────────────────────────
+
+  build-native:
+    name: Build native .so + JAR
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    needs: [scala-tests, scalafix]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: sbt nativeCompile package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: optix-jni-artifacts
+          path: |
+            target/scala-3*/*.jar
+            target/native/x86_64-linux/bin/*.so
+
+  # ── test-built ─────────────────────────────────────────────────────────────
+
+  smoke-tests:
+    name: Smoke Tests (Java + Kotlin)
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    needs: [build-native]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: optix-jni-artifacts
+          path: artifacts/
+      - name: Run Java smoke test
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          cd smoke-tests/java
+          mvn test -Doptix.version=$VERSION \
+            -Doptix.native.path=$(pwd)/../../artifacts/target/native/x86_64-linux/bin
+      - name: Run Kotlin smoke test
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          cd smoke-tests/kotlin
+          ./gradlew test -Poptix.version=$VERSION \
+            -Poptix.native.path=$(pwd)/../../artifacts/target/native/x86_64-linux/bin
+
+  # ── publish ────────────────────────────────────────────────────────────────
+
+  publish:
+    name: Publish to Maven Central + GitHub Release
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    needs: [smoke-tests, build-native]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish to Maven Central
+        run: sbt nativeCompile publishSigned sonatypeBundleRelease
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/scala-3*/*.jar
+            target/native/x86_64-linux/bin/*.so
+          generate_release_notes: false
+          body_path: CHANGELOG.md
