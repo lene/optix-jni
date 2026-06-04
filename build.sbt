@@ -18,22 +18,7 @@ developers := List(
   Developer("lene", "Lene Preuss", "lene.preuss@gmail.com", url("https://github.com/lene"))
 )
 
-// Publication targets (mirrors menger-common setup)
-publishTo := {
-  val base = "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
-  if (isSnapshot.value) Some("GitLab Snapshots" at base)
-  else                  Some("GitLab Releases"  at base)
-}
-
-credentials += Credentials(
-  "GitLab Packages Registry",
-  "gitlab.com",
-  if (sys.env.contains("CI_JOB_TOKEN")) "gitlab-ci-token" else "Private-Token",
-  sys.env.getOrElse(
-    "CI_JOB_TOKEN",
-    sys.env.getOrElse("GITLAB_PAT", sys.env.getOrElse("GITLAB_ACCESS_TOKEN", ""))
-  )
-)
+publishTo := sonatypePublishToBundle.value
 
 sonatypeCredentialHost := "central.sonatype.com"
 publishMavenStyle := true
@@ -41,8 +26,7 @@ crossPaths := false
 
 scalacOptions ++= Seq("-deprecation", "-explain", "-feature", "-Wunused:imports")
 
-resolvers += "GitLab Menger" at
-  "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
+resolvers += Resolver.file("local-ivy", file(Path.userHome + "/.ivy2/local"))(Resolver.ivyStylePatterns)
 
 Compile / semanticdbEnabled := true
 
