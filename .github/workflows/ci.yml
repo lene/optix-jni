@@ -16,5 +16,5 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: sbt
-      - uses: sbt/setup-sbt@v1
+      - run: sbt --script-version
       - run: sbt clean "scalafix --check" test
