@@ -164,5 +164,6 @@ libraryDependencies ++= Seq(
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
   "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.scalatest" %% "scalatest" % "3.2.20" % Test,
-  "org.scalatestplus" %% "scalacheck-1-19" % "3.2.20.0" % Test
+  "org.scalatestplus" %% "scalacheck-1-19" % "3.2.20.0" % Test,
+  "com.tngtech.archunit" % "archunit" % "1.3.0" % Test
 )
