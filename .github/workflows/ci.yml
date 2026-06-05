@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run clang-tidy
         run: |
-          mapfile -t cpp_files < <(find src/main/native -name "*.cpp" -not -path "*/tests/*")
+          mapfile -t cpp_files < <(find src/main/native -name "*.cpp")
           clang-tidy --config-file=.clang-tidy "${cpp_files[@]}" -- -std=c++17
 
   doc-completeness:
