@@ -121,6 +121,8 @@ jobs:
     runs-on: [self-hosted, Linux, X64, nvidia]
     steps:
       - uses: actions/checkout@v4
+      - name: Add CUDA to PATH
+        run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
       - name: Run Scala tests
         run: sbt test
 
@@ -132,6 +134,8 @@ jobs:
     needs: [scala-tests, scalafix]
     steps:
       - uses: actions/checkout@v4
+      - name: Add CUDA to PATH
+        run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
       - name: Build
         run: sbt nativeCompile package
       - uses: actions/upload-artifact@v4

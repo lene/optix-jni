@@ -18,7 +18,11 @@ include(CheckLanguage)
 check_language(CUDA)
 
 if(NOT CMAKE_CUDA_COMPILER)
-  message(FATAL_ERROR "CUDA compiler not found. OptiX JNI requires CUDA Toolkit 12.0+")
+  message(WARNING "CUDA compiler not found — building stub target only (Scala-only CI mode)")
+  add_library(optix_jni SHARED)
+  target_sources(optix_jni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stub_no_cuda.cpp)
+  install(TARGETS optix_jni DESTINATION .)
+  return()
 endif()
 
 # CUDA architectures for NVIDIA GPUs
