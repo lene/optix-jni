@@ -199,11 +199,9 @@ jobs:
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           NATIVE_PATH=$(pwd)/artifacts/native/x86_64-linux/bin
-          echo "Native path: $NATIVE_PATH"
-          ls "$NATIVE_PATH" || echo "WARNING: native path not found"
           cd smoke-tests/kotlin
-          gradle test --info -Poptix.version=$VERSION \
-            -Poptix.native.path=$NATIVE_PATH
+          LD_LIBRARY_PATH="$NATIVE_PATH:$LD_LIBRARY_PATH" gradle test \
+            -Poptix.version=$VERSION -Poptix.native.path=$NATIVE_PATH
 
   # ── publish ────────────────────────────────────────────────────────────────
 
