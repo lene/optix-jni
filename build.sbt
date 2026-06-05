@@ -87,15 +87,24 @@ Compile / resourceGenerators += Def.task {
     }
   }
 
-  // Trigger the native build first so the PTX file exists
-  nativeCompile.value
-  val ptxResources = if (ptxSource.exists()) {
-    val ptxResource = (Compile / resourceManaged).value / "native" / platform / "optix_shaders.ptx"
-    IO.copyFile(ptxSource, ptxResource)
-    log.debug(s"Bundled PTX into managed resources: $ptxResource")
-    Seq(ptxResource)
+  // Trigger the native build first so the PTX file exists.
+  // Skip if CUDA is unavailable (e.g. ubuntu-latest CI runners for Scala-only jobs).
+  val cudaAvailable =
+    sys.env.get("CMAKE_CUDA_COMPILER").isDefined ||
+    sys.process.Process(Seq("sh", "-c", "which nvcc")).! == 0
+  val ptxResources = if (cudaAvailable) {
+    nativeCompile.value
+    if (ptxSource.exists()) {
+      val ptxResource = (Compile / resourceManaged).value / "native" / platform / "optix_shaders.ptx"
+      IO.copyFile(ptxSource, ptxResource)
+      log.debug(s"Bundled PTX into managed resources: $ptxResource")
+      Seq(ptxResource)
+    } else {
+      log.warn(s"PTX file not found after nativeCompile: $ptxSource")
+      Seq.empty
+    }
   } else {
-    log.warn(s"PTX file not found after nativeCompile: $ptxSource")
+    log.warn("CUDA not available — skipping nativeCompile and PTX bundling")
     Seq.empty
   }
 

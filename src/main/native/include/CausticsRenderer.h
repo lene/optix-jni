@@ -49,7 +49,7 @@ private:
         const SceneParameters& scene,
         int width,
         int height,
-        BaseParams& params
+        const BaseParams& params
     );
 };
 

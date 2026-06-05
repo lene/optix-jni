@@ -191,7 +191,7 @@ void CausticsRenderer::buildGrid(
     const SceneParameters& scene,
     int width,
     int height,
-    BaseParams& params
+    const BaseParams& params
 ) {
     // Step 1: Zero grid counts
     buffer_manager.zeroCausticsGridCounts();

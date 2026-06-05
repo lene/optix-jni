@@ -1849,7 +1849,7 @@ int OptiXWrapper::addTriangleMeshInstance(
     // Use the latest mesh entry
     size_t mesh_index =
         impl->triangle_meshes.size() - 1;
-    auto& mesh = impl->triangle_meshes[mesh_index];
+    const auto& mesh = impl->triangle_meshes[mesh_index];
 
     // Auto-build triangle GAS if not built yet
     if (!mesh.gas_built) {
@@ -2041,7 +2041,7 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     // Use the most-recent triangle mesh as the leaf cube. Caller is responsible
     // for uploading a unit cube via setTriangleMesh before this call.
     size_t mesh_index = impl->triangle_meshes.size() - 1;
-    auto& mesh = impl->triangle_meshes[mesh_index];
+    const auto& mesh = impl->triangle_meshes[mesh_index];
     if (!mesh.gas_built) {
         buildTriangleMeshGAS(mesh_index);
     }
@@ -2184,7 +2184,7 @@ int OptiXWrapper::addCylinderInstance(
     inst.gas_handle = gas_data.handle;
 
     // Cylinders use identity transform since geometry is already positioned via p0/p1
-    float identity_transform[12] = {
+    const float identity_transform[12] = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f
@@ -2308,7 +2308,7 @@ int OptiXWrapper::addConeInstance(
     inst.geometry_type = GEOMETRY_TYPE_CONE;
     inst.gas_handle    = gas_data.handle;
 
-    float identity_transform[12] = {
+    const float identity_transform[12] = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f
@@ -2433,7 +2433,7 @@ int OptiXWrapper::addPlaneInstance(
     inst.geometry_type = GEOMETRY_TYPE_PLANE;
     inst.gas_handle    = gas_data.handle;
 
-    float identity_transform[12] = {
+    const float identity_transform[12] = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f
@@ -2530,7 +2530,7 @@ int OptiXWrapper::addMenger4DInstance(
     inst.geometry_type = GEOMETRY_TYPE_MENGER4D;
     inst.gas_handle    = gas_data.handle;
 
-    float identity_transform[12] = {
+    const float identity_transform[12] = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f
@@ -2652,7 +2652,7 @@ int OptiXWrapper::addSierpinski4DInstance(
     inst.geometry_type = GEOMETRY_TYPE_SIERPINSKI4D;
     inst.gas_handle    = gas_data.handle;
 
-    float identity_transform[12] = {
+    const float identity_transform[12] = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f
@@ -2773,7 +2773,7 @@ int OptiXWrapper::addHexadecachoron4DInstance(
     inst.geometry_type = GEOMETRY_TYPE_HEXADECACHORON4D;
     inst.gas_handle    = gas_data.handle;
 
-    float identity_transform[12] = {
+    const float identity_transform[12] = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f

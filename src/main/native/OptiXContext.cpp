@@ -27,7 +27,7 @@ std::string OptiXContext::getDefaultCachePath() {
 
     // Fallback to getpwuid for Docker/CI environments where env vars aren't set
     if (user == nullptr) {
-        struct passwd* pw = getpwuid(getuid());
+        const struct passwd* pw = getpwuid(getuid());
         if (pw != nullptr) {
             user = pw->pw_name;
         }

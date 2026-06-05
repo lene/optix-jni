@@ -55,7 +55,7 @@ static void throwException(JNIEnv* env, const char* className, const char* msg) 
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
     try {
         // Check if already initialized (defensive check - Scala layer should prevent this)
-        OptiXWrapper* existing = getWrapper(env, obj);
+        const OptiXWrapper* existing = getWrapper(env, obj);
         if (existing != nullptr) {
             // Already initialized at native level - this shouldn't happen if Scala
             // idempotence layer is working correctly, but we handle it gracefully
@@ -824,7 +824,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearTriangleMesh
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_hasTriangleMesh(
     JNIEnv* env, jobject obj) {
     try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        const OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
             return wrapper->hasTriangleMesh() ? JNI_TRUE : JNI_FALSE;
         }
@@ -1444,7 +1444,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstances
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanceCount(
     JNIEnv* env, jobject obj) {
     try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        const OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
             return wrapper->getInstanceCount();
         }
@@ -1461,7 +1461,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanceCount(
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isIASMode(
     JNIEnv* env, jobject obj) {
     try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        const OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
             return wrapper->isIASMode() ? JNI_TRUE : JNI_FALSE;
         }

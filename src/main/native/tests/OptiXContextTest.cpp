@@ -445,7 +445,9 @@ TEST(CausticsDataTest, CausticsParamsContainsExpectedFields) {
     EXPECT_EQ(params.iterations, 10);
     EXPECT_FLOAT_EQ(params.initial_radius, 0.1f);
     EXPECT_FLOAT_EQ(params.alpha, 0.7f);
+    EXPECT_EQ(params.current_iteration, 0u);
     EXPECT_EQ(params.grid_resolution, 128u);
+    EXPECT_EQ(params.total_photons_traced, 0u);
 }
 
 TEST(CausticsDataTest, DefaultConstantsAreReasonable) {
