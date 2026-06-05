@@ -166,6 +166,17 @@ jobs:
               | tar -xz -C /tmp
             echo "/tmp/apache-maven-${MVN_VERSION}/bin" >> $GITHUB_PATH
           fi
+      - name: Install built JAR to local Maven repo
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          JAR=$(find artifacts -name "optix-jni*.jar" ! -name "*sources*" ! -name "*javadoc*" | head -1)
+          mvn install:install-file \
+            -Dfile="$JAR" \
+            -DgroupId=io.github.lene \
+            -DartifactId=optix-jni \
+            -Dversion="$VERSION" \
+            -Dpackaging=jar \
+            -DgeneratePom=true
       - name: Run Java smoke test
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
