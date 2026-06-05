@@ -6,6 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 class SmokeTest {
     @Test
     void nativeLibraryLoads() {
-        assertDoesNotThrow(() -> System.loadLibrary("optix_jni"));
+        assertDoesNotThrow(() -> System.loadLibrary("optixjni"));
     }
 }

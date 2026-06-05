@@ -14,5 +14,5 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
-    systemProperty("java.library.path", optixNativePath)
+    jvmArgs("-Djava.library.path=$optixNativePath")
 }

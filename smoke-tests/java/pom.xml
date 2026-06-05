@@ -28,9 +28,7 @@
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
         <configuration>
-          <systemPropertyVariables>
-            <java.library.path>${optix.native.path}</java.library.path>
-          </systemPropertyVariables>
+          <argLine>-Djava.library.path=${optix.native.path}</argLine>
         </configuration>
       </plugin>
     </plugins>
