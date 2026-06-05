@@ -97,8 +97,7 @@ Compile / resourceGenerators += Def.task {
     log.debug(s"Bundled PTX into managed resources: $ptxResource")
     Seq(ptxResource)
   } else {
-    log.debug(s"PTX file not found (stub build or not yet compiled): $ptxSource")
-    Seq.empty
+    sys.error(s"Stub build detected: PTX not found at $ptxSource. CUDA/OptiX required to build a publishable artifact. Ensure CUDA_HOME is set and nvcc is on PATH.")
   }
 
   ptxResources ++ nativeApiResources

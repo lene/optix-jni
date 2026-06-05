@@ -19,9 +19,9 @@ check_language(CUDA)
 
 if(NOT CMAKE_CUDA_COMPILER)
   message(WARNING "CUDA compiler not found — building stub target only (Scala-only CI mode)")
-  add_library(optix_jni SHARED)
-  target_sources(optix_jni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stub_no_cuda.cpp)
-  install(TARGETS optix_jni DESTINATION .)
+  add_library(optixjni SHARED)
+  target_sources(optixjni PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/stub_no_cuda.cpp)
+  install(TARGETS optixjni DESTINATION .)
   return()
 endif()
 
