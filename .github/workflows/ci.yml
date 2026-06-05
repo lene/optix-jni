@@ -169,7 +169,14 @@ jobs:
       - name: Install built JAR to local Maven repo
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
-          JAR=$(find artifacts -name "optix-jni*.jar" ! -name "*sources*" ! -name "*javadoc*" | head -1)
+          echo "Artifacts found:"
+          find artifacts -type f | sort
+          JAR=$(find artifacts -name "*.jar" ! -name "*sources*" ! -name "*javadoc*" | head -1)
+          if [ -z "$JAR" ]; then
+            echo "ERROR: No JAR found in artifacts/"
+            exit 1
+          fi
+          echo "Installing: $JAR as optix-jni:$VERSION"
           mvn install:install-file \
             -Dfile="$JAR" \
             -DgroupId=io.github.lene \
