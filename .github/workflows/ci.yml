@@ -190,13 +190,13 @@ jobs:
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           cd smoke-tests/java
           mvn test -Doptix.version=$VERSION \
-            -Doptix.native.path=$(pwd)/../../artifacts/target/native/x86_64-linux/bin
+            -Doptix.native.path=$(pwd)/../../artifacts/native/x86_64-linux/bin
       - name: Run Kotlin smoke test
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           cd smoke-tests/kotlin
           ./gradlew test -Poptix.version=$VERSION \
-            -Poptix.native.path=$(pwd)/../../artifacts/target/native/x86_64-linux/bin
+            -Poptix.native.path=$(pwd)/../../artifacts/native/x86_64-linux/bin
 
   # ── publish ────────────────────────────────────────────────────────────────
 
