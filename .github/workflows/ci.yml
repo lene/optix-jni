@@ -142,6 +142,7 @@ jobs:
         with:
           name: optix-jni-artifacts
           path: |
+            target/*.jar
             target/scala-3*/*.jar
             target/native/x86_64-linux/bin/*.so
 
@@ -219,6 +220,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: |
+            target/*.jar
             target/scala-3*/*.jar
             target/native/x86_64-linux/bin/*.so
           generate_release_notes: false
