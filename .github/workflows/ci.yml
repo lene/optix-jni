@@ -191,11 +191,15 @@ jobs:
           cd smoke-tests/java
           mvn test -Doptix.version=$VERSION \
             -Doptix.native.path=$(pwd)/../../artifacts/native/x86_64-linux/bin
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
       - name: Run Kotlin smoke test
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           cd smoke-tests/kotlin
-          ./gradlew test -Poptix.version=$VERSION \
+          gradle test -Poptix.version=$VERSION \
             -Poptix.native.path=$(pwd)/../../artifacts/native/x86_64-linux/bin
 
   # ── publish ────────────────────────────────────────────────────────────────
