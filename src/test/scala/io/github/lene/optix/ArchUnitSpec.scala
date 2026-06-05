@@ -13,8 +13,8 @@ class ArchUnitSpec extends AnyFlatSpec {
     slices()
       .matching("io.github.lene.optix.(*)..")
       .should()
-      .allowEmptyShould(true)
       .beFreeOfCycles()
+      .allowEmptyShould(true)
       .check(classes)
   }
 }
