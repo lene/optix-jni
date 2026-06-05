@@ -157,6 +157,9 @@ jobs:
         with:
           name: optix-jni-artifacts
           path: artifacts/
+      - name: Install Maven
+        run: |
+          sudo apt-get install -y maven
       - name: Run Java smoke test
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
@@ -222,6 +225,8 @@ jobs:
           done
           echo "ERROR: Artifact not available after 10 minutes"
           exit 1
+      - name: Install Maven
+        run: sudo apt-get install -y maven
       - name: Download native library from GitHub Release
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
