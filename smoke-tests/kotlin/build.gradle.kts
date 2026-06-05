@@ -2,7 +2,10 @@ plugins {
     kotlin("jvm") version "2.0.0"
 }
 
-repositories { mavenCentral() }
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
 
 val optixVersion: String by project
 val optixNativePath: String by project
