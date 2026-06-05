@@ -90,10 +90,19 @@ jobs:
     runs-on: [self-hosted, Linux, X64, nvidia]
     steps:
       - uses: actions/checkout@v4
+      - name: Configure CMake (fetches FetchContent deps, generates compile_commands.json)
+        run: |
+          cmake -B target/cmake-clang-check \
+            -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -Wno-dev --log-level=WARNING \
+            src/main/native
       - name: Run clang-tidy
         run: |
           mapfile -t cpp_files < <(find src/main/native -name "*.cpp")
-          clang-tidy --config-file=.clang-tidy "${cpp_files[@]}" -- -std=c++17
+          clang-tidy -p target/cmake-clang-check \
+            --config-file=.clang-tidy \
+            "${cpp_files[@]}"
 
   doc-completeness:
     name: JNI API Doc Completeness
