@@ -176,12 +176,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Import GPG key
+        run: echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
       - name: Publish to Maven Central
         run: sbt nativeCompile publishSigned sonatypeBundleRelease
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -189,3 +191,49 @@ jobs:
             target/native/x86_64-linux/bin/*.so
           generate_release_notes: false
           body_path: CHANGELOG.md
+
+  # ── post-publish verification ───────────────────────────────────────────────
+
+  post-publish-smoke:
+    name: Post-Publish Smoke Test (Maven Central)
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    needs: [publish]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for Maven Central sync
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          URL="https://repo1.maven.org/maven2/io/github/lene/optix-jni/${VERSION}/optix-jni-${VERSION}.pom"
+          for i in $(seq 1 20); do
+            if curl -sf "$URL" > /dev/null 2>&1; then
+              echo "Artifact available on Maven Central"
+              exit 0
+            fi
+            echo "Not yet available (attempt $i/20), waiting 30s..."
+            sleep 30
+          done
+          echo "ERROR: Artifact not available after 10 minutes"
+          exit 1
+      - name: Download native library from GitHub Release
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          mkdir -p /tmp/optix-post-publish-native
+          gh release download $VERSION --repo lene/optix-jni \
+            --pattern "*.so" --dir /tmp/optix-post-publish-native
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Run Java smoke test against published artifact
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          cd smoke-tests/java
+          mvn test -Doptix.version=$VERSION \
+            -Doptix.native.path=/tmp/optix-post-publish-native
+      - name: Run Kotlin smoke test against published artifact
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          cd smoke-tests/kotlin
+          ./gradlew test -Poptix.version=$VERSION \
+            -Poptix.native.path=/tmp/optix-post-publish-native
