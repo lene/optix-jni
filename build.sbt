@@ -97,11 +97,21 @@ Compile / resourceGenerators += Def.task {
     log.debug(s"Bundled PTX into managed resources: $ptxResource")
     Seq(ptxResource)
   } else {
-    sys.error(s"Stub build detected: PTX not found at $ptxSource. CUDA/OptiX required to build a publishable artifact. Ensure CUDA_HOME is set and nvcc is on PATH.")
+    log.warn(s"No PTX at $ptxSource — stub build or CUDA unavailable. PTX will not be bundled.")
+    Seq.empty
   }
 
   ptxResources ++ nativeApiResources
 }.taskValue
+
+// Safety gate: abort packaging if PTX is absent (indicates stub build).
+// Fires during `sbt package` / `sbt publish` but NOT during `sbt test` or `sbt testOnly`.
+Compile / packageBin := {
+  val ptxSource = target.value / "native" / "x86_64-linux" / "bin" / "optix_shaders.ptx"
+  if (!ptxSource.exists())
+    sys.error(s"Stub build detected: PTX not found at $ptxSource. CUDA/OptiX required. Ensure CUDA_HOME is set and nvcc is on PATH.")
+  (Compile / packageBin).value
+}
 
 // Native test task to run C++ Google Test suite
 lazy val nativeTest = taskKey[Unit]("Run native C++ tests")
