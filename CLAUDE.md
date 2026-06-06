@@ -16,6 +16,23 @@ This is a JNI bridge exposing NVIDIA OptiX ray tracing to JVM languages (Scala, 
 
 ---
 
+## Git hooks
+
+Hooks live in `.git_hooks/` (tracked). On a fresh clone, activate them with:
+
+```bash
+git config core.hooksPath .git_hooks
+```
+
+| Hook | When | Checks |
+|------|------|--------|
+| pre-commit | on `git commit` | compile, tests (GPU tests skip via `assume()` if no GPU), scalafix |
+| pre-push | on `git push` | compile, tests, scalafix, cppcheck (if installed) |
+
+CUDA warning on non-GPU machine is expected and non-fatal. Publishing stubs is blocked by `Compile/packageBin` in `build.sbt`.
+
+---
+
 ## Branch and PR workflow
 
 ```bash
@@ -36,7 +53,7 @@ CI runs on every PR. All jobs must pass before merging.
 | Real | nvcc on PATH, OptiX SDK present | `liboptixjni.so` (~1.2 MB) + `optix_shaders.ptx` (~3.3 MB) |
 | Stub | No nvcc | `liboptixjni.so` (~14 KB stub), no PTX |
 
-`build.sbt` aborts `sbt package` if PTX is absent (prevents stub publish). The stub is intentional for jobs like ArchUnit that test non-GPU concerns.
+`build.sbt` aborts `sbt package` if PTX is absent (prevents stub publish).
 
 ## CI runners
 
@@ -49,14 +66,23 @@ All jobs requiring native compilation must run on the nvidia self-hosted runner 
 
 ---
 
+## Maven Central incident protocol
+
+Artifacts on Maven Central are **permanent — cannot be deleted**. If a defective artifact is published:
+1. Open an issue documenting the defect
+2. Fix the defect on a branch, bump patch version, publish new version
+3. Add `**Note:** X.Y.Z is defective — use X.Y.Z+1` to CHANGELOG.md
+
+---
+
 ## Common commands
 
 ```bash
 sbt compile                        # All modules
-sbt test                           # Scala + C++ tests
+sbt test                           # Scala + C++ tests (GPU tests skip if no GPU)
 sbt "testOnly ClassName"           # Specific test
 sbt nativeCompile                  # C++/CUDA native build
-sbt package                        # Build jar (aborts if PTX absent)
+sbt package                        # Build jar (aborts if PTX absent — stub guard)
 sbt publishLocal                   # Local ivy publish (aborts if PTX absent)
 ```
 

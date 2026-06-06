@@ -1,0 +1,94 @@
+#!/bin/sh
+
+RED_TEXT='\e[38;5;196m'
+GREEN_TEXT='\e[38;5;46m'
+YELLOW_TEXT='\e[38;5;226m'
+RESET_TEXT='\e[0m'
+
+# Detect changed files vs remote
+CHANGED_FILES=""
+while read local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    exit 0  # deleting branch, nothing to check
+  fi
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    BASE=$(git merge-base origin/main "$local_sha" 2>/dev/null || git rev-list --max-parents=0 "$local_sha")
+  else
+    BASE="$remote_sha"
+  fi
+  CHANGED_FILES="$CHANGED_FILES$(git diff --name-only "$BASE" "$local_sha")
+"
+done
+
+HAS_SCALA=$(echo "$CHANGED_FILES" | grep -cE '\.(scala|sbt)$|^project/')
+HAS_NATIVE=$(echo "$CHANGED_FILES" | grep -cE 'src/main/native/.*\.(cpp|cu|cuh|h)$|CMakeLists\.txt')
+
+if [ "$HAS_SCALA" -eq 0 ] && [ "$HAS_NATIVE" -eq 0 ]; then
+  echo "No code changes — skipping pre-push checks."
+  exit 0
+fi
+
+STATUS=0
+
+# ---------------------------------------------------------------------------
+# CUDA/OptiX environment (warn only — stub guard in build.sbt prevents publish)
+# ---------------------------------------------------------------------------
+echo "=== Environment ==="
+if [ -n "$CUDA_HOME" ] && [ -x "$CUDA_HOME/bin/nvcc" ]; then
+  echo "CUDA_HOME: ${GREEN_TEXT}$CUDA_HOME${RESET_TEXT}"
+  if [ -n "$OPTIX_ROOT" ] && [ -f "$OPTIX_ROOT/include/optix.h" ]; then
+    echo "OPTIX_ROOT: ${GREEN_TEXT}$OPTIX_ROOT${RESET_TEXT}"
+  else
+    echo "${YELLOW_TEXT}OPTIX_ROOT: not set or incomplete${RESET_TEXT}"
+  fi
+else
+  echo "${YELLOW_TEXT}CUDA not available — native build will produce stub. Publishing is blocked by build.sbt.${RESET_TEXT}"
+fi
+
+# ---------------------------------------------------------------------------
+# Compile
+# ---------------------------------------------------------------------------
+echo "=== Compile ==="
+sbt compile || STATUS=1
+
+# ---------------------------------------------------------------------------
+# Tests (GPU tests auto-skip via assume() when GPU unavailable)
+# ---------------------------------------------------------------------------
+echo "=== Tests ==="
+sbt test 2>&1 | tee /tmp/optix-jni-pre-push-test.log || STATUS=1
+if [ $STATUS -gt 0 ]; then
+  echo "Tests: ${RED_TEXT}FAILED${RESET_TEXT} (see /tmp/optix-jni-pre-push-test.log)"
+else
+  echo "Tests: ${GREEN_TEXT}OK${RESET_TEXT}"
+fi
+
+# ---------------------------------------------------------------------------
+# Scalafix
+# ---------------------------------------------------------------------------
+echo "=== Scalafix ==="
+sbt "scalafix --check" || STATUS=1
+if [ $STATUS -gt 0 ]; then
+  echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
+else
+  echo "Scalafix: ${GREEN_TEXT}OK${RESET_TEXT}"
+fi
+
+# ---------------------------------------------------------------------------
+# cppcheck (native changes only, requires cppcheck installed)
+# ---------------------------------------------------------------------------
+if [ "$HAS_NATIVE" -gt 0 ] && command -v cppcheck > /dev/null 2>&1; then
+  echo "=== cppcheck ==="
+  find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
+    xargs cppcheck --error-exitcode=1 --enable=warning,style \
+    --language=c++ \
+    --suppressions-list=.cppcheck-suppress 2>&1 || STATUS=1
+  if [ $STATUS -gt 0 ]; then
+    echo "cppcheck: ${RED_TEXT}FAILED${RESET_TEXT}"
+  else
+    echo "cppcheck: ${GREEN_TEXT}OK${RESET_TEXT}"
+  fi
+elif [ "$HAS_NATIVE" -gt 0 ]; then
+  echo "${YELLOW_TEXT}cppcheck not installed — skipping (runs in CI)${RESET_TEXT}"
+fi
+
+exit $STATUS
