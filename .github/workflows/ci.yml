@@ -277,9 +277,14 @@ jobs:
           cd smoke-tests/java
           mvn test -Doptix.version=$VERSION \
             -Doptix.native.path=/tmp/optix-post-publish-native
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
       - name: Run Kotlin smoke test against published artifact
         run: |
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           cd smoke-tests/kotlin
-          ./gradlew test -Poptix.version=$VERSION \
+          LD_LIBRARY_PATH="/tmp/optix-post-publish-native:$LD_LIBRARY_PATH" gradle test \
+            -Poptix.version=$VERSION \
             -Poptix.native.path=/tmp/optix-post-publish-native
