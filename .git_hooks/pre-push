@@ -46,6 +46,35 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Changelog & version
+# ---------------------------------------------------------------------------
+echo "=== Changelog & Version ==="
+VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+if [ -z "$VERSION" ]; then
+  echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (cannot read version from build.sbt)"
+  STATUS=1
+else
+  MAIN_VERSION=$(git show origin/main:build.sbt 2>/dev/null | grep 'version :=' | cut -d'"' -f2)
+  VERSION_BUMPED=0
+  [ "$VERSION" != "$MAIN_VERSION" ] && VERSION_BUMPED=1
+  if ! grep -qF "## [$VERSION]" CHANGELOG.md; then
+    echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (missing '## [$VERSION]' entry)"
+    STATUS=1
+  elif ! grep -qF "[$VERSION]:" CHANGELOG.md; then
+    echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (missing link '[$VERSION]:' at bottom)"
+    STATUS=1
+  elif [ "$VERSION_BUMPED" -eq 1 ] && ! grep -qF "## [$VERSION] - $(date +%Y-%m-%d)" CHANGELOG.md; then
+    echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (new version $VERSION needs today's date $(date +%Y-%m-%d))"
+    STATUS=1
+  elif [ "$VERSION_BUMPED" -eq 1 ] && git tag | grep -q "^${VERSION}$"; then
+    echo "Version: ${RED_TEXT}FAILED${RESET_TEXT} (tag $VERSION already exists — bump version)"
+    STATUS=1
+  else
+    echo "Changelog & Version: ${GREEN_TEXT}OK${RESET_TEXT}"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Compile
 # ---------------------------------------------------------------------------
 echo "=== Compile ==="
