@@ -1,0 +1,77 @@
+#!/bin/sh
+
+RED_TEXT='\e[38;5;196m'
+GREEN_TEXT='\e[38;5;46m'
+YELLOW_TEXT='\e[38;5;226m'
+RESET_TEXT='\e[0m'
+
+STAGED=$(git diff --cached --name-only)
+HAS_SCALA=$(echo "$STAGED" | grep -cE '\.(scala|sbt)$|^project/')
+HAS_NATIVE=$(echo "$STAGED" | grep -cE 'src/main/native/.*\.(cpp|cu|cuh|h)$|CMakeLists\.txt')
+
+if [ "$HAS_SCALA" -eq 0 ] && [ "$HAS_NATIVE" -eq 0 ]; then
+  echo "No code changes staged — skipping."
+  exit 0
+fi
+
+STATUS=0
+
+# ---------------------------------------------------------------------------
+# CUDA/OptiX environment check (native changes only)
+# Warning only — stub build is valid for non-GPU machines.
+# The packageBin guard in build.sbt blocks publishing stubs.
+# ---------------------------------------------------------------------------
+if [ "$HAS_NATIVE" -gt 0 ]; then
+  echo "=== CUDA Environment ==="
+  if [ -z "$CUDA_HOME" ] || [ ! -x "$CUDA_HOME/bin/nvcc" ]; then
+    echo "${YELLOW_TEXT}Warning: CUDA not available — native build will produce stub (liboptixjni.so ~14KB, no PTX)${RESET_TEXT}"
+    echo "${YELLOW_TEXT}This is fine for non-GPU machines. Publishing stubs is blocked by build.sbt.${RESET_TEXT}"
+  else
+    echo "CUDA_HOME: ${GREEN_TEXT}$CUDA_HOME${RESET_TEXT}"
+    if [ -n "$OPTIX_ROOT" ] && [ -f "$OPTIX_ROOT/include/optix.h" ]; then
+      echo "OPTIX_ROOT: ${GREEN_TEXT}$OPTIX_ROOT${RESET_TEXT}"
+    else
+      echo "${YELLOW_TEXT}Warning: OPTIX_ROOT not set or optix.h not found — OptiX features unavailable${RESET_TEXT}"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Compile
+# ---------------------------------------------------------------------------
+echo "=== Compile ==="
+sbt compile || STATUS=1
+
+# ---------------------------------------------------------------------------
+# Tests (GPU tests auto-skip via assume() when GPU unavailable)
+# ---------------------------------------------------------------------------
+echo "=== Tests ==="
+sbt test --warn || STATUS=1
+if [ $STATUS -gt 0 ]; then
+  echo "Tests: ${RED_TEXT}FAILED${RESET_TEXT}"
+else
+  echo "Tests: ${GREEN_TEXT}OK${RESET_TEXT}"
+fi
+
+# ---------------------------------------------------------------------------
+# Scalafix (Scala changes only)
+# ---------------------------------------------------------------------------
+if [ "$HAS_SCALA" -gt 0 ]; then
+  echo "=== Scalafix ==="
+  sbt "scalafix --check" --warn || STATUS=1
+  if [ $STATUS -gt 0 ]; then
+    echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
+  else
+    echo "Scalafix: ${GREEN_TEXT}OK${RESET_TEXT}"
+  fi
+fi
+
+if [ $STATUS -gt 0 ]; then
+  commit_msg=$(git log --oneline 2>/dev/null | head -n 1 | cut -d' ' -f 2-)
+  if echo "$commit_msg" | grep -q '^WIP:'; then
+    echo >&2 "WIP commit — proceeding despite failures"
+    STATUS=0
+  fi
+fi
+
+exit $STATUS
