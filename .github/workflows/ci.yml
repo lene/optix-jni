@@ -273,7 +273,7 @@ jobs:
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           mkdir -p /tmp/optix-post-publish-native
           gh release download $VERSION --repo lene/optix-jni \
-            --pattern "*.so" --dir /tmp/optix-post-publish-native
+            --pattern "*.so" --dir /tmp/optix-post-publish-native --clobber
         env:
           GH_TOKEN: ${{ github.token }}
       - name: Run Java smoke test against published artifact
