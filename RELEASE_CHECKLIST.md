@@ -53,9 +53,9 @@ This checklist tracks items to address before releasing optix-jni as a standalon
 
 ## CI/CD
 
-- [ ] Standalone CI pipeline for optix-jni
-- [ ] Publish to Maven Central or other repository
-- [ ] Automated release process
+- [x] Standalone CI pipeline for optix-jni
+- [x] Publish to Maven Central
+- [x] Automated release process
 
 ---
 

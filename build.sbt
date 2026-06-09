@@ -1,4 +1,5 @@
 import com.github.sbt.jni.build.CMakeWithoutVersionBug
+import xerial.sbt.Sonatype.sonatypeCentralHost
 
 name := "optix-jni"
 version := "0.1.0"
@@ -18,33 +19,22 @@ developers := List(
   Developer("lene", "Lene Preuss", "lene.preuss@gmail.com", url("https://github.com/lene"))
 )
 
-// Publication targets (mirrors menger-common setup)
-publishTo := {
-  val base = "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
-  if (isSnapshot.value) Some("GitLab Snapshots" at base)
-  else                  Some("GitLab Releases"  at base)
-}
-
-credentials += Credentials(
-  "GitLab Packages Registry",
-  "gitlab.com",
-  if (sys.env.contains("CI_JOB_TOKEN")) "gitlab-ci-token" else "Private-Token",
-  sys.env.getOrElse(
-    "CI_JOB_TOKEN",
-    sys.env.getOrElse("GITLAB_PAT", sys.env.getOrElse("GITLAB_ACCESS_TOKEN", ""))
-  )
-)
-
-sonatypeCredentialHost := "central.sonatype.com"
+sonatypeCredentialHost := sonatypeCentralHost
+publishTo := sonatypePublishToBundle.value
 publishMavenStyle := true
 crossPaths := false
+pomIncludeRepository := { _ => false }
 
 scalacOptions ++= Seq("-deprecation", "-explain", "-feature", "-Wunused:imports")
-
-resolvers += "GitLab Menger" at
-  "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
+Compile / doc / scalacOptions := (Compile / scalacOptions).value.filterNot(
+  _.startsWith("-Wunused")
+)
 
 Compile / semanticdbEnabled := true
+
+coverageMinimumStmtTotal := 60
+coverageFailOnMinimum := true
+coverageHighlighting := true
 
 Compile / wartremoverErrors ++= Seq(
   Wart.Var,

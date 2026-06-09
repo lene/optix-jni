@@ -8,22 +8,12 @@ This module provides JNI bindings for NVIDIA OptiX ray tracing API.
 It depends on `menger-common` for shared scene types such as `Color`, `Vector`,
 `ImageSize`, and `Material`.
 
-Current test publication target: GitLab Package Registry.
+Publication target: Maven Central.
 
 ### sbt
 
 ```scala
 ThisBuild / scalaVersion := "3.8.3"
-
-resolvers += "GitLab Menger" at
-  "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
-
-credentials += Credentials(
-  "GitLab Packages Registry",
-  "gitlab.com",
-  "Private-Token",
-  sys.env("GITLAB_PAT")
-)
 
 libraryDependencies ++= Seq(
   "io.github.lene" %% "menger-common" % "0.1.0",
@@ -31,19 +21,9 @@ libraryDependencies ++= Seq(
 )
 ```
 
-In GitLab CI, use username `gitlab-ci-token` with `CI_JOB_TOKEN` instead of a
-personal access token.
-
 ### Maven
 
 ```xml
-<repositories>
-  <repository>
-    <id>gitlab-menger</id>
-    <url>https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven</url>
-  </repository>
-</repositories>
-
 <dependencies>
   <dependency>
     <groupId>io.github.lene</groupId>
@@ -58,23 +38,11 @@ personal access token.
 </dependencies>
 ```
 
-Configure Maven credentials for repository id `gitlab-menger` in `settings.xml`.
-For GitLab Package Registry, authenticate with a private token or CI job token.
-
 ### Gradle Kotlin DSL
 
 ```kotlin
 repositories {
-    maven {
-        url = uri("https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven")
-        credentials(HttpHeaderCredentials::class) {
-            name = "Private-Token"
-            value = System.getenv("GITLAB_PAT")
-        }
-        authentication {
-            create<HttpHeaderAuthentication>("header")
-        }
-    }
+    mavenCentral()
 }
 
 dependencies {
@@ -162,9 +130,43 @@ finally
 
 ## CI Configuration
 
-### Docker Image
+GitHub Actions runs on self-hosted Linux x64 NVIDIA runners.
 
-The CI uses a pre-built Docker image based on NVIDIA's official CUDA image with OptiX SDK, Java 25, and sbt pre-installed. This avoids 15-20 minutes of installation time on every job run.
+- Every branch push and every pull request runs `quality` and `coverage`.
+- `quality` checks the sbt launcher, Scalafix, native C++ tests, Scala/GPU tests,
+  packaging, and Scaladoc via `sbt clean "scalafix --check" test package doc`.
+- `coverage` runs `sbt clean coverage test coverageReport`, then enforces the
+  repository coverage policy with `scripts/check-coverage-policy.sh`.
+- Pushes to `main` run the release gate after quality and coverage. The gate
+  finds the merged PR associated with the pushed commit. If the PR title contains
+  `NORELEASE`, release tagging and publication are skipped. Otherwise the gate
+  requires a non-snapshot version whose tag is not already present, then creates
+  tag `${version}`.
+- Release tags publish to Maven Central after verifying that the tag is a
+  semantic release tag and that the tagged commit is reachable from `origin/main`.
+
+Maven Central publishing expects GitHub secrets `SONATYPE_USERNAME`,
+`SONATYPE_PASSWORD`, `PGP_SECRET`, and `PGP_PASSPHRASE`. `PGP_SECRET` is a
+base64-encoded private GPG key.
+
+Install the local pre-push hook with:
+
+```bash
+git config core.hooksPath .git_hooks
+```
+
+The hook writes `/tmp/optix-jni-pre-push.log` and runs the local gate:
+version policy, sbt launcher check, quality/test/package/doc, coverage report,
+and coverage policy.
+
+### Legacy Docker Image Maintenance
+
+The Docker image notes below are legacy GitLab-runner image maintenance docs.
+They are not normal GitHub Actions CI jobs and are only relevant when maintaining
+old GitLab GPU runner images.
+
+The image is based on NVIDIA's official CUDA image with OptiX SDK, Java 25, and
+sbt pre-installed.
 
 **Image Versioning:**
 
@@ -174,11 +176,13 @@ Images are tagged with version numbers of all pre-installed components:
 - The `latest` tag always points to the newest stable version
 - Scala version is NOT in the tag (managed by sbt from build.sbt at runtime)
 
-### GitLab Runner Setup
+### Legacy GitLab Runner Setup
 
-**IMPORTANT**: The OptiX JNI CI tests require a GitLab Runner with GPU support. The Docker image alone is not sufficient - the runner itself must be configured to expose GPU access to containers.
+The old GitLab runner setup required GPU support. The Docker image alone was not
+sufficient because the runner itself had to expose GPU access to containers.
 
-See [RUNNER_SETUP.md](RUNNER_SETUP.md) for complete instructions on configuring a GitLab Runner with NVIDIA GPU support.
+See [RUNNER_SETUP.md](RUNNER_SETUP.md) for archived instructions on configuring a
+GitLab Runner with NVIDIA GPU support.
 
 ### Building and Pushing the Docker Image
 
@@ -204,7 +208,7 @@ docker push registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION
 docker push registry.gitlab.com/lilacashes/menger/optix-cuda:latest
 ```
 
-**After pushing a new version**, update `OPTIX_DOCKER_VERSION` in `.gitlab-ci.yml` to match.
+These images are not referenced by the active GitHub Actions workflow.
 
 #### Building the CUDA 13 variant
 
@@ -220,7 +224,7 @@ docker build --build-arg CUDA_VERSION=13.2.0 \
 docker push registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION13
 ```
 
-After pushing, update `OPTIX_DOCKER_VERSION_CUDA13` in `.gitlab-ci.yml` if the tag changed.
+These images are not referenced by the active GitHub Actions workflow.
 
 ### Updating the Image
 
@@ -228,9 +232,9 @@ When you need to update components (e.g., new CUDA/Java/sbt version):
 
 1. Edit `Dockerfile` (update FROM line, version numbers)
 2. Update version tag in build commands above
-3. Update `OPTIX_DOCKER_VERSION` in `.gitlab-ci.yml`
+3. Keep local image tags and documentation in sync
 4. Rebuild and push both tags
-5. The CI will automatically use the new image on the next run
+5. Test the image manually on the legacy runner before relying on it
 
 **Layer optimization:** The image uses NVIDIA's official CUDA base image and separates components into distinct layers. When upgrading:
 - Only Java: Only rebuild/push Java + sbt layers (~500MB)

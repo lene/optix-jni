@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+log_file="${OPTIX_JNI_PRE_PUSH_LOG:-/tmp/optix-jni-pre-push.log}"
+: > "$log_file"
+exec > >(tee -a "$log_file") 2>&1
+
+export __GL_THREADED_OPTIMIZATIONS="${__GL_THREADED_OPTIMIZATIONS:-0}"
+
+echo "=== OptiX JNI pre-push gate ==="
+echo "Log: $log_file"
+
+echo "=== Version policy ==="
+scripts/check-version-policy.sh
+
+echo "=== sbt launcher ==="
+sbt --script-version
+
+echo "=== Quality, tests, package, docs ==="
+sbt clean "scalafix --check" test package doc
+
+echo "=== Coverage ==="
+sbt clean coverage test coverageReport
+scripts/check-coverage-policy.sh
+
+echo "=== OptiX JNI pre-push gate passed ==="
