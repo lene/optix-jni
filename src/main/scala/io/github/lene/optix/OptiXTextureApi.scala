@@ -52,13 +52,37 @@ private[optix] trait OptiXTextureApi:
     val expectedSize = width * height * 4  // RGBA, 4 bytes per pixel
     require(
       imageData.length == expectedSize,
-      s"Image data size mismatch: expected $expectedSize bytes (${width}x${height}x4), got ${imageData.length}"
+      s"Image data size mismatch: expected $expectedSize bytes " +
+        s"(${width}x${height}x4), got ${imageData.length}"
     )
     val index = uploadTextureNative(name, imageData, width, height)
     if index < 0 then
       throw TextureUploadException(s"Failed to upload texture '$name': error code $index")
     else
       index
+
+  /** Updates an existing RGBA8 native texture slot in place.
+    *
+    * The update must use the same dimensions as the originally uploaded texture.
+    *
+    * @param imageData row-major RGBA bytes, length `width * height * 4`
+    * @throws TextureUploadException when native update returns a negative code
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def updateTexture(textureIndex: Int, imageData: Array[Byte], width: Int, height: Int): Unit =
+    require(textureIndex >= 0, "textureIndex must be >= 0")
+    require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
+    require(width > 0, s"Width must be positive, got $width")
+    require(height > 0, s"Height must be positive, got $height")
+    val expectedSize = width * height * 4  // RGBA, 4 bytes per pixel
+    require(
+      imageData.length == expectedSize,
+      s"Image data size mismatch: expected $expectedSize bytes " +
+        s"(${width}x${height}x4), got ${imageData.length}"
+    )
+    val result = updateTextureNative(textureIndex, imageData, width, height)
+    if result < 0 then
+      throw TextureUploadException(s"Failed to update texture $textureIndex: error code $result")
 
   /** Uploads a texture from a native-readable file path.
     *

@@ -25,6 +25,11 @@
 #include "Project4D.h"
 #include "stb_image.h"
 
+namespace {
+constexpr unsigned int RGBA8_BYTES_PER_PIXEL = 4;
+constexpr unsigned int FLOAT_RGBA_BYTES_PER_PIXEL = 4 * sizeof(float);
+}  // namespace
+
 /**
  * OptiXWrapper implementation using composition.
  * Coordinates SceneParameters, RenderConfig, PipelineManager, BufferManager, and ICausticsRenderer.
@@ -3048,14 +3053,14 @@ int OptiXWrapper::uploadTexture(
 
         // Track cuda_array immediately so releaseTextures() cleans it up even on later failure
         int index = static_cast<int>(impl->textures.size());
-        impl->textures.push_back({cuda_array, 0, width, height});
+        impl->textures.push_back({cuda_array, 0, width, height, RGBA8_BYTES_PER_PIXEL});
 
         // Copy image data to CUDA array
         CUDA_CHECK(cudaMemcpy2DToArray(
             cuda_array, 0, 0,
             image_data,
-            width * 4,  // Source pitch (bytes per row)
-            width * 4,  // Width in bytes
+            width * RGBA8_BYTES_PER_PIXEL,  // Source pitch (bytes per row)
+            width * RGBA8_BYTES_PER_PIXEL,  // Width in bytes
             height,
             cudaMemcpyHostToDevice
         ));
@@ -3109,13 +3114,13 @@ int OptiXWrapper::uploadTextureFloat(
 
         // Track cuda_array immediately so releaseTextures() cleans it up even on later failure
         int index = static_cast<int>(impl->textures.size());
-        impl->textures.push_back({cuda_array, 0, width, height});
+        impl->textures.push_back({cuda_array, 0, width, height, FLOAT_RGBA_BYTES_PER_PIXEL});
 
         CUDA_CHECK(cudaMemcpy2DToArray(
             cuda_array, 0, 0,
             float_rgba,
-            width * 4 * sizeof(float),
-            width * 4 * sizeof(float),
+            width * FLOAT_RGBA_BYTES_PER_PIXEL,
+            width * FLOAT_RGBA_BYTES_PER_PIXEL,
             height,
             cudaMemcpyHostToDevice
         ));
@@ -3170,6 +3175,62 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
     int idx = uploadTexture(path, data, static_cast<unsigned int>(w), static_cast<unsigned int>(h));
     stbi_image_free(data);
     return idx;
+}
+
+int OptiXWrapper::updateTexture(
+    int textureIndex,
+    const unsigned char* image_data,
+    unsigned int width,
+    unsigned int height
+) {
+    if (textureIndex < 0 || textureIndex >= static_cast<int>(impl->textures.size())) {
+        std::cerr << "[OptiX] Invalid texture index for update: "
+                  << textureIndex << std::endl;
+        return -1;
+    }
+
+    if (image_data == nullptr) {
+        std::cerr << "[OptiX] Texture update image data must not be null" << std::endl;
+        return -1;
+    }
+
+    TextureData& texture = impl->textures[textureIndex];
+    if (texture.cuda_array == nullptr || texture.texture_obj == 0) {
+        std::cerr << "[OptiX] Texture slot " << textureIndex
+                  << " is not initialized" << std::endl;
+        return -1;
+    }
+
+    if (texture.width != width || texture.height != height) {
+        std::cerr << "[OptiX] Texture update dimensions mismatch for slot "
+                  << textureIndex << ": expected " << texture.width << "x"
+                  << texture.height << ", got " << width << "x" << height
+                  << std::endl;
+        return -1;
+    }
+
+    if (texture.bytes_per_pixel != RGBA8_BYTES_PER_PIXEL) {
+        std::cerr << "[OptiX] Texture update only supports RGBA8 slots; slot "
+                  << textureIndex << " has " << texture.bytes_per_pixel
+                  << " bytes per pixel" << std::endl;
+        return -1;
+    }
+
+    try {
+        CUDA_CHECK(cudaMemcpy2DToArray(
+            texture.cuda_array, 0, 0,
+            image_data,
+            width * RGBA8_BYTES_PER_PIXEL,
+            width * RGBA8_BYTES_PER_PIXEL,
+            height,
+            cudaMemcpyHostToDevice
+        ));
+        return 0;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[OptiX] Texture update failed: " << e.what() << std::endl;
+        return -1;
+    }
 }
 
 // ---------------------------------------------------------------------------
