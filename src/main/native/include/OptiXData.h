@@ -294,6 +294,7 @@ struct TextureData {
     cudaTextureObject_t texture_obj;  // Texture object for shader access
     unsigned int width;
     unsigned int height;
+    unsigned int bytes_per_pixel;
 };
 
 // Photon for Progressive Photon Mapping (caustics)

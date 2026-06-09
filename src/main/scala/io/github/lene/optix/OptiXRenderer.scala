@@ -267,6 +267,12 @@ class OptiXRenderer
   @native private[optix] def setMapTexturesNative(instanceId: Int, normalTextureIndex: Int, roughnessTextureIndex: Int): Unit
   @native private[optix] def setImageTextureNative(instanceId: Int, imageTextureIndex: Int): Unit
   @native private[optix] def uploadTextureNative(name: String, imageData: Array[Byte], width: Int, height: Int): Int
+  @native private[optix] def updateTextureNative(
+      textureIndex: Int,
+      imageData: Array[Byte],
+      width: Int,
+      height: Int
+  ): Int
   @native private[optix] def uploadTextureFromFileNative(path: String): Int
   @native private[optix] def releaseTexturesNative(): Unit
 
