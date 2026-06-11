@@ -2,11 +2,29 @@ name: CI
 
 on:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      central_deployment_id:
+        description: 'Optional Sonatype Central deployment id to inspect'
+        required: false
+        type: string
   push:
     branches: [main]
     tags: ['[0-9]+.[0-9]+.[0-9]+']
 
 jobs:
+  central-deployment-diagnostics:
+    name: Sonatype Central Deployment Diagnostics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.central_deployment_id != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Query deployment status
+        run: scripts/sonatype-central-status.sh "${{ inputs.central_deployment_id }}"
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+
   # ── preconditions ──────────────────────────────────────────────────────────
 
   changelog-updated:
@@ -33,7 +51,7 @@ jobs:
   version-not-tagged:
     name: Version Not Yet Tagged
     runs-on: ubuntu-latest
-    if: "!startsWith(github.ref, 'refs/tags/')"
+    if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +73,7 @@ jobs:
   scalafix:
     name: Scalafix
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -68,6 +87,7 @@ jobs:
   archunit:
     name: ArchUnit
     runs-on: [self-hosted, Linux, X64, nvidia]
+    if: github.event_name != 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
@@ -77,6 +97,7 @@ jobs:
   cppcheck:
     name: cppcheck
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Install cppcheck
@@ -91,6 +112,7 @@ jobs:
   clang-tidy:
     name: clang-tidy
     runs-on: [self-hosted, Linux, X64, nvidia]
+    if: github.event_name != 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Configure CMake (fetches FetchContent deps, generates compile_commands.json)
@@ -112,6 +134,7 @@ jobs:
   doc-completeness:
     name: JNI API Doc Completeness
     runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Run doc completeness check
@@ -122,6 +145,7 @@ jobs:
   scala-tests:
     name: Scala Tests (GPU)
     runs-on: [self-hosted, Linux, X64, nvidia]
+    if: github.event_name != 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
@@ -134,6 +158,7 @@ jobs:
   build-native:
     name: Build native .so + JAR
     runs-on: [self-hosted, Linux, X64, nvidia]
+    if: github.event_name != 'workflow_dispatch'
     needs: [scala-tests, scalafix]
     steps:
       - uses: actions/checkout@v4
@@ -154,6 +179,7 @@ jobs:
   smoke-tests:
     name: Smoke Tests (Java + Kotlin)
     runs-on: [self-hosted, Linux, X64, nvidia]
+    if: github.event_name != 'workflow_dispatch'
     needs: [build-native]
     steps:
       - uses: actions/checkout@v4
@@ -212,7 +238,7 @@ jobs:
     name: Publish to Maven Central + GitHub Release
     runs-on: [self-hosted, Linux, X64, nvidia]
     needs: [smoke-tests, build-native]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name != 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
@@ -222,7 +248,26 @@ jobs:
       - name: Import GPG key
         run: echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
       - name: Publish to Maven Central
-        run: sbt nativeCompile publishSigned sonatypeBundleRelease
+        run: |
+          set +e
+          sbt nativeCompile publishSigned sonatypeBundleRelease \
+            2>&1 | tee /tmp/sonatype-publish.log
+          publish_status="${PIPESTATUS[0]}"
+          set -e
+
+          if [ "$publish_status" -ne 0 ]; then
+            deployment_id="$(
+              sed -nE 's/.*Deployment id: ([0-9a-fA-F-]{36}).*/\1/p' \
+                /tmp/sonatype-publish.log | tail -1
+            )"
+            if [ -n "$deployment_id" ]; then
+              scripts/sonatype-central-status.sh "$deployment_id" || true
+            else
+              echo "No Sonatype Central deployment id found in publish log."
+            fi
+          fi
+
+          exit "$publish_status"
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
@@ -242,7 +287,7 @@ jobs:
     name: Post-Publish Smoke Test (Maven Central)
     runs-on: [self-hosted, Linux, X64, nvidia]
     needs: [publish]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name != 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: read
     steps:
