@@ -103,8 +103,10 @@ jobs:
       - name: Run clang-tidy
         run: |
           mapfile -t cpp_files < <(find src/main/native -name "*.cpp")
+          gcc_install_dir="$(dirname "$(g++ -print-file-name=include)")"
           clang-tidy -p target/cmake-clang-check \
             --config-file=.clang-tidy \
+            --extra-arg-before=--gcc-install-dir="${gcc_install_dir}" \
             "${cpp_files[@]}"
 
   doc-completeness:
