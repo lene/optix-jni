@@ -8,6 +8,11 @@ on:
         description: 'Optional Sonatype Central deployment id to inspect'
         required: false
         type: string
+      distribute_pgp_public_key:
+        description: 'Send the signing public key to Central-supported keyservers'
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main]
     tags: ['[0-9]+.[0-9]+.[0-9]+']
@@ -24,6 +29,19 @@ jobs:
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+
+  pgp-public-key-distribution:
+    name: PGP Public Key Distribution
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.distribute_pgp_public_key == true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import GPG key
+        run: printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      - name: Send public key to supported keyservers
+        run: scripts/publish-gpg-public-key.sh
 
   # ── preconditions ──────────────────────────────────────────────────────────
 
@@ -246,7 +264,11 @@ jobs:
       - name: Add CUDA to PATH
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
       - name: Import GPG key
-        run: echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+        run: printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      - name: Send public key to supported keyservers
+        run: scripts/publish-gpg-public-key.sh
       - name: Publish to Maven Central
         run: |
           set +e
