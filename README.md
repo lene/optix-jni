@@ -147,6 +147,21 @@ Required repository secrets:
 - `GPG_PRIVATE_KEY`
 - `GPG_PASSPHRASE`
 
+### Code standards
+
+`.scalafix.conf` and the `standards/` hook scripts are **canonical in the
+[menger](https://gitlab.com/lilacashes/menger) repository**. Do not edit them
+here directly. To propagate updates from menger:
+
+```bash
+# from your menger checkout:
+./scripts/sync-standards.sh /path/to/optix-jni
+# review the diff, then commit and push in optix-jni
+```
+
+A scheduled CI job in menger checks that these files are byte-identical across
+all three repos and fails if they diverge.
+
 ### Docker Image
 
 The CI uses a pre-built Docker image based on NVIDIA's official CUDA image with OptiX SDK, Java 25, and sbt pre-installed. This avoids 15-20 minutes of installation time on every job run.
