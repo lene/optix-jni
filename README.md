@@ -8,78 +8,46 @@ This module provides JNI bindings for NVIDIA OptiX ray tracing API.
 It depends on `menger-common` for shared scene types such as `Color`, `Vector`,
 `ImageSize`, and `Material`.
 
-Current test publication target: GitLab Package Registry.
+Publication target: Maven Central.
 
 ### sbt
 
 ```scala
 ThisBuild / scalaVersion := "3.8.3"
 
-resolvers += "GitLab Menger" at
-  "https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven"
-
-credentials += Credentials(
-  "GitLab Packages Registry",
-  "gitlab.com",
-  "Private-Token",
-  sys.env("GITLAB_PAT")
-)
-
 libraryDependencies ++= Seq(
-  "io.github.lene" %% "menger-common" % "0.1.0",
-  "io.github.lene" % "optix-jni" % "0.1.0"
+  "io.github.lene" %% "menger-common" % "0.1.1",
+  "io.github.lene" % "optix-jni" % "0.1.3"
 )
 ```
-
-In GitLab CI, use username `gitlab-ci-token` with `CI_JOB_TOKEN` instead of a
-personal access token.
 
 ### Maven
 
 ```xml
-<repositories>
-  <repository>
-    <id>gitlab-menger</id>
-    <url>https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven</url>
-  </repository>
-</repositories>
-
 <dependencies>
   <dependency>
     <groupId>io.github.lene</groupId>
     <artifactId>menger-common_3</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
   </dependency>
   <dependency>
     <groupId>io.github.lene</groupId>
     <artifactId>optix-jni</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.3</version>
   </dependency>
 </dependencies>
 ```
-
-Configure Maven credentials for repository id `gitlab-menger` in `settings.xml`.
-For GitLab Package Registry, authenticate with a private token or CI job token.
 
 ### Gradle Kotlin DSL
 
 ```kotlin
 repositories {
-    maven {
-        url = uri("https://gitlab.com/api/v4/projects/lilacashes%2Fmenger/packages/maven")
-        credentials(HttpHeaderCredentials::class) {
-            name = "Private-Token"
-            value = System.getenv("GITLAB_PAT")
-        }
-        authentication {
-            create<HttpHeaderAuthentication>("header")
-        }
-    }
+    mavenCentral()
 }
 
 dependencies {
-    implementation("io.github.lene:menger-common_3:0.1.0")
-    implementation("io.github.lene:optix-jni:0.1.0")
+    implementation("io.github.lene:menger-common_3:0.1.1")
+    implementation("io.github.lene:optix-jni:0.1.3")
 }
 ```
 
