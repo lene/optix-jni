@@ -1,7 +1,5 @@
 package io.github.lene.optix
 
-import scala.util.Success
-
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -83,6 +81,76 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val imageData = createTestTexture(128, 64)
     val result = renderer.uploadTexture("non_square", imageData, 128, 64)
     result should be >= 0
+
+  "Texture update" should "update an existing texture slot repeatedly" in:
+    val width = 32
+    val height = 32
+    val originalData = createTestTexture(width, height)
+    val updatedData = createCheckerTexture(width, height)
+    val secondUpdateData = createTestTexture(width, height)
+
+    val textureIndex = renderer.uploadTexture("update_reuse", originalData, width, height)
+    textureIndex should be >= 0
+
+    noException should be thrownBy:
+      renderer.updateTexture(textureIndex, updatedData, width, height)
+
+    noException should be thrownBy:
+      renderer.updateTexture(textureIndex, secondUpdateData, width, height)
+
+    renderer.uploadTexture("update_reuse", originalData, width, height) shouldBe textureIndex
+
+  it should "reject a negative texture index" in:
+    val imageData = createTestTexture(32, 32)
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.updateTexture(-1, imageData, 32, 32)
+
+  it should "reject null image data" in:
+    an[IllegalArgumentException] should be thrownBy:
+      // scalafix:off DisableSyntax.null
+      // Note: Testing null parameter handling for Java interop boundary
+      renderer.updateTexture(0, null, 32, 32)
+      // scalafix:on DisableSyntax.null
+
+  it should "reject zero width" in:
+    val imageData = new Array[Byte](0)
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.updateTexture(0, imageData, 0, 32)
+
+  it should "reject zero height" in:
+    val imageData = new Array[Byte](0)
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.updateTexture(0, imageData, 32, 0)
+
+  it should "reject image data size mismatch" in:
+    val smallData = new Array[Byte](100)  // Not 64*64*4
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.updateTexture(0, smallData, 64, 64)
+
+  it should "reject an unknown native texture index" in:
+    val imageData = createTestTexture(32, 32)
+    a[TextureUploadException] should be thrownBy:
+      renderer.updateTexture(999, imageData, 32, 32)
+
+  it should "reject dimension changes for an existing texture slot" in:
+    val textureIndex =
+      renderer.uploadTexture("update_dimensions", createTestTexture(32, 32), 32, 32)
+    val smallerData = createTestTexture(16, 16)
+
+    a[TextureUploadException] should be thrownBy:
+      renderer.updateTexture(textureIndex, smallerData, 16, 16)
+
+  it should "reject byte updates to HDR texture slots" in:
+    val tmp = java.nio.file.Files.createTempFile("test_update_hdr_", ".hdr")
+    try
+      writeMinimalHdr(tmp, 4, 4)
+      val textureIndex = renderer.uploadTextureFromFile(tmp.toString)
+      textureIndex should be >= 0
+      val imageData = createTestTexture(4, 4)
+
+      a[TextureUploadException] should be thrownBy:
+        renderer.updateTexture(textureIndex, imageData, 4, 4)
+    finally java.nio.file.Files.deleteIfExists(tmp)
 
   "Texture validation" should "reject empty texture name" in:
     val imageData = createTestTexture(32, 32)

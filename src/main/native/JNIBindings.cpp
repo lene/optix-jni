@@ -1564,6 +1564,71 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureNati
 }
 
 /**
+ * Update an existing texture in place.
+ * @param textureIndex Existing native texture slot
+ * @param imageData RGBA pixel data (4 bytes per pixel)
+ * @param width Texture width in pixels
+ * @param height Texture height in pixels
+ * @return 0 on success, -1 on failure
+ */
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateTextureNative(
+    JNIEnv* env, jobject obj,
+    jint textureIndex, jbyteArray imageData, jint width, jint height) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        if (textureIndex < 0) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(exception_class, "Texture index must be non-negative");
+            return -1;
+        }
+
+        if (width <= 0 || height <= 0) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            env->ThrowNew(exception_class, "Texture dimensions must be positive");
+            return -1;
+        }
+
+        jsize dataLen = env->GetArrayLength(imageData);
+        jsize expectedLen = width * height * 4;
+        if (dataLen != expectedLen) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "Image data length (" + std::to_string(dataLen) +
+                ") must equal width * height * 4 (" + std::to_string(expectedLen) + ")";
+            env->ThrowNew(exception_class, msg.c_str());
+            return -1;
+        }
+
+        jbyte* data = env->GetByteArrayElements(imageData, nullptr);
+        if (data == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get image data");
+            return -1;
+        }
+
+        int result = wrapper->updateTexture(
+            static_cast<int>(textureIndex),
+            reinterpret_cast<unsigned char*>(data),
+            static_cast<unsigned int>(width),
+            static_cast<unsigned int>(height)
+        );
+
+        env->ReleaseByteArrayElements(imageData, data, JNI_ABORT);
+
+        return result;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateTexture: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+/**
  * Upload a texture from a file path (auto-detects format; .hdr → float4, others → uchar4).
  * @param path Absolute or relative file path
  * @return Texture index (>= 0) on success, -1 on failure
