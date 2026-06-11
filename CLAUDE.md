@@ -44,6 +44,13 @@ gh pr create --title "..." --body "..."
 
 CI runs on every PR. All jobs must pass before merging.
 
+Release PRs merge to `main`; do not create release tags locally. The main-branch
+CI release gate creates the version tag after all gates pass, unless the merged
+PR title contains `NORELEASE`. That tag push starts Maven Central publication and
+post-publish smoke tests. The tag-creation job requires repository secret
+`RELEASE_TRIGGER_TOKEN` because tags pushed with the built-in `GITHUB_TOKEN` do
+not trigger the tag workflow.
+
 ---
 
 ## Build modes

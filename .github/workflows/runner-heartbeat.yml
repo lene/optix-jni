@@ -1,0 +1,14 @@
+name: Runner Heartbeat
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 02:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  heartbeat:
+    name: Self-Hosted GPU Runner Heartbeat
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    steps:
+      - name: Runner alive
+        run: echo "GPU runner alive on $(hostname) at $(date -u)"
