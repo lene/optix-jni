@@ -33,10 +33,12 @@ done
 command -v jq      > /dev/null || { echo "error: jq required" >&2;      exit 1; }
 command -v python3 > /dev/null || { echo "error: python3 required" >&2; exit 1; }
 
-# Fail if neither API key is set
+# Skip gracefully if no API keys are configured — CI defers key setup,
+# local runs without credentials should not fail the hook.
 if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${DEEPSEEK_API_KEY:-}" ]; then
-  echo "error: at least one of ANTHROPIC_API_KEY or DEEPSEEK_API_KEY must be set" >&2
-  exit 1
+  echo "review: skipped — set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY to enable"
+  printf '{"findings":[],"stats":{"total":0,"agreed":0,"single_model":0},"summaries":{"claude":"skipped (no key)","deepseek":"skipped (no key)"}}\n' > "$OUTPUT_FILE"
+  exit 0
 fi
 
 WORK=$(mktemp -d)

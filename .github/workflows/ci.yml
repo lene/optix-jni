@@ -225,7 +225,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh pr diff ${{ github.event.pull_request.number }} > pr.diff
 
+      - name: Check API keys
+        id: keys
+        run: |
+          if [ -n "${ANTHROPIC_API_KEY}" ] || [ -n "${DEEPSEEK_API_KEY}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "No AI API keys configured — review skipped."
+          fi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+
       - name: Run AI review
+        if: steps.keys.outputs.available == 'true'
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -237,6 +251,7 @@ jobs:
             --output review-findings.json
 
       - name: Post review to GitHub PR
+        if: steps.keys.outputs.available == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
