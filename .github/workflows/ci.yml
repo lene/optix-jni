@@ -206,6 +206,44 @@ jobs:
           LD_LIBRARY_PATH="$NATIVE_PATH:$LD_LIBRARY_PATH" gradle test \
             -Poptix.version=$VERSION -Poptix.native.path=$NATIVE_PATH
 
+  # ── ai review ──────────────────────────────────────────────────────────────
+
+  ai-review:
+    name: AI Code Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr diff ${{ github.event.pull_request.number }} > pr.diff
+
+      - name: Run AI review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          standards/scripts/review.sh \
+            --diff pr.diff \
+            --guidelines standards/review-guidelines.md \
+            --arch-guidelines standards/architecture-review-guidelines.md \
+            --output review-findings.json
+
+      - name: Post review to GitHub PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+        run: standards/scripts/github-pr-review.sh review-findings.json
+
   # ── main release gate ──────────────────────────────────────────────────────
 
   main-release-gate:

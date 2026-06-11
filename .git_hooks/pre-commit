@@ -5,6 +5,14 @@ GREEN_TEXT='\e[38;5;46m'
 YELLOW_TEXT='\e[38;5;226m'
 RESET_TEXT='\e[0m'
 
+# --- Phase 0: fast policy checks (< 1 s) ---
+if [ -x ./standards/hooks/check-branch.sh ]; then
+  ./standards/hooks/check-branch.sh || exit 1
+fi
+if [ -x ./standards/hooks/check-staged-hygiene.sh ]; then
+  ./standards/hooks/check-staged-hygiene.sh || exit 1
+fi
+
 STAGED=$(git diff --cached --name-only)
 HAS_SCALA=$(echo "$STAGED" | grep -cE '\.(scala|sbt)$|^project/')
 HAS_NATIVE=$(echo "$STAGED" | grep -cE 'src/main/native/.*\.(cpp|cu|cuh|h)$|CMakeLists\.txt')
