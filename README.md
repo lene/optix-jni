@@ -130,6 +130,23 @@ finally
 
 ## CI Configuration
 
+GitHub Actions runs PR quality gates, main-branch gates, tag publication, and
+post-publish Maven Central smoke tests. Merges to `main` are the release gate:
+after all quality/build/smoke jobs pass, CI finds the merged PR for the merge
+commit. If the PR title contains `NORELEASE`, no tag is created. Otherwise
+`build.sbt` must contain a new non-snapshot `X.Y.Z` version, and CI creates tag
+`X.Y.Z`; that tag push starts the Maven Central publication workflow.
+
+Required repository secrets:
+
+- `RELEASE_TRIGGER_TOKEN`: PAT or GitHub App token allowed to create tags and
+  trigger the tag workflow. The built-in `GITHUB_TOKEN` must not be used for
+  this because GitHub suppresses most workflows triggered by it.
+- `SONATYPE_USERNAME`
+- `SONATYPE_PASSWORD`
+- `GPG_PRIVATE_KEY`
+- `GPG_PASSPHRASE`
+
 ### Docker Image
 
 The CI uses a pre-built Docker image based on NVIDIA's official CUDA image with OptiX SDK, Java 25, and sbt pre-installed. This avoids 15-20 minutes of installation time on every job run.

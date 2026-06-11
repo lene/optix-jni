@@ -206,6 +206,96 @@ jobs:
           LD_LIBRARY_PATH="$NATIVE_PATH:$LD_LIBRARY_PATH" gradle test \
             -Poptix.version=$VERSION -Poptix.native.path=$NATIVE_PATH
 
+  # ── main release gate ──────────────────────────────────────────────────────
+
+  main-release-gate:
+    name: Main Release Gate
+    runs-on: ubuntu-latest
+    needs:
+      - scalafix
+      - archunit
+      - cppcheck
+      - clang-tidy
+      - doc-completeness
+      - smoke-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Decide release intent
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr_query='map(select(.merged_at != null)) | sort_by(.merged_at) | last'
+          pr_api="/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls"
+          pr_number="$(gh api -H "Accept: application/vnd.github+json" "$pr_api" \
+            --jq "${pr_query}.number // \"\"")"
+          pr_title="$(gh api -H "Accept: application/vnd.github+json" "$pr_api" \
+            --jq "${pr_query}.title // \"\"")"
+
+          if [ -z "$pr_number" ]; then
+            echo "ERROR: main release gate requires a merged PR for ${GITHUB_SHA}"
+            exit 1
+          fi
+
+          echo "Merged PR #${pr_number}: ${pr_title}"
+          if echo "$pr_title" | grep -qi 'NORELEASE'; then
+            echo "NORELEASE found in PR title; skipping tag creation"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          version="$(grep 'version :=' build.sbt | cut -d'"' -f2)"
+          if [ -z "$version" ]; then
+            echo "ERROR: Could not read version from build.sbt"
+            exit 1
+          fi
+          if echo "$version" | grep -qi 'SNAPSHOT'; then
+            echo "ERROR: Release version must not be a snapshot: $version"
+            exit 1
+          fi
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: Release version must be semver X.Y.Z: $version"
+            exit 1
+          fi
+
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/${version}" >/dev/null; then
+            echo "ERROR: Tag ${version} already exists"
+            exit 1
+          fi
+
+          latest_tag="$(git tag --list '[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1)"
+          if [ -n "$latest_tag" ]; then
+            highest="$(printf '%s\n%s\n' "$latest_tag" "$version" | sort -V | tail -n 1)"
+            if [ "$highest" != "$version" ]; then
+              echo "ERROR: Version ${version} must be newer than latest tag ${latest_tag}"
+              exit 1
+            fi
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Create release tag
+        if: steps.release.outputs.skip != 'true'
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TRIGGER_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "ERROR: RELEASE_TRIGGER_TOKEN secret is required to create a tag that triggers release CI"
+            exit 1
+          fi
+
+          git tag "$VERSION" "$GITHUB_SHA"
+          git push "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "refs/tags/${VERSION}"
+
   # ── publish ────────────────────────────────────────────────────────────────
 
   publish:
@@ -217,6 +307,28 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate release tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if ! echo "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: Release tag must be semver X.Y.Z: $tag"
+            exit 1
+          fi
+
+          version="$(grep 'version :=' build.sbt | cut -d'"' -f2)"
+          if [ "$tag" != "$version" ]; then
+            echo "ERROR: Tag ${tag} does not match build.sbt version ${version}"
+            exit 1
+          fi
+
+          git fetch origin main --tags
+          tag_commit="$(git rev-list -n 1 "$tag")"
+          if ! git merge-base --is-ancestor "$tag_commit" origin/main; then
+            echo "ERROR: Tag ${tag} commit ${tag_commit} is not reachable from origin/main"
+            exit 1
+          fi
       - name: Add CUDA to PATH
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
       - name: Import GPG key
