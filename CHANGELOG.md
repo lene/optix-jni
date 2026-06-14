@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-06-14
+
+### Changed
+
+- Pin the CUDA Toolkit to the 13.x major version (`find_package(CUDAToolkit 13.0)`), failing
+  the build on any other major. Published artifacts link the CUDA runtime
+  (`libcudart.so.<major>`); the previous unpinned `>=12.0` let the build host's toolkit
+  silently set the runtime ABI and minimum driver. 0.1.3 incidentally linked
+  `libcudart.so.13`, raising the consumer's minimum NVIDIA driver to ≥580.65 with no record.
+  Pinning makes the runtime ABI and driver floor deliberate and reproducible.
+
 ## [0.1.3] - 2026-06-11
 
 ### Added
@@ -34,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.4]: https://github.com/lene/optix-jni/compare/0.1.3...0.1.4
 [0.1.3]: https://github.com/lene/optix-jni/compare/0.1.2...0.1.3
 [0.1.2]: https://github.com/lene/optix-jni/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/lene/optix-jni/compare/0.1.0...0.1.1
