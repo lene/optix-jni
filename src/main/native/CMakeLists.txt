@@ -48,7 +48,18 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # Find CUDA Toolkit (REQUIRED)
-find_package(CUDAToolkit 12.0 REQUIRED)
+#
+# Pinned to the CUDA 13.x major version. Published artifacts link the CUDA runtime
+# (libcudart.so.<major>); the consuming Menger project standardized on CUDA 13 (driver
+# >= 580.65). Building against a different major would silently change the runtime ABI
+# and the minimum driver requirement of every downstream release. Fail loudly instead.
+find_package(CUDAToolkit 13.0 REQUIRED)
+if(CUDAToolkit_VERSION VERSION_LESS 13.0 OR CUDAToolkit_VERSION VERSION_GREATER_EQUAL 14.0)
+  message(FATAL_ERROR
+    "optix-jni pins CUDA Toolkit to the 13.x major version for a reproducible runtime ABI "
+    "(libcudart.so.13). Found ${CUDAToolkit_VERSION}. Install a CUDA 13.x toolkit or update "
+    "this pin deliberately together with the downstream minimum-driver documentation.")
+endif()
 message(STATUS "✓ CUDA enabled: ${CUDAToolkit_VERSION} (${CMAKE_CUDA_COMPILER})")
 
 #=============================================================================
