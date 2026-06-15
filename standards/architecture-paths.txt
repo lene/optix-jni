@@ -1,0 +1,16 @@
+# Paths (anchored regex) that trigger architecture review in addition to code review.
+# If any file changed in the diff matches one of these patterns, review.sh is
+# called with --arch-guidelines standards/architecture-review-guidelines.md.
+^menger-app/build\.sbt$
+^menger-common/build\.sbt$
+^optix-jni/build\.sbt$
+^build\.sbt$
+^project/
+^optix-jni/src/main/native/CMakeLists\.txt$
+^optix-jni/src/main/scala/.*\.scala$
+^menger-app/src/main/scala/menger/engines/
+^menger-app/src/main/scala/menger/optix/
+^menger-common/src/main/scala/
+^\.gitlab-ci\.yml$
+^\.github/workflows/
+^docs/arc42/
