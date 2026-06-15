@@ -27,18 +27,6 @@ __device__ inline float3 perspective_w(float4 p, float eye_w, float screen_w) {
     return make_float3(p.x * f, p.y * f, p.z * f);
 }
 
-__device__ inline float3 sub3(float3 a, float3 b) {
-    return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
-}
-
-__device__ inline float3 cross3(float3 a, float3 b) {
-    return make_float3(
-        a.y * b.z - a.z * b.y,
-        a.z * b.x - a.x * b.z,
-        a.x * b.y - a.y * b.x
-    );
-}
-
 }  // namespace
 
 extern "C" __global__ void project4d_faces_kernel(
