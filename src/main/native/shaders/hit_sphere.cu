@@ -58,6 +58,8 @@ extern "C" __global__ void __closesthit__ch() {
     normal = applyNormalMap(normal, sphere_uv, getInstanceNormalTextureIndex());
     roughness = applyRoughnessMap(roughness, sphere_uv, getInstanceRoughnessTextureIndex());
 
+    writeDenoiseGuides(material_color, normal);
+
     const float sphere_alpha = material_color.w;
 
     // Handle fully transparent spheres

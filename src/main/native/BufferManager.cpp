@@ -22,6 +22,18 @@ void BufferManager::ensureImageBuffer(int width, int height) {
     }
 }
 
+void BufferManager::ensureDenoiseBuffers(int width, int height) {
+    const size_t pixel_count = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (current_denoise_pixel_count != pixel_count) {
+        linear_color_buffer.allocate(pixel_count);
+        accumulated_linear_color_buffer.allocate(pixel_count);
+        denoised_color_buffer.allocate(pixel_count);
+        denoise_albedo_buffer.allocate(pixel_count);
+        denoise_normal_buffer.allocate(pixel_count);
+        current_denoise_pixel_count = pixel_count;
+    }
+}
+
 void BufferManager::ensureParamsBuffer() {
     if (!params_buffer.isAllocated()) {
         params_buffer.allocate(1);

@@ -1,6 +1,9 @@
 #include <jni.h>
+#include "include/CudaBuffer.h"
+#include "include/DenoiserManager.h"
 #include "include/OptiXContext.h"
 #include "include/OptiXErrorChecking.h"
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -15,6 +18,14 @@
  */
 
 extern "C" {
+
+static jfloatArray emptyFloatArray(JNIEnv* env) {
+    return env->NewFloatArray(0);
+}
+
+static bool hasExpectedFloatLength(JNIEnv* env, jfloatArray array, jsize expected) {
+    return array != nullptr && env->GetArrayLength(array) == expected;
+}
 
 // ---- Default compile/pipeline options used for createModuleFromPTX and createPipeline ----
 
@@ -237,6 +248,125 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyPipel
     auto  pipeline = reinterpret_cast<OptixPipeline>(pipelineHandle);
     if (ctx && pipeline) {
         try { ctx->destroyPipeline(pipeline); } catch (...) {}
+    }
+}
+
+// ---- Denoiser lifecycle ----
+
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createDenoiser(
+    JNIEnv* env, jobject obj, jlong contextHandle, jboolean guideAlbedo, jboolean guideNormal) {
+    const auto* ctx = reinterpret_cast<const OptiXContext*>(contextHandle);
+    if (!ctx) return 0L;
+    try {
+        auto* denoiser = new DenoiserManager(
+            ctx->getContext(),
+            guideAlbedo == JNI_TRUE,
+            guideNormal == JNI_TRUE
+        );
+        return reinterpret_cast<jlong>(denoiser);
+    } catch (const std::exception& e) {
+        std::cerr << "[OptiXApi] createDenoiser: " << e.what() << std::endl;
+        return 0L;
+    }
+}
+
+JNIEXPORT jfloatArray JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_denoiseFloat4Native(
+    JNIEnv* env,
+    jobject obj,
+    jlong denoiserHandle,
+    jint width,
+    jint height,
+    jfloatArray colorRgba,
+    jfloatArray albedoRgba,
+    jfloatArray normalRgba) {
+    auto* denoiser = reinterpret_cast<DenoiserManager*>(denoiserHandle);
+    if (!denoiser || width <= 0 || height <= 0) {
+        return emptyFloatArray(env);
+    }
+
+    const long long float_count =
+        static_cast<long long>(width) * static_cast<long long>(height) * 4LL;
+    if (float_count <= 0 || float_count > static_cast<long long>(INT32_MAX)) {
+        return emptyFloatArray(env);
+    }
+    const jsize expected_length = static_cast<jsize>(float_count);
+
+    if (!hasExpectedFloatLength(env, colorRgba, expected_length)) {
+        return emptyFloatArray(env);
+    }
+    if (denoiser->usesAlbedoGuide()
+            && !hasExpectedFloatLength(env, albedoRgba, expected_length)) {
+        return emptyFloatArray(env);
+    }
+    if (denoiser->usesNormalGuide()
+            && !hasExpectedFloatLength(env, normalRgba, expected_length)) {
+        return emptyFloatArray(env);
+    }
+
+    try {
+        CudaBuffer<float> color;
+        CudaBuffer<float> output;
+        CudaBuffer<float> albedo;
+        CudaBuffer<float> normal;
+        const size_t count = static_cast<size_t>(expected_length);
+
+        color.allocate(count);
+        output.allocate(count);
+        if (denoiser->usesAlbedoGuide()) {
+            albedo.allocate(count);
+        }
+        if (denoiser->usesNormalGuide()) {
+            normal.allocate(count);
+        }
+
+        std::vector<float> host_color(count);
+        env->GetFloatArrayRegion(colorRgba, 0, expected_length, host_color.data());
+        color.uploadFrom(host_color.data(), count);
+
+        if (denoiser->usesAlbedoGuide()) {
+            std::vector<float> host_albedo(count);
+            env->GetFloatArrayRegion(albedoRgba, 0, expected_length, host_albedo.data());
+            albedo.uploadFrom(host_albedo.data(), count);
+        }
+
+        if (denoiser->usesNormalGuide()) {
+            std::vector<float> host_normal(count);
+            env->GetFloatArrayRegion(normalRgba, 0, expected_length, host_normal.data());
+            normal.uploadFrom(host_normal.data(), count);
+        }
+
+        const bool ok = denoiser->denoiseFloat4(
+            width,
+            height,
+            color.get(),
+            output.get(),
+            denoiser->usesAlbedoGuide() ? albedo.get() : 0,
+            denoiser->usesNormalGuide() ? normal.get() : 0
+        );
+        if (!ok) {
+            return emptyFloatArray(env);
+        }
+
+        std::vector<float> host_output(count);
+        output.downloadTo(host_output.data(), count);
+
+        jfloatArray result = env->NewFloatArray(expected_length);
+        if (result == nullptr) {
+            return emptyFloatArray(env);
+        }
+        env->SetFloatArrayRegion(result, 0, expected_length, host_output.data());
+        return result;
+    } catch (const std::exception& e) {
+        std::cerr << "[OptiXApi] denoiseFloat4: " << e.what() << std::endl;
+        return emptyFloatArray(env);
+    }
+}
+
+JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyDenoiser(
+    JNIEnv* env, jobject obj, jlong denoiserHandle) {
+    auto* denoiser = reinterpret_cast<DenoiserManager*>(denoiserHandle);
+    if (denoiser) {
+        delete denoiser;
     }
 }
 

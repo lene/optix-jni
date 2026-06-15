@@ -510,6 +510,10 @@ struct Hexadecachoron4DData {
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
 struct BaseParams {
     unsigned char* image;        // Output image buffer (RGBA)
+    float4*        linear_color; // Optional linear HDR color output for denoising
+    float4*        denoise_albedo; // Optional albedo guide output
+    float4*        denoise_normal; // Optional normal guide output
+    bool           write_denoise_guides; // Write first-hit guide AOVs for primary rays
     unsigned int   image_width;
     unsigned int   image_height;
     OptixTraversableHandle handle; // Scene geometry handle (GAS or IAS)
@@ -540,6 +544,9 @@ struct BaseParams {
     cudaTextureObject_t env_map_texture;   // equirectangular HDR texture object
     int   tonemap_operator;  // 0=none (clip), 1=reinhard, 2=aces
     float tonemap_exposure;  // pre-tone-map exposure multiplier (default 1.0)
+    float camera_u[3];       // Camera right vector for guide normal transform
+    float camera_v[3];       // Camera up vector for guide normal transform
+    float camera_w[3];       // Camera forward vector for guide normal transform
 
     // IBL — image-based lighting
     bool                ibl_enabled;

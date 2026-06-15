@@ -126,6 +126,23 @@ finally
 
 `alpha = 0.0` → fully transparent. `alpha = 1.0` → fully opaque.
 
+### OptiX denoiser
+
+Denoising is opt-in. `OptiXRenderer.setDenoisingEnabled(true)` renders the
+frame into float4 color and guide AOV buffers, invokes the OptiX HDR denoiser,
+then converts the denoised float output back to RGBA8 bytes. Leaving denoising
+disabled keeps the existing byte render path unchanged.
+
+The low-level `NativeOptiXApi` denoiser methods and the `OptiXDenoiser` Scala
+wrapper expect row-major linear HDR RGBA float arrays (`width * height * 4`).
+Albedo and normal guides are optional at creation time; when enabled, the guide
+arrays must use the same dense float4 layout. Guide AOVs improve edge stability,
+especially around silhouettes and textured materials.
+
+The denoiser allocates OptiX state, scratch, HDR intensity, and image buffers.
+Expect roughly 100-400 MB of additional GPU memory depending on resolution and
+guide usage.
+
 ---
 
 ## CI Configuration

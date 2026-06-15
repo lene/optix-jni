@@ -126,6 +126,14 @@ class RendererTest extends AnyFlatSpec
     val available = isAvailable
     available shouldBe a[Boolean]
 
+  it should "toggle denoising without changing initialization state" in new OptiXRenderer:
+    initialize()
+    isDenoisingEnabled shouldBe false
+    setDenoisingEnabled(true)
+    isDenoisingEnabled shouldBe true
+    setDenoisingEnabled(false)
+    isDenoisingEnabled shouldBe false
+
   it should "support full workflow: init -> configure -> render -> dispose" in new OptiXRenderer:
     initialize() shouldBe true
 
@@ -237,6 +245,18 @@ class RendererTest extends AnyFlatSpec
     image1 should not equal image2
     image2 should not equal image3
     image1 should not equal image3
+
+  "Denoising" should "preserve byte output when disabled" in:
+    renderer.setDenoisingEnabled(false)
+    val first = renderer.render(QUICK_TEST_SIZE)
+    renderer.setDenoisingEnabled(false)
+    val second = renderer.render(QUICK_TEST_SIZE)
+    second shouldBe first
+
+  it should "render successfully when enabled" in:
+    renderer.setDenoisingEnabled(true)
+    val image = renderer.render(QUICK_TEST_SIZE)
+    image.length shouldBe ImageValidation.imageByteSize(QUICK_TEST_SIZE)
 
   "Sphere position" should "produce different images" in:
     val size = QUICK_TEST_SIZE

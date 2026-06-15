@@ -378,6 +378,30 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFr
     }
 }
 
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabled(
+    JNIEnv* env, jobject obj, jboolean enabled) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr)
+            wrapper->setDenoisingEnabled(enabled == JNI_TRUE);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setDenoisingEnabled: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabled(
+    JNIEnv* env, jobject obj) {
+    try {
+        const OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr)
+            return wrapper->isDenoisingEnabled() ? JNI_TRUE : JNI_FALSE;
+        return JNI_FALSE;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in isDenoisingEnabled: " << e.what() << std::endl;
+        return JNI_FALSE;
+    }
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint proceduralType, jfloat proceduralScale) {
     try {

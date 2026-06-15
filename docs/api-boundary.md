@@ -25,6 +25,7 @@ model evolves.
 | `setTransparentShadows(enabled)` | Coloured shadow toggle |
 | `setBackgroundColor(r, g, b)` | Scene background |
 | `setAntialiasing(enabled, maxDepth, threshold)` | AA parameters |
+| `setDenoisingEnabled(enabled)` / `isDenoisingEnabled` | Opt-in OptiX HDR denoiser |
 | `setCaustics(…)` / `enableCaustics` / `disableCaustics` | Progressive photon mapping |
 | `getCausticsStats` | Caustics diagnostic statistics |
 | `setRenderConfig(config)` | Batch-apply `RenderConfig` |
