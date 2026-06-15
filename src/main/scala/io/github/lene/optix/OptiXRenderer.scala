@@ -260,6 +260,8 @@ class OptiXRenderer
   @native private[optix] def setToneMappingNative(operatorId: Int, exposure: Float): Unit
   @native private[optix] def setIBLNative(enabled: Boolean, strength: Float, samples: Int): Unit
   @native private[optix] def setAccumulationFramesNative(n: Int): Unit
+  @native def setDenoisingEnabled(enabled: Boolean): Unit
+  @native def isDenoisingEnabled: Boolean
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit

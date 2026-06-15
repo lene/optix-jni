@@ -25,6 +25,7 @@ public:
 
     // Core buffer management
     void ensureImageBuffer(int width, int height);
+    void ensureDenoiseBuffers(int width, int height);
     void ensureParamsBuffer();
     void ensureStatsBuffer();
     void ensureGASBuffer(const OptiXContext::GASBuildResult& gasResult);
@@ -40,6 +41,13 @@ public:
 
     // Access buffers
     CUdeviceptr getImageBuffer() const { return image_buffer.get(); }
+    CUdeviceptr getLinearColorBuffer() const { return linear_color_buffer.get(); }
+    CUdeviceptr getAccumulatedLinearColorBuffer() const {
+        return accumulated_linear_color_buffer.get();
+    }
+    CUdeviceptr getDenoisedColorBuffer() const { return denoised_color_buffer.get(); }
+    CUdeviceptr getDenoiseAlbedoBuffer() const { return denoise_albedo_buffer.get(); }
+    CUdeviceptr getDenoiseNormalBuffer() const { return denoise_normal_buffer.get(); }
     CUdeviceptr getParamsBuffer() const { return params_buffer.get(); }
     CUdeviceptr getStatsBuffer() const { return stats_buffer.get(); }
     CUdeviceptr getGASBuffer() const { return gas_buffer; }
@@ -64,6 +72,11 @@ private:
 
     // Core buffers
     CudaBuffer<unsigned char> image_buffer;     // RGBA image output
+    CudaBuffer<float4> linear_color_buffer;     // Linear float4 color for denoising
+    CudaBuffer<float4> accumulated_linear_color_buffer; // Linear average across frames
+    CudaBuffer<float4> denoised_color_buffer;   // Denoised linear float4 color
+    CudaBuffer<float4> denoise_albedo_buffer;   // First-frame albedo guide
+    CudaBuffer<float4> denoise_normal_buffer;   // First-frame normal guide
     CudaBuffer<BaseParams> params_buffer;           // Launch parameters
     CudaBuffer<RayStats> stats_buffer;          // Ray statistics
     CUdeviceptr gas_buffer = 0;                 // Geometry Acceleration Structure (managed by OptiXContext)
@@ -78,6 +91,7 @@ private:
 
     // Track current sizes to avoid unnecessary reallocations
     size_t current_image_size = 0;
+    size_t current_denoise_pixel_count = 0;
     size_t current_hit_points_size = 0;
 };
 

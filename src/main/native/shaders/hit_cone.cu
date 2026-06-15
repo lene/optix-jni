@@ -186,6 +186,8 @@ extern "C" __global__ void __closesthit__cone() {
         }
     }
 
+    writeDenoiseGuides(material_color, normal);
+
     if (depth == 0 && metallic > 0.0f) {
         handleMetallicOpaque(hit_point, ray_direction, normal,
                              material_color, metallic, depth, emission);

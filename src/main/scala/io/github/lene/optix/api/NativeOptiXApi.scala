@@ -126,6 +126,70 @@ class NativeOptiXApi:
   /** Destroys a pipeline. Safe to call with `0L`. */
   @native def destroyPipeline(contextHandle: Long, pipelineHandle: Long): Unit
 
+  // ---- Denoiser lifecycle ----
+
+  /** Creates an OptiX HDR denoiser owned by an OptiX context.
+    *
+    * @param contextHandle owning context returned by [[createContext]]
+    * @param guideAlbedo whether the denoiser requires an albedo guide image
+    * @param guideNormal whether the denoiser requires a normal guide image
+    * @return non-zero denoiser handle, or `0L` when CUDA or OptiX initialization fails
+    */
+  @native def createDenoiser(
+    contextHandle: Long,
+    guideAlbedo: Boolean,
+    guideNormal: Boolean
+  ): Long
+
+  @native private def denoiseFloat4Native(
+    denoiserHandle: Long,
+    width: Int,
+    height: Int,
+    colorRgba: Array[Float],
+    albedoRgba: Array[Float],
+    normalRgba: Array[Float]
+  ): Array[Float]
+
+  /** Denoises a row-major linear HDR RGBA float image without guide images. */
+  def denoiseFloat4(
+    denoiserHandle: Long,
+    width: Int,
+    height: Int,
+    colorRgba: Array[Float]
+  ): Array[Float] =
+    denoiseFloat4Native(
+      denoiserHandle,
+      width,
+      height,
+      colorRgba,
+      null, // scalafix:ok DisableSyntax.null
+      null  // scalafix:ok DisableSyntax.null
+    )
+
+  /** Denoises a row-major linear HDR RGBA float image with optional guide images.
+    *
+    * All arrays use dense `width * height * 4` float layout.
+    */
+  def denoiseFloat4(
+    denoiserHandle: Long,
+    width: Int,
+    height: Int,
+    colorRgba: Array[Float],
+    albedoRgba: Option[Array[Float]],
+    normalRgba: Option[Array[Float]]
+  ): Array[Float] =
+    denoiseFloat4Native(
+      denoiserHandle,
+      width,
+      height,
+      colorRgba,
+      albedoRgba.orNull,
+      normalRgba.orNull
+    )
+
+  /** Destroys a denoiser created by [[createDenoiser]]. Safe to call with `0L`. */
+  @native def destroyDenoiser(denoiserHandle: Long): Unit
+
 /** Singleton access to low-level native OptiX bindings. */
 object NativeOptiXApi:
   /** Shared stateless JNI binding instance. */

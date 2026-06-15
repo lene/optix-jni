@@ -1453,6 +1453,41 @@ __device__ float3 payloadToFloat3(unsigned int r, unsigned int g, unsigned int b
     );
 }
 
+__device__ void writeDenoiseGuides(const float4& albedo, const float3& world_normal) {
+    if (!params.write_denoise_guides || optixGetPayload_3() != 0u) {
+        return;
+    }
+
+    const float3 camera_u = normalize(make_float3(
+        params.camera_u[0],
+        params.camera_u[1],
+        params.camera_u[2]
+    ));
+    const float3 camera_v = normalize(make_float3(
+        params.camera_v[0],
+        params.camera_v[1],
+        params.camera_v[2]
+    ));
+    const float3 camera_w = normalize(make_float3(
+        params.camera_w[0],
+        params.camera_w[1],
+        params.camera_w[2]
+    ));
+    const float3 normal = normalize(world_normal);
+    const float3 camera_normal = make_float3(
+        dot(normal, camera_u),
+        dot(normal, camera_v),
+        dot(normal, camera_w)
+    );
+
+    optixSetPayload_4(__float_as_uint(fmaxf(albedo.x, 0.0f)));
+    optixSetPayload_5(__float_as_uint(fmaxf(albedo.y, 0.0f)));
+    optixSetPayload_6(__float_as_uint(fmaxf(albedo.z, 0.0f)));
+    optixSetPayload_7(__float_as_uint(camera_normal.x));
+    optixSetPayload_8(__float_as_uint(camera_normal.y));
+    optixSetPayload_9(__float_as_uint(camera_normal.z));
+}
+
 //==============================================================================
 // Instance Material Helper (IAS Mode)
 //==============================================================================

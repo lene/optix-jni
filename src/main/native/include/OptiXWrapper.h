@@ -145,6 +145,8 @@ public:
     // IBL configuration
     void setIBL(bool enabled, float strength, int samples);
     void setAccumulationFrames(int n);
+    void setDenoisingEnabled(bool enabled);
+    bool isDenoisingEnabled() const;
 
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);

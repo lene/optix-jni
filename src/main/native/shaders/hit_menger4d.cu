@@ -356,6 +356,8 @@ extern "C" __global__ void __closesthit__menger4d() {
     if (proc_type != 0)
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
 
+    writeDenoiseGuides(material_color, normal);
+
     const float alpha = material_color.w;
 
     if (alpha < RayTracingConstants::ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
