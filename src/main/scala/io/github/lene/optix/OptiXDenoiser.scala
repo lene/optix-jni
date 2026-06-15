@@ -1,12 +1,14 @@
 package io.github.lene.optix
 
+import java.util.Optional
+
 import io.github.lene.optix.api.NativeOptiXApi
 
 final case class DenoiseImage(width: Int, height: Int, rgba: Array[Float])
 
-final case class DenoiseGuides(
-  albedo: Option[Array[Float]] = None,
-  normal: Option[Array[Float]] = None
+final class DenoiseGuides private (
+  val albedo: Optional[Array[Float]],
+  val normal: Optional[Array[Float]]
 )
 
 final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = false)
@@ -27,11 +29,14 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
   def isAvailable: Boolean =
     contextHandle != 0L && denoiserHandle != 0L
 
-  def denoise(image: DenoiseImage, guides: DenoiseGuides = DenoiseGuides()): Option[DenoiseImage] =
+  def denoise(
+    image: DenoiseImage,
+    guides: DenoiseGuides = DenoiseGuides.empty()
+  ): Optional[DenoiseImage] =
     validateImage(image)
     validateGuides(image, guides)
 
-    if !isAvailable then None
+    if !isAvailable then Optional.empty()
     else
       val result = api.denoiseFloat4(
         denoiserHandle,
@@ -41,8 +46,8 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
         guides.albedo,
         guides.normal
       )
-      if result == null || result.isEmpty then None // scalafix:ok DisableSyntax.null
-      else Some(DenoiseImage(image.width, image.height, result))
+      if result == null || result.isEmpty then Optional.empty() // scalafix:ok DisableSyntax.null
+      else Optional.of(DenoiseImage(image.width, image.height, result))
 
   override def close(): Unit =
     if denoiserHandle != 0L then
@@ -59,23 +64,28 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
     validateFinite("rgba", image.rgba)
 
   private def validateGuides(image: DenoiseImage, guides: DenoiseGuides): Unit =
+    require(guides != null, "guides must not be null") // scalafix:ok DisableSyntax.null
     validateOptionalGuide("albedo", image, guides.albedo)
     validateOptionalGuide("normal", image, guides.normal)
     require(
-      !guideAlbedo || guides.albedo.nonEmpty,
+      !guideAlbedo || guides.albedo.isPresent,
       "albedo guide is required by this denoiser"
     )
     require(
-      !guideNormal || guides.normal.nonEmpty,
+      !guideNormal || guides.normal.isPresent,
       "normal guide is required by this denoiser"
     )
 
   private def validateOptionalGuide(
     name: String,
     image: DenoiseImage,
-    guide: Option[Array[Float]]
+    guide: Optional[Array[Float]]
   ): Unit =
-    guide.foreach { values =>
+    require(
+      guide != null, // scalafix:ok DisableSyntax.null
+      s"$name guide optional must not be null"
+    )
+    guide.ifPresent { values =>
       validateFloat4Length(name, image.width, image.height, values)
       validateFinite(name, values)
     }
@@ -104,3 +114,38 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
 
 object OptiXDenoiser:
   private val floatsPerPixel: Int = 4
+
+object DenoiseGuides:
+  private val emptyGuides = new DenoiseGuides(Optional.empty(), Optional.empty())
+
+  def empty(): DenoiseGuides = emptyGuides
+
+  def albedo(albedoRgba: Array[Float]): DenoiseGuides =
+    new DenoiseGuides(present(albedoRgba, "albedo"), Optional.empty())
+
+  def normal(normalRgba: Array[Float]): DenoiseGuides =
+    new DenoiseGuides(Optional.empty(), present(normalRgba, "normal"))
+
+  def albedoAndNormal(albedoRgba: Array[Float], normalRgba: Array[Float]): DenoiseGuides =
+    new DenoiseGuides(
+      present(albedoRgba, "albedo"),
+      present(normalRgba, "normal")
+    )
+
+  def optional(
+    albedoRgba: Optional[Array[Float]],
+    normalRgba: Optional[Array[Float]]
+  ): DenoiseGuides =
+    require(
+      albedoRgba != null, // scalafix:ok DisableSyntax.null
+      "albedoRgba optional must not be null"
+    )
+    require(
+      normalRgba != null, // scalafix:ok DisableSyntax.null
+      "normalRgba optional must not be null"
+    )
+    new DenoiseGuides(albedoRgba, normalRgba)
+
+  private def present(values: Array[Float], name: String): Optional[Array[Float]] =
+    require(values != null, s"$name guide must not be null") // scalafix:ok DisableSyntax.null
+    Optional.of(values)

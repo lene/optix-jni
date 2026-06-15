@@ -1,5 +1,7 @@
 package io.github.lene.optix.api
 
+import java.util.Optional
+
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import io.github.lene.optix.OptiXRenderer
@@ -45,6 +47,18 @@ class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
 
   it should "handle destroyDenoiser with a null handle safely" in {
     noException should be thrownBy api.destroyDenoiser(0L)
+  }
+
+  it should "reject null optional guide containers before JNI" in {
+    an[IllegalArgumentException] should be thrownBy
+      api.denoiseFloat4(
+        0L,
+        1,
+        1,
+        Array.fill(4)(0.0f),
+        null, // scalafix:ok DisableSyntax.null
+        Optional.empty()
+      )
   }
 
   it should "create and destroy a context" in {

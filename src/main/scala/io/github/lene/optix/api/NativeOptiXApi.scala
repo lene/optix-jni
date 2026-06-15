@@ -1,5 +1,7 @@
 package io.github.lene.optix.api
 
+import java.util.Optional
+
 /** Thin JNI bindings for selected OptiX 7.x context operations.
  *
  *  Each method wraps one C++ `OptiXContext` operation and exposes native handles
@@ -175,16 +177,24 @@ class NativeOptiXApi:
     width: Int,
     height: Int,
     colorRgba: Array[Float],
-    albedoRgba: Option[Array[Float]],
-    normalRgba: Option[Array[Float]]
+    albedoRgba: Optional[Array[Float]],
+    normalRgba: Optional[Array[Float]]
   ): Array[Float] =
+    require(
+      albedoRgba != null, // scalafix:ok DisableSyntax.null
+      "albedoRgba optional must not be null"
+    )
+    require(
+      normalRgba != null, // scalafix:ok DisableSyntax.null
+      "normalRgba optional must not be null"
+    )
     denoiseFloat4Native(
       denoiserHandle,
       width,
       height,
       colorRgba,
-      albedoRgba.orNull,
-      normalRgba.orNull
+      albedoRgba.orElse(null), // scalafix:ok DisableSyntax.null
+      normalRgba.orElse(null)  // scalafix:ok DisableSyntax.null
     )
 
   /** Destroys a denoiser created by [[createDenoiser]]. Safe to call with `0L`. */
