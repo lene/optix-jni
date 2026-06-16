@@ -92,6 +92,7 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 ```scala
 import io.github.lene.optix.OptiXRenderer
+import io.github.lene.optix.Material
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -106,6 +107,16 @@ try
 
   renderer.setSphere(Vector[3](0f, 0f, 0f), radius = 1f)
   renderer.setSphereColor(Color(1f, 0.5f, 0.2f, 1f))
+  renderer.addCurveInstance(
+    points = Array(
+      -1.2f, -0.35f, 0f,
+      -0.4f,  0.65f, 0f,
+       0.4f,  0.65f, 0f,
+       1.2f, -0.35f, 0f
+    ),
+    widths = Array(0.12f, 0.12f, 0.12f, 0.12f),
+    material = Material(Color(0.1f, 0.9f, 0.3f, 1f), ior = 1.0f)
+  )
   renderer.setCamera(
     eye = Vector[3](0f, 0f, 5f),
     lookAt = Vector[3](0f, 0f, 0f),
@@ -125,6 +136,23 @@ finally
 ### Alpha convention
 
 `alpha = 0.0` → fully transparent. `alpha = 1.0` → fully opaque.
+
+### OptiX denoiser
+
+Denoising is opt-in. `OptiXRenderer.setDenoisingEnabled(true)` renders the
+frame into float4 color and guide AOV buffers, invokes the OptiX HDR denoiser,
+then converts the denoised float output back to RGBA8 bytes. Leaving denoising
+disabled keeps the existing byte render path unchanged.
+
+The low-level `NativeOptiXApi` denoiser methods and the `OptiXDenoiser` Scala
+wrapper expect row-major linear HDR RGBA float arrays (`width * height * 4`).
+Albedo and normal guides are optional at creation time; when enabled, the guide
+arrays must use the same dense float4 layout. Guide AOVs improve edge stability,
+especially around silhouettes and textured materials.
+
+The denoiser allocates OptiX state, scratch, HDR intensity, and image buffers.
+Expect roughly 100-400 MB of additional GPU memory depending on resolution and
+guide usage.
 
 ---
 
@@ -226,7 +254,7 @@ Total image size: ~11GB (but CUDA layer shared across all NVIDIA images)
 - 16 Google Test C++ unit tests
 
 **High-Level (OptiXWrapper):**
-- Scene state management (sphere, camera, light, plane, material)
+- Scene state management (sphere, camera, light, plane, curves, material)
 - Convenience methods for scene setup
 - Performance: scene data in Params (not SBT) for fast parameter updates
 - Uses OptiXContext via composition
@@ -246,20 +274,23 @@ optix-jni/src/main/
       OptiXData.h           # Shared data structures (Params, SBT)
       OptiXConstants.h      # Magic number constants
     shaders/
-      sphere_combined.cu    # Combined CUDA shaders (ONLY this file is compiled)
+      optix_shaders.cu      # Aggregated CUDA shader entrypoint
+      hit_curve.cu          # Built-in round cubic B-spline curve hit shaders
     tests/
       OptiXContextTest.cpp  # Google Test suite (16 tests)
 
-  scala/menger/optix/
+  scala/io/github/lene/optix/
     OptiXRenderer.scala     # Main Scala API
 
 target/native/x86_64-linux/
   bin/
     liboptixjni.so          # Compiled JNI shared library
-    sphere_combined.ptx     # Compiled CUDA kernels
+    optix_shaders.ptx       # Compiled CUDA kernels
 ```
 
-**IMPORTANT:** Only `sphere_combined.cu` is compiled. Separate shader files (`sphere_miss.cu`, `sphere_closesthit.cu`, `sphere_raygen.cu`) are outdated and NOT used. Check `CMakeLists.txt` to verify.
+**IMPORTANT:** `optix_shaders.cu` is the compiled CUDA entrypoint. The files under
+`native/shaders/` are included from that aggregate file; do not compile them
+individually.
 
 ### Key Components
 
@@ -267,14 +298,16 @@ target/native/x86_64-linux/
 - `initialize()`/`destroy()` - Device context lifecycle
 - `createModuleFromPTX()`/`destroyModule()` - Shader compilation
 - `createRaygenProgramGroup()`, `createMissProgramGroup()`, `createHitgroupProgramGroup()`
+- `createCurveHitgroupProgramGroup()` - Built-in round cubic B-spline curve hit groups
 - `createPipeline()`/`destroyPipeline()` - Pipeline assembly
-- `buildCustomPrimitiveGAS()`/`destroyGAS()` - Geometry acceleration
+- `buildCustomPrimitiveGAS()`, `buildCurveGAS()`/`destroyGAS()` - Geometry acceleration
 - `createRaygenSBTRecord()`, `createMissSBTRecord()`, `createHitgroupSBTRecord()`
 - `launch()` - OptiX kernel execution
 
 **OptiXWrapper** (`OptiXWrapper.h/.cpp`):
 - `setSphere()`, `setSphereColor()`, `setIOR()`, `setScale()` - Scene config
 - `setCamera()`, `setLight()`, `setPlane()` - Environment
+- `addCurveInstance(points, widths, material)` - World-space cubic B-spline curves
 - `render()` - High-level rendering (builds pipeline if needed, returns RGBA image)
 
 **JNI Interface** (`JNIBindings.cpp`, `OptiXRenderer.scala`):
@@ -282,8 +315,8 @@ target/native/x86_64-linux/
 - Error propagation via return codes
 - Functional-style library loading with Try monad
 
-**Shaders** (`sphere_combined.cu`):
-- Ray generation, miss, closest hit, custom sphere intersection
+**Shaders** (`optix_shaders.cu` plus included shader files):
+- Ray generation, miss, closest hit, custom primitive intersection, built-in curve hit groups
 - Reads scene data from Params struct (not SBT) for performance
 - Compiled to PTX at build time
 

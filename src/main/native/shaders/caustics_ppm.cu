@@ -707,7 +707,9 @@ extern "C" __global__ void __closesthit__photon() {
     float glass_color[4];
     float glass_scale;
 
-    if (optixGetPrimitiveType() == OPTIX_PRIMITIVE_TYPE_TRIANGLE) {
+    const OptixPrimitiveType primitive_type = optixGetPrimitiveType();
+
+    if (primitive_type == OPTIX_PRIMITIVE_TYPE_TRIANGLE) {
         const TriangleHitGroupData* hit_data =
             reinterpret_cast<const TriangleHitGroupData*>(
                 optixGetSbtDataPointer());
@@ -739,6 +741,18 @@ extern "C" __global__ void __closesthit__photon() {
                 params.instance_materials[inst_id]
                     .color[i];
         glass_scale = 1.0f;
+    } else if (primitive_type == OPTIX_PRIMITIVE_TYPE_ROUND_CUBIC_BSPLINE) {
+        outward_normal = computeCurveNormalWorld();
+        if (params.use_ias) {
+            const unsigned int id = optixGetInstanceId();
+            ior_material = params.instance_materials[id].ior;
+            for (int i = 0; i < 4; i++) glass_color[i] = params.instance_materials[id].color[i];
+            glass_scale = 1.0f;
+        } else {
+            ior_material = params.sphere_ior;
+            for (int i = 0; i < 4; i++) glass_color[i] = params.sphere_color[i];
+            glass_scale = params.sphere_scale;
+        }
     } else {
         // Sphere or cylinder: normal from intersection attributes
         outward_normal = normalize(make_float3(

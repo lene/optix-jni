@@ -65,6 +65,13 @@ public:
         const char* entry_ch
     );
 
+    // Create hitgroup for round cubic B-spline curves (uses OptiX built-in IS)
+    OptixProgramGroup createCurveHitgroupProgramGroup(
+        OptixModule module_ch,
+        const char* entry_ch,
+        OptixModule& builtin_curve_module
+    );
+
     // Create hitgroup with anyhit program (for shadow accumulation through multiple transparent objects)
     OptixProgramGroup createHitgroupProgramGroupWithAH(
         OptixModule module_ch, const char* entry_ch,
@@ -75,6 +82,12 @@ public:
     OptixProgramGroup createTriangleHitgroupProgramGroupWithAH(
         OptixModule module_ch, const char* entry_ch,
         OptixModule module_ah, const char* entry_ah
+    );
+
+    OptixProgramGroup createCurveHitgroupProgramGroupWithAH(
+        OptixModule module_ch, const char* entry_ch,
+        OptixModule module_ah, const char* entry_ah,
+        OptixModule& builtin_curve_module
     );
 
     void destroyProgramGroup(OptixProgramGroup program_group);
@@ -111,6 +124,15 @@ public:
         unsigned int num_triangles,
         const OptixAccelBuildOptions& build_options,
         unsigned int vertex_stride
+    );
+
+    GASBuildResult buildCurveGAS(
+        CUdeviceptr d_points,
+        unsigned int num_points,
+        CUdeviceptr d_widths,
+        CUdeviceptr d_segment_indices,
+        unsigned int num_segments,
+        const OptixAccelBuildOptions& build_options
     );
 
     void destroyGAS(CUdeviceptr gas_buffer);

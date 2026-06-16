@@ -25,6 +25,7 @@ model evolves.
 | `setTransparentShadows(enabled)` | Coloured shadow toggle |
 | `setBackgroundColor(r, g, b)` | Scene background |
 | `setAntialiasing(enabled, maxDepth, threshold)` | AA parameters |
+| `setDenoisingEnabled(enabled)` / `isDenoisingEnabled` | Opt-in OptiX HDR denoiser |
 | `setCaustics(…)` / `enableCaustics` / `disableCaustics` | Progressive photon mapping |
 | `getCausticsStats` | Caustics diagnostic statistics |
 | `setRenderConfig(config)` | Batch-apply `RenderConfig` |
@@ -35,6 +36,7 @@ model evolves.
 | `removeInstance(id)` | Remove one instance from the IAS |
 | `isIASMode()` / `setIASMode(enabled)` | Switch between single-object and IAS mode |
 | `clearPlanes()` / `addPlane*(…)` | Infinite ground/wall planes (general primitive) |
+| `addCurveInstance(points, widths, material)` | World-space round cubic B-spline curves |
 | `uploadTexture(…)` / `releaseTextures()` | GPU texture management |
 
 ## Menger-specific (sphere sponge domain)

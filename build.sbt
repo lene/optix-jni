@@ -31,12 +31,26 @@ resolvers += Resolver.file("local-ivy", file(Path.userHome + "/.ivy2/local"))(Re
 
 Compile / semanticdbEnabled := true
 
+val relativeCompilerPluginPrefix = "-Xplugin:target/compiler_plugins/"
+
+def absolutizeCompilerPluginPath(projectBase: File)(option: String): String =
+  if (option.startsWith(relativeCompilerPluginPrefix)) {
+    val relativePluginPath = option.stripPrefix("-Xplugin:")
+    s"-Xplugin:${(projectBase / relativePluginPath).getAbsolutePath}"
+  } else {
+    option
+  }
+
 Compile / wartremoverErrors ++= Seq(
   Wart.Var,
   Wart.While,
   Wart.AsInstanceOf,
   Wart.IsInstanceOf,
   Wart.Throw
+)
+
+Compile / scalacOptions := (Compile / scalacOptions).value.map(
+  absolutizeCompilerPluginPath(baseDirectory.value)
 )
 
 // Configure native build

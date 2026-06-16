@@ -29,6 +29,12 @@ extern "C" __global__ void __raygen__rg() {
     const float3 camera_w = make_float3(raygen_data->camera_w[0], raygen_data->camera_w[1], raygen_data->camera_w[2]);
 
     unsigned int r, g, b;
+    unsigned int albedo_r = 0;
+    unsigned int albedo_g = 0;
+    unsigned int albedo_b = 0;
+    unsigned int normal_x = 0;
+    unsigned int normal_y = 0;
+    unsigned int normal_z = 0;
 
     if (params.aa_enabled) {
         // Adaptive antialiasing: recursively subdivide pixel if edge detected
@@ -74,7 +80,9 @@ extern "C" __global__ void __raygen__rg() {
             OptixVisibilityMask(255),
             OPTIX_RAY_FLAG_NONE,
             params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
-            r, g, b, p3
+            r, g, b, p3,
+            albedo_r, albedo_g, albedo_b,
+            normal_x, normal_y, normal_z
         );
     }
 
@@ -84,4 +92,28 @@ extern "C" __global__ void __raygen__rg() {
     params.image[pixel_index * 4 + 1] = static_cast<unsigned char>(g);
     params.image[pixel_index * 4 + 2] = static_cast<unsigned char>(b);
     params.image[pixel_index * 4 + 3] = ALPHA_OPAQUE_BYTE;  // Alpha
+
+    if (params.linear_color) {
+        params.linear_color[pixel_index] = make_float4(
+            static_cast<float>(r) / RayTracingConstants::COLOR_BYTE_MAX,
+            static_cast<float>(g) / RayTracingConstants::COLOR_BYTE_MAX,
+            static_cast<float>(b) / RayTracingConstants::COLOR_BYTE_MAX,
+            1.0f
+        );
+    }
+
+    if (params.write_denoise_guides && params.denoise_albedo && params.denoise_normal) {
+        params.denoise_albedo[pixel_index] = make_float4(
+            __uint_as_float(albedo_r),
+            __uint_as_float(albedo_g),
+            __uint_as_float(albedo_b),
+            1.0f
+        );
+        params.denoise_normal[pixel_index] = make_float4(
+            __uint_as_float(normal_x),
+            __uint_as_float(normal_y),
+            __uint_as_float(normal_z),
+            1.0f
+        );
+    }
 }

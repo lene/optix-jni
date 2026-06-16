@@ -26,6 +26,8 @@ class NativeOptiXNoGpuSuite extends AnyFlatSpec with Matchers:
       api.destroyModule(0L, 0L)
     noException should be thrownBy
       api.destroyPipeline(0L, 0L)
+    noException should be thrownBy
+      api.destroyDenoiser(0L)
 
   it should "handle createContext returning no context without requiring a GPU" in:
     assumeNativeLibraryLoaded()

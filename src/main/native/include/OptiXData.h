@@ -159,7 +159,8 @@ enum GeometryType {
     GEOMETRY_TYPE_MENGER4D = 5,      // 4D Menger sponge analog (iterative IFS in custom IS)
     GEOMETRY_TYPE_SIERPINSKI4D = 6,  // 4D Sierpinski pentachoron analog (iterative IFS in custom IS)
     GEOMETRY_TYPE_HEXADECACHORON4D = 7,  // 4D Sierpinski 16-cell analog (iterative IFS in custom IS)
-    GEOMETRY_TYPE_COUNT = 8          // Number of geometry types
+    GEOMETRY_TYPE_CURVE = 8,         // Built-in round cubic B-spline curve
+    GEOMETRY_TYPE_COUNT = 9          // Number of geometry types
 };
 
 // Per-instance material data for IAS (indexed by instance ID)
@@ -466,6 +467,15 @@ struct PlaneData {
     // Total: 48 bytes
 };
 
+// Round cubic B-spline curve data.
+// Stored in params.curve_data buffer, indexed via InstanceMaterial.geometry_data_index.
+struct CurveData {
+    float* points;              // Device pointer to dense float3 control points
+    float* widths;              // Device pointer to one radius per control point
+    unsigned int num_points;    // Number of control points
+    unsigned int num_segments;  // num_points - 3
+};
+
 // 4D Menger sponge per-instance data for the IFS intersection shader.
 // Stored in params.menger4d_data buffer, indexed via InstanceMaterial.geometry_data_index
 struct Menger4DData {
@@ -510,6 +520,10 @@ struct Hexadecachoron4DData {
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
 struct BaseParams {
     unsigned char* image;        // Output image buffer (RGBA)
+    float4*        linear_color; // Optional linear HDR color output for denoising
+    float4*        denoise_albedo; // Optional albedo guide output
+    float4*        denoise_normal; // Optional normal guide output
+    bool           write_denoise_guides; // Write first-hit guide AOVs for primary rays
     unsigned int   image_width;
     unsigned int   image_height;
     OptixTraversableHandle handle; // Scene geometry handle (GAS or IAS)
@@ -540,6 +554,9 @@ struct BaseParams {
     cudaTextureObject_t env_map_texture;   // equirectangular HDR texture object
     int   tonemap_operator;  // 0=none (clip), 1=reinhard, 2=aces
     float tonemap_exposure;  // pre-tone-map exposure multiplier (default 1.0)
+    float camera_u[3];       // Camera right vector for guide normal transform
+    float camera_v[3];       // Camera up vector for guide normal transform
+    float camera_w[3];       // Camera forward vector for guide normal transform
 
     // IBL — image-based lighting
     bool                ibl_enabled;
@@ -567,6 +584,10 @@ struct BaseParams {
     // Plane geometry data buffer (for plane intersection shader)
     PlaneData* plane_data;          // Device pointer to array of plane geometry
     unsigned int num_plane_data;    // Number of IS-plane instances
+
+    // Curve geometry data buffer (for built-in curve closest-hit helpers)
+    CurveData* curve_data;          // Device pointer to array of curve geometry
+    unsigned int num_curves;        // Number of curve instances
 
     // 4D Menger sponge geometry data buffer (for IFS intersection shader)
     Menger4DData* menger4d_data;    // Device pointer to array of Menger4DData

@@ -145,6 +145,8 @@ public:
     // IBL configuration
     void setIBL(bool enabled, float strength, int samples);
     void setAccumulationFrames(int n);
+    void setDenoisingEnabled(bool enabled);
+    bool isDenoisingEnabled() const;
 
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
@@ -228,6 +230,14 @@ public:
         float apex_x, float apex_y, float apex_z,
         float base_x, float base_y, float base_z,
         float radius,
+        float r, float g, float b, float a, float ior,
+        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float film_thickness = 0.0f
+    );
+    int addCurveInstance(
+        const float* points,
+        const float* widths,
+        unsigned int num_points,
         float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
         float film_thickness = 0.0f

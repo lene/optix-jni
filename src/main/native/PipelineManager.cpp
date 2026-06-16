@@ -23,8 +23,11 @@ static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     options.numAttributeValues = 4;  // Normal x, y, z + radius from SDK intersection
     options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     options.pipelineLaunchParamsVariableName = "params";
-    // Support both custom primitives (sphere) and built-in triangles
-    options.usesPrimitiveTypeFlags = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM | OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
+    // Support custom primitives, built-in triangles, and built-in curves.
+    options.usesPrimitiveTypeFlags =
+        OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM
+        | OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE
+        | OPTIX_PRIMITIVE_TYPE_FLAGS_ROUND_CUBIC_BSPLINE;
     return options;
 }
 
@@ -134,6 +137,18 @@ void PipelineManager::createProgramGroups() {
         module, "__intersection__cone"
     );
 
+    // Curve hit groups (built-in round cubic B-spline intersection)
+    curve_hitgroup_prog_group = optix_context.createCurveHitgroupProgramGroup(
+        module, "__closesthit__curve",
+        curve_module
+    );
+
+    curve_shadow_hitgroup_prog_group = optix_context.createCurveHitgroupProgramGroupWithAH(
+        module, "__closesthit__curve_shadow",
+        module, "__anyhit__curve_shadow",
+        curve_shadow_module
+    );
+
     // Plane hit groups
     plane_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
         module, "__closesthit__plane",
@@ -159,6 +174,9 @@ void PipelineManager::createProgramGroups() {
     photon_cone_hitgroup = optix_context.createHitgroupProgramGroup(
         module, "__closesthit__photon",
         module, "__intersection__cone");
+    photon_curve_hitgroup = optix_context.createCurveHitgroupProgramGroup(
+        module, "__closesthit__photon",
+        curve_photon_module);
     photon_plane_hitgroup = optix_context.createHitgroupProgramGroup(
         module, "__closesthit__photon",
         module, "__intersection__plane");
@@ -230,7 +248,8 @@ void PipelineManager::createProgramGroups() {
 }
 
 void PipelineManager::createPipeline() {
-    constexpr int NUM_PROGRAM_GROUPS = 34;  // raygen(1) + miss(3) + hitgroups: sphere(3)+tri(3)+cylinder(3)+cone(3)+plane(3)+menger4d(3)+sierpinski4d(3)+hexadecachoron4d(3)+caustics(6)
+    // raygen(1) + miss(3) + hitgroups: 9 geometry types * 3 + caustics(6)
+    constexpr int NUM_PROGRAM_GROUPS = 37;
     OptixProgramGroup program_groups[] = {
         raygen_prog_group,
         miss_prog_group,
@@ -243,6 +262,8 @@ void PipelineManager::createPipeline() {
         cylinder_shadow_hitgroup_prog_group,
         cone_hitgroup_prog_group,
         cone_shadow_hitgroup_prog_group,
+        curve_hitgroup_prog_group,
+        curve_shadow_hitgroup_prog_group,
         plane_hitgroup_prog_group,
         plane_shadow_hitgroup_prog_group,
         menger4d_hitgroup_prog_group,
@@ -251,6 +272,7 @@ void PipelineManager::createPipeline() {
         photon_triangle_hitgroup,
         photon_cylinder_hitgroup,
         photon_cone_hitgroup,
+        photon_curve_hitgroup,
         photon_plane_hitgroup,
         photon_menger4d_hitgroup,
         sierpinski4d_hitgroup_prog_group,
@@ -333,10 +355,15 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     //             [12]=plane_primary, [13]=plane_shadow, [14]=plane_photon,
     //             [15]=menger4d_primary, [16]=menger4d_shadow, [17]=menger4d_photon,
     //             [18]=sierpinski4d_primary, [19]=sierpinski4d_shadow, [20]=sierpinski4d_photon,
-    //             [21]=hexadecachoron4d_primary, [22]=hexadecachoron4d_shadow, [23]=hexadecachoron4d_photon
+    //             [21]=hexadecachoron4d_primary, [22]=hexadecachoron4d_shadow,
+    //             [23]=hexadecachoron4d_photon,
+    //             [24]=curve_primary, [25]=curve_shadow, [26]=curve_photon
     // Offset calculation: geometry_type * 3 + ray_type (0=primary, 1=shadow, 2=photon)
-    constexpr size_t record_size = std::max(sizeof(HitGroupSbtRecord), sizeof(TriangleHitGroupSbtRecord));
-    constexpr int num_records = 24;  // 8 geometry types * 3 ray types
+    constexpr size_t record_size = std::max(
+        sizeof(HitGroupSbtRecord),
+        sizeof(TriangleHitGroupSbtRecord)
+    );
+    constexpr int num_records = GEOMETRY_TYPE_COUNT * SBTConstants::STRIDE_RAY_TYPES;
     char hitgroup_records[num_records * record_size];
     std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
 
@@ -460,6 +487,22 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     optixSbtRecordPackHeader(photon_hexadecachoron4d_hitgroup, hexadecachoron4d_photon);
     hexadecachoron4d_photon->data = sphere_data;
 
+    // Curve hitgroup records [24]=primary, [25]=shadow, [26]=photon
+    HitGroupSbtRecord* curve_primary =
+        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 24 * record_size);
+    optixSbtRecordPackHeader(curve_hitgroup_prog_group, curve_primary);
+    curve_primary->data = sphere_data;
+
+    HitGroupSbtRecord* curve_shadow =
+        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 25 * record_size);
+    optixSbtRecordPackHeader(curve_shadow_hitgroup_prog_group, curve_shadow);
+    curve_shadow->data = sphere_data;
+
+    HitGroupSbtRecord* curve_photon =
+        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 26 * record_size);
+    optixSbtRecordPackHeader(photon_curve_hitgroup, curve_photon);
+    curve_photon->data = sphere_data;
+
     CUdeviceptr d_hitgroup_records;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
     CUDA_CHECK(cudaMemcpy(
@@ -517,10 +560,13 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(cylinder_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(cone_hitgroup_prog_group);
     destroyProgramGroupIfExists(cone_shadow_hitgroup_prog_group);
+    destroyProgramGroupIfExists(curve_hitgroup_prog_group);
+    destroyProgramGroupIfExists(curve_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(photon_sphere_hitgroup);
     destroyProgramGroupIfExists(photon_triangle_hitgroup);
     destroyProgramGroupIfExists(photon_cylinder_hitgroup);
     destroyProgramGroupIfExists(photon_cone_hitgroup);
+    destroyProgramGroupIfExists(photon_curve_hitgroup);
     destroyProgramGroupIfExists(plane_hitgroup_prog_group);
     destroyProgramGroupIfExists(plane_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(photon_plane_hitgroup);
@@ -558,6 +604,19 @@ void PipelineManager::cleanup(bool includeCaustics) {
         optix_context.destroyModule(cylinder_module);
     }
     cylinder_module = nullptr;
+
+    if (curve_module) {
+        optix_context.destroyModule(curve_module);
+        curve_module = nullptr;
+    }
+    if (curve_shadow_module) {
+        optix_context.destroyModule(curve_shadow_module);
+        curve_shadow_module = nullptr;
+    }
+    if (curve_photon_module) {
+        optix_context.destroyModule(curve_photon_module);
+        curve_photon_module = nullptr;
+    }
 
     // Clean up SBT buffers
     if (sbt.raygenRecord) {

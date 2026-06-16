@@ -1,0 +1,70 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  ai-review:
+    name: AI Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    if: "!contains(github.event.pull_request.labels.*.name, 'skip-review')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq curl jq python3 ca-certificates
+
+      - name: Generate diff
+        run: |
+          git fetch --quiet origin "${{ github.base_ref }}"
+          git diff "origin/${{ github.base_ref }}...HEAD" > mr.diff
+          echo "Diff: $(wc -l < mr.diff) lines"
+
+      - name: Run AI review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          ARCH_FLAG=""
+          if [ -f standards/architecture-paths.txt ]; then
+            while IFS= read -r pattern; do
+              case "$pattern" in '#'*|'') continue ;; esac
+              if git diff --name-only "origin/${{ github.base_ref }}...HEAD" \
+                  | grep -qE "$pattern"; then
+                ARCH_FLAG="--arch-guidelines standards/architecture-review-guidelines.md"
+                echo "Architecture-relevant paths changed; adding arch review"
+                break
+              fi
+            done < standards/architecture-paths.txt
+          fi
+          ./scripts/review.sh \
+            --diff mr.diff \
+            --guidelines standards/review-guidelines.md \
+            ${ARCH_FLAG} \
+            --output review-findings.json
+
+      - name: Post findings to PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/adapters/github-pr-review.sh review-findings.json
+
+      - name: Upload findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-findings
+          path: review-findings.json
+          retention-days: 7

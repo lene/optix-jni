@@ -142,6 +142,8 @@ extern "C" __global__ void __closesthit__plane() {
         roughness = applyRoughnessMap(roughness, plane_uv, getInstanceRoughnessTextureIndex());
     }
 
+    writeDenoiseGuides(material_color, normal);
+
     const float material_alpha = material_color.w;
 
     // Fully transparent: pass through

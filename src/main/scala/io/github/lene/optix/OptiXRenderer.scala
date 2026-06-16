@@ -260,6 +260,8 @@ class OptiXRenderer
   @native private[optix] def setToneMappingNative(operatorId: Int, exposure: Float): Unit
   @native private[optix] def setIBLNative(enabled: Boolean, strength: Float, samples: Int): Unit
   @native private[optix] def setAccumulationFramesNative(n: Int): Unit
+  @native def setDenoisingEnabled(enabled: Boolean): Unit
+  @native def isDenoisingEnabled: Boolean
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
@@ -411,6 +413,15 @@ class OptiXRenderer
     apex_x: Float, apex_y: Float, apex_z: Float,
     base_x: Float, base_y: Float, base_z: Float,
     radius: Float,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
+    filmThickness: Float
+  ): Int
+
+  @native private[optix] def addCurveInstanceNative(
+    points: Array[Float],
+    widths: Array[Float],
+    numPoints: Int,
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     filmThickness: Float

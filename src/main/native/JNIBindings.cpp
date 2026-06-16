@@ -378,6 +378,30 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFr
     }
 }
 
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabled(
+    JNIEnv* env, jobject obj, jboolean enabled) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr)
+            wrapper->setDenoisingEnabled(enabled == JNI_TRUE);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setDenoisingEnabled: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabled(
+    JNIEnv* env, jobject obj) {
+    try {
+        const OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr)
+            return wrapper->isDenoisingEnabled() ? JNI_TRUE : JNI_FALSE;
+        return JNI_FALSE;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in isDenoisingEnabled: " << e.what() << std::endl;
+        return JNI_FALSE;
+    }
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint proceduralType, jfloat proceduralScale) {
     try {
@@ -1211,6 +1235,73 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addConeInstanceNa
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addConeInstance: " << e.what() << std::endl;
+        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCurveInstanceNative(
+    JNIEnv* env, jobject obj,
+    jfloatArray points, jfloatArray widths, jint numPoints,
+    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return -1;
+        }
+
+        const jsize pointLen = env->GetArrayLength(points);
+        const jsize widthLen = env->GetArrayLength(widths);
+        if (numPoints < 4 || pointLen != numPoints * 3 || widthLen != numPoints) {
+            jclass exception_class = env->FindClass("java/lang/IllegalArgumentException");
+            std::string msg = "Curve points/widths length mismatch: points=" +
+                std::to_string(pointLen) + ", widths=" + std::to_string(widthLen) +
+                ", numPoints=" + std::to_string(numPoints);
+            env->ThrowNew(exception_class, msg.c_str());
+            return -1;
+        }
+
+        jfloat* pointArr = env->GetFloatArrayElements(points, nullptr);
+        if (pointArr == nullptr) {
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get curve points array elements");
+            return -1;
+        }
+
+        jfloat* widthArr = env->GetFloatArrayElements(widths, nullptr);
+        if (widthArr == nullptr) {
+            env->ReleaseFloatArrayElements(points, pointArr, JNI_ABORT);
+            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            env->ThrowNew(exception_class, "Failed to get curve widths array elements");
+            return -1;
+        }
+
+        int instanceId = -1;
+        try {
+            instanceId = wrapper->addCurveInstance(
+                pointArr,
+                widthArr,
+                static_cast<unsigned int>(numPoints),
+                r, g, b, a, ior,
+                roughness, metallic, specular, emission,
+                filmThickness
+            );
+        } catch (...) {
+            env->ReleaseFloatArrayElements(widths, widthArr, JNI_ABORT);
+            env->ReleaseFloatArrayElements(points, pointArr, JNI_ABORT);
+            throw;
+        }
+
+        env->ReleaseFloatArrayElements(widths, widthArr, JNI_ABORT);
+        env->ReleaseFloatArrayElements(points, pointArr, JNI_ABORT);
+
+        return instanceId;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addCurveInstance: " << e.what() << std::endl;
         jclass exception_class = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(exception_class, e.what());
         return -1;

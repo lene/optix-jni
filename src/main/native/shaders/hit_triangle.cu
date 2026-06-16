@@ -299,6 +299,8 @@ extern "C" __global__ void __closesthit__triangle() {
     geom.normal = applyNormalMap(geom.normal, geom.uv_coords, getInstanceNormalTextureIndex());
     roughness   = applyRoughnessMap(roughness, geom.uv_coords, getInstanceRoughnessTextureIndex());
 
+    writeDenoiseGuides(mesh_color, geom.normal);
+
     const float mesh_alpha = mesh_color.w;
 
     // Handle fully transparent triangles

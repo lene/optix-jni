@@ -206,10 +206,12 @@ add_library(optixjni SHARED
     RenderConfig.cpp
     PipelineManager.cpp
     BufferManager.cpp
+    DenoiserManager.cpp
     CausticsRenderer.cpp
     JNIBindings.cpp
     OptiXApiBindings.cpp
     project4d.cu
+    denoise_postprocess.cu
     stb_image_impl.cpp
 )
 
