@@ -13,7 +13,7 @@ project/local-plugins.sbt
 local.sbt
 
 # Generated native artifacts
-native/
+/native/
 src/main/native/standalone_test
 *.o
 
