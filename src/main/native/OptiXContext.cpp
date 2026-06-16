@@ -6,6 +6,7 @@
 #include <iostream>
 #include <sstream>
 #include <fstream>
+#include <memory>
 #include <cerrno>
 #include <cstring>
 #include <algorithm>
@@ -326,6 +327,68 @@ OptixProgramGroup OptiXContext::createTriangleHitgroupProgramGroup(
     return program_group;
 }
 
+OptixProgramGroup OptiXContext::createCurveHitgroupProgramGroup(
+    OptixModule module_ch,
+    const char* entry_ch,
+    OptixModule& builtin_curve_module)
+{
+    OptixModuleCompileOptions module_compile_options = {};
+    module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+    module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+    module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
+
+    OptixPipelineCompileOptions pipeline_compile_options = {};
+    pipeline_compile_options.usesMotionBlur = false;
+    pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
+    pipeline_compile_options.numPayloadValues = 10;
+    pipeline_compile_options.numAttributeValues = 4;
+    pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
+    pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
+    pipeline_compile_options.usesPrimitiveTypeFlags =
+        OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM
+        | OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE
+        | OPTIX_PRIMITIVE_TYPE_FLAGS_ROUND_CUBIC_BSPLINE;
+
+    OptixBuiltinISOptions builtin_is_options = {};
+    builtin_is_options.builtinISModuleType = OPTIX_PRIMITIVE_TYPE_ROUND_CUBIC_BSPLINE;
+    builtin_is_options.usesMotionBlur = false;
+    builtin_is_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+
+    OPTIX_CHECK(optixBuiltinISModuleGet(
+        context_,
+        &module_compile_options,
+        &pipeline_compile_options,
+        &builtin_is_options,
+        &builtin_curve_module
+    ));
+
+    OptixProgramGroupOptions program_group_options = {};
+    OptixProgramGroupDesc hitgroup_desc = {};
+    hitgroup_desc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+    hitgroup_desc.hitgroup.moduleCH = module_ch;
+    hitgroup_desc.hitgroup.entryFunctionNameCH = entry_ch;
+    hitgroup_desc.hitgroup.moduleAH = nullptr;
+    hitgroup_desc.hitgroup.entryFunctionNameAH = nullptr;
+    hitgroup_desc.hitgroup.moduleIS = builtin_curve_module;
+    hitgroup_desc.hitgroup.entryFunctionNameIS = nullptr;
+
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
+    size_t log_size = sizeof(log);
+
+    OptixProgramGroup program_group = nullptr;
+    OPTIX_CHECK(optixProgramGroupCreate(
+        context_,
+        &hitgroup_desc,
+        1,
+        &program_group_options,
+        log,
+        &log_size,
+        &program_group
+    ));
+
+    return program_group;
+}
+
 OptixProgramGroup OptiXContext::createHitgroupProgramGroupWithAH(
     OptixModule module_ch, const char* entry_ch,
     OptixModule module_ah, const char* entry_ah,
@@ -371,6 +434,68 @@ OptixProgramGroup OptiXContext::createTriangleHitgroupProgramGroupWithAH(
     hitgroup_desc.hitgroup.entryFunctionNameAH = entry_ah;
     // No intersection shader - OptiX uses built-in triangle intersection
     hitgroup_desc.hitgroup.moduleIS = nullptr;
+    hitgroup_desc.hitgroup.entryFunctionNameIS = nullptr;
+
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
+    size_t log_size = sizeof(log);
+
+    OptixProgramGroup program_group = nullptr;
+    OPTIX_CHECK(optixProgramGroupCreate(
+        context_,
+        &hitgroup_desc,
+        1,
+        &program_group_options,
+        log,
+        &log_size,
+        &program_group
+    ));
+
+    return program_group;
+}
+
+OptixProgramGroup OptiXContext::createCurveHitgroupProgramGroupWithAH(
+    OptixModule module_ch, const char* entry_ch,
+    OptixModule module_ah, const char* entry_ah,
+    OptixModule& builtin_curve_module)
+{
+    OptixModuleCompileOptions module_compile_options = {};
+    module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+    module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+    module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
+
+    OptixPipelineCompileOptions pipeline_compile_options = {};
+    pipeline_compile_options.usesMotionBlur = false;
+    pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
+    pipeline_compile_options.numPayloadValues = 10;
+    pipeline_compile_options.numAttributeValues = 4;
+    pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
+    pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
+    pipeline_compile_options.usesPrimitiveTypeFlags =
+        OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM
+        | OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE
+        | OPTIX_PRIMITIVE_TYPE_FLAGS_ROUND_CUBIC_BSPLINE;
+
+    OptixBuiltinISOptions builtin_is_options = {};
+    builtin_is_options.builtinISModuleType = OPTIX_PRIMITIVE_TYPE_ROUND_CUBIC_BSPLINE;
+    builtin_is_options.usesMotionBlur = false;
+    builtin_is_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+
+    OPTIX_CHECK(optixBuiltinISModuleGet(
+        context_,
+        &module_compile_options,
+        &pipeline_compile_options,
+        &builtin_is_options,
+        &builtin_curve_module
+    ));
+
+    OptixProgramGroupOptions program_group_options = {};
+    OptixProgramGroupDesc hitgroup_desc = {};
+    hitgroup_desc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+    hitgroup_desc.hitgroup.moduleCH = module_ch;
+    hitgroup_desc.hitgroup.entryFunctionNameCH = entry_ch;
+    hitgroup_desc.hitgroup.moduleAH = module_ah;
+    hitgroup_desc.hitgroup.entryFunctionNameAH = entry_ah;
+    hitgroup_desc.hitgroup.moduleIS = builtin_curve_module;
     hitgroup_desc.hitgroup.entryFunctionNameIS = nullptr;
 
     char log[OptiXConstants::LOG_BUFFER_SIZE];
@@ -649,6 +774,81 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
     result.gas_buffer = d_gas_output_buffer;
     result.handle = gas_handle;
     result.aabb_buffer = 0;  // Triangle meshes don't use custom AABBs
+    return result;
+}
+
+OptiXContext::GASBuildResult OptiXContext::buildCurveGAS(
+    CUdeviceptr d_points,
+    unsigned int num_points,
+    CUdeviceptr d_widths,
+    CUdeviceptr d_segment_indices,
+    unsigned int num_segments,
+    const OptixAccelBuildOptions& build_options)
+{
+    OptixBuildInput curve_input = {};
+    curve_input.type = OPTIX_BUILD_INPUT_TYPE_CURVES;
+    curve_input.curveArray.curveType = OPTIX_PRIMITIVE_TYPE_ROUND_CUBIC_BSPLINE;
+    curve_input.curveArray.numPrimitives = num_segments;
+    curve_input.curveArray.vertexBuffers = &d_points;
+    curve_input.curveArray.numVertices = num_points;
+    curve_input.curveArray.vertexStrideInBytes = sizeof(float3);
+    curve_input.curveArray.widthBuffers = &d_widths;
+    curve_input.curveArray.widthStrideInBytes = sizeof(float);
+    curve_input.curveArray.normalBuffers = nullptr;
+    curve_input.curveArray.normalStrideInBytes = 0;
+    curve_input.curveArray.indexBuffer = d_segment_indices;
+    curve_input.curveArray.indexStrideInBytes = sizeof(unsigned int);
+    curve_input.curveArray.flag = OPTIX_GEOMETRY_FLAG_NONE;
+    curve_input.curveArray.primitiveIndexOffset = 0;
+    curve_input.curveArray.endcapFlags = OPTIX_CURVE_ENDCAP_DEFAULT;
+
+    OptixAccelBufferSizes gas_buffer_sizes;
+    OPTIX_CHECK(optixAccelComputeMemoryUsage(
+        context_,
+        &build_options,
+        &curve_input,
+        1,
+        &gas_buffer_sizes
+    ));
+
+    CUdeviceptr d_temp_buffer;
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&d_temp_buffer),
+        gas_buffer_sizes.tempSizeInBytes
+    ));
+    auto d_temp_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp_buffer), cudaFree);
+
+    CUdeviceptr d_gas_output_buffer;
+    CUDA_CHECK(cudaMalloc(
+        reinterpret_cast<void**>(&d_gas_output_buffer),
+        gas_buffer_sizes.outputSizeInBytes
+    ));
+    auto d_gas_output_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_gas_output_buffer), cudaFree);
+
+    OptixTraversableHandle gas_handle;
+    OPTIX_CHECK(optixAccelBuild(
+        context_,
+        0,
+        &build_options,
+        &curve_input,
+        1,
+        d_temp_buffer,
+        gas_buffer_sizes.tempSizeInBytes,
+        d_gas_output_buffer,
+        gas_buffer_sizes.outputSizeInBytes,
+        &gas_handle,
+        nullptr,
+        0
+    ));
+
+    d_gas_output_buffer_guard.release();
+
+    GASBuildResult result;
+    result.gas_buffer = d_gas_output_buffer;
+    result.handle = gas_handle;
+    result.aabb_buffer = 0;
     return result;
 }
 

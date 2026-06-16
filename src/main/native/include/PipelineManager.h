@@ -72,6 +72,13 @@ private:
     OptixProgramGroup cone_hitgroup_prog_group = nullptr;
     OptixProgramGroup cone_shadow_hitgroup_prog_group = nullptr;
 
+    // Curve program groups
+    OptixProgramGroup curve_hitgroup_prog_group = nullptr;
+    OptixProgramGroup curve_shadow_hitgroup_prog_group = nullptr;
+    OptixModule curve_module = nullptr;
+    OptixModule curve_shadow_module = nullptr;
+    OptixModule curve_photon_module = nullptr;
+
     // Plane program groups
     OptixProgramGroup plane_hitgroup_prog_group = nullptr;
     OptixProgramGroup plane_shadow_hitgroup_prog_group = nullptr;
@@ -95,6 +102,7 @@ private:
     OptixProgramGroup photon_triangle_hitgroup = nullptr;
     OptixProgramGroup photon_cylinder_hitgroup = nullptr;
     OptixProgramGroup photon_cone_hitgroup = nullptr;
+    OptixProgramGroup photon_curve_hitgroup = nullptr;
     OptixProgramGroup photon_plane_hitgroup = nullptr;
     OptixProgramGroup photon_menger4d_hitgroup = nullptr;
     OptixProgramGroup photon_miss_prog_group = nullptr;
