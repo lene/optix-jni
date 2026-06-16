@@ -108,6 +108,19 @@ class NativeOptiXApi:
     closestHitEntry: String
   ): Long
 
+  /** Creates a cubic B-spline curve hitgroup using OptiX built-in intersection.
+    *
+    * The returned handle owns both the hitgroup and its hidden built-in
+    * intersection module; destroy it with [[destroyProgramGroup]].
+    *
+    * @return non-zero program-group handle, or `0L` on failure
+    */
+  @native def createCurveHitGroup(
+    contextHandle: Long,
+    moduleHandle: Long,
+    closestHitEntry: String
+  ): Long
+
   /** Destroys a program group. Safe to call with `0L`. */
   @native def destroyProgramGroup(contextHandle: Long, groupHandle: Long): Unit
 

@@ -36,6 +36,7 @@ model evolves.
 | `removeInstance(id)` | Remove one instance from the IAS |
 | `isIASMode()` / `setIASMode(enabled)` | Switch between single-object and IAS mode |
 | `clearPlanes()` / `addPlane*(…)` | Infinite ground/wall planes (general primitive) |
+| `addCurveInstance(points, widths, material)` | World-space round cubic B-spline curves |
 | `uploadTexture(…)` / `releaseTextures()` | GPU texture management |
 
 ## Menger-specific (sphere sponge domain)

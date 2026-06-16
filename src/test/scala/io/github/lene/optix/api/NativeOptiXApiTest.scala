@@ -140,6 +140,36 @@ class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
     api.destroyContext(ctx)
   }
 
+  it should "create a curve hitgroup and pipeline when GPU is available" in {
+    assume(gpuAvailable, "GPU/OptiX required")
+    val ctx = api.createContext()
+    ctx should not be 0L
+
+    val ptxStream = getClass.getResourceAsStream("/native/x86_64-linux/optix_shaders.ptx")
+    assume(ptxStream != null, "PTX resource must be available")
+    val ptxBytes = ptxStream.readAllBytes()
+    ptxStream.close()
+
+    val module = api.createModuleFromPTX(ctx, ptxBytes)
+    val rg     = api.createRaygenGroup(ctx, module, "__raygen__rg")
+    val miss   = api.createMissGroup(ctx, module, "__miss__ms")
+    val curve  = api.createCurveHitGroup(ctx, module, "__closesthit__curve")
+
+    rg should not be 0L
+    miss should not be 0L
+    curve should not be 0L
+
+    val pipeline = api.createPipeline(ctx, Array(rg, miss, curve), maxTraceDepth = 2)
+    pipeline should not be 0L
+
+    api.destroyPipeline(ctx, pipeline)
+    api.destroyProgramGroup(ctx, curve)
+    api.destroyProgramGroup(ctx, miss)
+    api.destroyProgramGroup(ctx, rg)
+    api.destroyModule(ctx, module)
+    api.destroyContext(ctx)
+  }
+
   it should "create and destroy denoisers" in {
     assume(gpuAvailable, "GPU/OptiX required")
     val ctx = api.createContext()

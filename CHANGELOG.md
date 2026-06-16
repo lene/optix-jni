@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `OptiXDenoiser` wrapper for linear float4 images, and an `OptiXRenderer`
   denoising toggle. Denoising is disabled by default and preserves existing
   render output when off.
+- Add world-space round cubic B-spline curve instances through
+  `OptiXRenderer.addCurveInstance`, backed by OptiX built-in curve GAS,
+  curve hit groups, and `NativeOptiXApi.createCurveHitGroup`.
 
 ## [0.1.4] - 2026-06-14
 

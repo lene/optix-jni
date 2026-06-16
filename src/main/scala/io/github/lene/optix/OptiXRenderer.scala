@@ -418,6 +418,15 @@ class OptiXRenderer
     filmThickness: Float
   ): Int
 
+  @native private[optix] def addCurveInstanceNative(
+    points: Array[Float],
+    widths: Array[Float],
+    numPoints: Int,
+    r: Float, g: Float, b: Float, a: Float,
+    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
+    filmThickness: Float
+  ): Int
+
   @native private[optix] def addRecursiveIASSpongeInstanceNative(
     level: Int,
     transform: Array[Float],

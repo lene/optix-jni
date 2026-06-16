@@ -157,6 +157,19 @@ struct OptiXWrapper::Impl {
     // Track plane GAS buffers for proper cleanup (each plane has its own GAS)
     std::vector<GASData> plane_gas_buffers;
 
+    // Curve geometry data (host-side storage, uploaded to GPU before render)
+    std::vector<CurveData> curve_data;
+    CUdeviceptr d_curve_data = 0;              // Device array of CurveData for Params
+
+    // Track curve device buffers and GAS lifetime
+    struct CurveGPUData {
+        CUdeviceptr d_points = 0;
+        CUdeviceptr d_widths = 0;
+        CUdeviceptr d_segment_indices = 0;
+        GASData gas = {};
+    };
+    std::vector<CurveGPUData> curve_gpu_buffers;
+
     // 4D Menger sponge geometry data (host-side, uploaded to GPU before render)
     std::vector<Menger4DData> menger4d_data;
     CUdeviceptr d_menger4d_data = 0;            // Device array of Menger4DData for Params
@@ -1480,6 +1493,28 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.num_plane_data = 0;
             }
 
+            // Upload curve data if any curves exist
+            if (!impl->curve_data.empty()) {
+                size_t curve_size = impl->curve_data.size() * sizeof(CurveData);
+
+                if (impl->d_curve_data) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
+                }
+                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_curve_data), curve_size));
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_curve_data),
+                    impl->curve_data.data(),
+                    curve_size,
+                    cudaMemcpyHostToDevice
+                ));
+
+                params.curve_data = reinterpret_cast<CurveData*>(impl->d_curve_data);
+                params.num_curves = static_cast<unsigned int>(impl->curve_data.size());
+            } else {
+                params.curve_data = nullptr;
+                params.num_curves = 0;
+            }
+
             if (!impl->menger4d_data.empty()) {
                 size_t m4d_size = impl->menger4d_data.size() * sizeof(Menger4DData);
                 if (impl->d_menger4d_data) {
@@ -1555,6 +1590,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_cones = 0;
             params.plane_data = nullptr;
             params.num_plane_data = 0;
+            params.curve_data = nullptr;
+            params.num_curves = 0;
             params.menger4d_data = nullptr;
             params.num_menger4d = 0;
             params.sierpinski4d_data = nullptr;
@@ -2473,6 +2510,175 @@ int OptiXWrapper::addConeInstance(
     return instanceId;
 }
 
+int OptiXWrapper::addCurveInstance(
+    const float* points,
+    const float* widths,
+    unsigned int num_points,
+    float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, float emission,
+    float film_thickness
+) {
+    if (impl->instances.size() >= impl->max_instances) {
+        if (!impl->max_instances_warning_shown) {
+            std::cerr << "[OptiX][Curve] Maximum instances (" << impl->max_instances
+                      << ") reached" << std::endl;
+            impl->max_instances_warning_shown = true;
+        }
+        return -1;
+    }
+
+    if (points == nullptr || widths == nullptr || num_points < 4) {
+        std::cerr << "[OptiX][Curve] Invalid curve buffers or point count" << std::endl;
+        return -1;
+    }
+
+    for (unsigned int i = 0; i < num_points; ++i) {
+        const float x = points[i * 3 + 0];
+        const float y = points[i * 3 + 1];
+        const float z = points[i * 3 + 2];
+        const float width = widths[i];
+        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
+                || !std::isfinite(width) || width <= 0.0f) {
+            std::cerr << "[OptiX][Curve] Non-finite point or non-positive width at index "
+                      << i << std::endl;
+            return -1;
+        }
+    }
+
+    const unsigned int num_segments = num_points - 3;
+    std::vector<unsigned int> segment_indices(num_segments);
+    for (unsigned int i = 0; i < num_segments; ++i) {
+        segment_indices[i] = i;
+    }
+
+    Impl::CurveGPUData curve_gpu;
+    auto free_curve_gpu = [](Impl::CurveGPUData& gpu) {
+        if (gpu.gas.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(gpu.gas.gas_buffer));
+            gpu.gas.gas_buffer = 0;
+        }
+        if (gpu.d_points) {
+            cudaFree(reinterpret_cast<void*>(gpu.d_points));
+            gpu.d_points = 0;
+        }
+        if (gpu.d_widths) {
+            cudaFree(reinterpret_cast<void*>(gpu.d_widths));
+            gpu.d_widths = 0;
+        }
+        if (gpu.d_segment_indices) {
+            cudaFree(reinterpret_cast<void*>(gpu.d_segment_indices));
+            gpu.d_segment_indices = 0;
+        }
+    };
+
+    size_t points_size = static_cast<size_t>(num_points) * 3 * sizeof(float);
+    size_t widths_size = static_cast<size_t>(num_points) * sizeof(float);
+    size_t indices_size = static_cast<size_t>(num_segments) * sizeof(unsigned int);
+
+    try {
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&curve_gpu.d_points), points_size));
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(curve_gpu.d_points),
+            points,
+            points_size,
+            cudaMemcpyHostToDevice
+        ));
+
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&curve_gpu.d_widths), widths_size));
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(curve_gpu.d_widths),
+            widths,
+            widths_size,
+            cudaMemcpyHostToDevice
+        ));
+
+        CUDA_CHECK(cudaMalloc(
+            reinterpret_cast<void**>(&curve_gpu.d_segment_indices),
+            indices_size
+        ));
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(curve_gpu.d_segment_indices),
+            segment_indices.data(),
+            indices_size,
+            cudaMemcpyHostToDevice
+        ));
+
+        OptixAccelBuildOptions accel_options = {};
+        accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+        accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+
+        OptiXContext::GASBuildResult result = impl->optix_context.buildCurveGAS(
+            curve_gpu.d_points,
+            num_points,
+            curve_gpu.d_widths,
+            curve_gpu.d_segment_indices,
+            num_segments,
+            accel_options
+        );
+
+        curve_gpu.gas.handle = result.handle;
+        curve_gpu.gas.gas_buffer = result.gas_buffer;
+        curve_gpu.gas.aabb_buffer = result.aabb_buffer;
+    } catch (...) {
+        free_curve_gpu(curve_gpu);
+        throw;
+    }
+
+    CurveData curve_entry;
+    curve_entry.points = reinterpret_cast<float*>(curve_gpu.d_points);
+    curve_entry.widths = reinterpret_cast<float*>(curve_gpu.d_widths);
+    curve_entry.num_points = num_points;
+    curve_entry.num_segments = num_segments;
+
+    int curve_index = static_cast<int>(impl->curve_data.size());
+    impl->curve_data.push_back(curve_entry);
+    impl->curve_gpu_buffers.push_back(curve_gpu);
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = GEOMETRY_TYPE_CURVE;
+    inst.gas_handle = curve_gpu.gas.handle;
+
+    const float identity_transform[12] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f
+    };
+    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
+
+    inst.color[0] = r;
+    inst.color[1] = g;
+    inst.color[2] = b;
+    inst.color[3] = a;
+    inst.ior = ior;
+    inst.roughness = roughness;
+    inst.metallic = metallic;
+    inst.specular = specular;
+    inst.emission = emission;
+    inst.film_thickness = film_thickness;
+    inst.geometry_data_index = curve_index;
+    inst.procedural_type = 0;
+    inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1;
+    inst.roughness_texture_index = -1;
+    inst.image_texture_index = -1;
+    inst.active = true;
+    inst.mesh_index = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+
+    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = curve_gpu.gas;
+
+    impl->ias_dirty = true;
+
+    if (!impl->use_ias) {
+        impl->pipeline_built = false;
+    }
+    impl->use_ias = true;
+
+    return instanceId;
+}
+
 int OptiXWrapper::addPlaneInstance(
     float normal_x, float normal_y, float normal_z,
     float distance,
@@ -3006,6 +3212,13 @@ void OptiXWrapper::clearAllInstances() {
         impl->d_plane_data = 0;
     }
 
+    // Clear curve data
+    impl->curve_data.clear();
+    if (impl->d_curve_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
+        impl->d_curve_data = 0;
+    }
+
     // Clear sierpinski4d data
     impl->sierpinski4d_data.clear();
     if (impl->d_sierpinski4d_data) {
@@ -3059,6 +3272,26 @@ void OptiXWrapper::clearAllInstances() {
         }
     }
     impl->plane_gas_buffers.clear();
+
+    // Free curve device buffers and GAS buffers
+    for (const auto& curve : impl->curve_gpu_buffers) {
+        if (curve.gas.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(curve.gas.gas_buffer));
+        }
+        if (curve.gas.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(curve.gas.aabb_buffer));
+        }
+        if (curve.d_points) {
+            cudaFree(reinterpret_cast<void*>(curve.d_points));
+        }
+        if (curve.d_widths) {
+            cudaFree(reinterpret_cast<void*>(curve.d_widths));
+        }
+        if (curve.d_segment_indices) {
+            cudaFree(reinterpret_cast<void*>(curve.d_segment_indices));
+        }
+    }
+    impl->curve_gpu_buffers.clear();
 
     // Free sierpinski4d GAS buffers
     for (const auto& gas : impl->sierpinski4d_gas_buffers) {

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 /**
@@ -18,6 +19,8 @@
  */
 
 extern "C" {
+
+static std::unordered_map<OptixProgramGroup, OptixModule> curve_builtin_modules;
 
 static jfloatArray emptyFloatArray(JNIEnv* env) {
     return env->NewFloatArray(0);
@@ -40,12 +43,14 @@ static OptixPipelineCompileOptions defaultPipelineCompileOptions() {
     OptixPipelineCompileOptions opts = {};
     opts.usesMotionBlur                   = 0;
     opts.traversableGraphFlags            = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-    opts.numPayloadValues                 = 10;  // Primary: RGB+depth(4), Photon: flux+origin+dir+flags(10)
+    // Primary: RGB+depth(4), Photon: flux+origin+dir+flags(10)
+    opts.numPayloadValues                 = 10;
     opts.numAttributeValues               = 4;   // Normal x,y,z + radius from SDK intersection
     opts.exceptionFlags                   = OPTIX_EXCEPTION_FLAG_NONE;
     opts.pipelineLaunchParamsVariableName = "params";
     opts.usesPrimitiveTypeFlags           = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM |
-                                            OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
+                                            OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE |
+                                            OPTIX_PRIMITIVE_TYPE_FLAGS_ROUND_CUBIC_BSPLINE;
     return opts;
 }
 
@@ -202,12 +207,52 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createTrian
     }
 }
 
+// Curve hitgroup (built-in round cubic B-spline intersection).
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createCurveHitGroup(
+    JNIEnv* env, jobject obj, jlong contextHandle, jlong moduleHandle, jstring chEntry) {
+    auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
+    auto  mod = reinterpret_cast<OptixModule>(moduleHandle);
+    if (!ctx || !mod) return 0L;
+    try {
+        const char* ch = env->GetStringUTFChars(chEntry, nullptr);
+        if (!ch) return 0L;
+        OptixModule curve_module = nullptr;
+        OptixProgramGroup pg = nullptr;
+        try {
+            pg = ctx->createCurveHitgroupProgramGroup(mod, ch, curve_module);
+        } catch (...) {
+            env->ReleaseStringUTFChars(chEntry, ch);
+            if (curve_module) {
+                ctx->destroyModule(curve_module);
+            }
+            throw;
+        }
+        env->ReleaseStringUTFChars(chEntry, ch);
+        if (pg && curve_module) {
+            curve_builtin_modules[pg] = curve_module;
+        }
+        return reinterpret_cast<jlong>(pg);
+    } catch (const std::exception& e) {
+        std::cerr << "[OptiXApi] createCurveHitGroup: " << e.what() << std::endl;
+        return 0L;
+    }
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyProgramGroup(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong groupHandle) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  pg  = reinterpret_cast<OptixProgramGroup>(groupHandle);
     if (ctx && pg) {
+        OptixModule curve_module = nullptr;
+        const auto curve_module_entry = curve_builtin_modules.find(pg);
+        if (curve_module_entry != curve_builtin_modules.end()) {
+            curve_module = curve_module_entry->second;
+            curve_builtin_modules.erase(curve_module_entry);
+        }
         try { ctx->destroyProgramGroup(pg); } catch (...) {}
+        if (curve_module) {
+            try { ctx->destroyModule(curve_module); } catch (...) {}
+        }
     }
 }
 

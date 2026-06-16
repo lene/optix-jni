@@ -317,6 +317,37 @@ private[optix] trait OptiXMeshApi:
   ): Int =
     addConeInstance(apex, base, radius, Material(color, ior))
 
+  /** Adds a round cubic B-spline curve IAS instance.
+    *
+    * Points are dense xyz control points in world space. Widths are OptiX curve
+    * radii, one per control point.
+    *
+    * @return instance id `>= 0`, or `-1` on native failure
+    */
+  def addCurveInstance(
+    points: Array[Float],
+    widths: Array[Float],
+    material: Material
+  ): Int =
+    require(points != null, "points must not be null") // scalafix:ok DisableSyntax.null
+    require(widths != null, "widths must not be null") // scalafix:ok DisableSyntax.null
+    require(points.length % 3 == 0, s"points length must be a multiple of 3, got ${points.length}")
+    val numPoints = points.length / 3
+    require(numPoints >= 4, s"Curve must have at least 4 control points, got $numPoints")
+    require(widths.length == numPoints,
+      s"widths length (${widths.length}) must equal control point count ($numPoints)")
+    require(points.forall(java.lang.Float.isFinite), "points must all be finite")
+    require(widths.forall(width => java.lang.Float.isFinite(width) && width > 0.0f),
+      "widths must all be finite and > 0")
+    addCurveInstanceNative(
+      points,
+      widths,
+      numPoints,
+      material.color.r, material.color.g, material.color.b, material.color.a,
+      material.ior, material.roughness, material.metallic, material.specular, material.emission,
+      material.filmThickness
+    )
+
   /** Adds a GPU-projected 4D Menger sponge instance.
     *
     * 4D rotation parameters are radians. Projection distance values are in
