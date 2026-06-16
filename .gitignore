@@ -11,6 +11,7 @@ project/local-plugins.sbt
 .history
 .sbt-scripted/
 local.sbt
+*.semanticdb
 
 # Generated native artifacts
 /native/
