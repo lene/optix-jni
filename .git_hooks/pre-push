@@ -5,9 +5,10 @@ GREEN_TEXT='\e[38;5;46m'
 YELLOW_TEXT='\e[38;5;226m'
 RESET_TEXT='\e[0m'
 
-# Detect changed files vs remote
+# Detect changed files vs remote; collect commit ranges for Phase 0 in the same pass
 CHANGED_FILES=""
-while read local_ref local_sha remote_ref remote_sha; do
+RANGES=""
+while read -r local_ref local_sha remote_ref remote_sha; do
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
     exit 0  # deleting branch, nothing to check
   fi
@@ -16,9 +17,18 @@ while read local_ref local_sha remote_ref remote_sha; do
   else
     BASE="$remote_sha"
   fi
+  RANGES="$RANGES $BASE..$local_sha"
   CHANGED_FILES="$CHANGED_FILES$(git diff --name-only "$BASE" "$local_sha")
 "
 done
+
+# --- Phase 0: agentic policy checks (instant) ---
+if [ -x ./standards/hooks/check-test-justification.sh ] && [ -n "$RANGES" ]; then
+  # shellcheck disable=SC2086 — intentional word-split of space-separated ranges
+  ./standards/hooks/check-test-justification.sh $RANGES || exit 1
+  # shellcheck disable=SC2086
+  ./standards/hooks/check-rendering-discipline.sh $RANGES || exit 1
+fi
 
 HAS_SCALA=$(echo "$CHANGED_FILES" | grep -cE '\.(scala|sbt)$|^project/')
 HAS_NATIVE=$(echo "$CHANGED_FILES" | grep -cE 'src/main/native/.*\.(cpp|cu|cuh|h)$|CMakeLists\.txt')
