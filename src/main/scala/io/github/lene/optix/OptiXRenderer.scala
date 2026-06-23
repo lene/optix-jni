@@ -260,7 +260,14 @@ class OptiXRenderer
   @native private[optix] def setToneMappingNative(operatorId: Int, exposure: Float): Unit
   @native private[optix] def setIBLNative(enabled: Boolean, strength: Float, samples: Int): Unit
   @native private[optix] def setAccumulationFramesNative(n: Int): Unit
+  /** Enables or disables the integrated OptiX HDR denoiser.
+    *
+    * When enabled the renderer routes the accumulated linear HDR frame through the
+    * OptiX denoiser before tone mapping. Disabled by default; existing render output
+    * is unchanged when off.
+    */
   @native def setDenoisingEnabled(enabled: Boolean): Unit
+  /** Returns `true` when the integrated denoiser is currently enabled. */
   @native def isDenoisingEnabled: Boolean
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----

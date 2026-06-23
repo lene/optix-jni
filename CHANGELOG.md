@@ -7,15 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-06-23
+
 ### Added
 
-- Add an opt-in OptiX HDR denoiser API with low-level JNI bindings, a Scala
-  `OptiXDenoiser` wrapper for linear float4 images, and an `OptiXRenderer`
-  denoising toggle. Denoising is disabled by default and preserves existing
-  render output when off.
-- Add world-space round cubic B-spline curve instances through
-  `OptiXRenderer.addCurveInstance`, backed by OptiX built-in curve GAS,
-  curve hit groups, and `NativeOptiXApi.createCurveHitGroup`.
+- Opt-in OptiX HDR denoiser: `OptiXDenoiser` Scala wrapper, `NativeOptiXApi`
+  lifecycle methods (`createDenoiser`, `denoiseFloat4`, `destroyDenoiser`), and
+  `OptiXRenderer.setDenoisingEnabled`. Disabled by default; existing render output
+  unchanged when off. Guide AOVs (albedo, normal) supported via `DenoiseGuides`.
+- World-space round cubic B-spline curves: `OptiXRenderer.addCurveInstance(points,
+  widths, material)` backed by OptiX built-in curve GAS and
+  `NativeOptiXApi.createCurveHitGroup`. Requires ≥ 4 control points; widths are
+  per-control-point radii.
 
 ## [0.1.4] - 2026-06-14
 
@@ -57,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.5]: https://github.com/lene/optix-jni/compare/0.1.4...0.1.5
 [0.1.4]: https://github.com/lene/optix-jni/compare/0.1.3...0.1.4
 [0.1.3]: https://github.com/lene/optix-jni/compare/0.1.2...0.1.3
 [0.1.2]: https://github.com/lene/optix-jni/compare/0.1.1...0.1.2

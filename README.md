@@ -17,7 +17,7 @@ ThisBuild / scalaVersion := "3.8.3"
 
 libraryDependencies ++= Seq(
   "io.github.lene" %% "menger-common" % "0.1.1",
-  "io.github.lene" % "optix-jni" % "0.1.3"
+  "io.github.lene" % "optix-jni" % "0.1.5"
 )
 ```
 
@@ -33,7 +33,7 @@ libraryDependencies ++= Seq(
   <dependency>
     <groupId>io.github.lene</groupId>
     <artifactId>optix-jni</artifactId>
-    <version>0.1.3</version>
+    <version>0.1.5</version>
   </dependency>
 </dependencies>
 ```
@@ -47,7 +47,7 @@ repositories {
 
 dependencies {
     implementation("io.github.lene:menger-common_3:0.1.1")
-    implementation("io.github.lene:optix-jni:0.1.3")
+    implementation("io.github.lene:optix-jni:0.1.5")
 }
 ```
 
@@ -55,7 +55,7 @@ dependencies {
 
 - Linux x86_64.
 - NVIDIA GPU with OptiX support.
-- NVIDIA driver new enough for CUDA 12.8 runtime and OptiX SDK 9.0.
+- NVIDIA driver new enough for CUDA 13.x runtime and OptiX SDK 9.0 (driver ≥ 580.65).
 - CUDA runtime libraries available to the dynamic linker. In local shells this is
   usually `LD_LIBRARY_PATH=/usr/local/cuda/lib64` unless the system linker cache
   already contains CUDA.

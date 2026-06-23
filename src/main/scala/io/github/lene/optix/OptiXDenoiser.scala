@@ -4,13 +4,39 @@ import java.util.Optional
 
 import io.github.lene.optix.api.NativeOptiXApi
 
+/** A linear HDR RGBA float image for denoiser input/output.
+  *
+  * All floats are row-major dense float4: `width * height * 4` values.
+  * NaN and Inf are rejected by [[OptiXDenoiser.denoise]].
+  */
 final case class DenoiseImage(width: Int, height: Int, rgba: Array[Float])
 
+/** Optional albedo and normal guide images for the HDR denoiser.
+  *
+  * Guide images use the same dense float4 layout as [[DenoiseImage]].
+  * Use [[DenoiseGuides.empty]] when no guides are available; guides measurably
+  * improve edge preservation around silhouettes and textured surfaces.
+  *
+  * Construct via the companion-object factory methods — the constructor is private.
+  */
 final class DenoiseGuides private (
   val albedo: Optional[Array[Float]],
   val normal: Optional[Array[Float]]
 )
 
+/** Standalone OptiX HDR denoiser.
+  *
+  * Owns its own OptiX context and denoiser handle. Close via [[close]] or a
+  * try-with-resources block when done.
+  *
+  * Denoising runs in linear HDR before tone mapping: pass the accumulated float4
+  * render output, denoise, then convert/tone-map to the final image.
+  *
+  * GPU memory: roughly 100–400 MB depending on resolution and guide usage.
+  *
+  * @param guideAlbedo require an albedo guide array in every [[denoise]] call
+  * @param guideNormal require a normal guide array in every [[denoise]] call
+  */
 final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = false)
     extends AutoCloseable:
 
@@ -26,9 +52,18 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
     if contextHandle == 0L then 0L
     else api.createDenoiser(contextHandle, guideAlbedo, guideNormal)
 
+  /** Returns `true` when the OptiX context and denoiser handle are both live. */
   def isAvailable: Boolean =
     contextHandle != 0L && denoiserHandle != 0L
 
+  /** Denoises a linear HDR RGBA float image.
+    *
+    * Input must be finite (no NaN/Inf). When guides were requested at construction
+    * time they must be present in `guides`; otherwise they are ignored.
+    *
+    * @return denoised image, or [[Optional.empty]] if the denoiser is not available
+    *         or the native call fails
+    */
   def denoise(
     image: DenoiseImage,
     guides: DenoiseGuides = DenoiseGuides.empty()
@@ -118,14 +153,18 @@ object OptiXDenoiser:
 object DenoiseGuides:
   private val emptyGuides = new DenoiseGuides(Optional.empty(), Optional.empty())
 
+  /** No guide images — uses color-only denoising. */
   def empty(): DenoiseGuides = emptyGuides
 
+  /** Albedo guide only. */
   def albedo(albedoRgba: Array[Float]): DenoiseGuides =
     new DenoiseGuides(present(albedoRgba, "albedo"), Optional.empty())
 
+  /** Normal guide only. */
   def normal(normalRgba: Array[Float]): DenoiseGuides =
     new DenoiseGuides(Optional.empty(), present(normalRgba, "normal"))
 
+  /** Both albedo and normal guides (best edge preservation). */
   def albedoAndNormal(albedoRgba: Array[Float], normalRgba: Array[Float]): DenoiseGuides =
     new DenoiseGuides(
       present(albedoRgba, "albedo"),
