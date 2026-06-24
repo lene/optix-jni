@@ -47,7 +47,7 @@ jobs:
               fi
             done < standards/architecture-paths.txt
           fi
-          ./scripts/review.sh \
+          ./standards/scripts/review.sh \
             --diff mr.diff \
             --guidelines standards/review-guidelines.md \
             ${ARCH_FLAG} \
@@ -59,7 +59,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_SHA: ${{ github.event.pull_request.head.sha }}
-        run: ./scripts/adapters/github-pr-review.sh review-findings.json
+        run: ./standards/scripts/github-pr-review.sh review-findings.json
 
       - name: Upload findings
         if: always()
