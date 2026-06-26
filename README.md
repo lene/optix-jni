@@ -154,6 +154,35 @@ The denoiser allocates OptiX state, scratch, HDR intensity, and image buffers.
 Expect roughly 100-400 MB of additional GPU memory depending on resolution and
 guide usage.
 
+### OptiX curves
+
+OptiX's built-in curve primitive renders smooth swept tubes as round cubic
+B-splines — no triangle tessellation or cylinder chaining. Hit shading uses the
+same material model as every other geometry type (`Material`, `IOR`,
+`roughness`, `metallic`, `specular`, `emission`, `filmThickness`).
+
+Usage from the Scala API:
+
+```scala
+renderer.addCurveInstance(
+  points = Array(            // Dense xyz control points, ≥ 4 required
+    -1.2f, -0.35f, 0f,
+    -0.4f,  0.65f, 0f,
+     0.4f,  0.65f, 0f,
+     1.2f, -0.35f, 0f
+  ),
+  widths = Array(0.12f, 0.12f, 0.12f, 0.12f),  // One per control point
+  material = Material(Color(0.1f, 0.9f, 0.3f, 1f), ior = 1.0f)
+)
+```
+
+- **Points:** `numPoints * 3` dense xyz floats, world-space control points.
+- **Widths:** one radius per control point, finite and `> 0`.
+- **Minimum:** 4 control points (cubic B-spline requires at least one segment).
+- **Shading:** curve normals come from `optixGetCurveParameter`; the same
+  `InstanceMaterial` and PBR pipeline is used for all hit types.
+- **Reference:** see `hit_curve.cu` in the native shader tree.
+
 ---
 
 ## CI Configuration
