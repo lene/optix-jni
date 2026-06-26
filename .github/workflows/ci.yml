@@ -50,6 +50,32 @@ jobs:
             exit 1
           fi
 
+  # ── release gate ───────────────────────────────────────────────────────────
+
+  create-tag:
+    name: Create Release Tag
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create and push tag if version changed
+        run: |
+          VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
+          echo "Version in build.sbt: $VERSION"
+          if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists, skipping"
+          else
+            git config user.email "ci@github-actions.local"
+            git config user.name "CI Bot"
+            git tag -a "$VERSION" -m "Release $VERSION"
+            git push origin "refs/tags/$VERSION"
+            echo "Created and pushed tag $VERSION"
+          fi
+
   # ── check ──────────────────────────────────────────────────────────────────
 
   scalafix:
