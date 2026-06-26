@@ -69,12 +69,14 @@ jobs:
           if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
             echo "Tag $VERSION already exists, skipping"
           else
-            git config user.email "ci@github-actions.local"
-            git config user.name "CI Bot"
-            git tag -a "$VERSION" -m "Release $VERSION"
-            git push origin "refs/tags/$VERSION"
-            echo "Created and pushed tag $VERSION"
+            gh release create "$VERSION" \
+              --title "Release $VERSION" \
+              --notes "See CHANGELOG.md for details." \
+              --target "$GITHUB_SHA"
+            echo "Created release and tag $VERSION"
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── check ──────────────────────────────────────────────────────────────────
 
