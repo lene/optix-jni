@@ -118,7 +118,11 @@ private[optix] trait OptiXMeshApi:
     )
     require(rc == 0, s"updateCpuTriangleMesh failed with code $rc (meshIndex=$meshIndex)")
 
-  /** Sets the legacy single triangle-mesh RGBA color. */
+  /** Sets the legacy single triangle-mesh RGBA color.
+    *
+    * @deprecated Use [[addTriangleMeshInstance]] with [[Material]] instead.
+    */
+  @deprecated("Use addTriangleMeshInstance with Material", "0.1.5")
   def setTriangleMeshColor(color: Color): Unit =
     setTriangleMeshColorNative(color.r, color.g, color.b, color.a)
 

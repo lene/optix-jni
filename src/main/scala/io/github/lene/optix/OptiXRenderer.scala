@@ -243,10 +243,18 @@ class OptiXRenderer
   /** Sets native render target dimensions in pixels. */
   @native def updateImageDimensions(width: Int, height: Int): Unit
 
-  /** Sets the legacy single-sphere index of refraction. */
+  /** Sets the legacy single-sphere index of refraction.
+    *
+    * @deprecated Use the IAS multi-object path with [[Material]] instead.
+    */
+  @deprecated("Use IAS multi-object path with Material", "0.1.5")
   @native def setIOR(ior: Float): Unit
 
-  /** Sets the legacy single-sphere scale multiplier. */
+  /** Sets the legacy single-sphere scale multiplier.
+    *
+    * @deprecated Use the IAS multi-object path instead.
+    */
+  @deprecated("Use IAS multi-object path", "0.1.5")
   @native def setScale(scale: Float): Unit
 
   // ---- Lights @native declarations ----
@@ -392,13 +400,25 @@ class OptiXRenderer
   ): Int
 
   @native private[optix] def setTriangleMeshColorNative(r: Float, g: Float, b: Float, a: Float): Unit
-  /** Sets the legacy single triangle-mesh index of refraction. */
+  /** Sets the legacy single triangle-mesh index of refraction.
+    *
+    * @deprecated Use [[addTriangleMeshInstance]] with [[Material]] instead.
+    */
+  @deprecated("Use addTriangleMeshInstance with Material", "0.1.5")
   @native def setTriangleMeshIOR(ior: Float): Unit
 
-  /** Removes the legacy single triangle mesh from native scene state. */
+  /** Removes the legacy single triangle mesh from native scene state.
+    *
+    * @deprecated Use [[clearAllInstances]] for IAS-mode scenes instead.
+    */
+  @deprecated("Use clearAllInstances for IAS-mode scenes", "0.1.5")
   @native def clearTriangleMesh(): Unit
 
-  /** Returns whether legacy single triangle-mesh state is present. */
+  /** Returns whether legacy single triangle-mesh state is present.
+    *
+    * @deprecated Legacy single-mesh API. No IAS-mode equivalent needed.
+    */
+  @deprecated("Legacy single-mesh API", "0.1.5")
   @native def hasTriangleMesh(): Boolean
 
   @native private[optix] def updateCpuTriangleMeshNative(

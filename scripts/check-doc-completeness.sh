@@ -1,49 +1,80 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BINDING_FILE="src/main/scala/io/github/lene/optix/api/NativeOptiXApi.scala"
+# Check Scaladoc completeness on all public API Scala files in optix-jni.
+# Public API: OptiXRenderer, OptiXDenoiser, NativeOptiXApi, and their companion objects.
+# Private traits (OptiX*Api) are excluded — they're internal implementation detail.
 
-if [ ! -f "$BINDING_FILE" ]; then
-  echo "ERROR: Binding file not found: $BINDING_FILE"
-  exit 1
-fi
+FILES=(
+  "src/main/scala/io/github/lene/optix/OptiXRenderer.scala"
+  "src/main/scala/io/github/lene/optix/OptiXDenoiser.scala"
+  "src/main/scala/io/github/lene/optix/api/NativeOptiXApi.scala"
+)
 
-ERRORS=0
-prev=""
-lineno=0
+TOTAL_ERRORS=0
 
-while IFS= read -r line; do
-  lineno=$((lineno + 1))
+for FILE in "${FILES[@]}"; do
+  if [ ! -f "$FILE" ]; then
+    echo "WARNING: File not found, skipping: $FILE"
+    continue
+  fi
 
-  # Match @native def lines (inline annotation style), skip private/protected
-  if echo "$line" | grep -qE '^\s+@native\s+def\s+[a-z]'; then
-    if ! echo "$line" | grep -qE '^\s+(private|protected)'; then
-      # Check if the previous non-blank line closes a Scaladoc comment
+  ERRORS=0
+  prev=""
+  lineno=0
+
+  while IFS= read -r line; do
+    lineno=$((lineno + 1))
+
+    # Match @native def lines (inline annotation style), skip private/protected
+    if echo "$line" | grep -qE '^\s+@native\s+def\s+[a-z]'; then
+      if ! echo "$line" | grep -qE '^\s+(private|protected)'; then
+        if ! echo "$prev" | grep -qF '*/'; then
+          method=$(echo "$line" | sed 's/.*def //;s/[:(].*//')
+          echo "  MISSING DOC at $FILE:$lineno: def $method"
+          ERRORS=$((ERRORS + 1))
+        fi
+      fi
+    fi
+
+    # For multi-line @native defs: @native on its own line, def on next
+    if echo "$line" | grep -qE '^\s+@native\s*$'; then
       if ! echo "$prev" | grep -qF '*/'; then
-        method=$(echo "$line" | sed 's/.*def //;s/[:(].*//')
-        echo "MISSING DOC at line $lineno: def $method"
+        echo "  MISSING DOC before @native at $FILE:$lineno"
         ERRORS=$((ERRORS + 1))
       fi
     fi
-  fi
 
-  # For multi-line @native defs: @native on its own line, def on next
-  if echo "$line" | grep -qE '^\s+@native\s*$'; then
-    if ! echo "$prev" | grep -qF '*/'; then
-      echo "MISSING DOC before @native at line $lineno"
-      ERRORS=$((ERRORS + 1))
+    # Check public def/val without Scaladoc (skip private/protected, skip @deprecated)
+    if echo "$line" | grep -qE '^\s+(def|val)\s+[a-zA-Z]'; then
+      if ! echo "$line" | grep -qE '^\s+(private|protected)'; then
+        if ! echo "$prev" | grep -qF '*/'; then
+          # Allow @deprecated to follow doc
+          name=$(echo "$line" | sed 's/.*\(def\|val\) //;s/[:(= ].*//')
+          echo "  MISSING DOC at $FILE:$lineno: $name"
+          ERRORS=$((ERRORS + 1))
+        fi
+      fi
     fi
-  fi
 
-  # Update prev, skipping blank lines
-  if [ -n "$(echo "$line" | tr -d ' \t')" ]; then
-    prev="$line"
-  fi
-done < "$BINDING_FILE"
+    # Update prev, skipping blank lines and annotations
+    if [ -n "$(echo "$line" | tr -d ' \t')" ]; then
+      prev="$line"
+    fi
+  done < "$FILE"
 
-if [ "$ERRORS" -gt 0 ]; then
+  if [ "$ERRORS" -gt 0 ]; then
+    echo "FAIL: $ERRORS doc issue(s) in $FILE"
+    TOTAL_ERRORS=$((TOTAL_ERRORS + ERRORS))
+  else
+    echo "OK: $FILE"
+  fi
   echo ""
-  echo "FAIL: $ERRORS public method(s) missing Scaladoc"
+done
+
+if [ "$TOTAL_ERRORS" -gt 0 ]; then
+  echo "FAIL: $TOTAL_ERRORS total doc issues across all files"
   exit 1
 fi
-echo "OK: All public methods have Scaladoc"
+
+echo "OK: All public API methods have Scaladoc"

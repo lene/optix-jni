@@ -15,4 +15,7 @@ addSbtPlugin("org.wartremover" % "sbt-wartremover" % "3.5.6")
 // Publication
 addSbtPlugin("com.github.sbt" % "sbt-pgp" % "2.3.1")
 addSbtPlugin("org.xerial.sbt" % "sbt-sonatype" % "3.12.2")
+
+// Binary compatibility checks (MiMa)
+addSbtPlugin("com.typesafe" % "sbt-mima-plugin" % "1.1.4")
 ThisBuild / libraryDependencySchemes += "org.scala-lang.modules" %% "scala-xml" % VersionScheme.Always
