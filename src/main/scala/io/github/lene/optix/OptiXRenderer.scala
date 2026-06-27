@@ -228,7 +228,7 @@ class OptiXRenderer
   @volatile var nativeHandle: Long = 0L
 
   // Derive initialization state from nativeHandle (0 = not initialized)
-  private def isInitialized: Boolean = nativeHandle != 0L
+  private[optix] def isInitialized: Boolean = nativeHandle != 0L
 
   // ---- Lifecycle @native declarations ----
   @native private def initializeNative(maxInstances: Int): Boolean
@@ -265,10 +265,27 @@ class OptiXRenderer
     * When enabled the renderer routes the accumulated linear HDR frame through the
     * OptiX denoiser before tone mapping. Disabled by default; existing render output
     * is unchanged when off.
+    *
+    * @throws IllegalStateException if called before [[initialize]] or after [[dispose]]
     */
-  @native def setDenoisingEnabled(enabled: Boolean): Unit
+  @native private def setDenoisingEnabledNative(enabled: Boolean): Unit
+
+  /** Enables or disables the integrated OptiX HDR denoiser.
+    *
+    * Safe to call at any time — silently no-ops when the renderer is not initialized.
+    */
+  def setDenoisingEnabled(enabled: Boolean): Unit =
+    if isInitialized then setDenoisingEnabledNative(enabled)
+
   /** Returns `true` when the integrated denoiser is currently enabled. */
-  @native def isDenoisingEnabled: Boolean
+  @native private def isDenoisingEnabledNative: Boolean
+
+  /** Returns `true` when the integrated denoiser is currently enabled.
+    *
+    * Returns `false` when the renderer is not initialized.
+    */
+  def isDenoisingEnabled: Boolean =
+    isInitialized && isDenoisingEnabledNative
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit

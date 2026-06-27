@@ -19,11 +19,11 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyDenoi
     JNIEnv*, jobject, jlong) {
 }
 
-JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabled(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabledNative(
     JNIEnv*, jobject, jboolean) {
 }
 
-JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabled(
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabledNative(
     JNIEnv*, jobject) {
     return JNI_FALSE;
 }
