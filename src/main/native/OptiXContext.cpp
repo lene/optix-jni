@@ -918,9 +918,20 @@ void OptiXContext::launch(
     unsigned int width,
     unsigned int height)
 {
+    // GPU tunables via environment variables (Sprint 30.9c)
+    // - MENGER_OPTIX_STREAMS: CUDA stream id (default 0). Non-zero enables concurrent
+    //   GPU work but requires stream synchronization management.
+    // - MENGER_OPTIX_BLOCK_SIZE: reserved for future manual kernel launch tuning.
+    //   Currently OptiX manages block dimensions internally via optixLaunch().
+    unsigned int stream_id = 0;
+    const char* streams_env = std::getenv("MENGER_OPTIX_STREAMS");
+    if (streams_env != nullptr) {
+        stream_id = static_cast<unsigned int>(std::stoul(streams_env));
+    }
+
     OPTIX_CHECK(optixLaunch(
         pipeline,
-        0, // CUDA stream
+        stream_id,
         params_buffer,
         sizeof(BaseParams),
         &sbt,
