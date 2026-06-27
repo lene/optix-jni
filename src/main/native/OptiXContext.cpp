@@ -145,6 +145,16 @@ bool OptiXContext::initialize() {
 
         OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &context_));
 
+        // Enable validation mode when MENGER_OPTIX_VALIDATION=1
+        // Catches SBT mismatches, payload size errors, and buffer alignment issues
+        // at the precise call site instead of getting CUDA error 718 at launch.
+        const char* validation_env = std::getenv("MENGER_OPTIX_VALIDATION");
+        if (validation_env != nullptr && std::string(validation_env) == "1") {
+            OPTIX_CHECK(optixDeviceContextSetValidationMode(
+                context_, OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL));
+            std::cout << "[OptiX] Validation mode enabled" << std::endl;
+        }
+
         // Configure OptiX disk cache
         // Allow custom cache location via MENGER_OPTIX_CACHE environment variable
         const char* cache_path = std::getenv("MENGER_OPTIX_CACHE");

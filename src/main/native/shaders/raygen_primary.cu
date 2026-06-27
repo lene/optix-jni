@@ -68,6 +68,12 @@ extern "C" __global__ void __raygen__rg() {
             atomicAdd(&params.stats->total_rays, 1ULL);
         }
 
+        // Shader execution reordering — improves SIMT coherence on Ada+ GPUs
+        if (params.ser_enabled) {
+            const unsigned int hint = idx.y * params.image_width + idx.x;
+            optixReorder(hint, hint, __uint_as_float(0));
+        }
+
         // Trace ray
         unsigned int p3 = 0;  // Initial depth = 0
         optixTrace(

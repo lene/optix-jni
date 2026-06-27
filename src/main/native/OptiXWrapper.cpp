@@ -53,6 +53,7 @@ struct OptiXWrapper::Impl {
     bool pipeline_built = false;
     bool initialized = false;
     bool denoising_enabled = false;
+    bool ser_supported = false;          // Ada Lovelace+ GPU supports shader execution reordering
 
     // Triangle mesh GPU state
     struct TriangleMeshGPU {
@@ -240,6 +241,14 @@ bool OptiXWrapper::initialize(unsigned int maxInstances) {
             return false;
         }
 
+        // Check if GPU supports shader execution reordering (Ada Lovelace+, CC 8.9+)
+        int cc_major = 0;
+        cudaDeviceProp props;
+        if (cudaGetDeviceProperties(&props, 0) == cudaSuccess) {
+            impl->ser_supported = (props.major >= 9) ||
+                                  (props.major == 8 && props.minor >= 9);
+        }
+
         impl->initialized = true;
         return true;
 
@@ -353,6 +362,10 @@ void OptiXWrapper::setDenoisingEnabled(bool enabled) {
 
 bool OptiXWrapper::isDenoisingEnabled() const {
     return impl->denoising_enabled;
+}
+
+bool OptiXWrapper::isSerSupported() const {
+    return impl->ser_supported;
 }
 
 void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
@@ -1293,6 +1306,7 @@ void OptiXWrapper::buildPipeline() {
         // For IAS mode, we use the IAS handle (set later in render())
         impl->gas_handle = 0;  // Not used in IAS mode
     }
+    impl->pipeline_manager.setSerEnabled(impl->ser_supported);
     impl->pipeline_manager.buildPipeline(impl->scene, impl->gas_handle);
 }
 
@@ -1704,6 +1718,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         // Copy all MAX_PLANES slots (zero-initialized past num_planes) to avoid
         // conditional logic; shader gates on num_planes.
         std::memcpy(params.planes, impl->config.getPlanes(), sizeof(PlaneParams) * RayTracingConstants::MAX_PLANES);
+
+        // Shader execution reordering — Ada+ only, opt-in via MENGER_OPTIX_SER=1
+        // (Default off until benchmarked; re-enable permanently if gains ≥5%)
+        params.ser_enabled = false;
+        {
+            const char* ser_env = std::getenv("MENGER_OPTIX_SER");
+            if (ser_env != nullptr && std::string(ser_env) == "1" && impl->ser_supported) {
+                params.ser_enabled = true;
+            }
+        }
 
         // Adaptive antialiasing parameters
         params.aa_enabled = impl->config.getAAEnabled();

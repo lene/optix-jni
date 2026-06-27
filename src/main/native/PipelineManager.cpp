@@ -293,7 +293,8 @@ void PipelineManager::createPipeline() {
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
 
     OptixPipelineLinkOptions pipeline_link_options = {};
-    pipeline_link_options.maxTraceDepth = MAX_TRACE_DEPTH;  // Defined in OptiXData.h
+    pipeline_link_options.maxTraceDepth = MAX_TRACE_DEPTH;
+    pipeline_link_options.usesShaderExecutionReordering = ser_enabled_ ? 1 : 0;
 
     // Use OptiXContext to create pipeline
     pipeline = optix_context.createPipeline(
