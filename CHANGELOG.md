@@ -86,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.6]: https://github.com/lene/optix-jni/compare/0.1.5...0.1.6
 [0.1.5]: https://github.com/lene/optix-jni/compare/0.1.4...0.1.5
 [0.1.4]: https://github.com/lene/optix-jni/compare/0.1.3...0.1.4
 [0.1.3]: https://github.com/lene/optix-jni/compare/0.1.2...0.1.3
