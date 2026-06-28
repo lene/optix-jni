@@ -33,7 +33,7 @@ public:
     void updateCameraInSBT(const SceneParameters& scene);
 
     // Enable shader execution reordering if GPU supports it
-    void setSerEnabled(bool enabled) { ser_enabled_ = enabled; }
+    void setSerEnabled(uint32_t enabled) { ser_enabled_ = enabled; }
 
     // Accessors
     OptixPipeline getPipeline() const { return pipeline; }
@@ -54,7 +54,7 @@ private:
     OptiXContext& optix_context;
 
     // Shader execution reordering (SER) configuration
-    bool ser_enabled_ = false;
+    uint32_t ser_enabled_ = 0;
 
     // Pipeline resources
     OptixPipeline pipeline = nullptr;

@@ -3,6 +3,7 @@
 
 #include <optix.h>
 #include <cuda_runtime.h>
+#include <cstdint>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -559,7 +560,7 @@ struct BaseParams {
     float camera_w[3];       // Camera forward vector for guide normal transform
 
     // Shader execution reordering (SER) — Ada Lovelace+ only
-    bool ser_enabled;                    // true = optixReorder in raygen for coherence
+    uint32_t ser_enabled;               // non-zero = optixReorder in raygen for coherence
     bool                ibl_enabled;
     float               ibl_strength;
     int                 ibl_samples;
