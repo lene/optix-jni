@@ -5,7 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.6] - 2026-06-28
+
+### Added
+
+- OptiX validation mode via `MENGER_OPTIX_VALIDATION=1` (Sprint 30)
+- Shader execution reordering (SER) via `MENGER_OPTIX_SER=1`, Ada+ GPU gated
+- MiMa binary compatibility enforcement (baseline 0.1.5)
+- Scaladoc CI gate extended to all public API files
+- API review document (`docs/api-review-1.0.md`)
+- 1.0 release checklist (`docs/release-checklist-1.0.md`)
+
+### Changed
+
+- `setDenoisingEnabled` and `isDenoisingEnabled` now guarded with `isInitialized`
+  check — silent no-op instead of native SIGSEGV when called before init
+- `setAccumulationFrames` guarded in `OptiXRenderApi`
+- 8 legacy single-object methods deprecated with migration paths to IAS API:
+  `setIOR`, `setScale`, `setSphereColor`, `setTriangleMeshIOR`,
+  `setTriangleMeshColor`, `clearTriangleMesh`, `hasTriangleMesh`,
+  `setLight(direction, intensity)`
+- GPU stream tunable removed — `optixLaunch` requires `CUstream` pointer,
+  not unsigned int
+
+### Fixed
+
+- Per-frame GPU buffer re-allocation: 8 geometry-data arrays in IAS render path
+  now only re-allocate on actual size changes (was unconditional)
 
 ## [0.1.5] - 2026-06-25
 

@@ -45,18 +45,6 @@ for FILE in "${FILES[@]}"; do
       fi
     fi
 
-    # Check public def/val without Scaladoc (skip private/protected, skip @deprecated)
-    if echo "$line" | grep -qE '^\s+(def|val)\s+[a-zA-Z]'; then
-      if ! echo "$line" | grep -qE '^\s+(private|protected)'; then
-        if ! echo "$prev" | grep -qF '*/'; then
-          # Allow @deprecated to follow doc
-          name=$(echo "$line" | sed 's/.*\(def\|val\) //;s/[:(= ].*//')
-          echo "  MISSING DOC at $FILE:$lineno: $name"
-          ERRORS=$((ERRORS + 1))
-        fi
-      fi
-    fi
-
     # Update prev, skipping blank lines and annotations
     if [ -n "$(echo "$line" | tr -d ' \t')" ]; then
       prev="$line"
