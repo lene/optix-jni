@@ -30,9 +30,12 @@ for FILE in "${FILES[@]}"; do
     if echo "$line" | grep -qE '^\s+@native\s+def\s+[a-z]'; then
       if ! echo "$line" | grep -qE '^\s+(private|protected)'; then
         if ! echo "$prev" | grep -qF '*/'; then
-          method=$(echo "$line" | sed 's/.*def //;s/[:(].*//')
-          echo "  MISSING DOC at $FILE:$lineno: def $method"
-          ERRORS=$((ERRORS + 1))
+          # Skip @deprecated methods — they already carry migration guidance
+          if ! echo "$prev" | grep -qE '@deprecated'; then
+            method=$(echo "$line" | sed 's/.*def //;s/[:(].*//')
+            echo "  MISSING DOC at $FILE:$lineno: def $method"
+            ERRORS=$((ERRORS + 1))
+          fi
         fi
       fi
     fi
