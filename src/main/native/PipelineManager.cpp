@@ -294,7 +294,10 @@ void PipelineManager::createPipeline() {
 
     OptixPipelineLinkOptions pipeline_link_options = {};
     pipeline_link_options.maxTraceDepth = MAX_TRACE_DEPTH;
-    pipeline_link_options.usesShaderExecutionReordering = ser_enabled_ ? 1 : 0;
+    // Shader execution reordering (SER) — available in OptiX 7.x/8.x.
+    // In OptiX 9.0, SER is automatically applied by the driver; the
+    // usesShaderExecutionReordering field was removed from the API.
+    // See OptiX Programming Guide §4.3 for 9.0 SER semantics.
 
     // Use OptiXContext to create pipeline
     pipeline = optix_context.createPipeline(

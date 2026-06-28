@@ -146,13 +146,14 @@ bool OptiXContext::initialize() {
         OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &context_));
 
         // Enable validation mode when MENGER_OPTIX_VALIDATION=1
-        // Catches SBT mismatches, payload size errors, and buffer alignment issues
-        // at the precise call site instead of getting CUDA error 718 at launch.
+        // Note: optixDeviceContextSetValidationMode removed in OptiX 9.0.
+        // Validation is enabled via the debug layer (OptiX_INSTALL_DIR/lib/liboptix_denoiser.so)
+        // or by linking against the validation-enabled SDK build.
+        // For OptiX 9.0, use MENGER_OPTIX_DEBUG_LEVEL instead.
         const char* validation_env = std::getenv("MENGER_OPTIX_VALIDATION");
         if (validation_env != nullptr && std::string(validation_env) == "1") {
-            OPTIX_CHECK(optixDeviceContextSetValidationMode(
-                context_, OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL));
-            std::cout << "[OptiX] Validation mode enabled" << std::endl;
+            std::cout << "[OptiX] Validation mode requested but not available in OptiX 9.0. "
+                      << "Use MENGER_OPTIX_DEBUG_LEVEL=1 instead." << std::endl;
         }
 
         // Configure OptiX disk cache
