@@ -53,6 +53,7 @@ struct OptiXWrapper::Impl {
     bool pipeline_built = false;
     bool initialized = false;
     bool denoising_enabled = false;
+    bool ser_supported = false;          // Ada Lovelace+ GPU supports shader execution reordering
 
     // Triangle mesh GPU state
     struct TriangleMeshGPU {
@@ -127,6 +128,7 @@ struct OptiXWrapper::Impl {
     std::vector<TextureData> textures;
     std::map<std::string, int> texture_name_to_index;
     CUdeviceptr d_texture_objects = 0;        // Device array of cudaTextureObject_t for Params
+    size_t last_texture_count = 0;             // Avoids redundant cudaFree+cudaMalloc per frame
 
     // IBL CDF textures
     cudaTextureObject_t m_env_cdf_marginal = 0;
@@ -139,6 +141,7 @@ struct OptiXWrapper::Impl {
     // Cylinder geometry data (host-side storage, uploaded to GPU before render)
     std::vector<CylinderData> cylinder_data;
     CUdeviceptr d_cylinder_data = 0;          // Device array of CylinderData for Params
+    size_t last_cylinder_count = 0;            // Avoids redundant re-upload per frame
 
     // Track cylinder GAS buffers for proper cleanup (each cylinder has its own GAS)
     std::vector<GASData> cylinder_gas_buffers;
@@ -146,6 +149,7 @@ struct OptiXWrapper::Impl {
     // Cone geometry data (host-side storage, uploaded to GPU before render)
     std::vector<ConeData> cone_data;
     CUdeviceptr d_cone_data = 0;               // Device array of ConeData for Params
+    size_t last_cone_count = 0;                // Avoids redundant re-upload per frame
 
     // Track cone GAS buffers for proper cleanup (each cone has its own GAS)
     std::vector<GASData> cone_gas_buffers;
@@ -153,6 +157,7 @@ struct OptiXWrapper::Impl {
     // Plane geometry data (host-side storage, uploaded to GPU before render)
     std::vector<PlaneData> plane_data;
     CUdeviceptr d_plane_data = 0;              // Device array of PlaneData for Params
+    size_t last_plane_count = 0;               // Avoids redundant re-upload per frame
 
     // Track plane GAS buffers for proper cleanup (each plane has its own GAS)
     std::vector<GASData> plane_gas_buffers;
@@ -160,6 +165,7 @@ struct OptiXWrapper::Impl {
     // Curve geometry data (host-side storage, uploaded to GPU before render)
     std::vector<CurveData> curve_data;
     CUdeviceptr d_curve_data = 0;              // Device array of CurveData for Params
+    size_t last_curve_count = 0;               // Avoids redundant re-upload per frame
 
     // Track curve device buffers and GAS lifetime
     struct CurveGPUData {
@@ -173,6 +179,7 @@ struct OptiXWrapper::Impl {
     // 4D Menger sponge geometry data (host-side, uploaded to GPU before render)
     std::vector<Menger4DData> menger4d_data;
     CUdeviceptr d_menger4d_data = 0;            // Device array of Menger4DData for Params
+    size_t last_menger4d_count = 0;            // Avoids redundant re-upload per frame
 
     // Track menger4d GAS buffers (each instance has its own AABB GAS)
     std::vector<GASData> menger4d_gas_buffers;
@@ -180,6 +187,7 @@ struct OptiXWrapper::Impl {
     // 4D Sierpinski pentachoron geometry data (host-side, uploaded to GPU before render)
     std::vector<Sierpinski4DData> sierpinski4d_data;
     CUdeviceptr d_sierpinski4d_data = 0;            // Device array of Sierpinski4DData for Params
+    size_t last_sierpinski4d_count = 0;            // Avoids redundant re-upload per frame
 
     // Track sierpinski4d GAS buffers (each instance has its own AABB GAS)
     std::vector<GASData> sierpinski4d_gas_buffers;
@@ -187,6 +195,7 @@ struct OptiXWrapper::Impl {
     // 4D Sierpinski 16-cell (hexadecachoron) geometry data (host-side, uploaded to GPU before render)
     std::vector<Hexadecachoron4DData> hexadecachoron4d_data;
     CUdeviceptr d_hexadecachoron4d_data = 0;        // Device array of Hexadecachoron4DData for Params
+    size_t last_hexadecachoron4d_count = 0;        // Avoids redundant re-upload per frame
 
     // Track hexadecachoron4d GAS buffers (each instance has its own AABB GAS)
     std::vector<GASData> hexadecachoron4d_gas_buffers;
@@ -230,6 +239,16 @@ bool OptiXWrapper::initialize(unsigned int maxInstances) {
         if (!success) {
             std::cerr << "[OptiX] OptiXContext initialization failed" << std::endl;
             return false;
+        }
+
+        // Check if GPU supports shader execution reordering (Ada Lovelace+, CC 8.9+)
+        cudaDeviceProp props;
+        if (cudaGetDeviceProperties(&props, 0) == cudaSuccess) {
+            impl->ser_supported = (props.major >= 9) ||
+                                  (props.major == 8 && props.minor >= 9);
+        } else {
+            std::cerr << "[OptiX] Warning: cudaGetDeviceProperties failed — "
+                      << "SER support cannot be determined, assuming unsupported." << std::endl;
         }
 
         impl->initialized = true;
@@ -345,6 +364,10 @@ void OptiXWrapper::setDenoisingEnabled(bool enabled) {
 
 bool OptiXWrapper::isDenoisingEnabled() const {
     return impl->denoising_enabled;
+}
+
+bool OptiXWrapper::isSerSupported() const {
+    return impl->ser_supported;
 }
 
 void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
@@ -1285,6 +1308,8 @@ void OptiXWrapper::buildPipeline() {
         // For IAS mode, we use the IAS handle (set later in render())
         impl->gas_handle = 0;  // Not used in IAS mode
     }
+    impl->pipeline_manager.setSerEnabled(impl->ser_supported &&
+        std::getenv("MENGER_OPTIX_SER") != nullptr);
     impl->pipeline_manager.buildPipeline(impl->scene, impl->gas_handle);
 }
 
@@ -1406,18 +1431,23 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                     tex_objs.push_back(tex.texture_obj);
                 }
 
-                // Reallocate GPU buffer if size changed
-                size_t tex_size = tex_objs.size() * sizeof(cudaTextureObject_t);
-                if (impl->d_texture_objects) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_texture_objects));
+                // Reallocate GPU buffer only when count changes
+                size_t tex_count = tex_objs.size();
+                if (tex_count != impl->last_texture_count) {
+                    if (impl->d_texture_objects) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_texture_objects));
+                        impl->d_texture_objects = 0;
+                    }
+                    size_t tex_size = tex_count * sizeof(cudaTextureObject_t);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_texture_objects), tex_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_texture_objects),
+                        tex_objs.data(),
+                        tex_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_texture_count = tex_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_texture_objects), tex_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_texture_objects),
-                    tex_objs.data(),
-                    tex_size,
-                    cudaMemcpyHostToDevice
-                ));
 
                 params.textures = reinterpret_cast<cudaTextureObject_t*>(impl->d_texture_objects);
                 params.num_textures = static_cast<unsigned int>(tex_objs.size());
@@ -1428,19 +1458,23 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload cylinder data if any cylinders exist
             if (!impl->cylinder_data.empty()) {
-                size_t cyl_size = impl->cylinder_data.size() * sizeof(CylinderData);
-
-                // Reallocate GPU buffer if needed
-                if (impl->d_cylinder_data) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
+                // Reallocate GPU buffer only when count changes
+                size_t cyl_count = impl->cylinder_data.size();
+                if (cyl_count != impl->last_cylinder_count) {
+                    if (impl->d_cylinder_data) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
+                        impl->d_cylinder_data = 0;
+                    }
+                    size_t cyl_size = cyl_count * sizeof(CylinderData);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cylinder_data), cyl_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_cylinder_data),
+                        impl->cylinder_data.data(),
+                        cyl_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_cylinder_count = cyl_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cylinder_data), cyl_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_cylinder_data),
-                    impl->cylinder_data.data(),
-                    cyl_size,
-                    cudaMemcpyHostToDevice
-                ));
 
                 params.cylinder_data = reinterpret_cast<CylinderData*>(impl->d_cylinder_data);
                 params.num_cylinders = static_cast<unsigned int>(impl->cylinder_data.size());
@@ -1451,18 +1485,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload cone data if any cones exist
             if (!impl->cone_data.empty()) {
-                size_t cone_size = impl->cone_data.size() * sizeof(ConeData);
-
-                if (impl->d_cone_data) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
+                size_t cone_count = impl->cone_data.size();
+                if (cone_count != impl->last_cone_count) {
+                    if (impl->d_cone_data) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
+                        impl->d_cone_data = 0;
+                    }
+                    size_t cone_size = cone_count * sizeof(ConeData);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cone_data), cone_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_cone_data),
+                        impl->cone_data.data(),
+                        cone_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_cone_count = cone_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cone_data), cone_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_cone_data),
-                    impl->cone_data.data(),
-                    cone_size,
-                    cudaMemcpyHostToDevice
-                ));
 
                 params.cone_data = reinterpret_cast<ConeData*>(impl->d_cone_data);
                 params.num_cones = static_cast<unsigned int>(impl->cone_data.size());
@@ -1473,18 +1511,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload plane data if any planes exist
             if (!impl->plane_data.empty()) {
-                size_t plane_size = impl->plane_data.size() * sizeof(PlaneData);
-
-                if (impl->d_plane_data) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
+                size_t plane_count = impl->plane_data.size();
+                if (plane_count != impl->last_plane_count) {
+                    if (impl->d_plane_data) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
+                        impl->d_plane_data = 0;
+                    }
+                    size_t plane_size = plane_count * sizeof(PlaneData);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_plane_data), plane_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_plane_data),
+                        impl->plane_data.data(),
+                        plane_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_plane_count = plane_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_plane_data), plane_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_plane_data),
-                    impl->plane_data.data(),
-                    plane_size,
-                    cudaMemcpyHostToDevice
-                ));
 
                 params.plane_data = reinterpret_cast<PlaneData*>(impl->d_plane_data);
                 params.num_plane_data = static_cast<unsigned int>(impl->plane_data.size());
@@ -1495,18 +1537,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload curve data if any curves exist
             if (!impl->curve_data.empty()) {
-                size_t curve_size = impl->curve_data.size() * sizeof(CurveData);
-
-                if (impl->d_curve_data) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
+                size_t curve_count = impl->curve_data.size();
+                if (curve_count != impl->last_curve_count) {
+                    if (impl->d_curve_data) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
+                        impl->d_curve_data = 0;
+                    }
+                    size_t curve_size = curve_count * sizeof(CurveData);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_curve_data), curve_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_curve_data),
+                        impl->curve_data.data(),
+                        curve_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_curve_count = curve_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_curve_data), curve_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_curve_data),
-                    impl->curve_data.data(),
-                    curve_size,
-                    cudaMemcpyHostToDevice
-                ));
 
                 params.curve_data = reinterpret_cast<CurveData*>(impl->d_curve_data);
                 params.num_curves = static_cast<unsigned int>(impl->curve_data.size());
@@ -1516,17 +1562,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             }
 
             if (!impl->menger4d_data.empty()) {
-                size_t m4d_size = impl->menger4d_data.size() * sizeof(Menger4DData);
-                if (impl->d_menger4d_data) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_menger4d_data));
+                size_t m4d_count = impl->menger4d_data.size();
+                if (m4d_count != impl->last_menger4d_count) {
+                    if (impl->d_menger4d_data) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_menger4d_data));
+                        impl->d_menger4d_data = 0;
+                    }
+                    size_t m4d_size = m4d_count * sizeof(Menger4DData);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_menger4d_data), m4d_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_menger4d_data),
+                        impl->menger4d_data.data(),
+                        m4d_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_menger4d_count = m4d_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_menger4d_data), m4d_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_menger4d_data),
-                    impl->menger4d_data.data(),
-                    m4d_size,
-                    cudaMemcpyHostToDevice
-                ));
                 params.menger4d_data = reinterpret_cast<Menger4DData*>(impl->d_menger4d_data);
                 params.num_menger4d = static_cast<unsigned int>(impl->menger4d_data.size());
             } else {
@@ -1535,18 +1586,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             }
 
             if (!impl->sierpinski4d_data.empty()) {
-                size_t s4d_size = impl->sierpinski4d_data.size() * sizeof(Sierpinski4DData);
-                if (impl->d_sierpinski4d_data) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
-                    impl->d_sierpinski4d_data = 0;
+                size_t s4d_count = impl->sierpinski4d_data.size();
+                if (s4d_count != impl->last_sierpinski4d_count) {
+                    if (impl->d_sierpinski4d_data) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
+                        impl->d_sierpinski4d_data = 0;
+                    }
+                    size_t s4d_size = s4d_count * sizeof(Sierpinski4DData);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_sierpinski4d_data), s4d_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_sierpinski4d_data),
+                        impl->sierpinski4d_data.data(),
+                        s4d_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_sierpinski4d_count = s4d_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_sierpinski4d_data), s4d_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_sierpinski4d_data),
-                    impl->sierpinski4d_data.data(),
-                    s4d_size,
-                    cudaMemcpyHostToDevice
-                ));
                 params.sierpinski4d_data = reinterpret_cast<Sierpinski4DData*>(impl->d_sierpinski4d_data);
                 params.num_sierpinski4d = static_cast<unsigned int>(impl->sierpinski4d_data.size());
             } else {
@@ -1555,18 +1610,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             }
 
             if (!impl->hexadecachoron4d_data.empty()) {
-                size_t h4d_size = impl->hexadecachoron4d_data.size() * sizeof(Hexadecachoron4DData);
-                if (impl->d_hexadecachoron4d_data) {
-                    cudaFree(reinterpret_cast<void*>(impl->d_hexadecachoron4d_data));
-                    impl->d_hexadecachoron4d_data = 0;
+                size_t h4d_count = impl->hexadecachoron4d_data.size();
+                if (h4d_count != impl->last_hexadecachoron4d_count) {
+                    if (impl->d_hexadecachoron4d_data) {
+                        cudaFree(reinterpret_cast<void*>(impl->d_hexadecachoron4d_data));
+                        impl->d_hexadecachoron4d_data = 0;
+                    }
+                    size_t h4d_size = h4d_count * sizeof(Hexadecachoron4DData);
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_hexadecachoron4d_data), h4d_size));
+                    CUDA_CHECK(cudaMemcpy(
+                        reinterpret_cast<void*>(impl->d_hexadecachoron4d_data),
+                        impl->hexadecachoron4d_data.data(),
+                        h4d_size,
+                        cudaMemcpyHostToDevice
+                    ));
+                    impl->last_hexadecachoron4d_count = h4d_count;
                 }
-                CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_hexadecachoron4d_data), h4d_size));
-                CUDA_CHECK(cudaMemcpy(
-                    reinterpret_cast<void*>(impl->d_hexadecachoron4d_data),
-                    impl->hexadecachoron4d_data.data(),
-                    h4d_size,
-                    cudaMemcpyHostToDevice
-                ));
                 params.hexadecachoron4d_data = reinterpret_cast<Hexadecachoron4DData*>(impl->d_hexadecachoron4d_data);
                 params.num_hexadecachoron4d = static_cast<unsigned int>(impl->hexadecachoron4d_data.size());
             } else {
@@ -1657,6 +1716,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         // Copy all MAX_PLANES slots (zero-initialized past num_planes) to avoid
         // conditional logic; shader gates on num_planes.
         std::memcpy(params.planes, impl->config.getPlanes(), sizeof(PlaneParams) * RayTracingConstants::MAX_PLANES);
+
+        // Shader execution reordering — Ada+ only, opt-in via MENGER_OPTIX_SER=1
+        // (Default off until benchmarked; re-enable permanently if gains ≥5%)
+        params.ser_enabled = false;
+        {
+            const char* ser_env = std::getenv("MENGER_OPTIX_SER");
+            if (ser_env != nullptr && std::string(ser_env) == "1" && impl->ser_supported) {
+                params.ser_enabled = true;
+            }
+        }
 
         // Adaptive antialiasing parameters
         params.aa_enabled = impl->config.getAAEnabled();

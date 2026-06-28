@@ -148,6 +148,9 @@ public:
     void setDenoisingEnabled(bool enabled);
     bool isDenoisingEnabled() const;
 
+    // Shader execution reordering support
+    bool isSerSupported() const;
+
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
 

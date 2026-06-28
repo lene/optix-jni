@@ -20,7 +20,11 @@ private[optix] trait OptiXSphereApi:
   def setSphere(center: Vector[3], radius: Float): Unit =
     setSphere(center.x, center.y, center.z, radius)
 
-  /** Sets the legacy single-sphere RGBA color. */
+  /** Sets the legacy single-sphere RGBA color.
+    *
+    * @deprecated Use [[addSphereInstance]] with [[Material]] instead.
+    */
+  @deprecated("Use addSphereInstance with Material", "0.1.5")
   def setSphereColor(color: Color): Unit =
     setSphereColorNative(color.r, color.g, color.b, color.a)
 

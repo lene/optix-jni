@@ -32,6 +32,9 @@ public:
     // Lightweight camera-only update (avoids full pipeline rebuild)
     void updateCameraInSBT(const SceneParameters& scene);
 
+    // Enable shader execution reordering if GPU supports it
+    void setSerEnabled(bool enabled) { ser_enabled_ = enabled; }
+
     // Accessors
     OptixPipeline getPipeline() const { return pipeline; }
     const OptixShaderBindingTable& getSBT() const { return sbt; }
@@ -49,6 +52,9 @@ public:
 
 private:
     OptiXContext& optix_context;
+
+    // Shader execution reordering (SER) configuration
+    bool ser_enabled_ = false;
 
     // Pipeline resources
     OptixPipeline pipeline = nullptr;

@@ -378,18 +378,18 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFr
     }
 }
 
-JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabled(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabledNative(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr)
             wrapper->setDenoisingEnabled(enabled == JNI_TRUE);
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in setDenoisingEnabled: " << e.what() << std::endl;
+        std::cerr << "[JNI] Error in setDenoisingEnabledNative: " << e.what() << std::endl;
     }
 }
 
-JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabled(
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabledNative(
     JNIEnv* env, jobject obj) {
     try {
         const OptiXWrapper* wrapper = getWrapper(env, obj);
@@ -397,7 +397,7 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEn
             return wrapper->isDenoisingEnabled() ? JNI_TRUE : JNI_FALSE;
         return JNI_FALSE;
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in isDenoisingEnabled: " << e.what() << std::endl;
+        std::cerr << "[JNI] Error in isDenoisingEnabledNative: " << e.what() << std::endl;
         return JNI_FALSE;
     }
 }

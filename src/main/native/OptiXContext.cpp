@@ -145,6 +145,17 @@ bool OptiXContext::initialize() {
 
         OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &context_));
 
+        // Enable validation mode when MENGER_OPTIX_VALIDATION=1
+        // Note: optixDeviceContextSetValidationMode removed in OptiX 9.0.
+        // Validation is enabled via the debug layer (OptiX_INSTALL_DIR/lib/liboptix_denoiser.so)
+        // or by linking against the validation-enabled SDK build.
+        // For OptiX 9.0, use MENGER_OPTIX_DEBUG_LEVEL instead.
+        const char* validation_env = std::getenv("MENGER_OPTIX_VALIDATION");
+        if (validation_env != nullptr && std::string(validation_env) == "1") {
+            std::cout << "[OptiX] Validation mode requested but not available in OptiX 9.0. "
+                      << "Use MENGER_OPTIX_DEBUG_LEVEL=1 instead." << std::endl;
+        }
+
         // Configure OptiX disk cache
         // Allow custom cache location via MENGER_OPTIX_CACHE environment variable
         const char* cache_path = std::getenv("MENGER_OPTIX_CACHE");
@@ -908,9 +919,14 @@ void OptiXContext::launch(
     unsigned int width,
     unsigned int height)
 {
+    // Note: MENGER_OPTIX_STREAMS env var reserved for future CUDA stream management.
+    // Currently optixLaunch uses stream 0; cudaDeviceSynchronize serializes all work.
+    // Non-zero stream ids require actual cudaStream_t handles (created via cudaStreamCreate),
+    // which this code path does not manage. See CODE_IMPROVEMENTS for stream pool design.
+
     OPTIX_CHECK(optixLaunch(
         pipeline,
-        0, // CUDA stream
+        0, // CUDA stream 0 (default, synchronous)
         params_buffer,
         sizeof(BaseParams),
         &sbt,

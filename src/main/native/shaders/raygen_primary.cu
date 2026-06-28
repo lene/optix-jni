@@ -67,6 +67,11 @@ extern "C" __global__ void __raygen__rg() {
             atomicAdd(&params.stats->primary_rays, 1ULL);
             atomicAdd(&params.stats->total_rays, 1ULL);
         }
+        // Shader execution reordering — OptiX 9.0 takes 0 or 2 args.
+        // optixReorder() with no args activates SER with default hints.
+        if (params.ser_enabled) {
+            optixReorder();
+        }
 
         // Trace ray
         unsigned int p3 = 0;  // Initial depth = 0

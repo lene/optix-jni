@@ -558,7 +558,8 @@ struct BaseParams {
     float camera_v[3];       // Camera up vector for guide normal transform
     float camera_w[3];       // Camera forward vector for guide normal transform
 
-    // IBL — image-based lighting
+    // Shader execution reordering (SER) — Ada Lovelace+ only
+    bool ser_enabled;                    // true = optixReorder in raygen for coherence
     bool                ibl_enabled;
     float               ibl_strength;
     int                 ibl_samples;

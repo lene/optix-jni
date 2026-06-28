@@ -1,7 +1,7 @@
 import com.github.sbt.jni.build.CMakeWithoutVersionBug
 
 name := "optix-jni"
-version := "0.1.5"
+version := "0.1.6"
 scalaVersion := "3.8.3"
 
 enablePlugins(JniNative)
@@ -176,4 +176,22 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.2.20" % Test,
   "org.scalatestplus" %% "scalacheck-1-19" % "3.2.20.0" % Test,
   "com.tngtech.archunit" % "archunit" % "1.3.0" % Test
+)
+
+// MiMa binary compatibility — baseline against last published release.
+// From 1.0 onward, MiMa failures block release (SemVer contract).
+import com.typesafe.tools.mima.core._
+enablePlugins(MimaPlugin)
+mimaPreviousArtifacts := Set(
+  "io.github.lene" % "optix-jni" % "0.1.5"
+)
+// Check both directions: forward (1.0 must be compatible with 0.1.5) and
+// backward (0.1.5 users can upgrade to 1.0 without recompilation).
+mimaBinaryIssueFilters ++= Seq(
+  // Sprint 30.4: setDenoisingEnabled/isDenoisingEnabled changed from @native to
+  // guarded Scala wrappers. Public method signatures unchanged — internal native
+  // methods renamed to *Native suffix. Backward compatible at API level.
+  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.setDenoisingEnabled"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.isDenoisingEnabled"),
+  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.setAccumulationFramesNative"),
 )

@@ -31,9 +31,12 @@ private[optix] trait OptiXRenderApi:
   def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
     setIBLNative(enabled, strength, samples)
 
-  /** Sets temporal accumulation frame count for noisy render paths. */
+  /** Sets temporal accumulation frame count for noisy render paths.
+    *
+    * Silently no-ops when the renderer is not initialized.
+    */
   def setAccumulationFrames(n: Int): Unit =
-    setAccumulationFramesNative(n)
+    if isInitialized then setAccumulationFramesNative(n)
 
   /** Applies progressive photon-mapping caustics settings. */
   def setCausticsConfig(config: CausticsConfig): Unit =
