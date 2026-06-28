@@ -71,6 +71,7 @@ jobs:
           else
             git config user.email "ci@github-actions.local"
             git config user.name "CI Bot"
+            git remote set-url origin "https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/${{ github.repository }}"
             git tag -a "$VERSION" -m "Release $VERSION"
             git push origin "refs/tags/$VERSION"
             echo "Created and pushed tag $VERSION"
