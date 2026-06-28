@@ -1306,7 +1306,8 @@ void OptiXWrapper::buildPipeline() {
         // For IAS mode, we use the IAS handle (set later in render())
         impl->gas_handle = 0;  // Not used in IAS mode
     }
-    impl->pipeline_manager.setSerEnabled(impl->ser_supported);
+    impl->pipeline_manager.setSerEnabled(impl->ser_supported &&
+        std::getenv("MENGER_OPTIX_SER") != nullptr);
     impl->pipeline_manager.buildPipeline(impl->scene, impl->gas_handle);
 }
 
@@ -1433,6 +1434,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 if (tex_count != impl->last_texture_count) {
                     if (impl->d_texture_objects) {
                         cudaFree(reinterpret_cast<void*>(impl->d_texture_objects));
+                        impl->d_texture_objects = 0;
                     }
                     size_t tex_size = tex_count * sizeof(cudaTextureObject_t);
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_texture_objects), tex_size));
@@ -1461,6 +1463,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 if (cyl_count != impl->last_cylinder_count) {
                     if (impl->d_cylinder_data) {
                         cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
+                        impl->d_cylinder_data = 0;
                     }
                     size_t cyl_size = cyl_count * sizeof(CylinderData);
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cylinder_data), cyl_size));
@@ -1488,6 +1491,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 if (cone_count != impl->last_cone_count) {
                     if (impl->d_cone_data) {
                         cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
+                        impl->d_cone_data = 0;
                     }
                     size_t cone_size = cone_count * sizeof(ConeData);
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_cone_data), cone_size));
@@ -1515,6 +1519,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 if (plane_count != impl->last_plane_count) {
                     if (impl->d_plane_data) {
                         cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
+                        impl->d_plane_data = 0;
                     }
                     size_t plane_size = plane_count * sizeof(PlaneData);
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_plane_data), plane_size));
@@ -1542,6 +1547,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 if (curve_count != impl->last_curve_count) {
                     if (impl->d_curve_data) {
                         cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
+                        impl->d_curve_data = 0;
                     }
                     size_t curve_size = curve_count * sizeof(CurveData);
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_curve_data), curve_size));
@@ -1567,6 +1573,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 if (m4d_count != impl->last_menger4d_count) {
                     if (impl->d_menger4d_data) {
                         cudaFree(reinterpret_cast<void*>(impl->d_menger4d_data));
+                        impl->d_menger4d_data = 0;
                     }
                     size_t m4d_size = m4d_count * sizeof(Menger4DData);
                     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_menger4d_data), m4d_size));

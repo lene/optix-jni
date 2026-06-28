@@ -180,6 +180,7 @@ libraryDependencies ++= Seq(
 
 // MiMa binary compatibility — baseline against last published release.
 // From 1.0 onward, MiMa failures block release (SemVer contract).
+import com.typesafe.tools.mima.core._
 enablePlugins(MimaPlugin)
 mimaPreviousArtifacts := Set(
   "io.github.lene" % "optix-jni" % "0.1.5"
