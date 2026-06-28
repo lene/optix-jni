@@ -274,7 +274,9 @@ class OptiXRenderer
     * OptiX denoiser before tone mapping. Disabled by default; existing render output
     * is unchanged when off.
     *
-    * @throws IllegalStateException if called before [[initialize]] or after [[dispose]]
+    * Silently no-ops when called before [[initialize]] or after [[dispose]]
+    * (checked via [[isInitialized]] guard). Use [[setDenoisingEnabled]] for the
+    * public API which includes this guard.
     */
   @native private def setDenoisingEnabledNative(enabled: Boolean): Unit
 

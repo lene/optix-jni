@@ -246,6 +246,9 @@ bool OptiXWrapper::initialize(unsigned int maxInstances) {
         if (cudaGetDeviceProperties(&props, 0) == cudaSuccess) {
             impl->ser_supported = (props.major >= 9) ||
                                   (props.major == 8 && props.minor >= 9);
+        } else {
+            std::cerr << "[OptiX] Warning: cudaGetDeviceProperties failed — "
+                      << "SER support cannot be determined, assuming unsupported." << std::endl;
         }
 
         impl->initialized = true;
