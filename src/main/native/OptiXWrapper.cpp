@@ -242,7 +242,6 @@ bool OptiXWrapper::initialize(unsigned int maxInstances) {
         }
 
         // Check if GPU supports shader execution reordering (Ada Lovelace+, CC 8.9+)
-        int cc_major = 0;
         cudaDeviceProp props;
         if (cudaGetDeviceProperties(&props, 0) == cudaSuccess) {
             impl->ser_supported = (props.major >= 9) ||
@@ -1456,8 +1455,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload cylinder data if any cylinders exist
             if (!impl->cylinder_data.empty()) {
-                size_t cyl_size = impl->cylinder_data.size() * sizeof(CylinderData);
-
                 // Reallocate GPU buffer only when count changes
                 size_t cyl_count = impl->cylinder_data.size();
                 if (cyl_count != impl->last_cylinder_count) {
@@ -1485,8 +1482,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload cone data if any cones exist
             if (!impl->cone_data.empty()) {
-                size_t cone_size = impl->cone_data.size() * sizeof(ConeData);
-
                 size_t cone_count = impl->cone_data.size();
                 if (cone_count != impl->last_cone_count) {
                     if (impl->d_cone_data) {
@@ -1513,8 +1508,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload plane data if any planes exist
             if (!impl->plane_data.empty()) {
-                size_t plane_size = impl->plane_data.size() * sizeof(PlaneData);
-
                 size_t plane_count = impl->plane_data.size();
                 if (plane_count != impl->last_plane_count) {
                     if (impl->d_plane_data) {
@@ -1541,8 +1534,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
             // Upload curve data if any curves exist
             if (!impl->curve_data.empty()) {
-                size_t curve_size = impl->curve_data.size() * sizeof(CurveData);
-
                 size_t curve_count = impl->curve_data.size();
                 if (curve_count != impl->last_curve_count) {
                     if (impl->d_curve_data) {
@@ -1568,7 +1559,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             }
 
             if (!impl->menger4d_data.empty()) {
-                size_t m4d_size = impl->menger4d_data.size() * sizeof(Menger4DData);
                 size_t m4d_count = impl->menger4d_data.size();
                 if (m4d_count != impl->last_menger4d_count) {
                     if (impl->d_menger4d_data) {
@@ -1593,7 +1583,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             }
 
             if (!impl->sierpinski4d_data.empty()) {
-                size_t s4d_size = impl->sierpinski4d_data.size() * sizeof(Sierpinski4DData);
                 size_t s4d_count = impl->sierpinski4d_data.size();
                 if (s4d_count != impl->last_sierpinski4d_count) {
                     if (impl->d_sierpinski4d_data) {
@@ -1618,7 +1607,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             }
 
             if (!impl->hexadecachoron4d_data.empty()) {
-                size_t h4d_size = impl->hexadecachoron4d_data.size() * sizeof(Hexadecachoron4DData);
                 size_t h4d_count = impl->hexadecachoron4d_data.size();
                 if (h4d_count != impl->last_hexadecachoron4d_count) {
                     if (impl->d_hexadecachoron4d_data) {
