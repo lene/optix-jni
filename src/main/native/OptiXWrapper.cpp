@@ -366,10 +366,6 @@ bool OptiXWrapper::isDenoisingEnabled() const {
     return impl->denoising_enabled;
 }
 
-bool OptiXWrapper::isSerSupported() const {
-    return impl->ser_supported;
-}
-
 void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
                                          float proceduralScale) {
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
@@ -1719,11 +1715,11 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         // Shader execution reordering — Ada+ only, opt-in via MENGER_OPTIX_SER=1
         // (Default off until benchmarked; re-enable permanently if gains ≥5%)
-        params.ser_enabled = false;
+        params.ser_enabled = 0;
         {
             const char* ser_env = std::getenv("MENGER_OPTIX_SER");
             if (ser_env != nullptr && std::string(ser_env) == "1" && impl->ser_supported) {
-                params.ser_enabled = true;
+                params.ser_enabled = 1;
             }
         }
 
@@ -3807,6 +3803,19 @@ void OptiXWrapper::dispose() {
                       << cudaGetErrorString(err) << std::endl;
             cudaGetLastError();  // Clear the error
         }
+    });
+
+    // Reset count tracking fields so re-initialize() starts fresh.
+    // Without this, stale counts can prevent first-frame uploads after dispose+initialize.
+    step("resetCountTracking", [this] {
+        impl->last_texture_count = 0;
+        impl->last_cylinder_count = 0;
+        impl->last_cone_count = 0;
+        impl->last_plane_count = 0;
+        impl->last_curve_count = 0;
+        impl->last_menger4d_count = 0;
+        impl->last_sierpinski4d_count = 0;
+        impl->last_hexadecachoron4d_count = 0;
     });
 
     impl->initialized = false;

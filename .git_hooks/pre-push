@@ -7,6 +7,7 @@ RESET_TEXT='\e[0m'
 
 # Detect changed files vs remote
 CHANGED_FILES=""
+git fetch origin --quiet 2>/dev/null || true
 while read local_ref local_sha remote_ref remote_sha; do
   if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
     exit 0  # deleting branch, nothing to check

@@ -1,4 +1,7 @@
 #!/bin/sh
+# Pre-commit: fast hygiene checks, target <30s.
+# Compile + scalafix only — no tests (pre-push is the correctness gate).
+# Native compile is done by pre-push, not pre-commit (too slow for every commit).
 
 RED_TEXT='\e[38;5;196m'
 GREEN_TEXT='\e[38;5;46m'
@@ -16,62 +19,40 @@ fi
 
 STATUS=0
 
-# ---------------------------------------------------------------------------
-# CUDA/OptiX environment check (native changes only)
-# Warning only — stub build is valid for non-GPU machines.
-# The packageBin guard in build.sbt blocks publishing stubs.
-# ---------------------------------------------------------------------------
+# CUDA/OptiX environment check (native changes only — warning, not blocking)
 if [ "$HAS_NATIVE" -gt 0 ]; then
   echo "=== CUDA Environment ==="
   if [ -z "$CUDA_HOME" ] || [ ! -x "$CUDA_HOME/bin/nvcc" ]; then
-    echo "${YELLOW_TEXT}Warning: CUDA not available — native build will produce stub (liboptixjni.so ~14KB, no PTX)${RESET_TEXT}"
-    echo "${YELLOW_TEXT}This is fine for non-GPU machines. Publishing stubs is blocked by build.sbt.${RESET_TEXT}"
+    echo "${YELLOW_TEXT}Warning: CUDA not available — native build will produce stub${RESET_TEXT}"
   else
     echo "CUDA_HOME: ${GREEN_TEXT}$CUDA_HOME${RESET_TEXT}"
     if [ -n "$OPTIX_ROOT" ] && [ -f "$OPTIX_ROOT/include/optix.h" ]; then
       echo "OPTIX_ROOT: ${GREEN_TEXT}$OPTIX_ROOT${RESET_TEXT}"
     else
-      echo "${YELLOW_TEXT}Warning: OPTIX_ROOT not set or optix.h not found — OptiX features unavailable${RESET_TEXT}"
+      echo "${YELLOW_TEXT}Warning: OPTIX_ROOT not set${RESET_TEXT}"
     fi
   fi
 fi
 
-# ---------------------------------------------------------------------------
-# Compile
-# ---------------------------------------------------------------------------
 echo "=== Compile ==="
 sbt compile || STATUS=1
 
-# ---------------------------------------------------------------------------
-# Tests (GPU tests auto-skip via assume() when GPU unavailable)
-# ---------------------------------------------------------------------------
-echo "=== Tests ==="
-sbt test --warn || STATUS=1
-if [ $STATUS -gt 0 ]; then
-  echo "Tests: ${RED_TEXT}FAILED${RESET_TEXT}"
-else
-  echo "Tests: ${GREEN_TEXT}OK${RESET_TEXT}"
-fi
-
-# ---------------------------------------------------------------------------
-# Scalafix (Scala changes only)
-# ---------------------------------------------------------------------------
 if [ "$HAS_SCALA" -gt 0 ]; then
   echo "=== Scalafix ==="
-  sbt "scalafix --check" --warn || STATUS=1
-  if [ $STATUS -gt 0 ]; then
-    echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
-  else
-    echo "Scalafix: ${GREEN_TEXT}OK${RESET_TEXT}"
-  fi
+  sbt "scalafix --check" || STATUS=1
 fi
 
 if [ $STATUS -gt 0 ]; then
-  commit_msg=$(git log --oneline 2>/dev/null | head -n 1 | cut -d' ' -f 2-)
-  if echo "$commit_msg" | grep -q '^WIP:'; then
-    echo >&2 "WIP commit — proceeding despite failures"
+  commit_msg=$(git log --oneline -1 --format=%s 2>/dev/null || true)
+  if echo "$commit_msg" | grep -qi '^WIP:\|^wip:'; then
+    echo "WIP commit — proceeding despite failures" >&2
     STATUS=0
   fi
 fi
 
+if [ $STATUS -gt 0 ]; then
+  echo "pre-commit checks: ${RED_TEXT}FAILED${RESET_TEXT}" >&2
+else
+  echo "All checks: ${GREEN_TEXT}OK${RESET_TEXT}"
+fi
 exit $STATUS

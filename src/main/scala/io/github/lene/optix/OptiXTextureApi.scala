@@ -86,11 +86,17 @@ private[optix] trait OptiXTextureApi:
 
   /** Uploads a texture from a native-readable file path.
     *
-    * @return texture index `>= 0`, or a negative native error code on failure
+    * @return texture index `>= 0`
+    * @throws TextureUploadException when native upload returns a negative code
     */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def uploadTextureFromFile(path: String): Int =
     require(path != null && path.nonEmpty, "Path must not be null or empty") // scalafix:ok DisableSyntax.null
-    uploadTextureFromFileNative(path)
+    val index = uploadTextureFromFileNative(path)
+    if index < 0 then
+      throw TextureUploadException(s"Failed to upload texture from file '$path': error code $index")
+    else
+      index
 
   /** Releases all native texture objects owned by this renderer. */
   def releaseTextures(): Unit =
