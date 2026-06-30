@@ -187,11 +187,11 @@ class MaterialUnitSuite extends AnyFlatSpec with Matchers:
     Material.Copper.metallic shouldBe 1.0f
     Material.Copper.color.r shouldBe 0.72f +- 0.01f
 
-  "Material.presetNames" should "contain all 11 preset names" in:
-    Material.presetNames.asScala should have size 11
+  "Material.presetNames" should "contain all 13 preset names" in:
+    Material.presetNames.asScala should have size 13
 
   it should "contain all expected names" in:
-    Material.presetNames.asScala should contain allOf ("glass", "water", "diamond", "chrome", "gold", "copper", "film", "parchment", "metal", "plastic", "matte")
+    Material.presetNames.asScala should contain allOf ("glass", "water", "diamond", "glass-dispersive", "diamond-dispersive", "chrome", "gold", "copper", "film", "parchment", "metal", "plastic", "matte")
 
   it should "be consistent with fromName (all names should resolve)" in:
     Material.presetNames.asScala.foreach { name =>
