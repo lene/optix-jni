@@ -207,6 +207,10 @@ struct MaterialProperties {
     // Thin-film interference
     float film_thickness;        // Film thickness in nm (0 = no thin-film interference)
 
+    // Spectral dispersion (Cauchy IOR model)
+    float cauchy_a;              // Cauchy A coefficient for n(λ) = A + B/λ²
+    float cauchy_b;              // Cauchy B coefficient (0 = no dispersion)
+
     // Procedural texture and reserved texture fields
     int   procedural_type;    // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
     float procedural_scale;   // Noise coordinate scale (default 1.0)
