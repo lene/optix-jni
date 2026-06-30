@@ -35,6 +35,8 @@ inline MaterialProperties createDefault() {
     mat.specular = 0.5f;
     mat.base_color_texture = -1;
     mat.film_thickness = 0.0f;
+    mat.cauchy_a = mat.ior;
+    mat.cauchy_b = 0.0f;
     mat.padding[0] = 0;
     mat.padding[1] = 0;
     return mat;
@@ -71,6 +73,26 @@ inline MaterialProperties diamond() {
     mat.roughness = 0.0f;
     mat.metallic = 0.0f;
     mat.specular = 1.0f;
+    return mat;
+}
+
+// Glass Dispersive: Crown glass with spectral dispersion (Abbe V_d ≈ 59)
+inline MaterialProperties glassDispersive() {
+    MaterialProperties mat = glass();
+    // Cauchy coefficients for n_d=1.5, V_d=59:
+    // A=1.4872, B=4436.05 nm² (verified: n(587.6)=1.500000)
+    mat.cauchy_a = 1.4872f;
+    mat.cauchy_b = 4436.05f;
+    return mat;
+}
+
+// Diamond Dispersive: High dispersion diamond (Abbe V_d ≈ 33)
+inline MaterialProperties diamondDispersive() {
+    MaterialProperties mat = diamond();
+    // Cauchy coefficients for n_d=2.42, V_d=33:
+    // A=2.3548, B=22524.37 nm² (verified: n(587.6)=2.420000)
+    mat.cauchy_a = 2.3548f;
+    mat.cauchy_b = 22524.37f;
     return mat;
 }
 
