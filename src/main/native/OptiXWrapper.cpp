@@ -95,6 +95,8 @@ struct OptiXWrapper::Impl {
         float specular;                       // Specular intensity (default: 0.5)
         float emission;                       // Emission intensity (default: 0.0)
         float film_thickness;                 // Thin-film thickness in nm (0 = none)
+        float cauchy_a;                       // Cauchy A coefficient
+        float cauchy_b;                       // Cauchy B coefficient (0 = no dispersion)
         int geometry_data_index;              // Index into geometry-specific data buffer (-1 = unused)
         int procedural_type;                  // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
         float procedural_scale;               // Noise coordinate scale (default 1.0)
@@ -1185,6 +1187,8 @@ void OptiXWrapper::buildIAS() {
         mat.geometry_type = inst.geometry_type;
         mat.geometry_data_index = inst.geometry_data_index;
         mat.film_thickness = inst.film_thickness;
+        mat.cauchy_a = inst.cauchy_a;
+        mat.cauchy_b = inst.cauchy_b;
         mat.procedural_type = inst.procedural_type;
         mat.procedural_scale = inst.procedural_scale;
         mat.normal_texture_index = inst.normal_texture_index;
@@ -1970,7 +1974,7 @@ void OptiXWrapper::setCausticsRenderer(ICausticsRenderer* renderer) {
 int OptiXWrapper::addSphereInstance(
     const float* transform, float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission,
-    float film_thickness
+    float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -2025,6 +2029,8 @@ int OptiXWrapper::addSphereInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = -1;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -2051,7 +2057,7 @@ int OptiXWrapper::addSphereInstance(
 int OptiXWrapper::addTriangleMeshInstance(
     const float* transform, float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission, int textureIndex,
-    float film_thickness
+    float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -2098,6 +2104,8 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = -1;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -2232,7 +2240,7 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     int level,
     const float* transform, float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission,
-    int textureIndex, float film_thickness) {
+    int textureIndex, float film_thickness, float cauchy_a, float cauchy_b) {
 
     if (level < 1) {
         std::cerr << "[OptiX][RecSponge] level must be >= 1 (got " << level << ")" << std::endl;
@@ -2299,6 +2307,8 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = -1;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -2326,7 +2336,7 @@ int OptiXWrapper::addCylinderInstance(
     float radius,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission,
-    float film_thickness
+    float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -2427,6 +2437,8 @@ int OptiXWrapper::addCylinderInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = cylinder_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -2469,7 +2481,7 @@ int OptiXWrapper::addConeInstance(
     float radius,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission,
-    float film_thickness
+    float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -2551,6 +2563,8 @@ int OptiXWrapper::addConeInstance(
     inst.specular      = specular;
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = cone_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -2581,7 +2595,7 @@ int OptiXWrapper::addCurveInstance(
     unsigned int num_points,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission,
-    float film_thickness
+    float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -2720,6 +2734,8 @@ int OptiXWrapper::addCurveInstance(
     inst.specular = specular;
     inst.emission = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = curve_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -2749,7 +2765,7 @@ int OptiXWrapper::addPlaneInstance(
     float distance,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission,
-    float film_thickness,
+    float film_thickness, float cauchy_a, float cauchy_b,
     float r2, float g2, float b2,
     int solid_color, float checker_size
 ) {
@@ -2845,6 +2861,8 @@ int OptiXWrapper::addPlaneInstance(
     inst.specular      = specular;
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = plane_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -2876,7 +2894,7 @@ int OptiXWrapper::addMenger4DInstance(
     float rot_xw, float rot_yw, float rot_zw,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular,
-    float emission, float film_thickness
+    float emission, float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -2942,6 +2960,8 @@ int OptiXWrapper::addMenger4DInstance(
     inst.specular      = specular;
     inst.emission      = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = m4d_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -3000,7 +3020,7 @@ int OptiXWrapper::addSierpinski4DInstance(
     float rot_xw, float rot_yw, float rot_zw,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular,
-    float emission, float film_thickness
+    float emission, float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -3064,6 +3084,8 @@ int OptiXWrapper::addSierpinski4DInstance(
     inst.specular       = specular;
     inst.emission       = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = s4d_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
@@ -3121,7 +3143,7 @@ int OptiXWrapper::addHexadecachoron4DInstance(
     float rot_xw, float rot_yw, float rot_zw,
     float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular,
-    float emission, float film_thickness
+    float emission, float film_thickness, float cauchy_a, float cauchy_b
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
@@ -3185,6 +3207,8 @@ int OptiXWrapper::addHexadecachoron4DInstance(
     inst.specular       = specular;
     inst.emission       = emission;
     inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
     inst.geometry_data_index = h4d_index;
     inst.procedural_type = 0;
     inst.procedural_scale = 1.0f;
