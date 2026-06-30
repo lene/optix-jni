@@ -212,12 +212,12 @@ public:
     int addSphereInstance(
         const float* transform, float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        float film_thickness = 0.0f
+        float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addTriangleMeshInstance(
         const float* transform, float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        int textureIndex = -1, float film_thickness = 0.0f
+        int textureIndex = -1, float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addCylinderInstance(
         float p0_x, float p0_y, float p0_z,
@@ -225,7 +225,7 @@ public:
         float radius,
         float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        float film_thickness = 0.0f
+        float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addConeInstance(
         float apex_x, float apex_y, float apex_z,
@@ -233,7 +233,7 @@ public:
         float radius,
         float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        float film_thickness = 0.0f
+        float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addCurveInstance(
         const float* points,
@@ -241,14 +241,14 @@ public:
         unsigned int num_points,
         float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        float film_thickness = 0.0f
+        float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addPlaneInstance(
         float normal_x, float normal_y, float normal_z,
         float distance,
         float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        float film_thickness = 0.0f,
+        float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f,
         float r2 = 0.0f, float g2 = 0.0f, float b2 = 0.0f,
         int solid_color = 1,
         float checker_size = 1.0f
@@ -263,7 +263,7 @@ public:
         float rot_xw, float rot_yw, float rot_zw,
         float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f,
-        float emission = 0.0f, float film_thickness = 0.0f
+        float emission = 0.0f, float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
 
     // Update 4D projection params for an existing menger4d instance.
@@ -285,7 +285,7 @@ public:
         float rot_xw, float rot_yw, float rot_zw,
         float r, float g, float b, float a, float ior,
         float roughness, float metallic, float specular,
-        float emission, float film_thickness
+        float emission, float film_thickness, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
 
     // Update 4D projection params for an existing sierpinski4d instance.
@@ -306,7 +306,7 @@ public:
         float rot_xw, float rot_yw, float rot_zw,
         float r, float g, float b, float a, float ior,
         float roughness, float metallic, float specular,
-        float emission, float film_thickness
+        float emission, float film_thickness, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
 
     // Update 4D projection params for an existing hexadecachoron4d instance.
@@ -328,7 +328,7 @@ public:
         int level,
         const float* transform, float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
-        int textureIndex = -1, float film_thickness = 0.0f
+        int textureIndex = -1, float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
 
     void removeInstance(int instanceId);

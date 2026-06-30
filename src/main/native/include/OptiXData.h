@@ -176,6 +176,8 @@ struct InstanceMaterial {
     unsigned int geometry_type; // GeometryType enum value
     int geometry_data_index;    // Index into geometry-specific data buffer (cone_data, plane_data, etc.; -1 = unused)
     float film_thickness;       // Thin-film thickness in nm (0 = no thin-film interference)
+    float cauchy_a;             // Cauchy A coefficient for n(λ) = A + B/λ²
+    float cauchy_b;             // Cauchy B coefficient (0 = no dispersion)
     int procedural_type;        // 0=none, 1=value_noise, 2=fbm, 3=worley, 4=gradient
     float procedural_scale;     // Noise coordinate scale (default 1.0)
     int normal_texture_index;   // Normal map index (-1 = no normal map)
