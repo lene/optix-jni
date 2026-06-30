@@ -44,7 +44,7 @@ static OptixPipelineCompileOptions defaultPipelineCompileOptions() {
     opts.usesMotionBlur                   = 0;
     opts.traversableGraphFlags            = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
     // Primary: RGB+depth(4), Photon: flux+origin+dir+flags(10)
-    opts.numPayloadValues                 = 10;
+    opts.numPayloadValues                 = 11;
     opts.numAttributeValues               = 4;   // Normal x,y,z + radius from SDK intersection
     opts.exceptionFlags                   = OPTIX_EXCEPTION_FLAG_NONE;
     opts.pipelineLaunchParamsVariableName = "params";

@@ -19,7 +19,7 @@ static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     // required whenever maxTraversableGraphDepth > 2; the small per-traversal
     // cost vs SINGLE_LEVEL is accepted to support the recursive case.
     options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-    options.numPayloadValues = 10;  // Primary: RGB+depth (4), Photon: flux+origin+dir+flags (10)
+    options.numPayloadValues = 11;  // Primary: RGB+depth(4)+denoise(6)+wavelength(1)=11; Photon: flux+origin+dir+flags(10)
     options.numAttributeValues = 4;  // Normal x, y, z + radius from SDK intersection
     options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     options.pipelineLaunchParamsVariableName = "params";

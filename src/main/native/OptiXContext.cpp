@@ -351,7 +351,7 @@ OptixProgramGroup OptiXContext::createCurveHitgroupProgramGroup(
     OptixPipelineCompileOptions pipeline_compile_options = {};
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-    pipeline_compile_options.numPayloadValues = 10;
+    pipeline_compile_options.numPayloadValues = 11;
     pipeline_compile_options.numAttributeValues = 4;
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
@@ -477,7 +477,7 @@ OptixProgramGroup OptiXContext::createCurveHitgroupProgramGroupWithAH(
     OptixPipelineCompileOptions pipeline_compile_options = {};
     pipeline_compile_options.usesMotionBlur = false;
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-    pipeline_compile_options.numPayloadValues = 10;
+    pipeline_compile_options.numPayloadValues = 11;
     pipeline_compile_options.numAttributeValues = 4;
     pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
