@@ -1323,6 +1323,9 @@ __device__ bool traceRefractedRay(
     if (params.stats) {
         atomicAdd(&params.stats->refracted_rays, 1ULL);
         atomicAdd(&params.stats->total_rays, 1ULL);
+        if (cauchy_b > 0.0f) {
+            atomicAdd(&params.stats->spectral_rays, 1ULL);
+        }
     }
 
     const float coeff = eta * cos_theta - sqrtf(k);

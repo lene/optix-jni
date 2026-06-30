@@ -421,6 +421,7 @@ struct RayStats {
     unsigned long long shadow_rays;     // Rays cast to check light occlusion
     unsigned long long aa_rays;         // Additional rays from adaptive antialiasing
     unsigned long long aa_stack_overflows; // Times AA subdivision skipped due to full stack
+    unsigned long long spectral_rays;   // Rays that hit dispersive (Cauchy) materials
     unsigned int max_depth_reached;     // Deepest ray recursion
     unsigned int min_depth_reached;     // Shallowest ray recursion (should be 1)
 };

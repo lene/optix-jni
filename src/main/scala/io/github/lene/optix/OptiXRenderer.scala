@@ -91,6 +91,7 @@ case class RayStats(
   shadowRays: Long,
   aaRays: Long,
   aaStackOverflows: Long,
+  spectralRays: Long,
   maxDepthReached: Int,
   minDepthReached: Int,
   frameMs: Float
@@ -173,6 +174,7 @@ case class RenderResult(
   shadowRays: Long,
   aaRays: Long,
   aaStackOverflows: Long,
+  spectralRays: Long,
   maxDepthReached: Int,
   minDepthReached: Int,
   frameMs: Float
@@ -185,6 +187,7 @@ case class RenderResult(
     shadowRays,
     aaRays,
     aaStackOverflows,
+    spectralRays,
     maxDepthReached,
     minDepthReached,
     frameMs
