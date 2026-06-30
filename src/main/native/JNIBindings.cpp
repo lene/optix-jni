@@ -897,7 +897,7 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
             return nullptr;
         }
 
-        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJJJJJIIF)V");
+        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJJJJIIF)V");
         if (constructor == nullptr) {
             std::cerr << "[JNI] Failed to find RenderResult constructor" << std::endl;
             return nullptr;
@@ -917,6 +917,13 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
             static_cast<jint>(stats.min_depth_reached),
             static_cast<jfloat>(0.0f)
         );
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            std::cerr << "[JNI] renderWithStats: NewObject failed — RenderResult constructor mismatch" << std::endl;
+            return nullptr;
+        }
 
         return result;
     } catch (const std::exception& e) {
