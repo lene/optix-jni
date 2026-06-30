@@ -136,11 +136,13 @@ private[optix] trait OptiXMeshApi:
     textureIndex: Int = -1
   ): Int =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addTriangleMeshInstanceNative(
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      textureIndex, material.filmThickness
+      textureIndex, material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Adds a triangle-mesh IAS instance from color, IOR, and texture index.
@@ -224,11 +226,13 @@ private[optix] trait OptiXMeshApi:
     require(level >= 1 && level <= 14, s"Recursive IAS sponge level must be in [1, 14], got $level")
     require(transform.length == Const.Renderer.transformMatrixSize,
       s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addRecursiveIASSpongeInstanceNative(
       level, transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      textureIndex, material.filmThickness
+      textureIndex, material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Adds a recursive-IAS sponge from a translated unit transform.
@@ -266,13 +270,15 @@ private[optix] trait OptiXMeshApi:
     radius: Float,
     material: Material
   ): Int =
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addCylinderInstanceNative(
       p0.x, p0.y, p0.z,
       p1.x, p1.y, p1.z,
       radius,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Adds a cylinder IAS instance from color and IOR.
@@ -299,13 +305,15 @@ private[optix] trait OptiXMeshApi:
     radius: Float,
     material: Material
   ): Int =
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addConeInstanceNative(
       apex.x, apex.y, apex.z,
       base.x, base.y, base.z,
       radius,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Adds a cone IAS instance from color and IOR.
@@ -343,13 +351,15 @@ private[optix] trait OptiXMeshApi:
     require(points.forall(java.lang.Float.isFinite), "points must all be finite")
     require(widths.forall(width => java.lang.Float.isFinite(width) && width > 0.0f),
       "widths must all be finite and > 0")
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addCurveInstanceNative(
       points,
       widths,
       numPoints,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Adds a GPU-projected 4D Menger sponge instance.
@@ -368,13 +378,15 @@ private[optix] trait OptiXMeshApi:
     rotXW: Float, rotYW: Float, rotZW: Float,
     material: Material
   ): Int =
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addMenger4DInstanceNative(
       level, distanceThreshold,
       position.x, position.y, position.z, scale,
       eyeW, screenW, rotXW, rotYW, rotZW,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Updates projection parameters for a GPU-projected 4D Menger instance. */
@@ -399,13 +411,15 @@ private[optix] trait OptiXMeshApi:
     rotXW: Float, rotYW: Float, rotZW: Float,
     material: Material
   ): Int =
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addSierpinski4DInstanceNative(
       level,
       position.x, position.y, position.z, scale,
       eyeW, screenW, rotXW, rotYW, rotZW,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Updates projection parameters for a GPU-projected 4D Sierpinski instance. */
@@ -430,13 +444,15 @@ private[optix] trait OptiXMeshApi:
     rotXW: Float, rotYW: Float, rotZW: Float,
     material: Material
   ): Int =
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addHexadecachoron4DInstanceNative(
       level,
       position.x, position.y, position.z, scale,
       eyeW, screenW, rotXW, rotYW, rotZW,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Updates projection parameters for a GPU-projected 4D hexadecachoron instance. */

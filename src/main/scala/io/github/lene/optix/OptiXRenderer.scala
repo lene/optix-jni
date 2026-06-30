@@ -435,7 +435,8 @@ class OptiXRenderer
     transform: Array[Float],
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float
+    filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def addTriangleMeshInstanceNative(
@@ -443,7 +444,8 @@ class OptiXRenderer
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     textureIndex: Int,
-    filmThickness: Float
+    filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def addCylinderInstanceNative(
@@ -452,7 +454,8 @@ class OptiXRenderer
     radius: Float,
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float
+    filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def addConeInstanceNative(
@@ -461,7 +464,8 @@ class OptiXRenderer
     radius: Float,
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float
+    filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def addCurveInstanceNative(
@@ -470,7 +474,8 @@ class OptiXRenderer
     numPoints: Int,
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float
+    filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def addRecursiveIASSpongeInstanceNative(
@@ -479,7 +484,8 @@ class OptiXRenderer
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
     textureIndex: Int,
-    filmThickness: Float
+    filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def addMenger4DInstanceNative(
@@ -490,7 +496,8 @@ class OptiXRenderer
     rotXW: Float, rotYW: Float, rotZW: Float,
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float
+    filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def updateMenger4DProjectionNative(
@@ -506,7 +513,8 @@ class OptiXRenderer
     rotXW: Float, rotYW: Float, rotZW: Float,
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float,
-    specular: Float, emission: Float, filmThickness: Float
+    specular: Float, emission: Float, filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def updateSierpinski4DProjectionNative(
@@ -522,7 +530,8 @@ class OptiXRenderer
     rotXW: Float, rotYW: Float, rotZW: Float,
     r: Float, g: Float, b: Float, a: Float,
     ior: Float, roughness: Float, metallic: Float,
-    specular: Float, emission: Float, filmThickness: Float
+    specular: Float, emission: Float, filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float
   ): Int
 
   @native private[optix] def updateHexadecachoron4DProjectionNative(

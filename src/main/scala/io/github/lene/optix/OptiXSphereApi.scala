@@ -34,11 +34,13 @@ private[optix] trait OptiXSphereApi:
     */
   def addSphereInstance(transform: Array[Float], material: Material): Int =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
+    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addSphereInstanceNative(
       transform,
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness
+      material.filmThickness,
+      cauchy_a, cauchy_b
     )
 
   /** Adds a sphere IAS instance from color and index of refraction.
