@@ -75,7 +75,7 @@ protected:
         // ALLOW_ANY: matches the production PipelineManager (Sprint 18.4
         // requires multi-level instancing for recursive IAS Menger sponges).
         pipeline_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
-        pipeline_options.numPayloadValues = 10;
+        pipeline_options.numPayloadValues = 11;
         pipeline_options.numAttributeValues = 4;
         pipeline_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
         pipeline_options.pipelineLaunchParamsVariableName = "params";
