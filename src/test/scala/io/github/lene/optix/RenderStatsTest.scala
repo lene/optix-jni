@@ -14,6 +14,7 @@ class RenderStatsTest extends AnyFlatSpec with Matchers:
       shadowRays = 200_000L,
       aaRays = 0L,
       aaStackOverflows = 0L,
+      spectralRays = 0L,
       maxDepthReached = 3,
       minDepthReached = 1,
       frameMs = 100.0f
@@ -30,6 +31,7 @@ class RenderStatsTest extends AnyFlatSpec with Matchers:
       shadowRays = 0L,
       aaRays = 0L,
       aaStackOverflows = 0L,
+      spectralRays = 0L,
       maxDepthReached = 0,
       minDepthReached = 0,
       frameMs = 50.0f
@@ -47,6 +49,7 @@ class RenderStatsTest extends AnyFlatSpec with Matchers:
       shadowRays = 0L,
       aaRays = 0L,
       aaStackOverflows = 0L,
+      spectralRays = 0L,
       maxDepthReached = 1,
       minDepthReached = 1,
       frameMs = 42.0f
