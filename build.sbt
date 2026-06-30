@@ -170,7 +170,7 @@ Test / javaOptions ++= Seq(
 Test / fork := true
 
 libraryDependencies ++= Seq(
-  "io.github.lene" %% "menger-common" % "0.1.1",
+  "io.github.lene" %% "menger-common" % "0.1.2",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
   "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.scalatest" %% "scalatest" % "3.2.20" % Test,

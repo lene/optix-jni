@@ -1022,7 +1022,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_disposeNative(JNI
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstanceNative(
     JNIEnv* env, jobject obj,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
-    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jfloat filmThickness) {
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -1046,7 +1046,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstance
         }
 
         int instanceId = wrapper->addSphereInstance(
-            transformArr, r, g, b, a, ior, roughness, metallic, specular, emission, filmThickness
+            transformArr, r, g, b, a, ior, roughness, metallic, specular, emission, filmThickness, cauchy_a, cauchy_b
         );
 
         env->ReleaseFloatArrayElements(transform, transformArr, 0);
@@ -1071,7 +1071,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addTriangleMeshIn
     JNIEnv* env, jobject obj,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission, jint textureIndex,
-    jfloat filmThickness) {
+    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -1096,7 +1096,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addTriangleMeshIn
 
         int instanceId = wrapper->addTriangleMeshInstance(
             transformArr, r, g, b, a, ior, roughness, metallic, specular, emission, textureIndex,
-            filmThickness
+            filmThickness, cauchy_a, cauchy_b
         );
 
         env->ReleaseFloatArrayElements(transform, transformArr, 0);
@@ -1123,7 +1123,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addRecursiveIASSp
     jint level,
     jfloatArray transform, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jint textureIndex, jfloat filmThickness) {
+    jint textureIndex, jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -1148,7 +1148,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addRecursiveIASSp
 
         int instanceId = wrapper->addRecursiveIASSpongeInstance(
             level, transformArr, r, g, b, a, ior,
-            roughness, metallic, specular, emission, textureIndex, filmThickness
+            roughness, metallic, specular, emission, textureIndex, filmThickness, cauchy_a, cauchy_b
         );
 
         env->ReleaseFloatArrayElements(transform, transformArr, 0);
@@ -1182,7 +1182,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCylinderInstan
     jfloat radius,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness) {
+    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -1195,7 +1195,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCylinderInstan
             radius,
             r, g, b, a, ior,
             roughness, metallic, specular, emission,
-            filmThickness
+            filmThickness, cauchy_a, cauchy_b
         );
 
         return instanceId;
@@ -1215,7 +1215,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addConeInstanceNa
     jfloat radius,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness) {
+    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -1228,7 +1228,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addConeInstanceNa
             radius,
             r, g, b, a, ior,
             roughness, metallic, specular, emission,
-            filmThickness
+            filmThickness, cauchy_a, cauchy_b
         );
 
         return instanceId;
@@ -1246,7 +1246,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCurveInstanceN
     jfloatArray points, jfloatArray widths, jint numPoints,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness) {
+    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
@@ -1357,7 +1357,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addMenger4DInstan
     jfloat rotXW, jfloat rotYW, jfloat rotZW,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness) {
+    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) return -1;
@@ -1368,7 +1368,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addMenger4DInstan
             eyeW, screenW,
             rotXW, rotYW, rotZW,
             r, g, b, a, ior,
-            roughness, metallic, specular, emission, filmThickness
+            roughness, metallic, specular, emission, filmThickness, cauchy_a, cauchy_b
         );
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addMenger4DInstance: " << e.what() << std::endl;
@@ -1409,7 +1409,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSierpinski4DIn
     jfloat rotXW, jfloat rotYW, jfloat rotZW,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness) {
+    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) return -1;
@@ -1420,7 +1420,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSierpinski4DIn
             eyeW, screenW,
             rotXW, rotYW, rotZW,
             r, g, b, a, ior,
-            roughness, metallic, specular, emission, filmThickness
+            roughness, metallic, specular, emission, filmThickness, cauchy_a, cauchy_b
         );
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addSierpinski4DInstance: " << e.what() << std::endl;
@@ -1458,7 +1458,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addHexadecachoron
     jfloat rotXW, jfloat rotYW, jfloat rotZW,
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness) {
+    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) return -1;
@@ -1469,7 +1469,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addHexadecachoron
             eyeW, screenW,
             rotXW, rotYW, rotZW,
             r, g, b, a, ior,
-            roughness, metallic, specular, emission, filmThickness
+            roughness, metallic, specular, emission, filmThickness, cauchy_a, cauchy_b
         );
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addHexadecachoron4DInstance: " << e.what() << std::endl;
