@@ -124,8 +124,8 @@ extern "C" __global__ void __closesthit__cone() {
     }
 
     float4 material_color;
-    float material_ior, roughness, metallic, specular, emission, film_thickness;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
+    float material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b);
 
     int proc_type; float proc_scale;
     getInstanceProceduralParams(proc_type, proc_scale);

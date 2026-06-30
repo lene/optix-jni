@@ -478,6 +478,64 @@ __device__ float3 calculateLighting(
 }
 
 //==============================================================================
+// Spectral Dispersion — CIE XYZ color matching + Cauchy IOR (Sprint 32)
+//==============================================================================
+
+// Wyman et al. 2013 analytic CIE 1931 XYZ fitting functions.
+// λ in nm, returns XYZ tristimulus values (normalized so equal-energy white
+// integrates to (1, 1, 1) — the 3× normalization factor used in the hero-
+// wavelength estimator).
+__device__ float3 cieXYZFromWavelength(float lambda_nm) {
+    // Clamp to visible range
+    const float l = lambda_nm < 380.0f ? 380.0f : (lambda_nm > 730.0f ? 730.0f : lambda_nm);
+    // Piecewise Gaussian fits from Wyman et al. (JCGT 2013, Table 1)
+    float x, y, z;
+
+    // X — sum of three Gaussians
+    x = 1.056f * expf(-0.5f * ((l - 599.8f) / 37.9f) * ((l - 599.8f) / 37.9f))
+      + 0.362f * expf(-0.5f * ((l - 442.0f) / 16.0f) * ((l - 442.0f) / 16.0f))
+      - 0.065f * expf(-0.5f * ((l - 501.1f) / 20.4f) * ((l - 501.1f) / 20.4f));
+
+    // Y — sum of two Gaussians
+    y = 0.821f * expf(-0.5f * ((l - 568.8f) / 46.9f) * ((l - 568.8f) / 46.9f))
+      + 0.286f * expf(-0.5f * ((l - 530.9f) / 16.3f) * ((l - 530.9f) / 16.3f));
+
+    // Z — sum of two Gaussians
+    z = 1.217f * expf(-0.5f * ((l - 437.0f) / 11.8f) * ((l - 437.0f) / 11.8f))
+      + 0.681f * expf(-0.5f * ((l - 459.0f) / 26.0f) * ((l - 459.0f) / 26.0f));
+
+    return make_float3(x, y, z);
+}
+
+// XYZ → sRGB linear matrix (sRGB primaries, D65 white point)
+__device__ float3 xyzToSRGB(float3 xyz) {
+    return make_float3(
+         3.2404542f * xyz.x - 1.5371385f * xyz.y - 0.4985314f * xyz.z,
+        -0.9692660f * xyz.x + 1.8760108f * xyz.y + 0.0415560f * xyz.z,
+         0.0556434f * xyz.x - 0.2040259f * xyz.y + 1.0572252f * xyz.z
+    );
+}
+
+/** Hero-wavelength spectral estimator.
+  *  Given a wavelength λ ∈ [380, 730] nm, returns the RGB throughput multiplier
+  *  that carries one wavelength's worth of spectral energy. Multiplied by 3
+  *  (normalization factor) so that equal-energy white integrates to (1,1,1).
+  */
+__device__ float3 heroWavelengthToRGB(float lambda_nm) {
+    const float3 xyz = cieXYZFromWavelength(lambda_nm);
+    const float3 rgb = xyzToSRGB(xyz);
+    // Normalization: one wavelength carries the energy of a 3-component estimator.
+    // Equal-energy white → XYZ sums to ~3.0 → divide by integral over visible
+    // range (~3.0) → factor of 1. But the hero-wavelength estimator needs 3×
+    // because we're replacing 3 RGB channels with 1 wavelength draw.
+    return make_float3(
+        fmaxf(0.0f, rgb.x * 3.0f),
+        fmaxf(0.0f, rgb.y * 3.0f),
+        fmaxf(0.0f, rgb.z * 3.0f)
+    );
+}
+
+//==============================================================================
 // Adaptive Antialiasing Helpers
 //==============================================================================
 
@@ -1192,6 +1250,8 @@ __device__ void traceReflectedRay(
 
     const float3 reflect_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
     unsigned int next_depth = depth + 1;
+    unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
+    unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 
     optixTrace(
         params.handle,
@@ -1202,8 +1262,9 @@ __device__ void traceReflectedRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
-        reflect_r, reflect_g, reflect_b, next_depth
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
+        reflect_r, reflect_g, reflect_b, next_depth,
+        z4, z5, z6, z7, z8, z9, p10
     );
 }
 
@@ -1216,7 +1277,9 @@ __device__ void traceReflectedRay(
  * @param normal Surface normal (pointing toward ray origin)
  * @param entering True if ray is entering the medium
  * @param depth Current recursion depth
- * @param material_ior Index of refraction of the material
+ * @param material_ior Index of refraction of the material (base ior, used if cauchy_b==0)
+ * @param cauchy_a Cauchy A coefficient (0 = no dispersion)
+ * @param cauchy_b Cauchy B coefficient (0 = no dispersion)
  * @param refract_r/g/b Output: refracted ray color (0-255)
  * @return True if refraction occurred, false if total internal reflection
  */
@@ -1227,12 +1290,28 @@ __device__ bool traceRefractedRay(
     bool entering,
     unsigned int depth,
     float material_ior,
+    float cauchy_a,
+    float cauchy_b,
     unsigned int& refract_r,
     unsigned int& refract_g,
     unsigned int& refract_b
 ) {
-    const float n1 = entering ? 1.0f : material_ior;
-    const float n2 = entering ? material_ior : 1.0f;
+    // Compute IOR — with spectral dispersion if cauchy_b != 0
+    float n_mat;
+    if (cauchy_b > 0.0f) {
+        const float lambda_nm = __uint_as_float(optixGetPayload_10());
+        if (lambda_nm > 0.0f) {
+            // Cauchy IOR: n(λ) = A + B/λ² (λ in nm, B in nm²)
+            n_mat = cauchy_a + cauchy_b / (lambda_nm * lambda_nm);
+        } else {
+            // First dispersive hit — wavelength not yet set; use base ior this bounce
+            n_mat = material_ior;
+        }
+    } else {
+        n_mat = material_ior;
+    }
+    const float n1 = entering ? 1.0f : n_mat;
+    const float n2 = entering ? n_mat : 1.0f;
     const float eta = n1 / n2;
     const float cos_theta = fabsf(dot(ray_direction, normal));
     const float k = 1.0f - eta * eta * (1.0f - cos_theta * cos_theta);
@@ -1255,6 +1334,8 @@ __device__ bool traceRefractedRay(
 
     const float3 refract_origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
     unsigned int next_depth = depth + 1;
+    unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
+    unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 
     optixTrace(
         params.handle,
@@ -1265,8 +1346,9 @@ __device__ bool traceRefractedRay(
         0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,  // ray_type=0 (primary), stride=2, miss_index=0
-        refract_r, refract_g, refract_b, next_depth
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
+        refract_r, refract_g, refract_b, next_depth,
+        z4, z5, z6, z7, z8, z9, p10
     );
 
     return true;
@@ -1533,10 +1615,12 @@ __device__ void getInstanceMaterial(float4& color, float& ior) {
  * @param specular Output: Specular intensity
  * @param emission Output: Emission intensity (0.0-10.0)
  * @param film_thickness Output: Thin-film thickness in nm (0 = no thin-film)
+ * @param cauchy_a Output: Cauchy A coefficient (0 = no dispersion)
+ * @param cauchy_b Output: Cauchy B coefficient (0 = no dispersion)
  */
 __device__ void getInstanceMaterialPBR(
     float4& color, float& ior, float& roughness, float& metallic, float& specular, float& emission,
-    float& film_thickness
+    float& film_thickness, float& cauchy_a, float& cauchy_b
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
@@ -1549,6 +1633,8 @@ __device__ void getInstanceMaterialPBR(
         specular = mat.specular;
         emission = mat.emission;
         film_thickness = mat.film_thickness;
+        cauchy_a = mat.cauchy_a;
+        cauchy_b = mat.cauchy_b;
     } else {
         // Single-object mode: use global sphere parameters with default PBR values
         color = make_float4(
@@ -1563,6 +1649,8 @@ __device__ void getInstanceMaterialPBR(
         specular = MaterialDefaults::DEFAULT_SPECULAR;    // Default specular intensity
         emission = 0.0f;  // Default no emission
         film_thickness = 0.0f;  // Default no thin-film
+        cauchy_a = ior;
+        cauchy_b = 0.0f;  // Default no dispersion
     }
 }
 

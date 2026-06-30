@@ -69,9 +69,9 @@ extern "C" __global__ void __closesthit__plane() {
         : make_float3(-geometric_normal.x, -geometric_normal.y, -geometric_normal.z);
 
     float4 material_color;
-    float material_ior, roughness, metallic, specular, emission, film_thickness;
+    float material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b;
     getInstanceMaterialPBR(material_color, material_ior, roughness, metallic,
-                           specular, emission, film_thickness);
+                           specular, emission, film_thickness, cauchy_a, cauchy_b);
 
     // Apply checker pattern from plane geometry data
     const unsigned int instanceId = optixGetInstanceId();

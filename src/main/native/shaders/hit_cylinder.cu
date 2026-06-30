@@ -260,8 +260,8 @@ extern "C" __global__ void __closesthit__cylinder() {
     // a diffuse-only lighting model that does not implement thin-film interference.
     // Thin-film support for cylinders is deferred to a future sprint.
     float4 material_color;
-    float material_ior, roughness, metallic, specular, emission, film_thickness;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
+    float material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b);
 
     // Apply procedural texture modulation
     int proc_type; float proc_scale;

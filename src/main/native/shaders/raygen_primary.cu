@@ -75,6 +75,7 @@ extern "C" __global__ void __raygen__rg() {
 
         // Trace ray
         unsigned int p3 = 0;  // Initial depth = 0
+        unsigned int p10 = 0; // Hero wavelength λ (packed float, 0 = no dispersion yet)
         optixTrace(
             params.handle,
             ray_origin,
@@ -87,7 +88,7 @@ extern "C" __global__ void __raygen__rg() {
             params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
             r, g, b, p3,
             albedo_r, albedo_g, albedo_b,
-            normal_x, normal_y, normal_z
+            normal_x, normal_y, normal_z, p10
         );
     }
 

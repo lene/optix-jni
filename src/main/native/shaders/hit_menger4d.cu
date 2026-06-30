@@ -348,8 +348,8 @@ extern "C" __global__ void __closesthit__menger4d() {
     }
 
     float4 material_color;
-    float material_ior, roughness, metallic, specular, emission, film_thickness;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
+    float material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b);
 
     int proc_type; float proc_scale;
     getInstanceProceduralParams(proc_type, proc_scale);
@@ -387,6 +387,7 @@ extern "C" __global__ void __closesthit__menger4d() {
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
     const bool refraction_occurred = traceRefractedRay(
         hit_point, ray_direction, normal, entering, depth, material_ior,
+        cauchy_a, cauchy_b,
         refract_r, refract_g, refract_b
     );
 

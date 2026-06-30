@@ -176,8 +176,10 @@ __device__ TriangleGeometry getTriangleGeometry(
  * @param ior Output: Index of refraction
  * @param roughness Output: Roughness (0=mirror, 1=diffuse)
  * @param metallic Output: Metallic (0=dielectric, 1=metal)
- * @param specular Output: Specular intensity
+ * @param film_thickness Output: Thin-film thickness
  * @param out_emission Output: Emission intensity (0.0-10.0)
+ * @param out_cauchy_a Output: Cauchy A coefficient
+ * @param out_cauchy_b Output: Cauchy B coefficient
  */
 __device__ void getTriangleMaterial(
     const TriangleHitGroupData* hit_data,
@@ -190,7 +192,9 @@ __device__ void getTriangleMaterial(
     float& metallic,
     float& specular,
     float& film_thickness,
-    float& out_emission
+    float& out_emission,
+    float& out_cauchy_a,
+    float& out_cauchy_b
 ) {
     if (params.use_ias && params.instance_materials) {
         // IAS mode: read from per-instance materials array
@@ -203,6 +207,8 @@ __device__ void getTriangleMaterial(
         specular = mat.specular;
         film_thickness = mat.film_thickness;
         out_emission = mat.emission;
+        out_cauchy_a = mat.cauchy_a;
+        out_cauchy_b = mat.cauchy_b;
 
         // Apply texture if available (in IAS mode only)
         if (vertex_stride >= VERTEX_STRIDE_WITH_UV) {
@@ -223,6 +229,8 @@ __device__ void getTriangleMaterial(
         specular = MaterialDefaults::DEFAULT_SPECULAR;
         film_thickness = 0.0f;
         out_emission = 0.0f;
+        out_cauchy_a = ior;
+        out_cauchy_b = 0.0f;
     }
 
     // Multiply material alpha with per-vertex alpha (for fractional level rendering)
@@ -282,13 +290,13 @@ extern "C" __global__ void __closesthit__triangle() {
     // Get material properties including PBR values
     float4 mesh_color;
     float mesh_ior, roughness, metallic, specular,
-        film_thickness, mesh_emission;
+        film_thickness, mesh_emission, cauchy_a, cauchy_b;
     getTriangleMaterial(
         hit_data, geom.uv_coords,
         active_vertex_stride, geom.vertex_alpha,
         mesh_color, mesh_ior, roughness, metallic,
-        specular, film_thickness, mesh_emission);
-
+        specular, film_thickness, mesh_emission, cauchy_a, cauchy_b
+    );
     // Apply procedural texture modulation
     int proc_type; float proc_scale;
     getInstanceProceduralParams(proc_type, proc_scale);
@@ -394,6 +402,7 @@ extern "C" __global__ void __closesthit__triangle() {
         unsigned int refr_r = 0, refr_g = 0, refr_b = 0;
         const bool refr_ok = traceRefractedRay(
             geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
+            cauchy_a, cauchy_b,
             refr_r, refr_g, refr_b
         );
         if (!refr_ok) { refr_r = refl_r; refr_g = refl_g; refr_b = refl_b; }
@@ -462,6 +471,7 @@ extern "C" __global__ void __closesthit__triangle() {
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
     const bool refraction_occurred = traceRefractedRay(
         geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
+        cauchy_a, cauchy_b,
         refract_r, refract_g, refract_b
     );
 

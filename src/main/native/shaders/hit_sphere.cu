@@ -41,8 +41,8 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Get material properties including PBR values (from IAS instance or global params)
     float4 material_color;
-    float material_ior, roughness, metallic, specular, emission, film_thickness;
-    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness);
+    float material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b;
+    getInstanceMaterialPBR(material_color, material_ior, roughness, metallic, specular, emission, film_thickness, cauchy_a, cauchy_b);
 
     // Apply procedural texture modulation (world-space noise on material color)
     int proc_type; float proc_scale;
@@ -95,6 +95,7 @@ extern "C" __global__ void __closesthit__ch() {
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
     const bool refraction_occurred = traceRefractedRay(
         hit_point, ray_direction, normal, entering, depth, material_ior,
+        cauchy_a, cauchy_b,
         refract_r, refract_g, refract_b
     );
 
