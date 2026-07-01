@@ -91,6 +91,7 @@ private[optix] trait OptiXPlaneApi:
       material.color.r, material.color.g, material.color.b, material.color.a,
       material.ior, material.roughness, material.metallic, material.specular, material.emission,
       material.filmThickness,
+      cauchy_a, cauchy_b,
       r2, g2, b2, solidColor, checkerSize
     )
 

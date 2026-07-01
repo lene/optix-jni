@@ -1326,6 +1326,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneInstanceN
     jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
     jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
     jfloat filmThickness,
+    jfloat cauchy_a, jfloat cauchy_b,
     jfloat r2, jfloat g2, jfloat b2,
     jint solid_color, jfloat checker_size) {
     try {
@@ -1340,6 +1341,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneInstanceN
             r, g, b, a, ior,
             roughness, metallic, specular, emission,
             filmThickness,
+            cauchy_a, cauchy_b,
             r2, g2, b2,
             (int)solid_color, checker_size
         );

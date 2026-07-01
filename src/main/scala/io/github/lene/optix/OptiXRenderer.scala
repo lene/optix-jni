@@ -564,6 +564,7 @@ class OptiXRenderer
     r: Float, g: Float, b: Float, a: Float, ior: Float,
     roughness: Float, metallic: Float, specular: Float, emission: Float,
     filmThickness: Float,
+    cauchy_a: Float, cauchy_b: Float,
     r2: Float, g2: Float, b2: Float,
     solidColor: Int, checkerSize: Float
   ): Int

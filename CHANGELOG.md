@@ -106,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.9]: https://github.com/lene/optix-jni/compare/0.1.8...0.1.9
 [0.1.8]: https://github.com/lene/optix-jni/compare/0.1.7...0.1.8
 [0.1.7]: https://github.com/lene/optix-jni/compare/0.1.6...0.1.7
 [0.1.6]: https://github.com/lene/optix-jni/compare/0.1.5...0.1.6
@@ -115,3 +116,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.1.2]: https://github.com/lene/optix-jni/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/lene/optix-jni/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/lene/optix-jni/releases/tag/0.1.0
+
+## [0.1.9] - 2026-07-01
+
+### Fixed
+
+- `addPlaneInstanceNative` was missing `cauchy_a/cauchy_b` parameters in the
+  JNI binding, Scala @native declaration, and wrapper call. Parameters were
+  shifted, corrupting checkerboard planes (solid-color instead of checker).
+  (Sprint 32 regression caught by `plane IS checker` integration test)
+
