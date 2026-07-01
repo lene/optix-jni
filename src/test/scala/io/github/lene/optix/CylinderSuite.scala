@@ -1,13 +1,13 @@
 package io.github.lene.optix
 
-import menger.common.Color
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.OPAQUE_BLUE
 import io.github.lene.optix.ColorConstants.OPAQUE_GREEN
 import io.github.lene.optix.ColorConstants.OPAQUE_RED
 import io.github.lene.optix.ColorConstants.OPAQUE_WHITE
 import io.github.lene.optix.ThresholdConstants.QUICK_TEST_SIZE
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.common.Color
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

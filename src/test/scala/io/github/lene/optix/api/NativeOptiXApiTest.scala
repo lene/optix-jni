@@ -2,9 +2,9 @@ package io.github.lene.optix.api
 
 import java.util.Optional
 
+import io.github.lene.optix.OptiXRenderer
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import io.github.lene.optix.OptiXRenderer
 
 class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
 
@@ -75,7 +75,7 @@ class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
 
     // Load the bundled optix PTX shader
     val ptxStream = getClass.getResourceAsStream("/native/x86_64-linux/optix_shaders.ptx")
-    assume(ptxStream != null, "PTX resource must be available")
+    assume(ptxStream != null, "PTX resource must be available") // scalafix:ok DisableSyntax.null
     val ptxBytes = ptxStream.readAllBytes()
     ptxStream.close()
 
@@ -91,7 +91,7 @@ class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
     ctx should not be 0L
 
     val ptxStream = getClass.getResourceAsStream("/native/x86_64-linux/optix_shaders.ptx")
-    assume(ptxStream != null, "PTX resource must be available")
+    assume(ptxStream != null, "PTX resource must be available") // scalafix:ok DisableSyntax.null
     val ptxBytes = ptxStream.readAllBytes()
     ptxStream.close()
 
@@ -120,7 +120,7 @@ class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
     ctx should not be 0L
 
     val ptxStream = getClass.getResourceAsStream("/native/x86_64-linux/optix_shaders.ptx")
-    assume(ptxStream != null, "PTX resource must be available")
+    assume(ptxStream != null, "PTX resource must be available") // scalafix:ok DisableSyntax.null
     val ptxBytes = ptxStream.readAllBytes()
     ptxStream.close()
 
@@ -146,7 +146,7 @@ class NativeOptiXApiTest extends AnyFlatSpec with Matchers:
     ctx should not be 0L
 
     val ptxStream = getClass.getResourceAsStream("/native/x86_64-linux/optix_shaders.ptx")
-    assume(ptxStream != null, "PTX resource must be available")
+    assume(ptxStream != null, "PTX resource must be available") // scalafix:ok DisableSyntax.null
     val ptxBytes = ptxStream.readAllBytes()
     ptxStream.close()
 

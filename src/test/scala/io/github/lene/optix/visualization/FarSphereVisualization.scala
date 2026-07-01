@@ -1,10 +1,10 @@
 package io.github.lene.optix.visualization
 
+import io.github.lene.optix.OptiXRenderer
+import io.github.lene.optix.TestUtilities
 import menger.common.Color
 import menger.common.Const
 import menger.common.Vector
-import io.github.lene.optix.OptiXRenderer
-import io.github.lene.optix.TestUtilities
 
 object FarSphereVisualization:
 

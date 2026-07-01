@@ -1,9 +1,5 @@
 package io.github.lene.optix
 
-import menger.common.Color
-import menger.common.Const
-import menger.common.ImageSize
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.CLEAR_GLASS_WHITE
 import io.github.lene.optix.ColorConstants.FULLY_TRANSPARENT_GREEN
 import io.github.lene.optix.ColorConstants.GLASS_LIGHT_CYAN
@@ -16,6 +12,10 @@ import io.github.lene.optix.ColorConstants.PERFORMANCE_TEST_GREEN_CYAN
 import io.github.lene.optix.ColorConstants.PERFORMANCE_TEST_WHITE
 import io.github.lene.optix.ColorConstants.SEMI_TRANSPARENT_GREEN
 import io.github.lene.optix.ColorConstants.TRANSLUCENT_GREEN_CYAN
+import menger.common.Color
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.Vector
 
 case class SphereConfig(
   position: Vector[3] = Vector[3](0.0f, 0.0f, 0.0f),

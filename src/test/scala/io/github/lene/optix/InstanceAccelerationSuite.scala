@@ -1,16 +1,11 @@
 package io.github.lene.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.Color
-import menger.common.Const
-import menger.common.Vector
-import io.github.lene.optix.ColorConstants.Green
 import io.github.lene.optix.ColorConstants.OPAQUE_BLUE
 import io.github.lene.optix.ColorConstants.OPAQUE_GREEN
 import io.github.lene.optix.ColorConstants.OPAQUE_RED
-import io.github.lene.optix.ColorConstants.Red
-import io.github.lene.optix.ThresholdConstants.MIN_FPS
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.tagobjects.Slow
@@ -273,8 +268,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
   // ================================================
 
   "Mixed triangle mesh types" should
-    "render two instances from different meshes" taggedAs
-      (Slow) in:
+    "render two instances from different meshes" taggedAs (Slow) in:
       val meshA = TestUtilities.createUnitCubeMesh()
       renderer.setTriangleMesh(meshA)
       renderer.addTriangleMeshInstance(
@@ -294,8 +288,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
       img.count(_ != 0) should be > 0
 
   it should
-    "render three instances from two meshes" taggedAs
-      (Slow) in:
+    "render three instances from two meshes" taggedAs (Slow) in:
       val meshA = TestUtilities.createUnitCubeMesh()
       renderer.setTriangleMesh(meshA)
       renderer.addTriangleMeshInstance(
@@ -318,8 +311,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
       img.count(_ != 0) should be > 0
 
   it should
-    "render mixed meshes with sphere instances" taggedAs
-      (Slow) in:
+    "render mixed meshes with sphere instances" taggedAs (Slow) in:
       renderer.addSphereInstance(
         Vector[3](-2.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f
       )
@@ -348,7 +340,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
   // Mixed Instance Tests
   // ================================
 
-  "clearAllInstances" should "clear both sphere and triangle mesh instances" in:
+  "clearAllInstances" should "clear both sphere and triangle mesh instances" in {
     renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
 
     val mesh = TestUtilities.createUnitCubeMesh()
@@ -358,3 +350,4 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     renderer.getInstanceCount() shouldBe 2
     renderer.clearAllInstances()
     renderer.getInstanceCount() shouldBe 0
+  }

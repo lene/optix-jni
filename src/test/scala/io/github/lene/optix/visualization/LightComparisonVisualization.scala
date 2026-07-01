@@ -1,13 +1,13 @@
 package io.github.lene.optix.visualization
 
-import menger.common.Color
-import menger.common.ImageSize
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants
 import io.github.lene.optix.OptiXRenderer
 import io.github.lene.optix.ShadowValidation
 import io.github.lene.optix.TestScenario
 import io.github.lene.optix.TestUtilities
+import menger.common.Color
+import menger.common.ImageSize
+import menger.common.Vector
 
 object LightComparisonVisualization:
 

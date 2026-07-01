@@ -1,13 +1,13 @@
 package io.github.lene.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.Const
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.HIGHLY_TRANSPARENT_WHITE
 import io.github.lene.optix.ColorConstants.PERFORMANCE_TEST_GREEN_CYAN
 import io.github.lene.optix.Slow
 import io.github.lene.optix.ThresholdConstants.MIN_FPS
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
+import menger.common.Const
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

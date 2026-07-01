@@ -1,9 +1,9 @@
 package io.github.lene.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.OPAQUE_RED
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.tagobjects.Slow
