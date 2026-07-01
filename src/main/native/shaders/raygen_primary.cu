@@ -77,9 +77,9 @@ extern "C" __global__ void __raygen__rg() {
         unsigned int p3 = 0;  // Initial depth = 0
 
         // Draw hero wavelength λ ∈ [380, 730] nm for spectral dispersion.
-        // Stratified by pixel index (per-frame); 32.4 will add frame-index strata.
-        // λ = 380 + (pixel_hash mod 351) → 1 nm bins across visible range.
-        unsigned int pixel_hash = idx.x * 1973u + idx.y * 9277u;
+        // Stratified per pixel + per accumulation frame.
+        // λ = 380 + (hash mod 351) → 1 nm bins across visible range.
+        unsigned int pixel_hash = idx.x * 1973u + idx.y * 9277u + params.frame_seed_offset * 26699u;
         float hero_lambda = 380.0f + static_cast<float>(pixel_hash % 351u);
         unsigned int p10 = __float_as_uint(hero_lambda);
         optixTrace(
