@@ -3,6 +3,18 @@
 # Compile + scalafix only — no tests (pre-push is the correctness gate).
 # Native compile is done by pre-push, not pre-commit (too slow for every commit).
 
+# ── Guard: never commit directly to main ──────────────────────────
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$BRANCH" = "main" ]; then
+  echo "ERROR: Committing directly to 'main' is forbidden."
+  echo "Use a feature branch and create a PR instead:"
+  echo "  git checkout -b feature/my-change"
+  echo "  # ... make changes, commit ..."
+  echo "  git push origin feature/my-change"
+  echo "  # Create PR on GitHub"
+  exit 1
+fi
+
 RED_TEXT='\e[38;5;196m'
 GREEN_TEXT='\e[38;5;46m'
 YELLOW_TEXT='\e[38;5;226m'
