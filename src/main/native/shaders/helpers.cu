@@ -1298,8 +1298,9 @@ __device__ bool traceRefractedRay(
 ) {
     // Compute IOR — with spectral dispersion if cauchy_b != 0
     float n_mat;
+    float lambda_nm = 0.0f;  // Wavelength for spectral tint (in scope for post-trace tint)
     if (cauchy_b > 0.0f) {
-        const float lambda_nm = __uint_as_float(optixGetPayload_10());
+        lambda_nm = __uint_as_float(optixGetPayload_10());
         if (lambda_nm > 0.0f) {
             // Cauchy IOR: n(λ) = A + B/λ² (λ in nm, B in nm²)
             n_mat = cauchy_a + cauchy_b / (lambda_nm * lambda_nm);
@@ -1353,6 +1354,16 @@ __device__ bool traceRefractedRay(
         refract_r, refract_g, refract_b, next_depth,
         z4, z5, z6, z7, z8, z9, p10
     );
+
+    // Apply hero-wavelength spectral tint to refracted color.
+    // When cauchy_b > 0, the ray's IOR is wavelength-dependent, and we
+    // tint the accumulated refract color by the CIE response for that λ.
+    if (cauchy_b > 0.0f && lambda_nm > 0.0f) {
+        const float3 tint = heroWavelengthToRGB(lambda_nm);
+        refract_r = static_cast<unsigned int>(static_cast<float>(refract_r) * tint.x);
+        refract_g = static_cast<unsigned int>(static_cast<float>(refract_g) * tint.y);
+        refract_b = static_cast<unsigned int>(static_cast<float>(refract_b) * tint.z);
+    }
 
     return true;
 }

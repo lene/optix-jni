@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-07-01
+
+### Fixed
+
+- `heroWavelengthToRGB` was defined but never called — spectral tint was dead code.
+  Dispersion now correctly tints refracted rays by CIE wavelength response after
+  recursive trace (Sprint 32.5 fix).
+
 ## [0.1.7] - 2026-07-01
 
 ### Added
@@ -98,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.8]: https://github.com/lene/optix-jni/compare/0.1.7...0.1.8
 [0.1.7]: https://github.com/lene/optix-jni/compare/0.1.6...0.1.7
 [0.1.6]: https://github.com/lene/optix-jni/compare/0.1.5...0.1.6
 [0.1.5]: https://github.com/lene/optix-jni/compare/0.1.4...0.1.5
