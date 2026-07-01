@@ -4,14 +4,14 @@ import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 
-import menger.common.Color
-import menger.common.Const
-import menger.common.ImageSize
-import menger.common.Vector
 import io.github.lene.optix.RendererFixture
 import io.github.lene.optix.TestScenario
 import io.github.lene.optix.TestUtilities
 import io.github.lene.optix.ThresholdConstants
+import menger.common.Color
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

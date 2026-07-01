@@ -1,10 +1,10 @@
 package io.github.lene.optix
 
-import menger.common.Const
 import io.github.lene.optix.ColorConstants.OPAQUE_LIGHT_GRAY
 import io.github.lene.optix.ColorConstants.VERY_TRANSPARENT_WHITE
 import io.github.lene.optix.ImageMatchers.showPlaneInRegion
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.common.Const
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

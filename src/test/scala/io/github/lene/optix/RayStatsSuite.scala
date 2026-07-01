@@ -1,9 +1,9 @@
 package io.github.lene.optix
+import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import menger.common.Color
 import menger.common.Const
 import menger.common.ImageSize
 import menger.common.Vector
-import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

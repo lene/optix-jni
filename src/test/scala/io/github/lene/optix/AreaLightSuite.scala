@@ -1,15 +1,15 @@
 package io.github.lene.optix
 
-import menger.common.AreaLightShape
-import menger.common.Color
-import menger.common.Const
-import menger.common.Light
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.OPAQUE_LIGHT_GRAY
 import io.github.lene.optix.ShadowValidation.detectDarkestRegion
 import io.github.lene.optix.ShadowValidation.regionBrightness
 import io.github.lene.optix.ThresholdConstants.DEFAULT_SHADOW_GRID
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.common.AreaLightShape
+import menger.common.Color
+import menger.common.Const
+import menger.common.Light
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

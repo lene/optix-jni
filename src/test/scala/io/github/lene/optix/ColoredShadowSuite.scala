@@ -1,9 +1,5 @@
 package io.github.lene.optix
 
-import menger.common.Color
-import menger.common.Const
-import menger.common.ImageSize
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.OPAQUE_BLUE
 import io.github.lene.optix.ColorConstants.OPAQUE_GREEN
 import io.github.lene.optix.ColorConstants.OPAQUE_RED
@@ -18,6 +14,10 @@ import io.github.lene.optix.ThresholdConstants.DEFAULT_SHADOW_GRID
 import io.github.lene.optix.ThresholdConstants.MIN_COLOR_TINT_DIFFERENCE
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO
+import menger.common.Color
+import menger.common.Const
+import menger.common.ImageSize
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -100,7 +100,7 @@ class ColoredShadowSuite
 
   // ========== Test 2: No crash ==========
 
-  it should "not crash when enabled" in:
+  it should "not crash when enabled" in {
     noException should be thrownBy {
       setupColoredShadowScene(
         withAlpha(OPAQUE_RED, transparentAlpha),
@@ -110,6 +110,7 @@ class ColoredShadowSuite
       image.length shouldBe
         imageSize.width * imageSize.height * 4
     }
+  }
 
   // ========== Test 3: Red sphere ==========
 
@@ -207,7 +208,7 @@ class ColoredShadowSuite
         regionBrightness(scalarImage, imageSize, shadowRegion)
 
       withClue(
-        f"White sphere colored path brightness=" +
+        "White sphere colored path brightness=" +
         f"$brightColored%.1f should be brighter than " +
         f"scalar path brightness=$brightScalar%.1f " +
         "(colored path has zero shadow attenuation)"
@@ -235,7 +236,7 @@ class ColoredShadowSuite
       ).max
 
       withClue(
-        f"Opaque gray sphere shadow " +
+        "Opaque gray sphere shadow " +
         f"(R=$avgR%.1f G=$avgG%.1f B=$avgB%.1f) " +
         "should have no color tint (equal channels)"
       ) {
@@ -268,7 +269,7 @@ class ColoredShadowSuite
         regionBrightness(opaqueImage, imageSize, shadowRegion)
 
       withClue(
-        f"Transparent sphere shadow region " +
+        "Transparent sphere shadow region " +
         f"brightness=$brightTransparent%.1f should be " +
         f"much brighter than opaque=$brightOpaque%.1f"
       ) {

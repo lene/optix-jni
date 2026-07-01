@@ -1,11 +1,11 @@
 package io.github.lene.optix.visualization
 
-import menger.common.ImageSize
 import io.github.lene.optix.ColorConstants
 import io.github.lene.optix.ImageValidation
 import io.github.lene.optix.OptiXRenderer
 import io.github.lene.optix.TestScenario
 import io.github.lene.optix.TestUtilities
+import menger.common.ImageSize
 
 object GreenGlassVisualization:
 

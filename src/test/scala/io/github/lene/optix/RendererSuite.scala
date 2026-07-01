@@ -1,8 +1,5 @@
 package io.github.lene.optix
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.Color
-import menger.common.Const
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.FULLY_TRANSPARENT_WHITE
 import io.github.lene.optix.ColorConstants.OPAQUE_BLUE
 import io.github.lene.optix.ColorConstants.OPAQUE_GREEN
@@ -22,6 +19,9 @@ import io.github.lene.optix.ThresholdConstants.MIN_COLOR_CHANNEL_DIFFERENCE
 import io.github.lene.optix.ThresholdConstants.QUICK_TEST_SIZE
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.common.Color
+import menger.common.Const
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

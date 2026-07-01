@@ -1,6 +1,5 @@
 package io.github.lene.optix
 
-import menger.common.ImageSize
 import io.github.lene.optix.ThresholdConstants.GRAYSCALE_CHANNEL_TOLERANCE
 import io.github.lene.optix.ThresholdConstants.LARGE_SPHERE_MIN_AREA
 import io.github.lene.optix.ThresholdConstants.MEDIUM_SPHERE_MAX_AREA
@@ -10,6 +9,7 @@ import io.github.lene.optix.ThresholdConstants.MIN_GLASS_REFRACTION_STDDEV
 import io.github.lene.optix.ThresholdConstants.MIN_WATER_REFRACTION_STDDEV
 import io.github.lene.optix.ThresholdConstants.SMALL_SPHERE_MAX_AREA
 import io.github.lene.optix.ThresholdConstants.SPHERE_CENTER_TOLERANCE
+import menger.common.ImageSize
 import org.scalatest.matchers.MatchResult
 import org.scalatest.matchers.Matcher
 

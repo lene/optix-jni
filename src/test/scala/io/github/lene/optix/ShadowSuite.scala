@@ -2,9 +2,6 @@ package io.github.lene.optix
 
 import scala.math.abs
 
-import menger.common.Color
-import menger.common.Const
-import menger.common.Vector
 import io.github.lene.optix.ShadowValidation.Region
 import io.github.lene.optix.ShadowValidation.detectDarkestRegion
 import io.github.lene.optix.ShadowValidation.regionBrightness
@@ -31,6 +28,9 @@ import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_SHADOW_MIN_BRIGHTNESS
 import io.github.lene.optix.ThresholdConstants.WIDE_CENTER_TOLERANCE_FRACTION
+import menger.common.Color
+import menger.common.Const
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

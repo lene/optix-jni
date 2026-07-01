@@ -1,9 +1,9 @@
 package io.github.lene.optix
 
-import menger.common.ImageSize
 import io.github.lene.optix.ThresholdConstants.CHECKERED_PATTERN_MIN_VARIANCE
 import io.github.lene.optix.ThresholdConstants.GRAYSCALE_CHANNEL_TOLERANCE
 import io.github.lene.optix.ThresholdConstants.PLANE_PATTERN_MIN_VARIANCE
+import menger.common.ImageSize
 
 
 object ImageValidation:

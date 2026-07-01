@@ -1,10 +1,10 @@
 package io.github.lene.optix
 
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.Const
 import io.github.lene.optix.ColorConstants.SEMI_TRANSPARENT_GRAY
 import io.github.lene.optix.ThresholdConstants.MIN_ABSORPTION_GRADIENT
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
+import menger.common.Const
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

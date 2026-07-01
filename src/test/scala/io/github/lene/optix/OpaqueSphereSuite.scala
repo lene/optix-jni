@@ -1,6 +1,5 @@
 package io.github.lene.optix
 import com.typesafe.scalalogging.LazyLogging
-import menger.common.Vector
 import io.github.lene.optix.ColorConstants.OPAQUE_BLUE
 import io.github.lene.optix.ColorConstants.OPAQUE_GREEN
 import io.github.lene.optix.ColorConstants.OPAQUE_RED
@@ -12,6 +11,7 @@ import io.github.lene.optix.ThresholdConstants.MIN_OFFSET_DETECTION
 import io.github.lene.optix.ThresholdConstants.SMALL_SPHERE_MAX_AREA
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import io.github.lene.optix.ThresholdConstants.VERY_LARGE_SPHERE_MIN_AREA
+import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

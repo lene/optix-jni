@@ -1,10 +1,10 @@
 package io.github.lene.optix
 import com.typesafe.scalalogging.LazyLogging
+import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
+import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import menger.common.Const
 import menger.common.ImageSize
 import menger.common.Vector
-import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
-import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 

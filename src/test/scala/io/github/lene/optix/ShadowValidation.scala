@@ -2,8 +2,8 @@ package io.github.lene.optix
 
 import scala.math.abs
 
-import menger.common.ImageSize
 import io.github.lene.optix.TestUtilities.Region
+import menger.common.ImageSize
 
 
 object ShadowValidation:
