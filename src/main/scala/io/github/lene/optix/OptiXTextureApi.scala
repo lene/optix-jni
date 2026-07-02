@@ -24,8 +24,10 @@ private[optix] trait OptiXTextureApi:
     setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
 
   /** Assigns optional normal and roughness texture maps to an IAS instance. */
-  def setMapTextures(instanceId: Int, normalTextureIndex: Int = -1, roughnessTextureIndex: Int = -1): Unit =
-    setMapTexturesNative(instanceId, normalTextureIndex, roughnessTextureIndex)
+  def setMapTextures(instanceId: Int, normalTextureIndex: Int = -1, roughnessTextureIndex: Int = -1,
+      metallicTextureIndex: Int = -1, aoTextureIndex: Int = -1, heightTextureIndex: Int = -1): Unit =
+    setMapTexturesNative(instanceId, normalTextureIndex, roughnessTextureIndex,
+      metallicTextureIndex, aoTextureIndex, heightTextureIndex)
 
   /** Sets the image texture slot for cone and plane instances.
     *

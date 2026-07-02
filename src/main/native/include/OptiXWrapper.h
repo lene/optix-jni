@@ -153,7 +153,8 @@ public:
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
 
     // PBR map texture configuration (Task 20.7)
-    void setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex);
+    void setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex,
+        int metallicTextureIndex, int aoTextureIndex, int heightTextureIndex);
 
     // Set image texture for any instance. For geometry types (cone, plane, cylinder, 4D),
     // geometry_data_index holds the geometry buffer index; image texture uses image_texture_index.

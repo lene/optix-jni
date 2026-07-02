@@ -303,7 +303,8 @@ class OptiXRenderer
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
   @native private[optix] def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
-  @native private[optix] def setMapTexturesNative(instanceId: Int, normalTextureIndex: Int, roughnessTextureIndex: Int): Unit
+  @native private[optix] def setMapTexturesNative(instanceId: Int, normalTextureIndex: Int, roughnessTextureIndex: Int,
+    metallicTextureIndex: Int, aoTextureIndex: Int, heightTextureIndex: Int): Unit
   @native private[optix] def setImageTextureNative(instanceId: Int, imageTextureIndex: Int): Unit
   @native private[optix] def uploadTextureNative(name: String, imageData: Array[Byte], width: Int, height: Int): Int
   @native private[optix] def updateTextureNative(

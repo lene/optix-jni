@@ -57,6 +57,8 @@ extern "C" __global__ void __closesthit__ch() {
     // Apply PBR map textures (Task 20.7)
     normal = applyNormalMap(normal, sphere_uv, getInstanceNormalTextureIndex());
     roughness = applyRoughnessMap(roughness, sphere_uv, getInstanceRoughnessTextureIndex());
+    metallic = applyMetallicMap(metallic, sphere_uv, getInstanceMetallicTextureIndex());
+    applyAOMap(material_color, sphere_uv, getInstanceAoTextureIndex());
 
     writeDenoiseGuides(material_color, normal);
 

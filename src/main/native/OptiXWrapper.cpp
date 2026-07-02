@@ -103,6 +103,9 @@ struct OptiXWrapper::Impl {
         int normal_texture_index;             // Normal map index (-1 = no normal map)
         int roughness_texture_index;          // Roughness map index (-1 = no roughness map)
         int image_texture_index;              // Image texture index for cone/plane (-1 = none)
+        int metallic_texture_index;           // Metallic map index (-1 = no metallic map)
+        int ao_texture_index;                 // AO map index (-1 = no AO map)
+        int height_texture_index;             // Height map index (-1 = no height map)
         bool active;                          // True if instance is enabled
         size_t mesh_index;                    // Index into triangle_meshes (SIZE_MAX = not a triangle)
     };
@@ -376,10 +379,14 @@ void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
     impl->ias_dirty = true;
 }
 
-void OptiXWrapper::setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex) {
+void OptiXWrapper::setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex,
+    int metallicTextureIndex, int aoTextureIndex, int heightTextureIndex) {
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
     impl->instances[instanceId].normal_texture_index    = normalTextureIndex;
     impl->instances[instanceId].roughness_texture_index = roughnessTextureIndex;
+    impl->instances[instanceId].metallic_texture_index  = metallicTextureIndex;
+    impl->instances[instanceId].ao_texture_index        = aoTextureIndex;
+    impl->instances[instanceId].height_texture_index    = heightTextureIndex;
     impl->ias_dirty = true;
 }
 
@@ -1194,6 +1201,9 @@ void OptiXWrapper::buildIAS() {
         mat.normal_texture_index = inst.normal_texture_index;
         mat.roughness_texture_index = inst.roughness_texture_index;
         mat.image_texture_index = inst.image_texture_index;
+        mat.metallic_texture_index = inst.metallic_texture_index;
+        mat.ao_texture_index = inst.ao_texture_index;
+        mat.height_texture_index = inst.height_texture_index;
         // Per-mesh triangle buffer pointers for IAS mode
         if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
             && inst.mesh_index < impl->triangle_meshes.size()) {
@@ -2037,6 +2047,9 @@ int OptiXWrapper::addSphereInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active = true;
     inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
@@ -2112,6 +2125,9 @@ int OptiXWrapper::addTriangleMeshInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = textureIndex;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -2315,6 +2331,9 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = textureIndex;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active = true;
     inst.mesh_index = mesh_index;
 
@@ -2445,6 +2464,9 @@ int OptiXWrapper::addCylinderInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active = true;
     inst.mesh_index = SIZE_MAX;  // Not a triangle mesh instance
 
@@ -2571,6 +2593,9 @@ int OptiXWrapper::addConeInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active        = true;
     inst.mesh_index    = SIZE_MAX;
 
@@ -2742,6 +2767,9 @@ int OptiXWrapper::addCurveInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active = true;
     inst.mesh_index = SIZE_MAX;
 
@@ -2869,6 +2897,9 @@ int OptiXWrapper::addPlaneInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active        = true;
     inst.mesh_index    = SIZE_MAX;
 
@@ -2968,6 +2999,9 @@ int OptiXWrapper::addMenger4DInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active        = true;
     inst.mesh_index    = SIZE_MAX;
 
@@ -3092,6 +3126,9 @@ int OptiXWrapper::addSierpinski4DInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active    = true;
     inst.mesh_index = SIZE_MAX;
 
@@ -3215,6 +3252,9 @@ int OptiXWrapper::addHexadecachoron4DInstance(
     inst.normal_texture_index = -1;
     inst.roughness_texture_index = -1;
     inst.image_texture_index = -1;
+    inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1;
+    inst.height_texture_index = -1;
     inst.active    = true;
     inst.mesh_index = SIZE_MAX;
 
