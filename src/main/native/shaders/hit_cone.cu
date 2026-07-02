@@ -182,6 +182,8 @@ extern "C" __global__ void __closesthit__cone() {
                     normal = applyNormalMap(normal, cone_uv, normal_idx);
 
                 roughness = applyRoughnessMap(roughness, cone_uv, getInstanceRoughnessTextureIndex());
+                metallic  = applyMetallicMap(metallic, cone_uv, getInstanceMetallicTextureIndex());
+                applyAOMap(material_color, cone_uv, getInstanceAoTextureIndex());
             }
         }
     }
