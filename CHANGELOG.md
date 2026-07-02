@@ -126,3 +126,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shifted, corrupting checkerboard planes (solid-color instead of checker).
   (Sprint 32 regression caught by `plane IS checker` integration test)
 
+
+## [0.1.11] - 2026-07-02
+
+### Added
+
+- `metallic_texture_index`, `ao_texture_index`, `height_texture_index` to InstanceMaterial
+- shader accessors: `getInstanceMetallicTextureIndex`, `getInstanceAoTextureIndex`,
+  `getInstanceHeightTextureIndex`
+- `applyMetallicMap(metallic, uv, index)` — per-texel metallic (multiplies scalar parameter)
+- `applyAOMap(color, uv, index)` — per-texel ambient occlusion (multiplies diffuse term)
+- Extended `setMapTextures` to accept metallic/ao/height texture indices
+
+### Changed
+
+- All hit shaders (hit_sphere.cu, hit_plane.cu, hit_triangle.cu) apply metallic + AO maps
+  at closest-hit alongside existing normal/roughness maps

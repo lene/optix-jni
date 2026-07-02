@@ -415,11 +415,13 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralText
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMapTexturesNative(
-    JNIEnv* env, jobject obj, jint instanceId, jint normalTextureIndex, jint roughnessTextureIndex) {
+    JNIEnv* env, jobject obj, jint instanceId, jint normalTextureIndex, jint roughnessTextureIndex,
+    jint metallicTextureIndex, jint aoTextureIndex, jint heightTextureIndex) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
-            wrapper->setMapTextures((int)instanceId, (int)normalTextureIndex, (int)roughnessTextureIndex);
+            wrapper->setMapTextures((int)instanceId, (int)normalTextureIndex, (int)roughnessTextureIndex,
+                (int)metallicTextureIndex, (int)aoTextureIndex, (int)heightTextureIndex);
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setMapTextures: " << e.what() << std::endl;

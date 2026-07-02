@@ -1700,6 +1700,30 @@ __device__ int getInstanceRoughnessTextureIndex() {
     return -1;
 }
 
+__device__ int getInstanceMetallicTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].metallic_texture_index;
+    }
+    return -1;
+}
+
+__device__ int getInstanceAoTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].ao_texture_index;
+    }
+    return -1;
+}
+
+__device__ int getInstanceHeightTextureIndex() {
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int instance_id = optixGetInstanceId();
+        return params.instance_materials[instance_id].height_texture_index;
+    }
+    return -1;
+}
+
 /**
  * Returns the image_texture_index for the current instance.
  * Equivalent to getInstanceTextureIndex(); kept for call-site clarity in geometry shaders.
@@ -1985,6 +2009,22 @@ __device__ float applyRoughnessMap(float material_roughness, const float2& uv, i
         return material_roughness;
     const float4 raw = sampleTextureByIndex(roughness_tex_index, uv);
     return raw.x;  // R channel = roughness
+}
+
+__device__ float applyMetallicMap(float material_metallic, const float2& uv, int metallic_tex_index) {
+    if (metallic_tex_index < 0 || !params.textures || metallic_tex_index >= static_cast<int>(params.num_textures))
+        return material_metallic;
+    const float4 raw = sampleTextureByIndex(metallic_tex_index, uv);
+    return raw.x;  // R channel = metallic (0=dielectric, 1=metal)
+}
+
+__device__ void applyAOMap(float4& color, const float2& uv, int ao_tex_index) {
+    if (ao_tex_index < 0 || !params.textures || ao_tex_index >= static_cast<int>(params.num_textures))
+        return;
+    const float4 raw = sampleTextureByIndex(ao_tex_index, uv);
+    color.x *= raw.x; // R channel = AO multiplier
+    color.y *= raw.x;
+    color.z *= raw.x;
 }
 
 //==============================================================================

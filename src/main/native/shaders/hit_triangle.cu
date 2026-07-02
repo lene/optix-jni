@@ -306,6 +306,8 @@ extern "C" __global__ void __closesthit__triangle() {
     // Apply PBR map textures (Task 20.7)
     geom.normal = applyNormalMap(geom.normal, geom.uv_coords, getInstanceNormalTextureIndex());
     roughness   = applyRoughnessMap(roughness, geom.uv_coords, getInstanceRoughnessTextureIndex());
+    metallic   = applyMetallicMap(metallic, geom.uv_coords, getInstanceMetallicTextureIndex());
+    applyAOMap(mesh_color, geom.uv_coords, getInstanceAoTextureIndex());
 
     writeDenoiseGuides(mesh_color, geom.normal);
 

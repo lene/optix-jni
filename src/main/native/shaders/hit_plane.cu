@@ -140,6 +140,8 @@ extern "C" __global__ void __closesthit__plane() {
             normal = applyNormalMap(geometric_normal, plane_uv, normal_idx);
 
         roughness = applyRoughnessMap(roughness, plane_uv, getInstanceRoughnessTextureIndex());
+    metallic = applyMetallicMap(metallic, plane_uv, getInstanceMetallicTextureIndex());
+    applyAOMap(material_color, plane_uv, getInstanceAoTextureIndex());
     }
 
     writeDenoiseGuides(material_color, normal);

@@ -183,6 +183,9 @@ struct InstanceMaterial {
     int normal_texture_index;   // Normal map index (-1 = no normal map)
     int roughness_texture_index; // Roughness map index (-1 = no roughness map)
     int image_texture_index;    // Image texture index (-1 = no texture)
+    int metallic_texture_index; // Metallic map index (-1 = no metallic map)
+    int ao_texture_index;       // AO map index (-1 = no AO map)
+    int height_texture_index;   // Height map index (-1 = no height/bump map)
     // Per-mesh triangle buffer pointers (IAS mode only)
     // Populated for triangle instances; nullptr/0 for spheres/cylinders
     float* vertices;            // Device pointer to vertex data
