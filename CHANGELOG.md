@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12] - 2026-07-03
+
+Physics rebuild of the progressive-photon-mapping caustics pipeline (Sprint 33).
+Fixes nine structural defects that made caustic brightness/shape uncalibratable;
+validated against pbrt-v4 (`sppm`) via a caustic-delta metric — spatial
+correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
+
+### Fixed
+
+- **P1 — emission measure**: photon flux now carries the cone/disk emission
+  measure (point `I·2π(1−cosθmax)/N`, directional `E·π·r²/N`) instead of the
+  bare `intensity/N`. Root cause of the long-running scale-factor chasing.
+- **P2 — Fresnel-reflected energy discarded**: photons now Russian-roulette
+  between reflect and refract with probability F (flux unweighted) instead of
+  always refracting weighted `(1−F)`. Enables reflective caustics.
+- **P3 — exact dielectric Fresnel** replacing the Schlick approximation.
+- **P4 — non-physical composite**: caustic radiance is added linearly and passes
+  through the single global tone-map operator instead of a private exponential
+  tone map + screen blend into the 8-bit buffer.
+- **P5 — density estimate**: uniform-disk deposit (dropped the spurious cosθ
+  weight and unnormalized Gaussian) with Lambertian floor-albedo ρ/π.
+- **P6 — cross-iteration normalization**: radiance divides accumulated flux by
+  the iteration count (brightness was scaling ~linearly with iterations).
+- **P8 — grid bounds**: photon-deposition grid derived from the refractive
+  geometry's bounding sphere instead of a hard-coded ±3 box.
+- **P9 — direct-light double counting**: only LS⁺D paths (photons that touched a
+  specular surface) are deposited.
+- `CausticsStats` JNI `FindClass` corrected to the top-level
+  `io/github/lene/optix/CausticsStats` (was a stale nested-class name).
+
 ## [0.1.8] - 2026-07-01
 
 ### Fixed
@@ -106,6 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.12]: https://github.com/lene/optix-jni/compare/0.1.11...0.1.12
 [0.1.9]: https://github.com/lene/optix-jni/compare/0.1.8...0.1.9
 [0.1.8]: https://github.com/lene/optix-jni/compare/0.1.7...0.1.8
 [0.1.7]: https://github.com/lene/optix-jni/compare/0.1.6...0.1.7
