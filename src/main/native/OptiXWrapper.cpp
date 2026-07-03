@@ -1810,14 +1810,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.caustics.grid_counts = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridCountsBuffer());
         params.caustics.grid_offsets = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridOffsetsBuffer());
 
-        // Spatial grid: fixed bounds covering canonical scene geometry
-        params.caustics.grid_min[0] = -3.0f;
-        params.caustics.grid_min[1] = -3.0f;
-        params.caustics.grid_min[2] = -3.0f;
-        params.caustics.grid_max[0] = 3.0f;
-        params.caustics.grid_max[1] = 3.0f;
-        params.caustics.grid_max[2] = 3.0f;
-        // Cell size = initial radius so 3x3x3 neighborhood covers gather radius
+        // P8: derive the spatial-hash grid bounds from the refractive geometry instead of the
+        // old hard-coded ±3 box (which silently produced no caustics for off-centre or larger
+        // scenes). The caustic forms on the floor near the geometry's projection and spreads by
+        // at most a few radii; centre the grid on the emission target and size it by a generous
+        // multiple of the target radius so the deposit region is always covered.
+        {
+            constexpr float GRID_MARGIN = 4.0f;  // target radii of half-extent around the geometry
+            const float* c = params.caustics.caustic_target_center;
+            const float half = fmaxf(params.caustics.caustic_target_radius * GRID_MARGIN,
+                                     params.caustics.initial_radius * 2.0f);
+            for (int a = 0; a < 3; ++a) {
+                params.caustics.grid_min[a] = c[a] - half;
+                params.caustics.grid_max[a] = c[a] + half;
+            }
+        }
+        // Cell size = initial radius so the 3x3x3 neighborhood covers the gather radius.
         params.caustics.cell_size = params.caustics.initial_radius;
         const float grid_extent = params.caustics.grid_max[0] - params.caustics.grid_min[0];
         const unsigned int computed_res = static_cast<unsigned int>(
