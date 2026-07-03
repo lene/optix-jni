@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
     tags: ['[0-9]+.[0-9]+.[0-9]+']
+  # Manual publish path: the create-release-tag job pushes the version tag with a
+  # token that does not spawn a downstream workflow run, so a tag-triggered publish
+  # never fires. Run this workflow manually from the Actions tab against the version
+  # tag (e.g. 0.1.12) — github.ref is then refs/tags/<version> and the publish +
+  # post-publish-smoke jobs' existing `startsWith(github.ref, 'refs/tags/')` gate fires.
+  workflow_dispatch:
 
 jobs:
   # ── preconditions ──────────────────────────────────────────────────────────
@@ -239,7 +245,7 @@ jobs:
     name: Publish to Maven Central + GitHub Release
     runs-on: [self-hosted, Linux, X64, nvidia]
     needs: [smoke-tests, build-native]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
     steps:
@@ -248,6 +254,9 @@ jobs:
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
       - name: Import GPG key
         run: echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+      - name: Read release version
+        id: ver
+        run: echo "version=$(grep 'version :=' build.sbt | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
       - name: Publish to Maven Central
         run: sbt nativeCompile publishSigned sonatypeBundleRelease
         env:
@@ -256,6 +265,10 @@ jobs:
           PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       - uses: softprops/action-gh-release@v2
         with:
+          # On workflow_dispatch from a branch, github.ref is not a tag ref; pin the
+          # release/tag to the build.sbt version so the tag-triggered default doesn't
+          # attach the release to the branch name.
+          tag_name: ${{ steps.ver.outputs.version }}
           files: |
             target/*.jar
             target/scala-3*/*.jar
@@ -269,7 +282,7 @@ jobs:
     name: Post-Publish Smoke Test (Maven Central)
     runs-on: [self-hosted, Linux, X64, nvidia]
     needs: [publish]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
     steps:
