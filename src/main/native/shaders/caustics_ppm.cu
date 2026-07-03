@@ -531,14 +531,20 @@ __device__ void tracePhoton(
     unsigned int& seed,
     int max_bounces
 ) {
+    // P9: only photons that have interacted with a specular (glass) surface may deposit on
+    // the diffuse plane — this restricts storage to LS⁺D caustic paths and excludes photons
+    // that travel straight from the light to the floor (which direct lighting already
+    // accounts for). The bit is carried across bounces via payload p9 bit 2.
+    bool touched_specular = false;
     for (int bounce = 0; bounce < max_bounces; ++bounce) {
-        // Pack payload into 10 uint32 registers
+        // Pack payload into 11 uint32 registers (p0..p10)
         unsigned int p0 = __float_as_uint(flux.x);
         unsigned int p1 = __float_as_uint(flux.y);
         unsigned int p2 = __float_as_uint(flux.z);
         unsigned int p3 = 0, p4 = 0, p5 = 0;  // new_origin (set by closesthit)
         unsigned int p6 = 0, p7 = 0, p8 = 0;  // new_dir (set by closesthit)
-        unsigned int p9 = 0;  // flags: 0 = alive=false, deposited=false initially
+        // flags: bit0 alive, bit1 deposited, bit2 touched_specular (in/out)
+        unsigned int p9 = touched_specular ? 4u : 0u;
 
         using namespace SBTConstants;
         optixTrace(
@@ -554,6 +560,7 @@ __device__ void tracePhoton(
         flux = make_float3(__uint_as_float(p0), __uint_as_float(p1), __uint_as_float(p2));
         const bool alive    = (p9 & 1u) != 0;
         const bool deposited = (p9 & 2u) != 0;
+        touched_specular     = (p9 & 4u) != 0;
 
         if (deposited) return;
         if (!alive) return;
@@ -821,30 +828,49 @@ extern "C" __global__ void __closesthit__photon() {
     // Apply Beer-Lambert absorption on exit
     applyPhotonBeerLambert(flux, t, entering, glass_color, glass_color[3], glass_scale);
 
+    // Reflection direction, used both for TIR and for Fresnel-reflected photons.
+    // `normal` faces against the incoming ray (dot(ray_dir, normal) = -cos_theta_i), so the
+    // mirror reflection is ray_dir + 2*cos_theta_i*normal — the sign that bounces the ray back
+    // out of the surface (the old `- 2*cos*normal` sent the reflected ray straight through).
+    const float3 reflect_dir = normalize(make_float3(
+        ray_dir.x + 2.0f * cos_theta_i * normal.x,
+        ray_dir.y + 2.0f * cos_theta_i * normal.y,
+        ray_dir.z + 2.0f * cos_theta_i * normal.z
+    ));
+
     float3 new_dir;
     if (sin_theta_t_sq > 1.0f) {
-        // Total internal reflection
+        // Total internal reflection — all energy reflects.
         if (params.caustics.stats) atomicAdd(&params.caustics.stats->tir_events, 1ULL);
-        new_dir = normalize(make_float3(
-            ray_dir.x - 2.0f * cos_theta_i * normal.x,
-            ray_dir.y - 2.0f * cos_theta_i * normal.y,
-            ray_dir.z - 2.0f * cos_theta_i * normal.z
-        ));
+        new_dir = reflect_dir;
     } else {
-        // Refraction (Snell's law) with Schlick Fresnel
-        if (params.caustics.stats) atomicAdd(&params.caustics.stats->refraction_events, 1ULL);
-        const float r0 = (n1 - n2) / (n1 + n2);
-        const float R0 = r0 * r0;
-        const float one_minus_cos = 1.0f - cos_theta_i;
-        const float one_minus_cos5 = one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
-        const float fresnel = R0 + (1.0f - R0) * one_minus_cos5;
-        flux = make_float3(flux.x * (1.0f - fresnel), flux.y * (1.0f - fresnel), flux.z * (1.0f - fresnel));
         const float cos_theta_t = sqrtf(1.0f - sin_theta_t_sq);
-        new_dir = normalize(make_float3(
-            eta * ray_dir.x + (eta * cos_theta_i - cos_theta_t) * normal.x,
-            eta * ray_dir.y + (eta * cos_theta_i - cos_theta_t) * normal.y,
-            eta * ray_dir.z + (eta * cos_theta_i - cos_theta_t) * normal.z
-        ));
+
+        // P3: exact unpolarised dielectric Fresnel reflectance (replaces the Schlick
+        // approximation, which is inaccurate at the grazing angles that dominate a
+        // caustic's bright rim).
+        const float r_parl = (n2 * cos_theta_i - n1 * cos_theta_t)
+                           / (n2 * cos_theta_i + n1 * cos_theta_t);
+        const float r_perp = (n1 * cos_theta_i - n2 * cos_theta_t)
+                           / (n1 * cos_theta_i + n2 * cos_theta_t);
+        const float fresnel = 0.5f * (r_parl * r_parl + r_perp * r_perp);
+
+        // P2: Russian-roulette split — reflect with probability F, refract otherwise, and
+        // carry the photon's full flux either way (no (1-F) weighting). This conserves
+        // energy across the photon population and populates reflective caustics, which the
+        // old "always refract, scale flux by (1-F)" path silently discarded.
+        unsigned int rr_seed = tea(__float_as_uint(hit_point.x + hit_point.z),
+                                   __float_as_uint(flux.x + hit_point.y));
+        if (rnd(rr_seed) < fresnel) {
+            new_dir = reflect_dir;
+        } else {
+            if (params.caustics.stats) atomicAdd(&params.caustics.stats->refraction_events, 1ULL);
+            new_dir = normalize(make_float3(
+                eta * ray_dir.x + (eta * cos_theta_i - cos_theta_t) * normal.x,
+                eta * ray_dir.y + (eta * cos_theta_i - cos_theta_t) * normal.y,
+                eta * ray_dir.z + (eta * cos_theta_i - cos_theta_t) * normal.z
+            ));
+        }
     }
 
     const float3 new_origin = hit_point + new_dir * CONTINUATION_RAY_OFFSET;
@@ -859,7 +885,8 @@ extern "C" __global__ void __closesthit__photon() {
     optixSetPayload_6(__float_as_uint(new_dir.x));
     optixSetPayload_7(__float_as_uint(new_dir.y));
     optixSetPayload_8(__float_as_uint(new_dir.z));
-    optixSetPayload_9(1u);  // alive=true, deposited=false
+    // bit0 alive=1, bit2 touched_specular=1 (this photon has now interacted with glass).
+    optixSetPayload_9(1u | 4u);
 }
 
 /**
@@ -877,12 +904,15 @@ extern "C" __global__ void __miss__photon() {
         __uint_as_float(optixGetPayload_2())
     );
 
-    if (checkPlaneIntersection(origin, dir, flux)) {
-        // Deposited on plane
-        optixSetPayload_9(2u);  // alive=false, deposited=true
+    const unsigned int touched_bit = optixGetPayload_9() & 4u;  // preserve touched_specular
+
+    // P9: deposit only for LS⁺D paths — a photon that reached the floor without ever
+    // touching glass carries direct illumination that the direct-lighting pass already
+    // accounts for; storing it here would double-count the floor's direct light.
+    if (touched_bit != 0u && checkPlaneIntersection(origin, dir, flux)) {
+        optixSetPayload_9(2u | touched_bit);  // alive=false, deposited=true
     } else {
-        // Escaped scene
-        optixSetPayload_9(0u);  // alive=false, deposited=false
+        optixSetPayload_9(touched_bit);       // alive=false, deposited=false
     }
     // Track miss stats
     if (params.caustics.stats) {
