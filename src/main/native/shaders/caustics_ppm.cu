@@ -1082,39 +1082,27 @@ extern "C" __global__ void __raygen__caustics_radiance() {
         hp.weight[2] * inv_pi * hp.flux[2] / denom
     );
 
-    // Exponential tone mapping: 1 - exp(-L * exposure).
-    // Preserves more center-to-edge contrast than Reinhard (which flattens
-    // everything above a threshold to near-uniform brightness). The exponential
-    // curve maps low radiance nearly linearly, producing a smooth polynomial-like
-    // falloff from the bright focal center to the dim outer ring.
-    const float caustic_exposure = 0.06f;
-    const float mapped_r = 1.0f - expf(-radiance.x * caustic_exposure);
-    const float mapped_g = 1.0f - expf(-radiance.y * caustic_exposure);
-    const float mapped_b = 1.0f - expf(-radiance.z * caustic_exposure);
+    // P4: composite the caustic using the SAME global tone map as the rest of the frame, then
+    // add it in display space. The private exponential map (exposure 0.06) + screen blend that
+    // used to live here crushed the caustic by ~250x and is gone. For ToneMapping.None the
+    // global operator is a clamp, so this is an exact linear add + clamp (the physically correct
+    // result); for Reinhard/ACES the caustic is tone-mapped separately and added, an
+    // approximation until the pre-tone-map float-HDR film buffer lands (backlog F-HDR-FILM).
+    const float3 mapped = applyToneMapping(radiance);
 
-    // Add caustic radiance to the pixel (additive blending)
     const unsigned int pixel_idx = (hp.pixel_y * params.image_width + hp.pixel_x) * 4;
-
-    // Read current pixel color
     const float cur_r = static_cast<float>(params.image[pixel_idx + 0]) / COLOR_BYTE_MAX;
     const float cur_g = static_cast<float>(params.image[pixel_idx + 1]) / COLOR_BYTE_MAX;
     const float cur_b = static_cast<float>(params.image[pixel_idx + 2]) / COLOR_BYTE_MAX;
 
-    // Screen blend: 1 - (1-base)*(1-caustic). Naturally approaches 1.0
-    // without hard clipping, preserving smooth falloff even when both
-    // the base floor and caustic center are bright.
-    const float new_r = 1.0f - (1.0f - cur_r) * (1.0f - mapped_r);
-    const float new_g = 1.0f - (1.0f - cur_g) * (1.0f - mapped_g);
-    const float new_b = 1.0f - (1.0f - cur_b) * (1.0f - mapped_b);
+    const float new_r = fminf(cur_r + mapped.x, 1.0f);
+    const float new_g = fminf(cur_g + mapped.y, 1.0f);
+    const float new_b = fminf(cur_b + mapped.z, 1.0f);
 
     // C7: Track brightness metrics
     if (params.caustics.stats) {
-        const float caustic_brightness = (mapped_r + mapped_g + mapped_b) / 3.0f;
-        // Atomic max for non-negative floats: This is a standard CUDA idiom.
-        // IEEE 754 guarantees that for non-negative floats, the bit representation
-        // preserves ordering (larger float = larger unsigned int when interpreted as bits).
-        // CUDA's __float_as_int/__int_as_float intrinsics are designed for this pattern,
-        // and NVCC does not enforce strict aliasing like host C++ compilers.
+        const float caustic_brightness = (mapped.x + mapped.y + mapped.z) / 3.0f;
+        // Atomic max for non-negative floats: standard CUDA idiom (IEEE-754 bit ordering).
         atomicMax(reinterpret_cast<int*>(&params.caustics.stats->max_caustic_brightness),
                   __float_as_int(caustic_brightness));
     }
