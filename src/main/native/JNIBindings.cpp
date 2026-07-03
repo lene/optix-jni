@@ -951,8 +951,11 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsSta
             return nullptr;  // Caustics not enabled or no stats available
         }
 
-        // Find CausticsStats Scala class
-        jclass statsClass = env->FindClass("io/github/lene/optix/OptiXRenderer$CausticsStats");
+        // Find CausticsStats Scala class. It is a top-level `case class CausticsStats`
+        // in package io.github.lene.optix, so the JNI binary name has no nesting — using
+        // the nested name OptiXRenderer$CausticsStats made getCausticsStats throw
+        // NoClassDefFoundError and aborted the caustics stats suite (Sprint 33 fix).
+        jclass statsClass = env->FindClass("io/github/lene/optix/CausticsStats");
         if (statsClass == nullptr) {
             std::cerr << "[JNI] Failed to find CausticsStats class" << std::endl;
             return nullptr;
