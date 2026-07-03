@@ -583,7 +583,8 @@ __device__ void emitDirectionalPhoton(
     const Light& light,
     unsigned int& seed,
     float3& photon_origin,
-    float3& photon_dir
+    float3& photon_dir,
+    float& emission_measure
 ) {
     // Directional light: emit parallel rays targeting the sphere
     const float3 light_dir = normalize(make_float3(
@@ -612,6 +613,12 @@ __device__ void emitDirectionalPhoton(
                    - light_dir * PHOTON_EMISSION_DISTANCE;
 
     photon_dir = light_dir;
+
+    // P1 emission measure: photons sample the emission disk uniformly, so each photon
+    // represents E * A / N of the incident power (E = irradiance = light.intensity,
+    // A = disk area). Without this factor the deposited energy depends on the arbitrary
+    // sampling-disk size — the root cause of the historical magic scale factors.
+    emission_measure = M_PIf * disk_radius * disk_radius;
 }
 
 /**
@@ -630,7 +637,8 @@ __device__ void emitPointPhoton(
     const Light& light,
     unsigned int& seed,
     float3& photon_origin,
-    float3& photon_dir
+    float3& photon_dir,
+    float& emission_measure
 ) {
     photon_origin = make_float3(
         light.position[0],
@@ -664,22 +672,37 @@ __device__ void emitPointPhoton(
     photon_dir = normalize(
         axis * cos_theta + tangent * (sin_theta * cosf(phi)) + bitangent * (sin_theta * sinf(phi))
     );
+
+    // P1 emission measure: photons sample the cone subtending the target uniformly in
+    // solid angle, so each photon represents I * dOmega / N of the emitted power
+    // (I = radiant intensity = light.intensity, dOmega = 2*pi*(1 - cos theta_max) = cone
+    // solid angle). Restoring this factor makes deposited energy independent of the
+    // (arbitrary) cone half-angle chosen for importance sampling.
+    emission_measure = 2.0f * M_PIf * (1.0f - cos_theta_max);
 }
 
 /**
  * Calculate photon flux based on light properties and total photon count.
  *
- * Distributes total light energy evenly among all photons in this iteration.
+ * Each photon carries a share of the power emitted into the sampled emission measure:
+ *   phi = color * intensity * emission_measure / total_photons
+ * where emission_measure is the cone solid angle (point light, intensity = W/sr) or the
+ * emission-disk area (directional light, intensity = irradiance = W/m^2). This P1 factor
+ * is what makes the deposited energy physically correct and sampling-geometry-independent.
  *
  * @param light The light source
- * @param total_photons Total number of photons being emitted
+ * @param total_photons Total number of photons being emitted this iteration
+ * @param emission_measure Solid angle (sr) or disk area (m^2) the photons sample
  * @return RGB flux carried by each photon
  */
-__device__ float3 calculatePhotonFlux(const Light& light, float total_photons) {
+__device__ float3 calculatePhotonFlux(
+    const Light& light, float total_photons, float emission_measure
+) {
+    const float per_photon = light.intensity * emission_measure / total_photons;
     return make_float3(
-        light.color[0] * light.intensity / total_photons,
-        light.color[1] * light.intensity / total_photons,
-        light.color[2] * light.intensity / total_photons
+        light.color[0] * per_photon,
+        light.color[1] * per_photon,
+        light.color[2] * per_photon
     );
 }
 
@@ -901,15 +924,16 @@ extern "C" __global__ void __raygen__photons() {
     float3 photon_origin;
     float3 photon_dir;
 
+    float emission_measure = 0.0f;
     if (light.type == LightType::DIRECTIONAL) {
-        emitDirectionalPhoton(light, seed, photon_origin, photon_dir);
+        emitDirectionalPhoton(light, seed, photon_origin, photon_dir, emission_measure);
     } else {
-        emitPointPhoton(light, seed, photon_origin, photon_dir);
+        emitPointPhoton(light, seed, photon_origin, photon_dir, emission_measure);
     }
 
-    // Calculate photon flux
+    // Calculate photon flux (P1: includes the emission-measure factor)
     const float total_photons = static_cast<float>(dim.x * dim.y);
-    const float3 photon_flux = calculatePhotonFlux(light, total_photons);
+    const float3 photon_flux = calculatePhotonFlux(light, total_photons, emission_measure);
 
     // C1: Track photon emission statistics
     if (params.caustics.stats) {
@@ -1008,25 +1032,31 @@ extern "C" __global__ void __raygen__caustics_radiance() {
         atomicAdd(&params.caustics.stats->hit_points_with_flux, 1ULL);
     }
 
-    // Compute radiance estimate using PPM formula
-    // L = Φ / (π × R²)
+    // Compute radiance estimate using the PPM density-estimate formula
+    //   L = Phi / (pi * R^2 * iterations)
     //
-    // Note: The flux Φ is already normalized by total_photons during emission:
-    //   photon_flux = light_intensity / total_photons
-    // So we should NOT divide by total_photons again here - that was causing
-    // the need for a 10000x magic scale factor.
+    // Normalization convention (see calculatePhotonFlux): each photon already carries
+    // I * dOmega / M of the emitted power, where M = photons_per_iteration. Summed over
+    // all `iterations` photon passes, the accumulated flux therefore overcounts the true
+    // irradiance by exactly `iterations` (P6). Dividing by it makes the estimate
+    // iteration-invariant: doubling the iteration budget refines noise, not brightness.
     const float area = M_PI * hp.radius * hp.radius;
 
     // Avoid division by zero
     if (area < FLUX_EPSILON) return;
 
-    // Radiance = flux / (π * R²)
-    // Note: For Lambertian BRDF, the reflected radiance is flux/(π*area).
-    // Our flux already includes the cos(θ) term from Lambertian weighting.
+    // P6: normalize by the number of photon passes accumulated into hp.flux.
+    const float iter_norm = fmaxf(static_cast<float>(params.caustics.iterations), 1.0f);
+    const float denom = area * iter_norm;
+
+    // Radiance = flux / (pi * R^2 * iterations).
+    // Note: for a Lambertian BRDF the reflected radiance is flux/(pi*area); the missing
+    // rho/pi albedo factor and the spurious cos(theta) deposit weight are corrected in
+    // Task 33.5 (P5).
     const float3 radiance = make_float3(
-        hp.flux[0] / area,
-        hp.flux[1] / area,
-        hp.flux[2] / area
+        hp.flux[0] / denom,
+        hp.flux[1] / denom,
+        hp.flux[2] / denom
     );
 
     // Exponential tone mapping: 1 - exp(-L * exposure).
