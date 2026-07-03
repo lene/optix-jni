@@ -209,10 +209,12 @@ __device__ void initializeHitPoint(
     hp.pixel_x = idx.x;
     hp.pixel_y = idx.y;
 
-    // BRDF weight (Lambertian = 1/π, normalized later)
-    hp.weight[0] = 1.0f;
-    hp.weight[1] = 1.0f;
-    hp.weight[2] = 1.0f;
+    // P5: capture the diffuse albedo ρ of the floor into the hit-point weight, so the
+    // radiance estimate can apply the Lambertian ρ/π factor. planes[0].color1 is the solid
+    // (or checker-A) reflectance; a position-dependent checker albedo is a later refinement.
+    hp.weight[0] = params.planes[0].color1[0];
+    hp.weight[1] = params.planes[0].color1[1];
+    hp.weight[2] = params.planes[0].color1[2];
 }
 
 //==============================================================================
@@ -375,36 +377,26 @@ __device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir
                     const float dist_sq = dot(diff, diff);
                     const float radius_sq = hp.radius * hp.radius;
 
-                    // Check if photon is within hit point's gather radius
+                    // P5: uniform-disk density estimate (pbrt-matching). A photon within the
+                    // gather radius contributes its full flux Φ — no cosθ weight (the photon
+                    // already carries the correct radiant power; the Lambertian ρ/π factor is
+                    // applied once in the radiance kernel, not per photon) and no unnormalized
+                    // Gaussian (which undercounted by ~8×). The disk area normalization π r²
+                    // lives in the radiance kernel.
                     if (dist_sq < radius_sq) {
-                        // Weight by cosine of angle (Lambertian BRDF)
-                        const float3 hp_normal = make_float3(hp.normal[0], hp.normal[1], hp.normal[2]);
-                        const float cos_theta = fmaxf(0.0f, dot(make_float3(-photon_dir.x, -photon_dir.y, -photon_dir.z), hp_normal));
+                        atomicAdd(&hp.flux[0], flux.x);
+                        atomicAdd(&hp.flux[1], flux.y);
+                        atomicAdd(&hp.flux[2], flux.z);
 
-                        if (cos_theta > 0.0f) {
-                            // Gaussian kernel: weight photons by distance.
-                            // Nearby photons contribute strongly, distant ones weakly.
-                            // sigma = radius/4, so weight ≈ 0 at the radius boundary.
-                            const float sigma_sq = radius_sq / 16.0f;
-                            const float kernel_weight = expf(-dist_sq / (2.0f * sigma_sq));
+                        // Count photons for this hit point (this iteration)
+                        atomicAdd(&hp.new_photons, 1);
 
-                            // Atomic accumulation of flux (Gaussian-weighted)
-                            const float w = cos_theta * kernel_weight;
-                            atomicAdd(&hp.flux[0], flux.x * w);
-                            atomicAdd(&hp.flux[1], flux.y * w);
-                            atomicAdd(&hp.flux[2], flux.z * w);
-
-                            // Count photons for this hit point (this iteration)
-                            atomicAdd(&hp.new_photons, 1);
-
-                            // C4: Track deposition statistics
-                            if (params.caustics.stats) {
-                                atomicAdd(&params.caustics.stats->photons_deposited, 1ULL);
-                                const double deposited_flux = static_cast<double>(
-                                    (flux.x + flux.y + flux.z) * w
-                                );
-                                atomicAdd(&params.caustics.stats->total_flux_deposited, deposited_flux);
-                            }
+                        // C4: Track deposition statistics
+                        if (params.caustics.stats) {
+                            atomicAdd(&params.caustics.stats->photons_deposited, 1ULL);
+                            const double deposited_flux =
+                                static_cast<double>(flux.x + flux.y + flux.z);
+                            atomicAdd(&params.caustics.stats->total_flux_deposited, deposited_flux);
                         }
                     }
                 }
@@ -1079,14 +1071,15 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     const float iter_norm = fmaxf(static_cast<float>(params.caustics.iterations), 1.0f);
     const float denom = area * iter_norm;
 
-    // Radiance = flux / (pi * R^2 * iterations).
-    // Note: for a Lambertian BRDF the reflected radiance is flux/(pi*area); the missing
-    // rho/pi albedo factor and the spurious cos(theta) deposit weight are corrected in
-    // Task 33.5 (P5).
+    // P5: reflected radiance of a Lambertian floor lit by the caustic irradiance estimate
+    // E = τ/(π R² · iterations) is L = (ρ/π)·E, where ρ = hp.weight is the floor albedo
+    // captured at hit-point creation. The uniform-disk deposit (τ += Φ, no cosθ, no Gaussian)
+    // makes E the physically correct photon-density irradiance.
+    const float inv_pi = static_cast<float>(M_1_PI);
     const float3 radiance = make_float3(
-        hp.flux[0] / denom,
-        hp.flux[1] / denom,
-        hp.flux[2] / denom
+        hp.weight[0] * inv_pi * hp.flux[0] / denom,
+        hp.weight[1] * inv_pi * hp.flux[1] / denom,
+        hp.weight[2] * inv_pi * hp.flux[2] / denom
     );
 
     // Exponential tone mapping: 1 - exp(-L * exposure).
