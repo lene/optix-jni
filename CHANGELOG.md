@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] - 2026-07-04
+
+Caustics auto-tuning + dispersive photon caustics (Sprint 33.8 / 33.10).
+
+### Added
+
+- **Geometry-scaled auto gather radius**: when the caller leaves the PPM gather radius unset
+  (`initial_radius <= 0`), it is derived from the refractive geometry's bounding radius
+  (`CAUSTICS_AUTO_RADIUS_FACTOR * caustic_target_radius`) so bare caustics scale with object
+  size instead of a fixed 1.0 world-space radius. Dormant when an explicit radius is passed.
+- **`MENGER_CAUSTICS_RADIUS`** environment override — a runtime gather-radius calibration knob
+  used to sweep the factor against the pbrt caustic-delta harness. Unset in normal use.
+- **Dispersive photon caustics**: the PPM photon path carries a per-photon hero wavelength
+  (payload p10), refracts with the Cauchy `n(λ) = a + b/λ²` for dispersive instances, and
+  tints the deposited flux by the wavelength's CIE response — spectral (rainbow) floor
+  caustics. Non-dispersive scenes are bit-identical (wavelength unread, flux untinted).
+
+### Notes
+
+- Calibration finding: menger renders primary-ray caustics only (no SDS paths), so the caustic
+  carries ~1/5 the energy of a full pbrt SPPM render at every gather radius. Spatial
+  correlation (caustic shape, ~0.86 vs pbrt) — not energy ratio — is the achievable acceptance
+  criterion.
+
 ## [0.1.12] - 2026-07-03
 
 Physics rebuild of the progressive-photon-mapping caustics pipeline (Sprint 33).
@@ -136,6 +160,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.13]: https://github.com/lene/optix-jni/compare/0.1.12...0.1.13
 [0.1.12]: https://github.com/lene/optix-jni/compare/0.1.11...0.1.12
 [0.1.9]: https://github.com/lene/optix-jni/compare/0.1.8...0.1.9
 [0.1.8]: https://github.com/lene/optix-jni/compare/0.1.7...0.1.8
