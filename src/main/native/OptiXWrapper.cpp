@@ -1804,6 +1804,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.caustics.caustic_target_radius = sphere.radius;
             }
         }
+        // 33.8: auto-tune the gather radius when the caller leaves it unset (<= 0 sentinel).
+        // Derived from the emission target's bounding radius so a bare --caustics request scales
+        // with geometry instead of a fixed world-space radius that only suits ~unit-sized objects.
+        // Dormant when the caller passes an explicit positive radius.
+        if (params.caustics.initial_radius <= 0.0f) {
+            const float target_r = params.caustics.caustic_target_radius;
+            params.caustics.initial_radius = (target_r > 0.0f)
+                ? RayTracingConstants::CAUSTICS_AUTO_RADIUS_FACTOR * target_r
+                : RayTracingConstants::DEFAULT_INITIAL_RADIUS;
+        }
         params.caustics.hit_points = reinterpret_cast<HitPoint*>(impl->buffer_manager.getHitPointsBuffer());
         params.caustics.num_hit_points = reinterpret_cast<unsigned int*>(impl->buffer_manager.getNumHitPointsBuffer());
         params.caustics.grid = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridBuffer());

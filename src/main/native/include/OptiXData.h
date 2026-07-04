@@ -76,6 +76,11 @@ namespace RayTracingConstants {
     constexpr int DEFAULT_PHOTONS_PER_ITER = 100000; // Photons emitted per PPM iteration
     constexpr int DEFAULT_CAUSTICS_ITERATIONS = 10;  // Number of PPM iterations
     constexpr float DEFAULT_INITIAL_RADIUS = 1.0f;   // Initial photon gather radius
+    // 33.8 auto-tuning: when the caller leaves the gather radius unset (<= 0 sentinel), derive it
+    // from the refractive geometry's bounding radius so bare --caustics scales with object size
+    // instead of assuming ~unit-sized geometry. Factor chosen so a unit sphere reproduces the
+    // validated gather radius; calibrated against the pbrt caustic-delta harness.
+    constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.6f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
     constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
