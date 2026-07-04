@@ -528,6 +528,13 @@ __device__ void tracePhoton(
     // that travel straight from the light to the floor (which direct lighting already
     // accounts for). The bit is carried across bounces via payload p9 bit 2.
     bool touched_specular = false;
+    // 33.10: draw one hero wavelength per photon and carry it in p10 (mirrors the primary-ray
+    // convention in raygen_primary.cu). It only affects photons that pass through a dispersive
+    // instance (cauchy_b > 0); for non-dispersive scenes the wavelength is never read and the
+    // caustic is bit-identical. `dispersed` becomes sticky once such an interaction happens so
+    // the deposit can tint the flux by the wavelength's CIE response.
+    const float hero_lambda = 380.0f + rnd(seed) * 350.0f;  // λ ∈ [380, 730] nm
+    bool dispersed = false;
     for (int bounce = 0; bounce < max_bounces; ++bounce) {
         // Pack payload into 11 uint32 registers (p0..p10)
         unsigned int p0 = __float_as_uint(flux.x);
@@ -535,8 +542,9 @@ __device__ void tracePhoton(
         unsigned int p2 = __float_as_uint(flux.z);
         unsigned int p3 = 0, p4 = 0, p5 = 0;  // new_origin (set by closesthit)
         unsigned int p6 = 0, p7 = 0, p8 = 0;  // new_dir (set by closesthit)
-        // flags: bit0 alive, bit1 deposited, bit2 touched_specular (in/out)
-        unsigned int p9 = touched_specular ? 4u : 0u;
+        // flags: bit0 alive, bit1 deposited, bit2 touched_specular, bit3 dispersed (in/out)
+        unsigned int p9 = (touched_specular ? 4u : 0u) | (dispersed ? 8u : 0u);
+        unsigned int p10 = __float_as_uint(hero_lambda);
 
         using namespace SBTConstants;
         optixTrace(
@@ -545,7 +553,7 @@ __device__ void tracePhoton(
             CONTINUATION_RAY_OFFSET, MAX_RAY_DISTANCE, 0.f,
             OptixVisibilityMask(255), OPTIX_RAY_FLAG_NONE,
             RAY_TYPE_PHOTON, STRIDE_RAY_TYPES, MISS_PHOTON,
-            p0, p1, p2, p3, p4, p5, p6, p7, p8, p9
+            p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10
         );
 
         // Unpack results
@@ -553,6 +561,7 @@ __device__ void tracePhoton(
         const bool alive    = (p9 & 1u) != 0;
         const bool deposited = (p9 & 2u) != 0;
         touched_specular     = (p9 & 4u) != 0;
+        dispersed            = (p9 & 8u) != 0;
 
         if (deposited) return;
         if (!alive) return;
@@ -802,6 +811,24 @@ extern "C" __global__ void __closesthit__photon() {
         __uint_as_float(optixGetPayload_2())
     );
 
+    // 33.10: dispersive refraction — replace the scalar IOR with the Cauchy n(λ) for this
+    // photon's hero wavelength when the instance carries dispersion (cauchy_b > 0). Splits the
+    // caustic into spectral colours (rainbow rings). Non-dispersive instances are untouched, so
+    // non-dispersive caustics stay bit-identical.
+    bool photon_dispersed = (optixGetPayload_9() & 8u) != 0u;  // sticky across bounces
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int disp_id = optixGetInstanceId();
+        const float cauchy_b = params.instance_materials[disp_id].cauchy_b;
+        if (cauchy_b > 0.0f) {
+            const float lambda = __uint_as_float(optixGetPayload_10());
+            if (lambda > 0.0f) {
+                const float cauchy_a = params.instance_materials[disp_id].cauchy_a;
+                ior_material = cauchy_a + cauchy_b / (lambda * lambda);
+                photon_dispersed = true;
+            }
+        }
+    }
+
     // Determine entering vs exiting
     const bool entering = dot(ray_dir, outward_normal) < 0.0f;
     const float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
@@ -877,8 +904,8 @@ extern "C" __global__ void __closesthit__photon() {
     optixSetPayload_6(__float_as_uint(new_dir.x));
     optixSetPayload_7(__float_as_uint(new_dir.y));
     optixSetPayload_8(__float_as_uint(new_dir.z));
-    // bit0 alive=1, bit2 touched_specular=1 (this photon has now interacted with glass).
-    optixSetPayload_9(1u | 4u);
+    // bit0 alive=1, bit2 touched_specular=1 (interacted with glass), bit3 dispersed (33.10).
+    optixSetPayload_9(1u | 4u | (photon_dispersed ? 8u : 0u));
 }
 
 /**
@@ -897,14 +924,25 @@ extern "C" __global__ void __miss__photon() {
     );
 
     const unsigned int touched_bit = optixGetPayload_9() & 4u;  // preserve touched_specular
+    const unsigned int disp_bit    = optixGetPayload_9() & 8u;  // preserve dispersed (33.10)
+
+    // 33.10: a dispersive photon carries one hero wavelength; convert its flux to the
+    // wavelength's CIE RGB response once, at deposit, so the caustic spreads into spectral
+    // colours. Non-dispersive photons deposit their untinted flux unchanged.
+    float3 dep_flux = flux;
+    if (disp_bit != 0u) {
+        const float lambda = __uint_as_float(optixGetPayload_10());
+        const float3 tint = heroWavelengthToRGB(lambda);
+        dep_flux = make_float3(flux.x * tint.x, flux.y * tint.y, flux.z * tint.z);
+    }
 
     // P9: deposit only for LS⁺D paths — a photon that reached the floor without ever
     // touching glass carries direct illumination that the direct-lighting pass already
     // accounts for; storing it here would double-count the floor's direct light.
-    if (touched_bit != 0u && checkPlaneIntersection(origin, dir, flux)) {
-        optixSetPayload_9(2u | touched_bit);  // alive=false, deposited=true
+    if (touched_bit != 0u && checkPlaneIntersection(origin, dir, dep_flux)) {
+        optixSetPayload_9(2u | touched_bit | disp_bit);  // alive=false, deposited=true
     } else {
-        optixSetPayload_9(touched_bit);       // alive=false, deposited=false
+        optixSetPayload_9(touched_bit | disp_bit);       // alive=false, deposited=false
     }
     // Track miss stats
     if (params.caustics.stats) {
