@@ -1814,6 +1814,16 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 ? RayTracingConstants::CAUSTICS_AUTO_RADIUS_FACTOR * target_r
                 : RayTracingConstants::DEFAULT_INITIAL_RADIUS;
         }
+        // Calibration knob (Sprint 33.8): MENGER_CAUSTICS_RADIUS overrides the gather radius so
+        // the factor can be swept against the pbrt caustic-delta harness without a recompile.
+        // Unset in normal use.
+        if (const char* rEnv = std::getenv("MENGER_CAUSTICS_RADIUS")) {
+            const float rOverride = static_cast<float>(std::atof(rEnv));
+            if (rOverride > 0.0f) params.caustics.initial_radius = rOverride;
+            std::cerr << "[caustics-calib] target_radius="
+                      << params.caustics.caustic_target_radius
+                      << " initial_radius=" << params.caustics.initial_radius << std::endl;
+        }
         params.caustics.hit_points = reinterpret_cast<HitPoint*>(impl->buffer_manager.getHitPointsBuffer());
         params.caustics.num_hit_points = reinterpret_cast<unsigned int*>(impl->buffer_manager.getNumHitPointsBuffer());
         params.caustics.grid = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridBuffer());
