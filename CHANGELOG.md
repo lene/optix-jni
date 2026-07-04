@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-07-04
+
+Per-instance photon emission for correct multi-object caustics (Sprint 33.11 / F-CAUSTICS-MULTITARGET).
+
+### Changed
+
+- **Multi-object photon emission**: photons now aim at one bounding sphere **per refractive
+  instance** instead of a single merged sphere spanning all of them. The old merged target sat
+  in the empty gap between separated objects, so most photons flew through the middle and never
+  refracted, yielding weak, mispositioned caustics for N > 1 objects. Each photon now picks a
+  target with probability ΔΩ_i / ΣΔΩ and carries flux Φ = I·ΣΔΩ/N; overlapping cones
+  double-count the overlap (documented approximation, negligible for separated objects). A
+  single refractive object is unchanged (one target == that object).
+- **Auto gather radius now scales with per-instance object size** (mean of the per-instance
+  target radii) instead of the merged bounding radius. For several separated objects the merged
+  span is far larger than any one object, so the old auto radius over-smoothed each caustic into
+  a blur; the per-instance mean keeps multi-object caustics as sharp as the single-object case.
+
+### Added
+
+- `CausticsParams.caustic_targets[MAX_CAUSTIC_TARGETS*4]` + `num_caustic_targets` — per-instance
+  emission target list (packed center xyz + radius). `MAX_CAUSTIC_TARGETS = 16`; scenes with
+  more refractive instances fall back to the merged single target. The merged
+  `caustic_target_center/radius` remain for grid bounds + auto radius.
+
 ## [0.1.13] - 2026-07-04
 
 Caustics auto-tuning + dispersive photon caustics (Sprint 33.8 / 33.10).
@@ -160,6 +185,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.14]: https://github.com/lene/optix-jni/compare/0.1.13...0.1.14
 [0.1.13]: https://github.com/lene/optix-jni/compare/0.1.12...0.1.13
 [0.1.12]: https://github.com/lene/optix-jni/compare/0.1.11...0.1.12
 [0.1.9]: https://github.com/lene/optix-jni/compare/0.1.8...0.1.9

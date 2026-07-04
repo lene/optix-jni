@@ -654,26 +654,72 @@ __device__ void emitPointPhoton(
         light.position[2]
     );
 
-    const float3 sphere_center = make_float3(
-        params.caustics.caustic_target_center[0],
-        params.caustics.caustic_target_center[1],
-        params.caustics.caustic_target_center[2]
-    );
-    const float3 to_sphere = sphere_center - photon_origin;
+    // Per-instance emission (F-CAUSTICS-MULTITARGET): aim each photon at ONE refractive
+    // instance chosen with probability dOmega_i / sum(dOmega), instead of a single merged
+    // sphere spanning the gaps between objects. For a single object this reduces to the old
+    // behaviour (one target == that object). n == 0 falls back to the merged sphere.
+    const int n = params.caustics.num_caustic_targets;
+
+    // Per-target cone solid angle; also the sampling weight. Overlapping cones double-count
+    // the overlap (documented approximation; fine for separated objects).
+    float domega[CausticsParams::MAX_CAUSTIC_TARGETS];
+    float sum_domega = 0.0f;
+    const int count = (n > 0) ? n : 1;
+    for (int i = 0; i < count; ++i) {
+        float3 c;
+        float r;
+        if (n > 0) {
+            c = make_float3(params.caustics.caustic_targets[i * 4 + 0],
+                            params.caustics.caustic_targets[i * 4 + 1],
+                            params.caustics.caustic_targets[i * 4 + 2]);
+            r = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.caustic_targets[i * 4 + 3];
+        } else {
+            c = make_float3(params.caustics.caustic_target_center[0],
+                            params.caustics.caustic_target_center[1],
+                            params.caustics.caustic_target_center[2]);
+            r = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.caustic_target_radius;
+        }
+        const float d = length(c - photon_origin);
+        const float sin_max = fminf(r / d, 1.0f);
+        const float cos_max = sqrtf(1.0f - sin_max * sin_max);
+        domega[i] = 2.0f * M_PIf * (1.0f - cos_max);
+        sum_domega += domega[i];
+    }
+
+    // Sample a target by its solid-angle-weighted CDF.
+    float xi = rnd(seed) * sum_domega;
+    int ti = 0;
+    for (; ti < count - 1; ++ti) {
+        if (xi < domega[ti]) break;
+        xi -= domega[ti];
+    }
+
+    float3 target_center;
+    float target_radius;
+    if (n > 0) {
+        target_center = make_float3(params.caustics.caustic_targets[ti * 4 + 0],
+                                    params.caustics.caustic_targets[ti * 4 + 1],
+                                    params.caustics.caustic_targets[ti * 4 + 2]);
+        target_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.caustic_targets[ti * 4 + 3];
+    } else {
+        target_center = make_float3(params.caustics.caustic_target_center[0],
+                                    params.caustics.caustic_target_center[1],
+                                    params.caustics.caustic_target_center[2]);
+        target_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.caustic_target_radius;
+    }
+
+    const float3 to_sphere = target_center - photon_origin;
     const float dist = length(to_sphere);
     const float3 axis = to_sphere / dist;
 
-    // Cone half-angle covering the sphere with margin for edge rays
-    const float target_radius = PHOTON_DISK_RADIUS_MULTIPLIER * params.caustics.caustic_target_radius;
     const float sin_theta_max = fminf(target_radius / dist, 1.0f);
     const float cos_theta_max = sqrtf(1.0f - sin_theta_max * sin_theta_max);
 
-    // Uniform sampling within cone
+    // Uniform sampling within the chosen target's cone
     const float cos_theta = 1.0f - rnd(seed) * (1.0f - cos_theta_max);
     const float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
     const float phi = 2.0f * M_PIf * rnd(seed);
 
-    // Build local frame around axis to sphere
     float3 tangent, bitangent;
     createONB(axis, tangent, bitangent);
 
@@ -681,12 +727,10 @@ __device__ void emitPointPhoton(
         axis * cos_theta + tangent * (sin_theta * cosf(phi)) + bitangent * (sin_theta * sinf(phi))
     );
 
-    // P1 emission measure: photons sample the cone subtending the target uniformly in
-    // solid angle, so each photon represents I * dOmega / N of the emitted power
-    // (I = radiant intensity = light.intensity, dOmega = 2*pi*(1 - cos theta_max) = cone
-    // solid angle). Restoring this factor makes deposited energy independent of the
-    // (arbitrary) cone half-angle chosen for importance sampling.
-    emission_measure = 2.0f * M_PIf * (1.0f - cos_theta_max);
+    // P1 emission measure: for non-overlapping cones the sampled-direction pdf is
+    // 1 / sum(dOmega), so each photon represents I * sum(dOmega) / N of the emitted power.
+    // This makes deposited energy independent of the (arbitrary) per-target cone half-angles.
+    emission_measure = sum_domega;
 }
 
 /**

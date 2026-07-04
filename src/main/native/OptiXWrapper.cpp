@@ -1757,10 +1757,13 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             float3 cmin = {FLT_MAX, FLT_MAX, FLT_MAX};
             float3 cmax = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
             bool found = false;
+            int refractive_count = 0;   // total refractive instances seen
+            int nt = 0;                 // per-instance targets written (capped at MAX)
 
             for (const auto& inst : impl->instances) {
                 if (!inst.active || inst.ior <= 1.05f) continue;
                 found = true;
+                ++refractive_count;
 
                 if (inst.geometry_type == GEOMETRY_TYPE_SPHERE) {
                     const float cx = inst.transform[3];
@@ -1772,6 +1775,13 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                     const float r = sphere.radius * s;
                     cmin.x = fminf(cmin.x, cx - r); cmin.y = fminf(cmin.y, cy - r); cmin.z = fminf(cmin.z, cz - r);
                     cmax.x = fmaxf(cmax.x, cx + r); cmax.y = fmaxf(cmax.y, cy + r); cmax.z = fmaxf(cmax.z, cz + r);
+                    if (nt < CausticsParams::MAX_CAUSTIC_TARGETS) {
+                        params.caustics.caustic_targets[nt*4+0] = cx;
+                        params.caustics.caustic_targets[nt*4+1] = cy;
+                        params.caustics.caustic_targets[nt*4+2] = cz;
+                        params.caustics.caustic_targets[nt*4+3] = r;
+                        ++nt;
+                    }
                 } else if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE) {
                     const float3 lo = impl->mesh_aabb_min;
                     const float3 hi = impl->mesh_aabb_max;
@@ -1779,12 +1789,24 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                         {lo.x,lo.y,lo.z},{hi.x,lo.y,lo.z},{lo.x,hi.y,lo.z},{hi.x,hi.y,lo.z},
                         {lo.x,lo.y,hi.z},{hi.x,lo.y,hi.z},{lo.x,hi.y,hi.z},{hi.x,hi.y,hi.z}
                     };
+                    float3 imin = {FLT_MAX, FLT_MAX, FLT_MAX};
+                    float3 imax = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
                     for (int c = 0; c < 8; ++c) {
                         const float wx = inst.transform[0]*corners[c][0] + inst.transform[1]*corners[c][1] + inst.transform[2]*corners[c][2] + inst.transform[3];
                         const float wy = inst.transform[4]*corners[c][0] + inst.transform[5]*corners[c][1] + inst.transform[6]*corners[c][2] + inst.transform[7];
                         const float wz = inst.transform[8]*corners[c][0] + inst.transform[9]*corners[c][1] + inst.transform[10]*corners[c][2] + inst.transform[11];
                         cmin.x = fminf(cmin.x, wx); cmin.y = fminf(cmin.y, wy); cmin.z = fminf(cmin.z, wz);
                         cmax.x = fmaxf(cmax.x, wx); cmax.y = fmaxf(cmax.y, wy); cmax.z = fmaxf(cmax.z, wz);
+                        imin.x = fminf(imin.x, wx); imin.y = fminf(imin.y, wy); imin.z = fminf(imin.z, wz);
+                        imax.x = fmaxf(imax.x, wx); imax.y = fmaxf(imax.y, wy); imax.z = fmaxf(imax.z, wz);
+                    }
+                    if (nt < CausticsParams::MAX_CAUSTIC_TARGETS) {
+                        const float dx = imax.x - imin.x, dy = imax.y - imin.y, dz = imax.z - imin.z;
+                        params.caustics.caustic_targets[nt*4+0] = (imin.x + imax.x) * 0.5f;
+                        params.caustics.caustic_targets[nt*4+1] = (imin.y + imax.y) * 0.5f;
+                        params.caustics.caustic_targets[nt*4+2] = (imin.z + imax.z) * 0.5f;
+                        params.caustics.caustic_targets[nt*4+3] = 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
+                        ++nt;
                     }
                 }
                 // Cylinder: fall through (not a typical caustic material)
@@ -1798,18 +1820,40 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 const float dy = cmax.y - cmin.y;
                 const float dz = cmax.z - cmin.z;
                 params.caustics.caustic_target_radius = 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
+                // Per-instance emission targets: use them unless there were more refractive
+                // instances than slots, in which case fall back to the single merged target.
+                if (refractive_count <= CausticsParams::MAX_CAUSTIC_TARGETS) {
+                    params.caustics.num_caustic_targets = nt;
+                } else {
+                    std::memcpy(&params.caustics.caustic_targets[0],
+                                params.caustics.caustic_target_center, sizeof(float) * 3);
+                    params.caustics.caustic_targets[3] = params.caustics.caustic_target_radius;
+                    params.caustics.num_caustic_targets = 1;
+                }
             } else {
                 // Fallback: use scene sphere (backward compat with non-IAS mode)
                 std::memcpy(params.caustics.caustic_target_center, sphere.center, sizeof(float) * 3);
                 params.caustics.caustic_target_radius = sphere.radius;
+                std::memcpy(&params.caustics.caustic_targets[0], sphere.center, sizeof(float) * 3);
+                params.caustics.caustic_targets[3] = sphere.radius;
+                params.caustics.num_caustic_targets = 1;
             }
         }
         // 33.8: auto-tune the gather radius when the caller leaves it unset (<= 0 sentinel).
-        // Derived from the emission target's bounding radius so a bare --caustics request scales
-        // with geometry instead of a fixed world-space radius that only suits ~unit-sized objects.
+        // Scale with a *per-instance* object radius, not the merged bounding radius: for several
+        // separated objects the merged span is far larger than any single object, so gathering at
+        // that scale over-smooths each caustic into a blur (Sprint 33.11 finding). Use the mean of
+        // the per-instance target radii; fall back to the merged radius when there are no targets.
         // Dormant when the caller passes an explicit positive radius.
         if (params.caustics.initial_radius <= 0.0f) {
-            const float target_r = params.caustics.caustic_target_radius;
+            float target_r = params.caustics.caustic_target_radius;
+            if (params.caustics.num_caustic_targets > 0) {
+                float sum_r = 0.0f;
+                for (int i = 0; i < params.caustics.num_caustic_targets; ++i) {
+                    sum_r += params.caustics.caustic_targets[i * 4 + 3];
+                }
+                target_r = sum_r / static_cast<float>(params.caustics.num_caustic_targets);
+            }
             params.caustics.initial_radius = (target_r > 0.0f)
                 ? RayTracingConstants::CAUSTICS_AUTO_RADIUS_FACTOR * target_r
                 : RayTracingConstants::DEFAULT_INITIAL_RADIUS;
