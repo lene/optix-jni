@@ -22,6 +22,11 @@ Per-instance photon emission for correct multi-object caustics (Sprint 33.11 / F
   target radii) instead of the merged bounding radius. For several separated objects the merged
   span is far larger than any one object, so the old auto radius over-smoothed each caustic into
   a blur; the per-instance mean keeps multi-object caustics as sharp as the single-object case.
+- **`CAUSTICS_AUTO_RADIUS_FACTOR` recalibrated 0.6 -> 0.1.** The 0.6 was tuned against a
+  measurement-buggy caustic-delta metric (a vertically-flipped mask + far-floor contamination
+  overstated agreement). Against the corrected region-isolated metric, 0.6 over-smoothed the
+  caustic (region correlation vs pbrt ~0.59); ~0.1*object_radius maximises the match (~0.73, the
+  primary-ray structural ceiling) without the gather going noisy from low photon density.
 
 - **Physically based Lambertian diffuse (F-PBR-DIFFUSE)**: diffuse surfaces now reflect
   `albedo/pi * irradiance` with true inverse-square light falloff (`1/d^2`, guarded), replacing

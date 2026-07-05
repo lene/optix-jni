@@ -77,10 +77,13 @@ namespace RayTracingConstants {
     constexpr int DEFAULT_CAUSTICS_ITERATIONS = 10;  // Number of PPM iterations
     constexpr float DEFAULT_INITIAL_RADIUS = 1.0f;   // Initial photon gather radius
     // 33.8 auto-tuning: when the caller leaves the gather radius unset (<= 0 sentinel), derive it
-    // from the refractive geometry's bounding radius so bare --caustics scales with object size
-    // instead of assuming ~unit-sized geometry. Factor chosen so a unit sphere reproduces the
-    // validated gather radius; calibrated against the pbrt caustic-delta harness.
-    constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.6f;
+    // from the refractive geometry's per-instance bounding radius so bare --caustics scales with
+    // object size instead of assuming ~unit-sized geometry. Recalibrated (Sprint 33.11) against
+    // the corrected, region-isolated pbrt caustic-delta metric: the previous 0.6 over-smoothed
+    // the caustic (region correlation ~0.59); ~0.1*object_radius maximises the match (~0.73, the
+    // primary-ray structural ceiling) for a unit sphere without going so small that the photon
+    // density leaves the gather noisy.
+    constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.1f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     // Physically based diffuse (F-PBR-DIFFUSE): Lambertian reflected radiance = albedo/pi * irradiance.
     constexpr float INV_PI = 0.318309886f;           // 1 / pi
