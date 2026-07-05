@@ -23,6 +23,13 @@ Per-instance photon emission for correct multi-object caustics (Sprint 33.11 / F
   span is far larger than any one object, so the old auto radius over-smoothed each caustic into
   a blur; the per-instance mean keeps multi-object caustics as sharp as the single-object case.
 
+- **Physically based Lambertian diffuse (F-PBR-DIFFUSE)**: diffuse surfaces now reflect
+  `albedo/pi * irradiance` with true inverse-square light falloff (`1/d^2`, guarded), replacing
+  the non-physical `0.3 ambient + 0.7 * (I/(1+d^2)) * N.L` blend. Brings whole-scene renders into
+  parity with pbrt-v4 (canonical floor MSE 0.19 -> 0.013). **Changes the shading of every scene**
+  — downstream reference images must be regenerated. No constant ambient fill (shadows are now
+  physically dark).
+
 ### Added
 
 - `CausticsParams.caustic_targets[MAX_CAUSTIC_TARGETS*4]` + `num_caustic_targets` — per-instance

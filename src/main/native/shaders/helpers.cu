@@ -245,8 +245,8 @@ __device__ void getPointLightParams(
     const float distance = length(to_light);
     light_dir = to_light / distance;  // Normalize
 
-    // Inverse-square law: I = I₀ / (1 + d²)
-    attenuation = 1.0f / (1.0f + distance * distance);
+    // Physically based inverse-square falloff (guarded against d -> 0).
+    attenuation = 1.0f / fmaxf(distance * distance, RayTracingConstants::MIN_ATTENUATION_DIST_SQ);
 }
 
 /**
@@ -400,7 +400,7 @@ __device__ float3 calculateLighting(
             ) - hit_point;
             const float dist = length(to_center);
             light_dir = to_center / dist;
-            attenuation = 1.0f / (1.0f + dist * dist);  // Inverse-square to disk center
+            attenuation = 1.0f / fmaxf(dist * dist, RayTracingConstants::MIN_ATTENUATION_DIST_SQ);  // Inverse-square to disk center
         }
 
         // Calculate diffuse term (Lambertian: N · L)
@@ -470,11 +470,12 @@ __device__ float3 calculateLighting(
         }
     }
 
-    // Add ambient lighting (prevents pure black shadows)
-    const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
-    
-    // Combine: ambient + diffuse (energy conserving)
-    return ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR;
+    // Physically based Lambertian diffuse: L_o = (albedo/pi) * sum_i E_i, where the surface
+    // albedo is applied by the caller. total_lighting is the summed irradiance (direct lights
+    // use intensity/d^2 * N.L; IBL uses the MC estimate of the cosine-weighted radiance integral),
+    // so the reflected-radiance multiplier returned here is that irradiance times 1/pi. No constant
+    // ambient term (that was a non-physical fill that lifted shadows and over-brightened floors).
+    return total_lighting * RayTracingConstants::INV_PI;
 }
 
 //==============================================================================
