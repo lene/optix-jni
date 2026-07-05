@@ -82,6 +82,11 @@ namespace RayTracingConstants {
     // validated gather radius; calibrated against the pbrt caustic-delta harness.
     constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.6f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
+    // Physically based diffuse (F-PBR-DIFFUSE): Lambertian reflected radiance = albedo/pi * irradiance.
+    constexpr float INV_PI = 0.318309886f;           // 1 / pi
+    // Lower bound on d^2 in the inverse-square light falloff, so a light coincident with a surface
+    // point does not divide by zero / blow up.
+    constexpr float MIN_ATTENUATION_DIST_SQ = 1.0e-4f;
     constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
     constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
 

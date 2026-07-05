@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Sprint 35
+
+### Changed (NOT YET RELEASED — held pending reference regeneration + default-light reconciliation)
+
+- **F-PBR-DIFFUSE**: physically based Lambertian diffuse (`albedo/π · irradiance`, no ambient
+  fill). Validated vs pbrt-v4 (canonical MSE 0.19 → 0.013) but incomplete: changes shading of
+  every scene, so ~44 GPU tests and all reference images need updating, and default scenes
+  render near-black at unit light intensity. See Sprint 35 Task 35.11 and the deferral write-up
+  (optix-jni `docs/DEFERRED_PBR_DIFFUSE.md` on the 0.1.15 line). Do not release without a version
+  bump + regenerated references.
+
 ## [0.1.14] - 2026-07-06
 
 Shadow rays enabled by default + Fresnel-based dielectric shadow attenuation (Sprint 33).
