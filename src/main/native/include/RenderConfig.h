@@ -117,7 +117,7 @@ private:
     int image_height = -1;
 
     // Shadow configuration
-    bool shadows_enabled = false;
+    bool shadows_enabled = true;
     bool transparent_shadows_enabled = false;  // Sprint 13.2
 
     // Antialiasing configuration

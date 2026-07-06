@@ -154,9 +154,9 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
     // Images should be identical (same rendering)
     statsRender.image shouldBe standardRender
 
-  "Shadow ray statistics" should "be zero when shadows disabled (default)" in:
+  "Shadow ray statistics" should "be zero when shadows explicitly disabled" in:
     TestScenario.default().applyTo(renderer)
-    // Shadows disabled by default
+    renderer.setShadows(false)
 
     val result = renderer.renderWithStats(STANDARD_IMAGE_SIZE).get
 

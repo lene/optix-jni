@@ -24,7 +24,7 @@ extern "C" __global__ void __anyhit__shadow() {
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
 
-    const float alpha = material_color.w;
+    const float alpha = effectiveShadowAlpha(material_color.w, material_ior);
     if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
 
     accumulateShadowAttenuation(alpha, material_color);
@@ -38,5 +38,6 @@ extern "C" __global__ void __closesthit__shadow() {
     float4 material_color;
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
-    setShadowPayload(material_color.w, material_color);
+    const float shadow_alpha = effectiveShadowAlpha(material_color.w, material_ior);
+    setShadowPayload(shadow_alpha, material_color);
 }
