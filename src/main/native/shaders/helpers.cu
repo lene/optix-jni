@@ -44,6 +44,28 @@ __device__ void accumulateShadowAttenuation(float alpha, const float4& color) {
 }
 
 /**
+ * Compute effective shadow opacity for a material.
+ *
+ * For dielectrics (IOR > 1.0), the shadow should reflect Fresnel surface losses,
+ * not the near-zero surface alpha used for sphere-outline visibility.  Clear glass
+ * (IOR 1.5, alpha 0.02) blocks ~8% of direct light, not 2%.
+ *
+ * Formula: F₀ = ((ior-1)/(ior+1))² — Fresnel normal-incidence reflectance.
+ * Transmission through two surfaces: T = (1-F₀)².
+ * Shadow = 1 - T = 1 - (1-F₀)², floored by the material alpha (honours tinted glass).
+ *
+ * @param alpha Material surface alpha [0,1]
+ * @param ior   Index of refraction
+ * @return Effective shadow opacity for direct-light attenuation
+ */
+__device__ float effectiveShadowAlpha(float alpha, float ior) {
+    if (ior <= 1.0f) return alpha;  // Metal or non-refractive — use alpha as-is
+    const float f0      = (ior - 1.0f) / (ior + 1.0f);
+    const float fresnel = 1.0f - (1.0f - f0 * f0) * (1.0f - f0 * f0);
+    return fmaxf(fresnel, alpha);  // Floor: at least Fresnel; tinted glass can go higher
+}
+
+/**
  * Set shadow ray payload with per-channel attenuation.
  *
  * When colored shadows are enabled, each RGB channel is attenuated independently
