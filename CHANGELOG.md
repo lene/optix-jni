@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-07-06
+
+Shadow rays enabled by default + Fresnel-based dielectric shadow attenuation (Sprint 33).
+
+### Changed
+
+- **Shadows default to ON**: `shadows_enabled` now defaults to `true` instead of `false`.
+- **Fresnel-based dielectric shadows**: Glass and other dielectrics (IOR > 1.0) now compute
+  shadow opacity from the Fresnel normal-incidence reflectance instead of the near-zero
+  surface alpha. Glass (IOR 1.5) blocks ~8% of direct light vs the old ~2%, producing
+  a physically-motivated visible shadow.
+
 ## [0.1.13] - 2026-07-04
 
 Caustics auto-tuning + dispersive photon caustics (Sprint 33.8 / 33.10).
