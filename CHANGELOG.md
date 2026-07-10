@@ -34,6 +34,18 @@ Per-instance photon emission for correct multi-object caustics (Sprint 33.11 / F
   emission target list (packed center xyz + radius). `MAX_CAUSTIC_TARGETS = 16`; scenes with
   more refractive instances fall back to the merged single target. The merged
   `caustic_target_center/radius` remain for grid bounds + auto radius.
+- `MultiObjectCausticsSuite` — regression test locking in the fix. Two separated glass spheres
+  under a point light must retain the single-sphere photon-refraction rate (~1×); the pre-fix
+  merged target collapses it to < 10%. Asserts on `CausticsStats.refractionEvents` (immune to the
+  fixed-photon-budget confound where total deposited energy stays ~constant while peaks halve).
+
+### Notes / known limitations
+
+- **Per-instance emission is point-light only.** It lives in `emitPointPhoton`; the directional
+  emitter (`emitDirectionalPhoton`) still aims the whole photon disk at the single merged target,
+  so directional-light scenes with multiple separated objects still get the old weak/mispositioned
+  caustics. Menger scenes that want correct multi-object caustics must use a point light until the
+  directional path is ported (follow-up, tracked on the menger side).
 
 ## [0.1.14] - 2026-07-06
 
