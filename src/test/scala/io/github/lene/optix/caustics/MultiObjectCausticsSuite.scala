@@ -20,15 +20,13 @@ import org.scalatest.matchers.should.Matchers
   * from `CausticsStats`. It measures exactly what the fix changes — whether photons reach the
   * separated objects — and is immune to the confound that a fixed photon budget split across N
   * targets leaves total deposited energy roughly constant (each caustic just gets dimmer). Adding a
-  * second, well-separated sphere must NOT collapse the refraction rate:
+  * second, well-separated sphere must NOT collapse the refraction rate.
   *
-  *   Old (merged target): two-sphere refractions ≈ 5.5k vs single-sphere ≈ 72k (photons aimed at
-  *   the gap miss both spheres) → FAILS.
-  *   New (per-instance): two-sphere refractions ≈ 220k ≈ single-sphere 219k → PASSES.
-  *
-  * Uses a POINT light: per-instance emission lives in `emitPointPhoton`; the directional emitter
-  * still aims at the single merged target, so a directional light would exercise the unchanged path
-  * and detect nothing.
+  * Checked for both light types — per-instance targeting lives in both `emitPointPhoton` and
+  * `emitDirectionalPhoton`:
+  *   Point, old merged: two-sphere ≈ 5.5k vs single ≈ 72k → collapses. New: ≈ 220k ≈ 219k.
+  *   Directional, old merged: two-sphere photons spread over the merged bounding disk mostly miss
+  *   the separated spheres. New: each photon is aimed at one sphere's own disk.
   */
 class MultiObjectCausticsSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -53,7 +51,10 @@ class MultiObjectCausticsSuite extends AnyFlatSpec with Matchers with RendererFi
   private val leftSphere  = sphereTransform(-sphereSeparation, 0f, 0f, sphereRadius)
   private val rightSphere = sphereTransform(sphereSeparation, 0f, 0f, sphereRadius)
 
-  private def setupSceneBase(): Unit =
+  private val pointLight: Light = Light.Point(Vector[3](0.0f, 4.0f, 0.0f), intensity = 1.0f)
+  private val directionalLight: Light = Light.Directional(Vector[3](0.0f, -1.0f, 0.0f))
+
+  private def setupSceneBase(light: Light): Unit =
     renderer.clearPlanes()
     renderer.addPlane(1, positive = true, Const.defaultFloorPlaneY)
     renderer.setCamera(
@@ -62,28 +63,23 @@ class MultiObjectCausticsSuite extends AnyFlatSpec with Matchers with RendererFi
       Vector[3](0.0f, 1.0f, 0.0f),
       45.0f
     )
-    // Point light above the spheres: exercises the per-instance emitPointPhoton path.
-    renderer.setLights(Array(Light.Point(Vector[3](0.0f, 4.0f, 0.0f), intensity = 1.0f)))
+    renderer.setLights(Array(light))
 
   /** Photon refraction events for a caustics render of the given sphere instances. */
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  private def refractionEvents(instances: Array[Array[Float]]): Long =
+  private def refractionEvents(instances: Array[Array[Float]], light: Light): Long =
     renderer.clearAllInstances()
     instances.foreach(t => renderer.addSphereInstance(t, glassColor, Const.iorGlass))
-    setupSceneBase()
+    setupSceneBase(light)
     renderer.enableCaustics(photonsPerIter, causticIterations)
     renderer.renderWithStats(imageSize).get
     val stats = renderer.getCausticsStats
     if stats == null then fail("caustics produced no stats") // scalafix:ok DisableSyntax.null
     stats.refractionEvents
 
-  behavior of "Multi-object caustics (per-instance photon emission)"
-
-  it should "keep the photon-sphere hit rate when a second separated sphere is added" in:
-    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
-
-    val singleRefractions = refractionEvents(Array(leftSphere))
-    val twoRefractions = refractionEvents(Array(leftSphere, rightSphere))
+  private def assertHitRateRetained(light: Light): Unit =
+    val singleRefractions = refractionEvents(Array(leftSphere), light)
+    val twoRefractions = refractionEvents(Array(leftSphere, rightSphere), light)
 
     withClue(s"Single-sphere refraction events = $singleRefractions; a caustic must actually form. ") {
       singleRefractions should be > 0L
@@ -96,5 +92,15 @@ class MultiObjectCausticsSuite extends AnyFlatSpec with Matchers with RendererFi
     ) {
       twoRefractions.toDouble should be > (singleRefractions.toDouble * retainFraction)
     }
+
+  behavior of "Multi-object caustics (per-instance photon emission)"
+
+  it should "keep the photon-sphere hit rate when a second separated sphere is added (point light)" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    assertHitRateRetained(pointLight)
+
+  it should "keep the photon-sphere hit rate when a second separated sphere is added (directional)" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    assertHitRateRetained(directionalLight)
 
 end MultiObjectCausticsSuite
