@@ -263,6 +263,22 @@ git commit -m "test(caustics): lock PPM dispersive caustic chromatic deposit (co
 
 - [ ] **Step 1: Add a calibration probe test to read the current error**
 
+**Known finding (investigated 2026-07-11, do not re-derive):** `energyConservationError` is
+**not a physical energy-conservation check as currently defined**. `total_flux_deposited`
+accumulates a photon's *full* flux into *every* hit point matched in its 3×3×3 grid-cell
+neighborhood search (`caustics_ppm.cu` photon-deposit loop) — a raw, pre-normalization sum. The
+radiance kernel (`__raygen__caustics_radiance`) later divides by `π·R²·iterations` to get
+physical irradiance for *display*, but that normalization is never applied to the stats
+accumulator itself. `total_flux_emitted`, by contrast, is counted once per photon. So
+`deposited` over-counts `emitted` by roughly the average hit-point-matches-per-photon — observed
+**~628×** for the canonical scene. `total_flux_absorbed`/`total_flux_reflected` are per-photon
+(comparable to emitted); the mismatch is `deposited` alone. Zero other code consumes
+`energyConservationError`/`fresnelTransmission`/`totalFluxDeposited`, so recalibrating here has
+no other blast radius. Properly fixing this (normalizing `total_flux_deposited` at accumulation,
+matching the radiance kernel's convention) is real native design work, deferred to Sprint 35 —
+see Task 4a below. For Phase 1, treat the metric as a **regression guard on the raw ratio**, not
+a literal conservation check, and document that honestly in the constant's name/comment.
+
 ```scala
   it should "report a bounded, deterministic caustic energy-conservation error" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
@@ -272,14 +288,19 @@ git commit -m "test(caustics): lock PPM dispersive caustic chromatic deposit (co
     info(s"energyConservationError run A=${statsA.energyConservationError} B=${statsB.energyConservationError}")
     statsA.totalFluxEmitted should be > 0.0
     statsA.energyConservationError shouldBe statsB.energyConservationError +- 1e-6
-    statsA.energyConservationError should be < MaxEnergyConservationError
+    statsA.energyConservationError should be < MaxEnergyConservationErrorRatio
 ```
 
 Add near the other constants (top of the class):
 ```scala
-  // Calibrated in Step 2 from the observed error + headroom. Locks the accounting as a regression
-  // guard: emitted flux == deposited + absorbed + reflected (+ escaped, which inflates the error).
-  private val MaxEnergyConservationError: Double = 1.0
+  // NOT a physical energy-conservation bound. energyConservationError compares
+  // totalFluxDeposited (raw, un-normalized: full photon flux summed into EVERY matched hit point
+  // in the PPM density-estimate search, before the radiance kernel's pi*R^2*iterations division)
+  // against totalFluxEmitted (once per photon) -- apples to oranges by construction, not a shader
+  // bug. Observed ratio ~628x for the canonical scene. This ceiling is a REGRESSION GUARD on that
+  // raw ratio (catches future accounting drift), not a claim that energy is conserved. Proper fix
+  // (normalize total_flux_deposited at accumulation) tracked as Sprint 35 Task 4a.
+  private val MaxEnergyConservationErrorRatio: Double = 1.0
 ```
 
 - [ ] **Step 2: Run, read the printed error, calibrate the ceiling**
@@ -288,7 +309,7 @@ Run:
 ```bash
 sbt "testOnly io.github.lene.optix.caustics.CausticsCoverageSuite -- -z energy-conservation"
 ```
-Read the `info(...)` line for the actual `energyConservationError` E (deterministic across runs A/B). Set `MaxEnergyConservationError` to `E * 1.25` rounded to two significant figures (headroom so noise doesn't flake it, tight enough to catch a real accounting regression). Re-run; expect PASS. If A ≠ B (non-deterministic), that itself is a finding — STOP and investigate before locking.
+Read the `info(...)` line for the actual `energyConservationError` E (deterministic across runs A/B — expect ~628, confirming the known finding above). Set `MaxEnergyConservationErrorRatio` to `E * 1.25` rounded to a sane 2-3 significant figures (headroom so noise doesn't flake it, tight enough to catch a real accounting regression). Re-run; expect PASS. If A ≠ B (non-deterministic), that is a *new* finding — STOP and investigate before locking (do not assume it's the known ~628× issue).
 
 - [ ] **Step 3: Commit**
 
