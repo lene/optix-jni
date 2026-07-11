@@ -677,23 +677,20 @@ __device__ void emitDirectionalPhoton(
  * @param photon_origin Output: photon starting position (light position)
  * @param photon_dir Output: photon direction (normalized, toward sphere)
  */
-__device__ void emitPointPhoton(
-    const Light& light,
+// Aim a photon from a fixed origin at ONE refractive instance, chosen with probability
+// dOmega_i / sum(dOmega), and sample a direction inside that instance's cone. Shared by the point
+// light (origin = light position) and the area light (origin = a sampled point on the emitter disk).
+// The rnd(seed) draw order matches the pre-refactor emitPointPhoton exactly, so point and
+// directional caustics stay bit-identical.
+__device__ void aimPhotonFromOrigin(
+    const float3& photon_origin,
     unsigned int& seed,
-    float3& photon_origin,
     float3& photon_dir,
     float& emission_measure
 ) {
-    photon_origin = make_float3(
-        light.position[0],
-        light.position[1],
-        light.position[2]
-    );
-
-    // Per-instance emission (F-CAUSTICS-MULTITARGET): aim each photon at ONE refractive
-    // instance chosen with probability dOmega_i / sum(dOmega), instead of a single merged
-    // sphere spanning the gaps between objects. For a single object this reduces to the old
-    // behaviour (one target == that object). n == 0 falls back to the merged sphere.
+    // Per-instance emission (F-CAUSTICS-MULTITARGET): a single merged sphere spanning the gaps
+    // between objects would waste photons in the empty centre. For a single object this reduces to
+    // the old behaviour (one target == that object). n == 0 falls back to the merged sphere.
     const int n = params.caustics.num_caustic_targets;
 
     // Per-target cone solid angle; also the sampling weight. Overlapping cones double-count
@@ -770,6 +767,50 @@ __device__ void emitPointPhoton(
     // 1 / sum(dOmega), so each photon represents I * sum(dOmega) / N of the emitted power.
     // This makes deposited energy independent of the (arbitrary) per-target cone half-angles.
     emission_measure = sum_domega;
+}
+
+/**
+ * Emit a photon from a point light source toward the refractive geometry.
+ * Single origin at the light position -> a sharp caustic.
+ */
+__device__ void emitPointPhoton(
+    const Light& light,
+    unsigned int& seed,
+    float3& photon_origin,
+    float3& photon_dir,
+    float& emission_measure
+) {
+    photon_origin = make_float3(light.position[0], light.position[1], light.position[2]);
+    aimPhotonFromOrigin(photon_origin, seed, photon_dir, emission_measure);
+}
+
+/**
+ * Emit a photon from an area (disk) light toward the refractive geometry.
+ *
+ * Same per-instance cone aiming as the point light, but the origin is a uniformly sampled point on
+ * the emitter disk rather than a single position. Spreading the origins over the disk blurs the
+ * caustic into a soft penumbra with a lower peak (soft caustics), where a point light's single
+ * origin gives a sharp, high-peak caustic. The two extra rnd() draws that sample the disk shift the
+ * RNG stream, but area lights carry no caustic reference images, so nothing drifts.
+ */
+__device__ void emitAreaPhoton(
+    const Light& light,
+    unsigned int& seed,
+    float3& photon_origin,
+    float3& photon_dir,
+    float& emission_measure
+) {
+    const float3 disk_normal =
+        normalize(make_float3(light.normal[0], light.normal[1], light.normal[2]));
+    float3 disk_tangent, disk_bitangent;
+    createONB(disk_normal, disk_tangent, disk_bitangent);
+
+    const float2 disk_sample = sampleDisk(rnd(seed), rnd(seed));
+    photon_origin = make_float3(light.position[0], light.position[1], light.position[2])
+                  + disk_tangent * (disk_sample.x * light.radius)
+                  + disk_bitangent * (disk_sample.y * light.radius);
+
+    aimPhotonFromOrigin(photon_origin, seed, photon_dir, emission_measure);
 }
 
 /**
@@ -1070,6 +1111,8 @@ extern "C" __global__ void __raygen__photons() {
     float emission_measure = 0.0f;
     if (light.type == LightType::DIRECTIONAL) {
         emitDirectionalPhoton(light, seed, photon_origin, photon_dir, emission_measure);
+    } else if (light.type == LightType::AREA) {
+        emitAreaPhoton(light, seed, photon_origin, photon_dir, emission_measure);
     } else {
         emitPointPhoton(light, seed, photon_origin, photon_dir, emission_measure);
     }
