@@ -1,7 +1,7 @@
 import com.github.sbt.jni.build.CMakeWithoutVersionBug
 
 name := "optix-jni"
-version := "0.1.16"
+version := "0.1.17"
 scalaVersion := "3.8.3"
 
 enablePlugins(JniNative)

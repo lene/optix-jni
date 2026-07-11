@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17] - 2026-07-11
+
+Fix dead `CausticsStats.totalFluxReflected` (Sprint 33.11 / caustics coverage net).
+
+### Fixed
+
+- **`totalFluxReflected` was a dead stat**: declared in `OptiXData.h` ("Sum of Fresnel
+  reflection losses") and exposed through JNI, but no shader code path ever wrote it — always 0.
+  Found by a regression test (`CausticsCoverageSuite`) asserting the P2 Fresnel-reflect path
+  carries flux for a glass caustic. Now accumulates the expected Fresnel-reflected energy
+  (`F * flux`, summed raw across RGB channels — matching `totalFluxDeposited`/`totalFluxAbsorbed`/
+  `totalFluxEmitted`'s convention) at each partial-reflection interface, and the full flux at
+  total-internal-reflection interfaces. Stats-only: does not alter photon flux, direction, or
+  deposition, so rendered pixels are unchanged.
+
+### Added
+
+- `CausticsCoverageSuite` — regression tests locking four previously-unasserted caustic *deposit*
+  behaviors: tinted-glass caustic colour, reflective-flux presence (found the bug above),
+  PPM dispersive chromatic deposit, and a bounded/deterministic energy-conservation-ratio
+  regression guard (documented as a raw-ratio check, not a physical conservation claim — see
+  `CausticsStats.energyConservationError`'s known normalization limitation, tracked separately).
+
 ## [0.1.16] - 2026-07-11
 
 Soft caustics from area lights (Sprint 33.11 / F-CAUSTICS-AREA).
@@ -233,6 +256,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.17]: https://github.com/lene/optix-jni/compare/0.1.16...0.1.17
 [0.1.16]: https://github.com/lene/optix-jni/compare/0.1.15...0.1.16
 [0.1.15]: https://github.com/lene/optix-jni/compare/0.1.14...0.1.15
 [0.1.14]: https://github.com/lene/optix-jni/compare/0.1.13...0.1.14
