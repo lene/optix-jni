@@ -983,8 +983,13 @@ extern "C" __global__ void __closesthit__photon() {
 
     float3 new_dir;
     if (sin_theta_t_sq > 1.0f) {
-        // Total internal reflection — all energy reflects.
-        if (params.caustics.stats) atomicAdd(&params.caustics.stats->tir_events, 1ULL);
+        // Total internal reflection — all energy reflects (fresnel = 1).
+        if (params.caustics.stats) {
+            atomicAdd(&params.caustics.stats->tir_events, 1ULL);
+            const float reflected_luminance = (flux.x + flux.y + flux.z) / 3.0f;
+            atomicAdd(&params.caustics.stats->total_flux_reflected,
+                      static_cast<double>(reflected_luminance));
+        }
         new_dir = reflect_dir;
     } else {
         const float cos_theta_t = sqrtf(1.0f - sin_theta_t_sq);
@@ -997,6 +1002,18 @@ extern "C" __global__ void __closesthit__photon() {
         const float r_perp = (n1 * cos_theta_i - n2 * cos_theta_t)
                            / (n1 * cos_theta_i + n2 * cos_theta_t);
         const float fresnel = 0.5f * (r_parl * r_parl + r_perp * r_perp);
+
+        // Account the expected Fresnel-reflected energy at this interface (F * flux) as a
+        // reflection-loss diagnostic, independent of the Russian-roulette outcome below — which
+        // carries the photon's full flux either way, so the reflected energy is only well-defined
+        // in expectation over the photon population. This populates total_flux_reflected, which was
+        // previously declared and JNI-exposed but never written (always 0). Stats-only: does not
+        // alter the photon's flux, direction, or deposition, so rendered output is unchanged.
+        if (params.caustics.stats) {
+            const float reflected_luminance = fresnel * (flux.x + flux.y + flux.z) / 3.0f;
+            atomicAdd(&params.caustics.stats->total_flux_reflected,
+                      static_cast<double>(reflected_luminance));
+        }
 
         // P2: Russian-roulette split — reflect with probability F, refract otherwise, and
         // carry the photon's full flux either way (no (1-F) weighting). This conserves
