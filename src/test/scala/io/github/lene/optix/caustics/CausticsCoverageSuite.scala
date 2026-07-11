@@ -109,4 +109,21 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
       stats.totalFluxReflected should be > 0.0
     }
 
+  it should "spread the caustic chromatically when dispersion is on (PPM spectral deposit)" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    val baseColor = Color(0.95f, 0.95f, 1.0f, 0.5f)
+    val plain = Material(baseColor, ior = Const.iorGlass, dispersion = 0.0f)
+    val dispersive = Material(baseColor, ior = Const.iorGlass, dispersion = 1.0f)
+
+    val (pr, pg, pb) = causticChannelDelta(plain)
+    val plainSpread = math.max(pr, math.max(pg, pb)) - math.min(pr, math.min(pg, pb))
+
+    val (dr, dg, db) = causticChannelDelta(dispersive)
+    val dispSpread = math.max(dr, math.max(dg, db)) - math.min(dr, math.min(dg, db))
+
+    withClue(s"caustic channel spread: dispersion-off=$plainSpread dispersion-on=$dispSpread; " +
+      "the dispersive photon caustic must be more chromatic than the achromatic one. ") {
+      dispSpread should be > plainSpread
+    }
+
 end CausticsCoverageSuite
