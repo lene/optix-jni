@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16] - 2026-07-11
+
+Soft caustics from area lights (Sprint 33.11 / F-CAUSTICS-AREA).
+
+### Added
+
+- **Area-light photon emission** (`emitAreaPhoton`): an `AREA` light now emits caustic photons from
+  uniformly sampled points on its emitter disk instead of a single origin. Spreading the origins
+  over the disk blurs the caustic into a soft, lower-peak penumbra — a point light's single origin
+  gives a sharp caustic. Reuses the per-instance solid-angle cone aiming shared with the point light
+  (extracted into `aimPhotonFromOrigin`), so multi-object targeting works for area lights too. Area
+  lights were already plumbed end-to-end for soft shadows; this closes the caustics path. Before
+  this, an `AREA` light fell through to the point-light emitter and produced a hard caustic.
+- `AreaLightCausticsSuite` — regression test: at matched position/intensity/target an area light's
+  peak caustic brightness (`CausticsStats.maxCausticBrightness`) must sit below the point light's,
+  i.e. the caustic is measurably softer.
+
+### Changed
+
+- **Refactor (no behaviour change for point/directional):** the point light's per-instance target
+  selection + cone sampling moved into `aimPhotonFromOrigin`, called by both `emitPointPhoton` and
+  `emitAreaPhoton`. The `rnd()` draw order is preserved, so point and directional caustics are
+  bit-identical to 0.1.15.
+
 ## [0.1.15] - 2026-07-11
 
 Per-instance photon emission for correct multi-object caustics (Sprint 33.11 / F-CAUSTICS-MULTITARGET).
@@ -209,6 +233,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.16]: https://github.com/lene/optix-jni/compare/0.1.15...0.1.16
 [0.1.15]: https://github.com/lene/optix-jni/compare/0.1.14...0.1.15
 [0.1.14]: https://github.com/lene/optix-jni/compare/0.1.13...0.1.14
 [0.1.13]: https://github.com/lene/optix-jni/compare/0.1.12...0.1.13
