@@ -18,7 +18,7 @@
 - `CausticsStats` fields available: `refractionEvents`, `tirEvents`, `photonsDeposited`, `hitPointsWithFlux`, `totalFluxEmitted`, `totalFluxDeposited`, `totalFluxAbsorbed`, `totalFluxReflected`, `maxCausticBrightness`, `avgFloorBrightness`; derived `energyConservationError: Double`.
 - `renderer.renderWithStats(imageSize).get: RenderResult`; `RenderResult.image: Array[Byte]` is row-major RGBA8, length `width*height*4`.
 - `ImageValidation.getRGBAt(imageData: Array[Byte], size: ImageSize, x: Int, y: Int): RGB` where `RGB(r: Int, g: Int, b: Int)`.
-- `TestUtilities.Region(x0,y0,x1,y1)` and `TestUtilities.Region.bottomCenter(size: ImageSize, fraction: Double = 0.25): Region`.
+- Proven-visible caustic framing (mirror `CausticsReferenceSuite.ReferenceScene`): radius-1 glass sphere at origin, floor at `Const.defaultFloorPlaneY`, **directional** light `(0,-1,0)` at **intensity 500** (a dim light quantizes the caustic to 0 in 8-bit), camera eye `(0,4,8)` look-at origin, up `(0,-1,0)` (inverted), FOV 45.
 - menger CLI: object color `color=#RRGGBB`; material presets include `glass, glass-dispersive, diamond-dispersive, chrome, metal`; caustics via `--caustics --caustics-photons N --caustics-iterations M`; lights `point:x,y,z:intensity`; floor `--plane y:-2`.
 - menger repo policy: every rendering feature ships a headless integration test **and** a manual scene; reference-image diffs resolved in the same commit; verify determinism (run-to-run identical) before committing references.
 - Reflective caustic is the Fresnel-reflected photon component off refractive glass (caustic targets are IOR > 1.05 only), so it is asserted at unit level via `totalFluxReflected` and does **not** get a standalone menger scene.
@@ -47,7 +47,6 @@ import io.github.lene.optix.RenderResult
 import menger.common.Color
 import menger.common.Const
 import menger.common.ImageSize
-import menger.common.Light
 import menger.common.Material
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
@@ -63,30 +62,37 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
     sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
 
   private val imageSize: ImageSize = ImageSize(200, 150)
-  private val sphereRadius = 0.5f
+  private val sphereRadius = 1.0f
   private val photonsPerIter = 100000
   private val causticIterations = 4
-  private val pointLightPos: Vector[3] = Vector[3](0.0f, 4.0f, 0.0f)
+  // A dim light makes the caustic quantize to 0 in 8-bit RGBA (on/off delta identically zero).
+  // 500 is the proven-visible value from CausticsReferenceSuite.ReferenceScene.
+  private val lightIntensity = 500.0f
 
   // 4x3 row-major transform: uniform scale r, centered at origin.
   private val sphereTransform: Array[Float] =
     Array(sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f)
 
-  // Scene: one glass sphere at the origin over a floor, point light overhead, camera aimed down at
-  // the floor patch below the sphere so the caustic is in frame. `setCamera`'s 2nd arg is a
-  // look-at POINT (not a direction) — aim it at the floor below the sphere.
+  // Known-good VISIBLE-caustic framing, copied verbatim from CausticsReferenceSuite.ReferenceScene
+  // (which asserts causticBrightness > 0.01 in the rendered image, proving renderWithStats
+  // composites the caustic into the pixels): radius-1 glass sphere over the floor, directional light
+  // straight down at intensity 500, camera set back and up looking at the sphere centre, up-vector
+  // inverted for correct orientation. `setCamera`'s 2nd arg is a look-at POINT;
+  // `setLight(direction, intensity)` is a DIRECTIONAL light. This exact framing is required — an
+  // invented camera or a dim light leaves the caustic out of frame / below 8-bit quantization,
+  // making the on/off delta identically zero.
   private def setupGlassScene(material: Material): Unit =
     renderer.clearAllInstances()
     renderer.addSphereInstance(sphereTransform, material)
     renderer.clearPlanes()
     renderer.addPlane(1, positive = true, Const.defaultFloorPlaneY)
     renderer.setCamera(
-      Vector[3](0.0f, 3.0f, 3.0f),   // eye
-      Vector[3](0.0f, -1.8f, 0.0f),  // look-at POINT: the floor below the sphere
-      Vector[3](0.0f, 1.0f, 0.0f),   // up
+      Vector[3](0.0f, 4.0f, 8.0f),    // eye
+      Vector[3](0.0f, 0.0f, 0.0f),    // look-at the sphere centre
+      Vector[3](0.0f, -1.0f, 0.0f),   // up (inverted for correct orientation, per ReferenceScene)
       45.0f
     )
-    renderer.setLights(Array(Light.Point(pointLightPos, intensity = 1.0f)))
+    renderer.setLight(Vector[3](0.0f, -1.0f, 0.0f), lightIntensity)  // directional down
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   private def renderGlassCaustic(material: Material): (CausticsStats, RenderResult) =
@@ -125,7 +131,7 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
 
   it should "tint the deposited caustic toward a red glass's colour" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
-    val redGlass = Material(Color(1.0f, 0.2f, 0.2f, 0.05f), ior = Const.iorGlass)
+    val redGlass = Material(Color(1.0f, 0.2f, 0.2f, 0.5f), ior = Const.iorGlass)
     val (dr, dg, db) = causticChannelDelta(redGlass)
     withClue(s"caustic contribution (on−off) R=$dr G=$dg B=$db; a red glass's caustic must add " +
       "more red than green/blue, and must actually be present (R delta > 0). ") {
@@ -170,7 +176,7 @@ git commit -m "test(caustics): lock tinted-glass caustic colour (coverage net)"
 ```scala
   it should "deposit some reflected-photon flux for a glass caustic (reflective path active)" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
-    val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.05f), ior = Const.iorGlass)
+    val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass)
     val (stats, _) = renderGlassCaustic(clearGlass)
     withClue(s"totalFluxReflected=${stats.totalFluxReflected}; the P2 Fresnel-reflect path must " +
       "carry non-zero flux (photons Russian-roulette between reflect and refract). ") {
@@ -212,7 +218,7 @@ Dispersion tints the deposited caustic chromatically. Using the caustic contribu
 ```scala
   it should "spread the caustic chromatically when dispersion is on (PPM spectral deposit)" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
-    val baseColor = Color(0.95f, 0.95f, 1.0f, 0.05f)
+    val baseColor = Color(0.95f, 0.95f, 1.0f, 0.5f)
     val plain = Material(baseColor, ior = Const.iorGlass, dispersion = 0.0f)
     val dispersive = Material(baseColor, ior = Const.iorGlass, dispersion = 1.0f)
 
@@ -260,7 +266,7 @@ git commit -m "test(caustics): lock PPM dispersive caustic chromatic deposit (co
 ```scala
   it should "report a bounded, deterministic caustic energy-conservation error" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
-    val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.05f), ior = Const.iorGlass)
+    val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass)
     val (statsA, _) = renderGlassCaustic(clearGlass)
     val (statsB, _) = renderGlassCaustic(clearGlass)
     info(s"energyConservationError run A=${statsA.energyConservationError} B=${statsB.energyConservationError}")
