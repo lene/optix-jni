@@ -140,7 +140,8 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
     val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass)
     val (statsA, _) = renderGlassCaustic(clearGlass)
     val (statsB, _) = renderGlassCaustic(clearGlass)
-    info(s"energyConservationError run A=${statsA.energyConservationError} B=${statsB.energyConservationError}")
+    info(s"energyConservationError run A=${statsA.energyConservationError} " +
+      s"B=${statsB.energyConservationError}")
     statsA.totalFluxEmitted should be > 0.0
     statsA.energyConservationError shouldBe statsB.energyConservationError +- 1e-6
     statsA.energyConservationError should be < MaxEnergyConservationErrorRatio

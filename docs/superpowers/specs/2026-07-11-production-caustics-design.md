@@ -72,9 +72,12 @@ in the raw buffer while still asserting the qualitative behavior.
 
 - `test_colored_glass_caustics` (integration) + a manual colored-glass caustic scene — red/colored
   glass casting a tinted floor caustic.
-- `test_reflective_caustics` (integration) + a manual reflective-caustic scene.
 - Dispersion already has `test_spectral_dispersion` (integration); **add a manual PPM-dispersive
   caustic scene** if none exists, for visual parity.
+- **Revised during implementation:** reflective caustics have no standalone menger scene. Caustic
+  targets are refractive-only (IOR > 1.05), so a reflective caustic is the Fresnel-reflect
+  component *of* a glass caustic, not an independently renderable scene — it is asserted at unit
+  level only (`totalFluxReflected > 0`, coverage suite Task 2).
 
 New integration references generated with `--update-references`, then re-verified for determinism
 (run-to-run identical) before commit, following the Phase 0 discipline.
@@ -97,7 +100,8 @@ full-spectral, SPPM, and view-importance emission are future Tier-2/3 items, not
 ## Success criteria
 
 - Four new optix-jni unit assertions green (or a bug found, fixed, and guarded).
-- `test_colored_glass_caustics` + `test_reflective_caustics` in the integration suite with
-  deterministic references; manual scenes for colored, reflective, and PPM-dispersive caustics.
+- `test_colored_glass_caustics` + `test_dispersive_caustics` in the integration suite with
+  deterministic references; manual scenes for colored and PPM-dispersive caustics. Reflective
+  caustic coverage is unit-level only (see revision note above).
 - Both gates green. No rendering-behavior change to existing scenes (this is tests-only, so
   existing reference images must be **unchanged**).
