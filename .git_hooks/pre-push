@@ -85,11 +85,15 @@ sbt compile || STATUS=1
 # Tests (GPU tests auto-skip via assume() when GPU unavailable)
 # ---------------------------------------------------------------------------
 echo "=== Tests ==="
-sbt test 2>&1 | tee /tmp/optix-jni-pre-push-test.log || STATUS=1
-if [ $STATUS -gt 0 ]; then
-  echo "Tests: ${RED_TEXT}FAILED${RESET_TEXT} (see /tmp/optix-jni-pre-push-test.log)"
-else
+# NB: `sbt test | tee` returns tee's exit code (0), not sbt's — a pipe here would
+# silently pass on failing tests. /bin/sh (dash) has no pipefail/PIPESTATUS, so
+# capture sbt's real exit via a marker line that survives the tee.
+{ sbt test 2>&1; echo "SBT_TEST_RC=$?"; } | tee /tmp/optix-jni-pre-push-test.log
+if grep -q '^SBT_TEST_RC=0$' /tmp/optix-jni-pre-push-test.log; then
   echo "Tests: ${GREEN_TEXT}OK${RESET_TEXT}"
+else
+  STATUS=1
+  echo "Tests: ${RED_TEXT}FAILED${RESET_TEXT} (see /tmp/optix-jni-pre-push-test.log)"
 fi
 
 # ---------------------------------------------------------------------------
