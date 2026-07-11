@@ -77,10 +77,13 @@ namespace RayTracingConstants {
     constexpr int DEFAULT_CAUSTICS_ITERATIONS = 10;  // Number of PPM iterations
     constexpr float DEFAULT_INITIAL_RADIUS = 1.0f;   // Initial photon gather radius
     // 33.8 auto-tuning: when the caller leaves the gather radius unset (<= 0 sentinel), derive it
-    // from the refractive geometry's bounding radius so bare --caustics scales with object size
-    // instead of assuming ~unit-sized geometry. Factor chosen so a unit sphere reproduces the
-    // validated gather radius; calibrated against the pbrt caustic-delta harness.
-    constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.6f;
+    // from the refractive geometry's per-instance bounding radius so bare --caustics scales with
+    // object size instead of assuming ~unit-sized geometry. Recalibrated (Sprint 33.11) against
+    // the corrected, region-isolated pbrt caustic-delta metric: the previous 0.6 over-smoothed
+    // the caustic (region correlation ~0.59); ~0.1*object_radius maximises the match (~0.73, the
+    // primary-ray structural ceiling) for a unit sphere without going so small that the photon
+    // density leaves the gather noisy.
+    constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.1f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
     constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
@@ -396,9 +399,20 @@ struct CausticsParams {
     float alpha;                     // Radius reduction factor (0.7 typical)
     int current_iteration;           // Current iteration (for RNG seeding)
 
-    // Target geometry bounding sphere for photon emission aiming
+    // Merged bounding sphere over all refractive geometry. Used for the spatial-hash grid
+    // bounds (P8) and the auto gather radius (33.8). NOT used for photon aiming when a
+    // per-instance target list is present (see below).
     float caustic_target_center[3];  // Bounding sphere center of refractive geometry
     float caustic_target_radius;     // Bounding sphere radius of refractive geometry
+
+    // Per-instance emission targets (F-CAUSTICS-MULTITARGET). One bounding sphere per
+    // refractive instance so photons aim at real geometry instead of a single merged sphere
+    // that spans the empty gaps between separated objects (which wastes most photons). Each
+    // photon picks a target with probability dOmega_i / sum(dOmega) and carries flux
+    // I * sum(dOmega) / N. caustic_targets packs [cx,cy,cz,radius] per target.
+    static constexpr int MAX_CAUSTIC_TARGETS = 16;
+    float caustic_targets[MAX_CAUSTIC_TARGETS * 4];  // per target: center xyz + radius (raw)
+    int num_caustic_targets;                          // 0 => use merged target above
 
     // GPU buffers (set by host before launch)
     HitPoint* hit_points;            // Array of hit points on diffuse surfaces

@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2026-07-11
+
+Per-instance photon emission for correct multi-object caustics (Sprint 33.11 / F-CAUSTICS-MULTITARGET).
+
+### Changed
+
+- **Multi-object photon emission** (both point and directional lights): photons now aim at one
+  bounding target **per refractive instance** instead of a single merged sphere spanning all of
+  them. The old merged target sat in the empty gap between separated objects, so most photons flew
+  through the middle and never refracted, yielding weak, mispositioned caustics for N > 1 objects.
+  `emitPointPhoton` picks a target with probability ΔΩ_i / ΣΔΩ (flux Φ = I·ΣΔΩ/N);
+  `emitDirectionalPhoton` picks a target's emission disk with probability A_i / ΣA (flux
+  Φ = E·ΣA/N). Overlapping cones/disks double-count the overlap (documented approximation,
+  negligible for separated objects). A single refractive object is **bit-identical** to the
+  pre-multitarget emission (the CDF draw is guarded on N > 1, so no RNG-stream shift).
+- **Auto gather radius now scales with per-instance object size** (mean of the per-instance
+  target radii) instead of the merged bounding radius. For several separated objects the merged
+  span is far larger than any one object, so the old auto radius over-smoothed each caustic into
+  a blur; the per-instance mean keeps multi-object caustics as sharp as the single-object case.
+- **`CAUSTICS_AUTO_RADIUS_FACTOR` recalibrated 0.6 -> 0.1.** The 0.6 was tuned against a
+  measurement-buggy caustic-delta metric (a vertically-flipped mask + far-floor contamination
+  overstated agreement). Against the corrected region-isolated metric, 0.6 over-smoothed the
+  caustic (region correlation vs pbrt ~0.59); ~0.1*object_radius maximises the match (~0.73, the
+  primary-ray structural ceiling) without the gather going noisy from low photon density.
+
+### Added
+
+- `CausticsParams.caustic_targets[MAX_CAUSTIC_TARGETS*4]` + `num_caustic_targets` — per-instance
+  emission target list (packed center xyz + radius). `MAX_CAUSTIC_TARGETS = 16`; scenes with
+  more refractive instances fall back to the merged single target. The merged
+  `caustic_target_center/radius` remain for grid bounds + auto radius.
+- `MultiObjectCausticsSuite` — regression test locking in the fix for **both** light types. Two
+  separated glass spheres must retain the single-sphere photon-refraction rate (~1×); the pre-fix
+  merged target collapses it (point light to < 10%, directional to ~13%). Asserts on
+  `CausticsStats.refractionEvents` (immune to the fixed-photon-budget confound where total
+  deposited energy stays ~constant while peaks halve).
+
 ## [0.1.14] - 2026-07-06
 
 Shadow rays enabled by default + Fresnel-based dielectric shadow attenuation (Sprint 33).
@@ -172,6 +209,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.15]: https://github.com/lene/optix-jni/compare/0.1.14...0.1.15
 [0.1.14]: https://github.com/lene/optix-jni/compare/0.1.13...0.1.14
 [0.1.13]: https://github.com/lene/optix-jni/compare/0.1.12...0.1.13
 [0.1.12]: https://github.com/lene/optix-jni/compare/0.1.11...0.1.12
