@@ -986,9 +986,9 @@ extern "C" __global__ void __closesthit__photon() {
         // Total internal reflection — all energy reflects (fresnel = 1).
         if (params.caustics.stats) {
             atomicAdd(&params.caustics.stats->tir_events, 1ULL);
-            const float reflected_luminance = (flux.x + flux.y + flux.z) / 3.0f;
+            const float reflected_flux_sum = flux.x + flux.y + flux.z;
             atomicAdd(&params.caustics.stats->total_flux_reflected,
-                      static_cast<double>(reflected_luminance));
+                      static_cast<double>(reflected_flux_sum));
         }
         new_dir = reflect_dir;
     } else {
@@ -1007,12 +1007,14 @@ extern "C" __global__ void __closesthit__photon() {
         // reflection-loss diagnostic, independent of the Russian-roulette outcome below — which
         // carries the photon's full flux either way, so the reflected energy is only well-defined
         // in expectation over the photon population. This populates total_flux_reflected, which was
-        // previously declared and JNI-exposed but never written (always 0). Stats-only: does not
-        // alter the photon's flux, direction, or deposition, so rendered output is unchanged.
+        // previously declared and JNI-exposed but never written (always 0). Sums the RGB channels
+        // raw, matching total_flux_deposited/absorbed/emitted, so the four total_flux_* stats stay
+        // directly comparable (e.g. for an energy-conservation ratio). Stats-only: does not alter
+        // the photon's flux, direction, or deposition, so rendered output is unchanged.
         if (params.caustics.stats) {
-            const float reflected_luminance = fresnel * (flux.x + flux.y + flux.z) / 3.0f;
+            const float reflected_flux_sum = fresnel * (flux.x + flux.y + flux.z);
             atomicAdd(&params.caustics.stats->total_flux_reflected,
-                      static_cast<double>(reflected_luminance));
+                      static_cast<double>(reflected_flux_sum));
         }
 
         // P2: Russian-roulette split — reflect with probability F, refract otherwise, and
