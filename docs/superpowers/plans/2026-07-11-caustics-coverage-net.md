@@ -276,7 +276,8 @@ accumulator itself. `total_flux_emitted`, by contrast, is counted once per photo
 `energyConservationError`/`fresnelTransmission`/`totalFluxDeposited`, so recalibrating here has
 no other blast radius. Properly fixing this (normalizing `total_flux_deposited` at accumulation,
 matching the radiance kernel's convention) is real native design work, deferred to Sprint 35 —
-see Task 4a below. For Phase 1, treat the metric as a **regression guard on the raw ratio**, not
+see menger Sprint 35 Task 35.12 (`docs/sprints/SPRINT35.md`). For Phase 1, treat the metric as a
+**regression guard on the raw ratio**, not
 a literal conservation check, and document that honestly in the constant's name/comment.
 
 ```scala
@@ -299,7 +300,7 @@ Add near the other constants (top of the class):
   // against totalFluxEmitted (once per photon) -- apples to oranges by construction, not a shader
   // bug. Observed ratio ~628x for the canonical scene. This ceiling is a REGRESSION GUARD on that
   // raw ratio (catches future accounting drift), not a claim that energy is conserved. Proper fix
-  // (normalize total_flux_deposited at accumulation) tracked as Sprint 35 Task 4a.
+  // (normalize total_flux_deposited at accumulation) tracked as menger Sprint 35 Task 35.12.
   private val MaxEnergyConservationErrorRatio: Double = 1.0
 ```
 

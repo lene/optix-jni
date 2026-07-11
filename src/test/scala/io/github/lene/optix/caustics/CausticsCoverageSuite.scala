@@ -35,7 +35,7 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
   // against totalFluxEmitted (once per photon) -- apples to oranges by construction, not a shader
   // bug. Observed ratio ~628x for the canonical scene. This ceiling is a REGRESSION GUARD on that
   // raw ratio (catches future accounting drift), not a claim that energy is conserved. Proper fix
-  // (normalize total_flux_deposited at accumulation) tracked as Sprint 35 Task 4a.
+  // (normalize total_flux_deposited at accumulation) tracked as menger Sprint 35 Task 35.12.
   private val MaxEnergyConservationErrorRatio: Double = 780.0
 
   // 4x3 row-major transform: uniform scale r, centered at origin.
