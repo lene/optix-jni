@@ -29,6 +29,15 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
   // 500 is the proven-visible value from CausticsReferenceSuite.ReferenceScene.
   private val lightIntensity = 500.0f
 
+  // NOT a physical energy-conservation bound. energyConservationError compares
+  // totalFluxDeposited (raw, un-normalized: full photon flux summed into EVERY matched hit point
+  // in the PPM density-estimate search, before the radiance kernel's pi*R^2*iterations division)
+  // against totalFluxEmitted (once per photon) -- apples to oranges by construction, not a shader
+  // bug. Observed ratio ~628x for the canonical scene. This ceiling is a REGRESSION GUARD on that
+  // raw ratio (catches future accounting drift), not a claim that energy is conserved. Proper fix
+  // (normalize total_flux_deposited at accumulation) tracked as Sprint 35 Task 4a.
+  private val MaxEnergyConservationErrorRatio: Double = 780.0
+
   // 4x3 row-major transform: uniform scale r, centered at origin.
   private val sphereTransform: Array[Float] =
     Array(sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f)
@@ -125,5 +134,15 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
       "the dispersive photon caustic must be more chromatic than the achromatic one. ") {
       dispSpread should be > plainSpread
     }
+
+  it should "report a bounded, deterministic caustic energy-conservation error" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass)
+    val (statsA, _) = renderGlassCaustic(clearGlass)
+    val (statsB, _) = renderGlassCaustic(clearGlass)
+    info(s"energyConservationError run A=${statsA.energyConservationError} B=${statsB.energyConservationError}")
+    statsA.totalFluxEmitted should be > 0.0
+    statsA.energyConservationError shouldBe statsB.energyConservationError +- 1e-6
+    statsA.energyConservationError should be < MaxEnergyConservationErrorRatio
 
 end CausticsCoverageSuite
