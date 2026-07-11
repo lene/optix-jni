@@ -172,6 +172,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.14]: https://github.com/lene/optix-jni/compare/0.1.13...0.1.14
 [0.1.13]: https://github.com/lene/optix-jni/compare/0.1.12...0.1.13
 [0.1.12]: https://github.com/lene/optix-jni/compare/0.1.11...0.1.12
 [0.1.9]: https://github.com/lene/optix-jni/compare/0.1.8...0.1.9
