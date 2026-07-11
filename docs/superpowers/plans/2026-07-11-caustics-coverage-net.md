@@ -33,7 +33,7 @@
 - Create: `src/test/scala/io/github/lene/optix/caustics/CausticsCoverageSuite.scala`
 
 **Interfaces:**
-- Produces: `CausticsCoverageSuite` with private helpers `renderGlassCaustic(material: Material): (CausticsStats, RenderResult)` and `regionChannelMeans(result: RenderResult, region: TestUtilities.Region): (Double, Double, Double)`, reused by Tasks 2–4.
+- Produces: `CausticsCoverageSuite` with private helpers `setupGlassScene(material: Material): Unit`, `renderGlassCaustic(material: Material): (CausticsStats, RenderResult)` (caustics on, returns stats), and `causticChannelDelta(material: Material): (Double, Double, Double)` (whole-image on−off per channel), reused by Tasks 2–4.
 
 - [ ] **Step 1: Write the suite with the tinted-glass test**
 
@@ -42,7 +42,6 @@ package io.github.lene.optix.caustics
 
 import io.github.lene.optix.RendererFixture
 import io.github.lene.optix.ImageValidation
-import io.github.lene.optix.TestUtilities
 import io.github.lene.optix.CausticsStats
 import io.github.lene.optix.RenderResult
 import menger.common.Color
@@ -73,67 +72,79 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
   private val sphereTransform: Array[Float] =
     Array(sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f)
 
-  // The caustic lands on the floor directly below the sphere -> lower-centre of the frame.
-  private val causticRegion: TestUtilities.Region =
-    TestUtilities.Region.bottomCenter(imageSize, fraction = 0.3)
-
-  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  private def renderGlassCaustic(material: Material): (CausticsStats, RenderResult) =
+  // Scene: one glass sphere at the origin over a floor, point light overhead, camera aimed down at
+  // the floor patch below the sphere so the caustic is in frame. `setCamera`'s 2nd arg is a
+  // look-at POINT (not a direction) — aim it at the floor below the sphere.
+  private def setupGlassScene(material: Material): Unit =
     renderer.clearAllInstances()
     renderer.addSphereInstance(sphereTransform, material)
     renderer.clearPlanes()
     renderer.addPlane(1, positive = true, Const.defaultFloorPlaneY)
     renderer.setCamera(
-      Vector[3](0.0f, 3.0f, 3.0f),
-      Vector[3](0.0f, -1.0f, 0.0f),
-      Vector[3](0.0f, 1.0f, 0.0f),
+      Vector[3](0.0f, 3.0f, 3.0f),   // eye
+      Vector[3](0.0f, -1.8f, 0.0f),  // look-at POINT: the floor below the sphere
+      Vector[3](0.0f, 1.0f, 0.0f),   // up
       45.0f
     )
     renderer.setLights(Array(Light.Point(pointLightPos, intensity = 1.0f)))
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  private def renderGlassCaustic(material: Material): (CausticsStats, RenderResult) =
+    setupGlassScene(material)
     renderer.enableCaustics(photonsPerIter, causticIterations)
     val result = renderer.renderWithStats(imageSize).get
     val stats = renderer.getCausticsStats
     if stats == null then fail("caustics produced no stats") // scalafix:ok DisableSyntax.null
     (stats, result)
 
-  private def regionChannelMeans(
-      result: RenderResult,
-      region: TestUtilities.Region
-  ): (Double, Double, Double) =
+  private def wholeImageChannelMeans(result: RenderResult): (Double, Double, Double) =
     val pixels = for
-      y <- region.y0 until region.y1 if y >= 0 && y < imageSize.height
-      x <- region.x0 until region.x1 if x >= 0 && x < imageSize.width
+      y <- 0 until imageSize.height
+      x <- 0 until imageSize.width
     yield ImageValidation.getRGBAt(result.image, imageSize, x, y)
-    if pixels.isEmpty then (0.0, 0.0, 0.0)
-    else
-      (
-        pixels.map(_.r).sum.toDouble / pixels.length,
-        pixels.map(_.g).sum.toDouble / pixels.length,
-        pixels.map(_.b).sum.toDouble / pixels.length
-      )
+    (
+      pixels.map(_.r).sum.toDouble / pixels.length,
+      pixels.map(_.g).sum.toDouble / pixels.length,
+      pixels.map(_.b).sum.toDouble / pixels.length
+    )
+
+  /** Per-channel caustic contribution: whole-image mean(caustics on) − mean(caustics off) for the
+    * same scene. Everything but the photon deposit is identical between the two renders, so the
+    * delta isolates the caustic itself — no dependence on where it projects on screen. */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  private def causticChannelDelta(material: Material): (Double, Double, Double) =
+    setupGlassScene(material)
+    renderer.enableCaustics(photonsPerIter, causticIterations)
+    val (onR, onG, onB) = wholeImageChannelMeans(renderer.renderWithStats(imageSize).get)
+    setupGlassScene(material)
+    renderer.disableCaustics()
+    val (offR, offG, offB) = wholeImageChannelMeans(renderer.renderWithStats(imageSize).get)
+    (onR - offR, onG - offG, onB - offB)
 
   behavior of "Caustics deposit coverage net"
 
   it should "tint the deposited caustic toward a red glass's colour" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
     val redGlass = Material(Color(1.0f, 0.2f, 0.2f, 0.05f), ior = Const.iorGlass)
-    val (_, result) = renderGlassCaustic(redGlass)
-    val (rMean, gMean, bMean) = regionChannelMeans(result, causticRegion)
-    withClue(s"caustic region channel means R=$rMean G=$gMean B=$bMean; red glass must tint red. ") {
-      rMean should be > gMean
-      rMean should be > bMean
+    val (dr, dg, db) = causticChannelDelta(redGlass)
+    withClue(s"caustic contribution (on−off) R=$dr G=$dg B=$db; a red glass's caustic must add " +
+      "more red than green/blue, and must actually be present (R delta > 0). ") {
+      dr should be > 0.0
+      dr should be > dg
+      dr should be > db
     }
 
 end CausticsCoverageSuite
 ```
 
-- [ ] **Step 2: Run the test; confirm it passes AND the tint margin is real (non-vacuous)**
+- [ ] **Step 2: Run the test; confirm it passes AND the tint delta is real (non-vacuous)**
 
-Run (from `optix-jni/`, with the standard CUDA/OptiX env exported):
+Run (from `optix-jni/`, with the standard CUDA/OptiX env exported, via a wrapper script because a
+bare `sbt` token is rejected by a Bash hook):
 ```bash
 sbt "testOnly io.github.lene.optix.caustics.CausticsCoverageSuite"
 ```
-Expected: PASS. The `withClue` prints `R=… G=… B=…`; confirm R exceeds G and B by a clear, non-trivial margin (a red-tinted caustic). If R does **not** dominate, the tint is broken — STOP and apply systematic-debugging (do not weaken the assertion). If the margin is razor-thin, raise `causticIterations` to 6 and re-run so the guard is meaningful.
+Expected: PASS. The `withClue` prints `R=… G=… B=…` for the caustic contribution; confirm the R delta is clearly positive (caustic present) and exceeds G and B (red tint). If the R delta is ~0, the caustic is not in frame — STOP and report (adjust the camera look-at toward the floor and re-verify). If R does not dominate G/B, the tint is broken — STOP and apply systematic-debugging (do not weaken the assertion).
 
 - [ ] **Step 3: Commit**
 
@@ -192,11 +203,11 @@ git commit -m "test(caustics): lock reflective-caustic flux presence (coverage n
 - Modify: `src/test/scala/io/github/lene/optix/caustics/CausticsCoverageSuite.scala`
 
 **Interfaces:**
-- Consumes: `renderGlassCaustic`, `regionChannelMeans`, `causticRegion` from Task 1.
+- Consumes: `causticChannelDelta` from Task 1.
 
 - [ ] **Step 1: Add the dispersive-deposit test above `end CausticsCoverageSuite`**
 
-Dispersion tints the deposited caustic chromatically: the per-channel spread (max−min of the R,G,B region means) is larger with dispersion on than off. Same neutral glass, same seed path, only `dispersion` differs.
+Dispersion tints the deposited caustic chromatically. Using the caustic contribution (on−off) per channel isolates the caustic; its channel spread (max−min) is larger with dispersion on than off. Same neutral glass, only `dispersion` differs.
 
 ```scala
   it should "spread the caustic chromatically when dispersion is on (PPM spectral deposit)" in:
@@ -205,15 +216,13 @@ Dispersion tints the deposited caustic chromatically: the per-channel spread (ma
     val plain = Material(baseColor, ior = Const.iorGlass, dispersion = 0.0f)
     val dispersive = Material(baseColor, ior = Const.iorGlass, dispersion = 1.0f)
 
-    val (_, plainResult) = renderGlassCaustic(plain)
-    val (pr, pg, pb) = regionChannelMeans(plainResult, causticRegion)
+    val (pr, pg, pb) = causticChannelDelta(plain)
     val plainSpread = math.max(pr, math.max(pg, pb)) - math.min(pr, math.min(pg, pb))
 
-    val (_, dispResult) = renderGlassCaustic(dispersive)
-    val (dr, dg, db) = regionChannelMeans(dispResult, causticRegion)
+    val (dr, dg, db) = causticChannelDelta(dispersive)
     val dispSpread = math.max(dr, math.max(dg, db)) - math.min(dr, math.min(dg, db))
 
-    withClue(s"channel spread: dispersion-off=$plainSpread dispersion-on=$dispSpread; " +
+    withClue(s"caustic channel spread: dispersion-off=$plainSpread dispersion-on=$dispSpread; " +
       "the dispersive photon caustic must be more chromatic than the achromatic one. ") {
       dispSpread should be > plainSpread
     }
