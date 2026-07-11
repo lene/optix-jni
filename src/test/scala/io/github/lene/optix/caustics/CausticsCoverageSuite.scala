@@ -100,4 +100,13 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
       dr should be > db
     }
 
+  it should "deposit some reflected-photon flux for a glass caustic (reflective path active)" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass)
+    val (stats, _) = renderGlassCaustic(clearGlass)
+    withClue(s"totalFluxReflected=${stats.totalFluxReflected}; the P2 Fresnel-reflect path must " +
+      "carry non-zero flux (photons Russian-roulette between reflect and refract). ") {
+      stats.totalFluxReflected should be > 0.0
+    }
+
 end CausticsCoverageSuite
