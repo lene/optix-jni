@@ -605,19 +605,16 @@ Insert immediately after Task 2's probe-mode early-return block (so it only runs
                 __uint_as_float(optixGetPayload_1()),
                 __uint_as_float(optixGetPayload_2())
             );
+            // depositPhoton (:395-400) already increments stats->photons_deposited and
+            // stats->total_flux_deposited internally — no separate stats bump needed here.
             depositPhoton(hit_point, ray_dir, flux_in);
             optixSetPayload_9(2u | touched_bit_in);  // alive=false, deposited=true
         } else {
             optixSetPayload_9(touched_bit_in);       // alive=false, deposited=false
         }
-        if (params.caustics.stats) {
-            atomicAdd(&params.caustics.stats->photons_deposited, 0ULL);  // no-op: depositPhoton already counts
-        }
         return;
     }
 ```
-
-Remove the no-op stats line above (dead code) — it was left in to show the deposit counting already happens inside `depositPhoton` itself (`:395-400`), so no separate stats bump is needed here; delete that `if (params.caustics.stats) { ... }` block entirely from the snippet before committing.
 
 **Regression guard:** every existing reference scene's instances have `ior = 1.5` (glass) or higher — `hit_is_diffuse` is always false, so this branch is never taken and the existing refraction logic below (`:957` onward, unchanged) runs exactly as before.
 
