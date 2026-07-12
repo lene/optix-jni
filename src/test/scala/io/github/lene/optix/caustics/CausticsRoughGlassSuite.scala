@@ -1,7 +1,6 @@
 package io.github.lene.optix.caustics
 
 import io.github.lene.optix.RendererFixture
-import io.github.lene.optix.ImageValidation
 import io.github.lene.optix.CausticsStats
 import menger.common.Color
 import menger.common.Const
@@ -14,11 +13,10 @@ import org.scalatest.matchers.should.Matchers
 /** Phase 3: GGX-VNDF rough refraction. roughness is read nowhere in the caustics path before
   * this phase, so a rough-glass caustic and a smooth-glass caustic are pixel-for-pixel identical
   * pre-implementation (same seeds, same physics, roughness silently ignored). Post-implementation,
-  * the rough caustic must spread its energy over a wider area — measured as a LOWER standard
-  * deviation of caustic-ROI pixel brightness than the smooth case (spread energy = flatter
-  * distribution), not a raw pixel diff (CausticsWallReceiverSuite's own comment on ~10%
-  * cross-scene composition noise applies here too; stddev of the SAME scene's own pixels sidesteps
-  * that entirely, since both renders share identical geometry/camera/light).
+  * the rough caustic must spread its energy over a wider area — measured as more hit points
+  * receiving nonzero photon flux than the smooth case (same total photon energy spread over more
+  * hit points), using the deterministic hitPointsWithFlux counter from the native caustics
+  * pipeline (counts how many scene hit points accumulate nonzero photon flux after all PPM iterations).
   */
 class CausticsRoughGlassSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -48,33 +46,26 @@ class CausticsRoughGlassSuite extends AnyFlatSpec with Matchers with RendererFix
     renderer.setLight(Vector[3](0.0f, -1.0f, 0.0f), lightIntensity)
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  private def causticRoiStddev(material: Material): Double =
+  private def hitPointsWithFlux(material: Material): Long =
     setupScene(material)
     renderer.enableCaustics(photonsPerIter, causticIterations)
-    val result = renderer.renderWithStats(imageSize).get
-    // Floor spans the lower half of the frame at this camera framing (CausticsCoverageSuite's
-    // proven-visible setup); restrict the stddev to that band so background/sphere pixels
-    // (identical between the two renders regardless of roughness) don't dilute the signal.
-    val roiPixels = for
-      y <- imageSize.height / 2 until imageSize.height
-      x <- 0 until imageSize.width
-    yield ImageValidation.getRGBAt(result.image, imageSize, x, y)
-    val brightness = roiPixels.map(p => (p.r.toDouble + p.g.toDouble + p.b.toDouble) / 3.0)
-    val mean = brightness.sum / brightness.length
-    math.sqrt(brightness.map(b => (b - mean) * (b - mean)).sum / brightness.length)
+    renderer.renderWithStats(imageSize).get
+    val stats = renderer.getCausticsStats
+    if stats == null then fail("caustics produced no stats") // scalafix:ok DisableSyntax.null
+    stats.hitPointsWithFlux
 
   behavior of "GGX-VNDF rough refraction"
 
-  it should "spread a rough-glass caustic wider (lower ROI stddev) than a smooth-glass caustic" in:
+  it should "spread a rough-glass caustic wider (more hit points with flux) than a smooth-glass caustic" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
     val smoothGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass, roughness = 0.0f)
     val roughGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass, roughness = 0.4f)
-    val smoothStddev = causticRoiStddev(smoothGlass)
-    val roughStddev = causticRoiStddev(roughGlass)
-    withClue(s"caustic ROI brightness stddev: smooth=$smoothStddev rough=$roughStddev; a rough " +
-      "(frosted) glass caustic must spread its energy over a wider area than a smooth one, " +
-      "measured as a LOWER stddev (flatter brightness distribution). ") {
-      roughStddev should be < smoothStddev
+    val smoothHits = hitPointsWithFlux(smoothGlass)
+    val roughHits = hitPointsWithFlux(roughGlass)
+    withClue(s"hitPointsWithFlux: smooth=$smoothHits rough=$roughHits; a rough (frosted) glass " +
+      "caustic must spread its photon energy over a wider area than a smooth one, so the rough caustic " +
+      "should touch more distinct hit points on the floor (more nonzero flux hit points). ") {
+      roughHits should be > smoothHits
     }
 
 end CausticsRoughGlassSuite
