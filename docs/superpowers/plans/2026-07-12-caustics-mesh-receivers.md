@@ -42,8 +42,6 @@ Create `src/test/scala/io/github/lene/optix/caustics/CausticsWallReceiverSuite.s
 package io.github.lene.optix.caustics
 
 import io.github.lene.optix.RendererFixture
-import io.github.lene.optix.ImageValidation
-import io.github.lene.optix.RenderResult
 import menger.common.Color
 import menger.common.Const
 import menger.common.ImageSize
@@ -53,8 +51,15 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 /** Phase 2 Task 1: caustics deposit onto a SECOND enabled plane (a back wall, axis != Y),
-  * not only planes[0] (the floor). Characterizes the multi-plane deposit path added in this
-  * task — must FAIL against pre-Task-1 code (only planes[0] receives a caustic today).
+  * not only planes[0] (the floor). Uses CausticsStats.photonsDeposited (a deterministic native
+  * counter) rather than pixel deltas — a pixel-delta comparison between two DIFFERENT scene
+  * configurations (floor-only vs floor+wall) carries ~10% quantization/composition noise from
+  * the wall's own visible shading alone, which swamped a tight threshold even under unmodified
+  * (pre-Task-1) code (empirically measured: ratio ~1.10 pre-fix, purely from scene-composition
+  * noise, not from any real deposit). photonsDeposited is unaffected by that: pre-Task-1,
+  * deposit seeding and targeting only ever reads planes[0], so adding a second enabled plane
+  * cannot change the count at all (bit-identical) — a clean, non-noisy RED. Post-fix, the wall
+  * must receive its own deposits, strictly increasing the count.
   */
 class CausticsWallReceiverSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -71,14 +76,14 @@ class CausticsWallReceiverSuite extends AnyFlatSpec with Matchers with RendererF
     Array(sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f, 0f, 0f, 0f, sphereRadius, 0f)
 
   // Sphere between camera and a back wall (Z axis, negative side) so a light angled toward
-  // the wall casts a caustic onto it. Floor (planes[0]) stays enabled too, proving BOTH
-  // receive deposits, not just whichever is added second.
-  private def setupWallScene(material: Material): Unit =
+  // the wall casts a caustic onto it. Floor (planes[0]) is always enabled; the wall (planes[1])
+  // is toggled by includeWall to isolate its contribution.
+  private def setupScene(material: Material, includeWall: Boolean): Unit =
     renderer.clearAllInstances()
     renderer.addSphereInstance(sphereTransform, material)
     renderer.clearPlanes()
-    renderer.addPlane(1, positive = true, Const.defaultFloorPlaneY)     // floor, planes[0]
-    renderer.addPlane(2, positive = false, -4.0f)                      // back wall, planes[1]
+    renderer.addPlane(1, positive = true, Const.defaultFloorPlaneY)   // floor, planes[0]
+    if includeWall then renderer.addPlane(2, positive = false, -4.0f) // back wall, planes[1]
     renderer.setCamera(
       Vector[3](0.0f, 2.0f, 8.0f),
       Vector[3](0.0f, 0.0f, -2.0f),
@@ -88,36 +93,23 @@ class CausticsWallReceiverSuite extends AnyFlatSpec with Matchers with RendererF
     renderer.setLight(Vector[3](0.3f, -0.3f, -1.0f), lightIntensity)
 
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  private def wallCausticDelta(material: Material): (Double, Double, Double) =
-    setupWallScene(material)
+  private def photonsDeposited(material: Material, includeWall: Boolean): Long =
+    setupScene(material, includeWall)
     renderer.enableCaustics(photonsPerIter, causticIterations)
-    val onResult = renderer.renderWithStats(imageSize).get
-    val onPixels = for
-      y <- 0 until imageSize.height
-      x <- 0 until imageSize.width
-    yield ImageValidation.getRGBAt(onResult.image, imageSize, x, y)
-    setupWallScene(material)
-    renderer.disableCaustics()
-    val offResult = renderer.renderWithStats(imageSize).get
-    val offPixels = for
-      y <- 0 until imageSize.height
-      x <- 0 until imageSize.width
-    yield ImageValidation.getRGBAt(offResult.image, imageSize, x, y)
-    (
-      (onPixels.map(_.r).sum - offPixels.map(_.r).sum).toDouble / onPixels.length,
-      (onPixels.map(_.g).sum - offPixels.map(_.g).sum).toDouble / onPixels.length,
-      (onPixels.map(_.b).sum - offPixels.map(_.b).sum).toDouble / onPixels.length
-    )
+    renderer.renderWithStats(imageSize).get
+    renderer.getCausticsStats.photonsDeposited
 
   behavior of "Multi-plane caustic deposit"
 
-  it should "deposit a caustic on a second enabled plane (back wall), not only planes[0]" in:
+  it should "deposit more photons with the wall enabled than with the floor alone" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
     val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass)
-    val (dr, dg, db) = wallCausticDelta(clearGlass)
-    withClue(s"whole-image caustic delta (on-off) with floor+wall enabled: R=$dr G=$dg B=$db; " +
-      "a caustic on the wall must brighten the image beyond what a floor-only deposit would. ") {
-      (dr + dg + db) should be > 0.0
+    val floorOnlyDeposits = photonsDeposited(clearGlass, includeWall = false)
+    val floorPlusWallDeposits = photonsDeposited(clearGlass, includeWall = true)
+    withClue(s"photonsDeposited floor-only=$floorOnlyDeposits, floor+wall=$floorPlusWallDeposits; " +
+      "enabling a second plane (the wall) must increase the deposited-photon count beyond the " +
+      "floor alone — proves the wall genuinely receives its own deposit, not just the floor. ") {
+      floorPlusWallDeposits should be > floorOnlyDeposits
     }
 
 end CausticsWallReceiverSuite
@@ -129,7 +121,7 @@ end CausticsWallReceiverSuite
 sbt "testOnly io.github.lene.optix.caustics.CausticsWallReceiverSuite"
 ```
 
-Expected: this may actually PASS today if the floor alone produces a nonzero delta (the assertion doesn't yet isolate the wall). Before implementing, tighten the discriminator: temporarily disable the floor plane (comment out the `addPlane(1, ...)` call) and re-run — if the delta drops to ~0 with only the wall enabled and current (pre-fix) code, the test correctly captures "wall alone gets no caustic." Restore the floor line before continuing; the real regression net is that *both* receive deposits simultaneously, which requires Step 3.
+Expected: FAIL — `floorPlusWallDeposits` should equal `floorOnlyDeposits` exactly (both configurations deposit identically today, since `checkPlaneIntersection`/`__raygen__hitpoints` only ever read `planes[0]`, the floor; the wall is silently ignored regardless of whether it's enabled, and `photonsDeposited` is a deterministic native counter unaffected by scene-composition noise). If instead the counts genuinely differ before any implementation, STOP — that's a real, unexplained discrepancy (not the expected characterization), investigate before continuing.
 
 - [ ] **Step 3: Implement — generalize `checkPlaneIntersection` to all enabled planes**
 

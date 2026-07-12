@@ -186,6 +186,7 @@ __device__ void initializeHitPoint(
     HitPoint& hp,
     const float3& position,
     int plane_axis,
+    int plane_index,
     const uint3& idx
 ) {
     hp.position[0] = position.x;
@@ -209,12 +210,13 @@ __device__ void initializeHitPoint(
     hp.pixel_x = idx.x;
     hp.pixel_y = idx.y;
 
-    // P5: capture the diffuse albedo ρ of the floor into the hit-point weight, so the
-    // radiance estimate can apply the Lambertian ρ/π factor. planes[0].color1 is the solid
-    // (or checker-A) reflectance; a position-dependent checker albedo is a later refinement.
-    hp.weight[0] = params.planes[0].color1[0];
-    hp.weight[1] = params.planes[0].color1[1];
-    hp.weight[2] = params.planes[0].color1[2];
+    // P5 (generalized in Phase 2 Task 1): capture the matched plane's diffuse albedo ρ into
+    // the hit-point weight, so the radiance estimate can apply the Lambertian ρ/π factor.
+    // color1 is the solid (or checker-A) reflectance; a position-dependent checker albedo is
+    // a later refinement.
+    hp.weight[0] = params.planes[plane_index].color1[0];
+    hp.weight[1] = params.planes[plane_index].color1[1];
+    hp.weight[2] = params.planes[plane_index].color1[2];
 }
 
 //==============================================================================
@@ -259,32 +261,36 @@ extern "C" __global__ void __raygen__hitpoints() {
         p0, p1, p2, p3
     );
 
-    // Re-compute plane intersection to determine if we have a diffuse hit
-    // TODO: Multi-plane caustics: currently only planes[0] is used for caustic
-    // hit point collection and deposition. Supporting additional planes would
-    // require looping over all active planes and collecting/depositing on each.
-    if (params.num_planes > 0 && params.planes[0].enabled) {
-        const int plane_axis = params.planes[0].axis;
-        const float plane_value = params.planes[0].value;
+    // Seed a hit point on the NEAREST enabled plane the camera ray would strike.
+    // Diffuse mesh-instance seeding is added in Task 2 (this block still covers the
+    // plane-only path and is the fallback when the camera ray does not hit a diffuse instance).
+    float nearest_t = MAX_RAY_DISTANCE;
+    int nearest_plane = -1;
+
+    for (int i = 0; i < params.num_planes; ++i) {
+        if (!params.planes[i].enabled) continue;
+
+        const int plane_axis = params.planes[i].axis;
+        const float plane_value = params.planes[i].value;
 
         float ray_orig_comp, ray_dir_comp;
         getRayPlaneComponents(cam_eye, ray_direction, plane_axis, ray_orig_comp, ray_dir_comp);
 
-        // Check for plane intersection
-        if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
-            const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
+        if (fabsf(ray_dir_comp) <= RAY_PARALLEL_THRESHOLD) continue;
 
-            if (t_plane > 0.0f) {
-                const float3 plane_hit = cam_eye + ray_direction * t_plane;
+        const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
+        if (t_plane > 0.0f && t_plane < nearest_t) {
+            nearest_t = t_plane;
+            nearest_plane = i;
+        }
+    }
 
-                // Allocate hit point slot atomically
-                const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
-
-                if (hp_idx < MAX_HIT_POINTS) {
-                    HitPoint& hp = params.caustics.hit_points[hp_idx];
-                    initializeHitPoint(hp, plane_hit, plane_axis, idx);
-                }
-            }
+    if (nearest_plane >= 0) {
+        const float3 plane_hit = cam_eye + ray_direction * nearest_t;
+        const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
+        if (hp_idx < MAX_HIT_POINTS) {
+            HitPoint& hp = params.caustics.hit_points[hp_idx];
+            initializeHitPoint(hp, plane_hit, params.planes[nearest_plane].axis, nearest_plane, idx);
         }
     }
 }
@@ -459,43 +465,50 @@ __device__ void applyPhotonBeerLambert(float3& flux, float distance, bool enteri
 // handlePhotonSphereHit() removed — logic moved to __closesthit__photon()
 
 /**
- * Check if photon hits the plane and deposit energy if so.
- * Returns true if photon was deposited (absorbed by diffuse surface).
+ * Check if photon hits any enabled plane and deposit energy at the nearest hit.
+ * Returns true if photon was deposited (absorbed by a diffuse plane surface).
  */
 __device__ bool checkPlaneIntersection(
     const float3& origin,
     const float3& dir,
     const float3& flux
 ) {
-    // Use the first active plane for caustic deposition
-    if (params.num_planes <= 0 || !params.planes[0].enabled) return false;
+    float nearest_t = MAX_RAY_DISTANCE;
+    bool found = false;
 
-    const int plane_axis = params.planes[0].axis;
-    const float plane_value = params.planes[0].value;
+    for (int i = 0; i < params.num_planes; ++i) {
+        if (!params.planes[i].enabled) continue;
 
-    float ray_orig_comp, ray_dir_comp;
-    if (plane_axis == 0) {
-        ray_orig_comp = origin.x;
-        ray_dir_comp = dir.x;
-    } else if (plane_axis == 1) {
-        ray_orig_comp = origin.y;
-        ray_dir_comp = dir.y;
-    } else {
-        ray_orig_comp = origin.z;
-        ray_dir_comp = dir.z;
-    }
+        const int plane_axis = params.planes[i].axis;
+        const float plane_value = params.planes[i].value;
 
-    if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
+        float ray_orig_comp, ray_dir_comp;
+        if (plane_axis == 0) {
+            ray_orig_comp = origin.x;
+            ray_dir_comp = dir.x;
+        } else if (plane_axis == 1) {
+            ray_orig_comp = origin.y;
+            ray_dir_comp = dir.y;
+        } else {
+            ray_orig_comp = origin.z;
+            ray_dir_comp = dir.z;
+        }
+
+        if (fabsf(ray_dir_comp) <= RAY_PARALLEL_THRESHOLD) continue;
+
         const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
-
-        if (t_plane > CONTINUATION_RAY_OFFSET) {
-            const float3 plane_hit = origin + dir * t_plane;
-            depositPhoton(plane_hit, dir, flux);
-            return true;  // Photon absorbed by diffuse surface
+        if (t_plane > CONTINUATION_RAY_OFFSET && t_plane < nearest_t) {
+            nearest_t = t_plane;
+            found = true;
         }
     }
 
-    return false;  // No plane intersection
+    if (found) {
+        const float3 plane_hit = origin + dir * nearest_t;
+        depositPhoton(plane_hit, dir, flux);
+        return true;
+    }
+    return false;
 }
 
 //==============================================================================
