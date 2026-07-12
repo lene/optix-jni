@@ -91,4 +91,19 @@ class CausticsMeshReceiverSuite extends AnyFlatSpec with Matchers with RendererF
       (dr + dg + db) should be > 0.0
     }
 
+  it should "deposit deterministically onto the receiver mesh across identical renders" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    val clearGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass)
+    setupMeshReceiverScene(clearGlass)
+    renderer.enableCaustics(photonsPerIter, causticIterations)
+    val statsA = { renderer.renderWithStats(imageSize).get; renderer.getCausticsStats }
+    setupMeshReceiverScene(clearGlass)
+    renderer.enableCaustics(photonsPerIter, causticIterations)
+    val statsB = { renderer.renderWithStats(imageSize).get; renderer.getCausticsStats }
+    withClue(s"photonsDeposited A=${statsA.photonsDeposited} B=${statsB.photonsDeposited}; " +
+      "mesh-instance deposit must be deterministic across identical renders. ") {
+      statsA.photonsDeposited should be > 0L
+      statsA.photonsDeposited shouldBe statsB.photonsDeposited
+    }
+
 end CausticsMeshReceiverSuite
