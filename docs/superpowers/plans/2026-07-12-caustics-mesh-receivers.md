@@ -91,16 +91,18 @@ class CausticsWallReceiverSuite extends AnyFlatSpec with Matchers with RendererF
   private def wallCausticDelta(material: Material): (Double, Double, Double) =
     setupWallScene(material)
     renderer.enableCaustics(photonsPerIter, causticIterations)
+    val onResult = renderer.renderWithStats(imageSize).get
     val onPixels = for
       y <- 0 until imageSize.height
       x <- 0 until imageSize.width
-    yield ImageValidation.getRGBAt(renderer.renderWithStats(imageSize).get.image, imageSize, x, y)
+    yield ImageValidation.getRGBAt(onResult.image, imageSize, x, y)
     setupWallScene(material)
     renderer.disableCaustics()
+    val offResult = renderer.renderWithStats(imageSize).get
     val offPixels = for
       y <- 0 until imageSize.height
       x <- 0 until imageSize.width
-    yield ImageValidation.getRGBAt(renderer.renderWithStats(imageSize).get.image, imageSize, x, y)
+    yield ImageValidation.getRGBAt(offResult.image, imageSize, x, y)
     (
       (onPixels.map(_.r).sum - offPixels.map(_.r).sum).toDouble / onPixels.length,
       (onPixels.map(_.g).sum - offPixels.map(_.g).sum).toDouble / onPixels.length,
@@ -458,16 +460,18 @@ class CausticsMeshReceiverSuite extends AnyFlatSpec with Matchers with RendererF
   private def meshCausticDelta(casterMaterial: Material): (Double, Double, Double) =
     setupMeshReceiverScene(casterMaterial)
     renderer.enableCaustics(photonsPerIter, causticIterations)
+    val onResult = renderer.renderWithStats(imageSize).get
     val onPixels = for
       y <- 0 until imageSize.height
       x <- 0 until imageSize.width
-    yield ImageValidation.getRGBAt(renderer.renderWithStats(imageSize).get.image, imageSize, x, y)
+    yield ImageValidation.getRGBAt(onResult.image, imageSize, x, y)
     setupMeshReceiverScene(casterMaterial)
     renderer.disableCaustics()
+    val offResult = renderer.renderWithStats(imageSize).get
     val offPixels = for
       y <- 0 until imageSize.height
       x <- 0 until imageSize.width
-    yield ImageValidation.getRGBAt(renderer.renderWithStats(imageSize).get.image, imageSize, x, y)
+    yield ImageValidation.getRGBAt(offResult.image, imageSize, x, y)
     (
       (onPixels.map(_.r).sum - offPixels.map(_.r).sum).toDouble / onPixels.length,
       (onPixels.map(_.g).sum - offPixels.map(_.g).sum).toDouble / onPixels.length,
