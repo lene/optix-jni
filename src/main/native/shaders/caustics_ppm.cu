@@ -186,6 +186,7 @@ __device__ void initializeHitPoint(
     HitPoint& hp,
     const float3& position,
     int plane_axis,
+    int plane_index,
     const uint3& idx
 ) {
     hp.position[0] = position.x;
@@ -209,12 +210,48 @@ __device__ void initializeHitPoint(
     hp.pixel_x = idx.x;
     hp.pixel_y = idx.y;
 
-    // P5: capture the diffuse albedo ρ of the floor into the hit-point weight, so the
-    // radiance estimate can apply the Lambertian ρ/π factor. planes[0].color1 is the solid
-    // (or checker-A) reflectance; a position-dependent checker albedo is a later refinement.
-    hp.weight[0] = params.planes[0].color1[0];
-    hp.weight[1] = params.planes[0].color1[1];
-    hp.weight[2] = params.planes[0].color1[2];
+    // P5 (generalized in Phase 2 Task 1): capture the matched plane's diffuse albedo ρ into
+    // the hit-point weight, so the radiance estimate can apply the Lambertian ρ/π factor.
+    // color1 is the solid (or checker-A) reflectance; a position-dependent checker albedo is
+    // a later refinement.
+    hp.weight[0] = params.planes[plane_index].color1[0];
+    hp.weight[1] = params.planes[plane_index].color1[1];
+    hp.weight[2] = params.planes[plane_index].color1[2];
+}
+
+/**
+ * Initialize a hit point at a real geometry hit (mesh/sphere instance), using the actual
+ * surface normal and material albedo instead of a plane-derived approximation.
+ */
+__device__ void initializeHitPoint(
+    HitPoint& hp,
+    const float3& position,
+    const float3& normal,
+    const float3& albedo,
+    const uint3& idx
+) {
+    hp.position[0] = position.x;
+    hp.position[1] = position.y;
+    hp.position[2] = position.z;
+
+    hp.normal[0] = normal.x;
+    hp.normal[1] = normal.y;
+    hp.normal[2] = normal.z;
+
+    hp.flux[0] = 0.0f;
+    hp.flux[1] = 0.0f;
+    hp.flux[2] = 0.0f;
+
+    hp.radius = params.caustics.initial_radius;
+    hp.n = 0;
+    hp.new_photons = 0;
+
+    hp.pixel_x = idx.x;
+    hp.pixel_y = idx.y;
+
+    hp.weight[0] = albedo.x;
+    hp.weight[1] = albedo.y;
+    hp.weight[2] = albedo.z;
 }
 
 //==============================================================================
@@ -242,49 +279,74 @@ extern "C" __global__ void __raygen__hitpoints() {
     float3 cam_eye;
     const float3 ray_direction = generateCameraRay(idx, dim, rt_data, cam_eye);
 
-    // Trace ray to find first hit
-    unsigned int p0 = 0, p1 = 0, p2 = 0, p3 = 0;
+    // Probe the camera ray against real geometry first (Phase 2 Task 2/3): reuses the
+    // RAY_TYPE_PHOTON hit groups already registered for every geometry type. Only a diffuse
+    // instance hit (is_diffuse) allocates a hit point here; a glass-instance hit or a miss
+    // falls through to the plane-seeding block below (Task 1), matching pre-Task-3 behavior.
+    unsigned int pp0 = 0, pp1 = 0, pp2 = 0, pp3 = 0, pp4 = 0, pp5 = 0,
+                 pp6 = 0, pp7 = 0, pp8 = 0, pp9 = 16u;  // bit4 = probe mode
     optixTrace(
         params.handle,
         cam_eye,
         ray_direction,
-        HIT_POINT_RAY_TMIN,          // tmin
-        MAX_RAY_DISTANCE,            // tmax
-        0.0f,                        // rayTime
+        HIT_POINT_RAY_TMIN,
+        MAX_RAY_DISTANCE,
+        0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY,  // SBT offset (primary ray type)
-        SBTConstants::STRIDE_RAY_TYPES,                           // SBT stride
-        SBTConstants::MISS_PRIMARY,                               // missSBTIndex
-        p0, p1, p2, p3
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PHOTON,
+        SBTConstants::STRIDE_RAY_TYPES,
+        SBTConstants::MISS_PHOTON,
+        pp0, pp1, pp2, pp3, pp4, pp5, pp6, pp7, pp8, pp9
     );
 
-    // Re-compute plane intersection to determine if we have a diffuse hit
-    // TODO: Multi-plane caustics: currently only planes[0] is used for caustic
-    // hit point collection and deposition. Supporting additional planes would
-    // require looping over all active planes and collecting/depositing on each.
-    if (params.num_planes > 0 && params.planes[0].enabled) {
-        const int plane_axis = params.planes[0].axis;
-        const float plane_value = params.planes[0].value;
+    const bool probe_hit_diffuse = (pp9 & 1u) != 0u && (pp9 & 2u) != 0u;
+    if (probe_hit_diffuse) {
+        const float3 hit_pos = make_float3(
+            __uint_as_float(pp0), __uint_as_float(pp1), __uint_as_float(pp2));
+        const float3 hit_normal = make_float3(
+            __uint_as_float(pp3), __uint_as_float(pp4), __uint_as_float(pp5));
+        const float3 hit_albedo = make_float3(
+            __uint_as_float(pp6), __uint_as_float(pp7), __uint_as_float(pp8));
+
+        const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
+        if (hp_idx < MAX_HIT_POINTS) {
+            HitPoint& hp = params.caustics.hit_points[hp_idx];
+            initializeHitPoint(hp, hit_pos, hit_normal, hit_albedo, idx);
+        }
+        return;
+    }
+
+    // Seed a hit point on the NEAREST enabled plane the camera ray would strike.
+    // This is the fallback when the probe above did not hit a diffuse instance (Task 3) —
+    // a glass-instance hit or a miss falls through here, matching pre-Task-3 behavior.
+    float nearest_t = MAX_RAY_DISTANCE;
+    int nearest_plane = -1;
+
+    for (int i = 0; i < params.num_planes; ++i) {
+        if (!params.planes[i].enabled) continue;
+
+        const int plane_axis = params.planes[i].axis;
+        const float plane_value = params.planes[i].value;
 
         float ray_orig_comp, ray_dir_comp;
         getRayPlaneComponents(cam_eye, ray_direction, plane_axis, ray_orig_comp, ray_dir_comp);
 
-        // Check for plane intersection
-        if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
-            const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
+        if (fabsf(ray_dir_comp) <= RAY_PARALLEL_THRESHOLD) continue;
 
-            if (t_plane > 0.0f) {
-                const float3 plane_hit = cam_eye + ray_direction * t_plane;
+        const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
+        if (t_plane > 0.0f && t_plane < nearest_t) {
+            nearest_t = t_plane;
+            nearest_plane = i;
+        }
+    }
 
-                // Allocate hit point slot atomically
-                const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
-
-                if (hp_idx < MAX_HIT_POINTS) {
-                    HitPoint& hp = params.caustics.hit_points[hp_idx];
-                    initializeHitPoint(hp, plane_hit, plane_axis, idx);
-                }
-            }
+    if (nearest_plane >= 0) {
+        const float3 plane_hit = cam_eye + ray_direction * nearest_t;
+        const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
+        if (hp_idx < MAX_HIT_POINTS) {
+            HitPoint& hp = params.caustics.hit_points[hp_idx];
+            initializeHitPoint(hp, plane_hit, params.planes[nearest_plane].axis, nearest_plane, idx);
         }
     }
 }
@@ -459,43 +521,50 @@ __device__ void applyPhotonBeerLambert(float3& flux, float distance, bool enteri
 // handlePhotonSphereHit() removed — logic moved to __closesthit__photon()
 
 /**
- * Check if photon hits the plane and deposit energy if so.
- * Returns true if photon was deposited (absorbed by diffuse surface).
+ * Check if photon hits any enabled plane and deposit energy at the nearest hit.
+ * Returns true if photon was deposited (absorbed by a diffuse plane surface).
  */
 __device__ bool checkPlaneIntersection(
     const float3& origin,
     const float3& dir,
     const float3& flux
 ) {
-    // Use the first active plane for caustic deposition
-    if (params.num_planes <= 0 || !params.planes[0].enabled) return false;
+    float nearest_t = MAX_RAY_DISTANCE;
+    bool found = false;
 
-    const int plane_axis = params.planes[0].axis;
-    const float plane_value = params.planes[0].value;
+    for (int i = 0; i < params.num_planes; ++i) {
+        if (!params.planes[i].enabled) continue;
 
-    float ray_orig_comp, ray_dir_comp;
-    if (plane_axis == 0) {
-        ray_orig_comp = origin.x;
-        ray_dir_comp = dir.x;
-    } else if (plane_axis == 1) {
-        ray_orig_comp = origin.y;
-        ray_dir_comp = dir.y;
-    } else {
-        ray_orig_comp = origin.z;
-        ray_dir_comp = dir.z;
-    }
+        const int plane_axis = params.planes[i].axis;
+        const float plane_value = params.planes[i].value;
 
-    if (fabsf(ray_dir_comp) > RAY_PARALLEL_THRESHOLD) {
+        float ray_orig_comp, ray_dir_comp;
+        if (plane_axis == 0) {
+            ray_orig_comp = origin.x;
+            ray_dir_comp = dir.x;
+        } else if (plane_axis == 1) {
+            ray_orig_comp = origin.y;
+            ray_dir_comp = dir.y;
+        } else {
+            ray_orig_comp = origin.z;
+            ray_dir_comp = dir.z;
+        }
+
+        if (fabsf(ray_dir_comp) <= RAY_PARALLEL_THRESHOLD) continue;
+
         const float t_plane = (plane_value - ray_orig_comp) / ray_dir_comp;
-
-        if (t_plane > CONTINUATION_RAY_OFFSET) {
-            const float3 plane_hit = origin + dir * t_plane;
-            depositPhoton(plane_hit, dir, flux);
-            return true;  // Photon absorbed by diffuse surface
+        if (t_plane > CONTINUATION_RAY_OFFSET && t_plane < nearest_t) {
+            nearest_t = t_plane;
+            found = true;
         }
     }
 
-    return false;  // No plane intersection
+    if (found) {
+        const float3 plane_hit = origin + dir * nearest_t;
+        depositPhoton(plane_hit, dir, flux);
+        return true;
+    }
+    return false;
 }
 
 //==============================================================================
@@ -928,6 +997,52 @@ extern "C" __global__ void __closesthit__photon() {
         }
     }
 
+    // Phase 2 Task 2: probe-mode branch. __raygen__hitpoints reuses this already-registered
+    // RAY_TYPE_PHOTON closest-hit (same SBT hit groups as real photon transport, for every
+    // geometry type) to discover what the camera ray actually hit, without running any of the
+    // photon-transport side effects below (stats, Beer-Lambert, refraction). Gated on payload_9
+    // bit4, which tracePhoton() never sets — real photon bounces are unaffected byte-for-byte.
+    const bool probe_mode = (optixGetPayload_9() & 16u) != 0u;
+    if (probe_mode) {
+        const bool is_diffuse = ior_material <= 1.05f;
+
+        optixSetPayload_0(__float_as_uint(hit_point.x));
+        optixSetPayload_1(__float_as_uint(hit_point.y));
+        optixSetPayload_2(__float_as_uint(hit_point.z));
+        optixSetPayload_3(__float_as_uint(outward_normal.x));
+        optixSetPayload_4(__float_as_uint(outward_normal.y));
+        optixSetPayload_5(__float_as_uint(outward_normal.z));
+        optixSetPayload_6(__float_as_uint(glass_color[0]));
+        optixSetPayload_7(__float_as_uint(glass_color[1]));
+        optixSetPayload_8(__float_as_uint(glass_color[2]));
+        optixSetPayload_9(1u | (is_diffuse ? 2u : 0u));
+        return;
+    }
+
+    // Phase 2 Task 3: a photon that reaches a DIFFUSE instance (ior <= 1.05) deposits here
+    // instead of refracting through it. Preserves the same LS+D gate as the plane path
+    // (__miss__photon) — only photons that already touched glass may deposit, so direct
+    // illumination on the receiver (already handled by the primary shading pass) isn't
+    // double-counted.
+    const bool hit_is_diffuse = ior_material <= 1.05f;
+    if (hit_is_diffuse) {
+        const unsigned int touched_bit_in = optixGetPayload_9() & 4u;
+        if (touched_bit_in != 0u) {
+            float3 flux_in = make_float3(
+                __uint_as_float(optixGetPayload_0()),
+                __uint_as_float(optixGetPayload_1()),
+                __uint_as_float(optixGetPayload_2())
+            );
+            // depositPhoton already increments stats->photons_deposited and
+            // stats->total_flux_deposited internally — no separate stats bump needed here.
+            depositPhoton(hit_point, ray_dir, flux_in);
+            optixSetPayload_9(2u | touched_bit_in);  // alive=false, deposited=true
+        } else {
+            optixSetPayload_9(touched_bit_in);       // alive=false, deposited=false
+        }
+        return;
+    }
+
     // Unpack photon flux from payload
     float3 flux = make_float3(
         __uint_as_float(optixGetPayload_0()),
@@ -1058,6 +1173,13 @@ extern "C" __global__ void __closesthit__photon() {
  * for energy deposition. Sets payload flags accordingly.
  */
 extern "C" __global__ void __miss__photon() {
+    // Phase 2 Task 2: probe-mode miss — nothing hit, report flags=0 and stop (no plane
+    // deposit, no stats — those belong to real photon transport only).
+    if ((optixGetPayload_9() & 16u) != 0u) {
+        optixSetPayload_9(0u);
+        return;
+    }
+
     const float3 origin = optixGetWorldRayOrigin();
     const float3 dir    = optixGetWorldRayDirection();
     const float3 flux   = make_float3(
