@@ -219,6 +219,41 @@ __device__ void initializeHitPoint(
     hp.weight[2] = params.planes[plane_index].color1[2];
 }
 
+/**
+ * Initialize a hit point at a real geometry hit (mesh/sphere instance), using the actual
+ * surface normal and material albedo instead of a plane-derived approximation.
+ */
+__device__ void initializeHitPoint(
+    HitPoint& hp,
+    const float3& position,
+    const float3& normal,
+    const float3& albedo,
+    const uint3& idx
+) {
+    hp.position[0] = position.x;
+    hp.position[1] = position.y;
+    hp.position[2] = position.z;
+
+    hp.normal[0] = normal.x;
+    hp.normal[1] = normal.y;
+    hp.normal[2] = normal.z;
+
+    hp.flux[0] = 0.0f;
+    hp.flux[1] = 0.0f;
+    hp.flux[2] = 0.0f;
+
+    hp.radius = params.caustics.initial_radius;
+    hp.n = 0;
+    hp.new_photons = 0;
+
+    hp.pixel_x = idx.x;
+    hp.pixel_y = idx.y;
+
+    hp.weight[0] = albedo.x;
+    hp.weight[1] = albedo.y;
+    hp.weight[2] = albedo.z;
+}
+
 //==============================================================================
 // Progressive Photon Mapping - Hit Point Generation (Phase 2)
 //==============================================================================
@@ -244,26 +279,47 @@ extern "C" __global__ void __raygen__hitpoints() {
     float3 cam_eye;
     const float3 ray_direction = generateCameraRay(idx, dim, rt_data, cam_eye);
 
-    // Trace ray to find first hit
-    unsigned int p0 = 0, p1 = 0, p2 = 0, p3 = 0;
+    // Probe the camera ray against real geometry first (Phase 2 Task 2/3): reuses the
+    // RAY_TYPE_PHOTON hit groups already registered for every geometry type. Only a diffuse
+    // instance hit (is_diffuse) allocates a hit point here; a glass-instance hit or a miss
+    // falls through to the plane-seeding block below (Task 1), matching pre-Task-3 behavior.
+    unsigned int pp0 = 0, pp1 = 0, pp2 = 0, pp3 = 0, pp4 = 0, pp5 = 0,
+                 pp6 = 0, pp7 = 0, pp8 = 0, pp9 = 16u;  // bit4 = probe mode
     optixTrace(
         params.handle,
         cam_eye,
         ray_direction,
-        HIT_POINT_RAY_TMIN,          // tmin
-        MAX_RAY_DISTANCE,            // tmax
-        0.0f,                        // rayTime
+        HIT_POINT_RAY_TMIN,
+        MAX_RAY_DISTANCE,
+        0.0f,
         OptixVisibilityMask(255),
         OPTIX_RAY_FLAG_NONE,
-        params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY,  // SBT offset (primary ray type)
-        SBTConstants::STRIDE_RAY_TYPES,                           // SBT stride
-        SBTConstants::MISS_PRIMARY,                               // missSBTIndex
-        p0, p1, p2, p3
+        params.sbt_base_offset + SBTConstants::RAY_TYPE_PHOTON,
+        SBTConstants::STRIDE_RAY_TYPES,
+        SBTConstants::MISS_PHOTON,
+        pp0, pp1, pp2, pp3, pp4, pp5, pp6, pp7, pp8, pp9
     );
 
+    const bool probe_hit_diffuse = (pp9 & 1u) != 0u && (pp9 & 2u) != 0u;
+    if (probe_hit_diffuse) {
+        const float3 hit_pos = make_float3(
+            __uint_as_float(pp0), __uint_as_float(pp1), __uint_as_float(pp2));
+        const float3 hit_normal = make_float3(
+            __uint_as_float(pp3), __uint_as_float(pp4), __uint_as_float(pp5));
+        const float3 hit_albedo = make_float3(
+            __uint_as_float(pp6), __uint_as_float(pp7), __uint_as_float(pp8));
+
+        const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
+        if (hp_idx < MAX_HIT_POINTS) {
+            HitPoint& hp = params.caustics.hit_points[hp_idx];
+            initializeHitPoint(hp, hit_pos, hit_normal, hit_albedo, idx);
+        }
+        return;
+    }
+
     // Seed a hit point on the NEAREST enabled plane the camera ray would strike.
-    // Diffuse mesh-instance seeding is added in Task 2 (this block still covers the
-    // plane-only path and is the fallback when the camera ray does not hit a diffuse instance).
+    // This is the fallback when the probe above did not hit a diffuse instance (Task 3) —
+    // a glass-instance hit or a miss falls through here, matching pre-Task-3 behavior.
     float nearest_t = MAX_RAY_DISTANCE;
     int nearest_plane = -1;
 
@@ -960,6 +1016,30 @@ extern "C" __global__ void __closesthit__photon() {
         optixSetPayload_7(__float_as_uint(glass_color[1]));
         optixSetPayload_8(__float_as_uint(glass_color[2]));
         optixSetPayload_9(1u | (is_diffuse ? 2u : 0u));
+        return;
+    }
+
+    // Phase 2 Task 3: a photon that reaches a DIFFUSE instance (ior <= 1.05) deposits here
+    // instead of refracting through it. Preserves the same LS+D gate as the plane path
+    // (__miss__photon) — only photons that already touched glass may deposit, so direct
+    // illumination on the receiver (already handled by the primary shading pass) isn't
+    // double-counted.
+    const bool hit_is_diffuse = ior_material <= 1.05f;
+    if (hit_is_diffuse) {
+        const unsigned int touched_bit_in = optixGetPayload_9() & 4u;
+        if (touched_bit_in != 0u) {
+            float3 flux_in = make_float3(
+                __uint_as_float(optixGetPayload_0()),
+                __uint_as_float(optixGetPayload_1()),
+                __uint_as_float(optixGetPayload_2())
+            );
+            // depositPhoton already increments stats->photons_deposited and
+            // stats->total_flux_deposited internally — no separate stats bump needed here.
+            depositPhoton(hit_point, ray_dir, flux_in);
+            optixSetPayload_9(2u | touched_bit_in);  // alive=false, deposited=true
+        } else {
+            optixSetPayload_9(touched_bit_in);       // alive=false, deposited=false
+        }
         return;
     }
 
