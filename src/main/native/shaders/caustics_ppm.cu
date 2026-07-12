@@ -70,6 +70,53 @@ __device__ float2 sampleDisk(float u1, float u2) {
 }
 
 /**
+ * Map perceptual roughness [0,1] to GGX alpha (Disney/UE4 remap: alpha = roughness^2).
+ * Keeps roughness perceptually linear -- roughness=0.3 vs 0.5 are visibly, not marginally,
+ * different, matching how `roughness` already reads for primary-ray PBR shading elsewhere
+ * in this codebase (helpers.cu/hit_*.cu), even though those paths don't do GGX sampling.
+ */
+__device__ float alphaFromRoughness(float roughness) {
+    return roughness * roughness;
+}
+
+/**
+ * Sample a visible microfacet normal via GGX-VNDF importance sampling
+ * (Heitz 2018, "Sampling the GGX Distribution of Visible Normals", isotropic case).
+ *
+ * @param alpha GGX roughness parameter (alphaFromRoughness(roughness))
+ * @param v_local View direction in the local shading frame (z = macro-surface normal);
+ *                must satisfy v_local.z >= 0 (caller ensures this by building the frame
+ *                around a normal oriented toward the view direction).
+ * @param u1 Random value [0, 1)
+ * @param u2 Random value [0, 1)
+ * @return Sampled microfacet normal, in the same local frame as v_local.
+ */
+__device__ float3 sampleGGXVNDF(float alpha, const float3& v_local, float u1, float u2) {
+    // Section 3.2: stretch the view vector into the hemisphere configuration.
+    const float3 vh = normalize(make_float3(alpha * v_local.x, alpha * v_local.y, v_local.z));
+
+    // Section 4.1: orthonormal basis around vh.
+    const float lensq = vh.x * vh.x + vh.y * vh.y;
+    const float3 t1 = lensq > 0.0f
+        ? make_float3(-vh.y, vh.x, 0.0f) * rsqrtf(lensq)
+        : make_float3(1.0f, 0.0f, 0.0f);
+    const float3 t2 = cross(vh, t1);
+
+    // Section 4.2: parameterization of the projected area. sampleDisk already returns the
+    // (r*cos(phi), r*sin(phi)) concentric-disk sample Heitz's algorithm needs as (t1, t2).
+    const float2 disk = sampleDisk(u1, u2);
+    const float s = 0.5f * (1.0f + vh.z);
+    const float t2_warped = (1.0f - s) * sqrtf(fmaxf(0.0f, 1.0f - disk.x * disk.x)) + s * disk.y;
+
+    // Section 4.3: reprojection onto the hemisphere.
+    const float3 nh = disk.x * t1 + t2_warped * t2
+        + sqrtf(fmaxf(0.0f, 1.0f - disk.x * disk.x - t2_warped * t2_warped)) * vh;
+
+    // Section 3.4: transform the normal back to the ellipsoid configuration.
+    return normalize(make_float3(alpha * nh.x, alpha * nh.y, fmaxf(0.0f, nh.z)));
+}
+
+/**
  * Sample a direction on a unit sphere uniformly.
  *
  * @param u1 Random value [0, 1)
@@ -1074,7 +1121,42 @@ extern "C" __global__ void __closesthit__photon() {
     const float n1 = entering ? 1.0f : ior_material;
     const float n2 = entering ? ior_material : 1.0f;
     const float eta = n1 / n2;
-    const float cos_theta_i = fabsf(dot(ray_dir, normal));
+
+    // Phase 3: GGX-VNDF rough refraction. Sample a microfacet normal around the macro `normal`
+    // when the instance is rough, and use it in place of the smooth geometric normal for the
+    // Fresnel/reflect/refract math below (both outcomes of the existing Russian-roulette split
+    // read shading_normal, so rough glass blurs both its reflection and its transmission from one
+    // sampled normal). roughness is read HERE for the first time in the caustics path -- gated on
+    // alpha > ROUGHNESS_EPSILON, false for every existing dielectric preset (all set
+    // roughness=0.0f explicitly), so this branch is unreachable for any current reference scene.
+    float3 shading_normal = normal;
+    if (params.use_ias && params.instance_materials) {
+        const unsigned int rough_id = optixGetInstanceId();
+        const float roughness = params.instance_materials[rough_id].roughness;
+        const float alpha = alphaFromRoughness(roughness);
+        if (alpha > ROUGHNESS_EPSILON) {
+            float3 tangent, bitangent;
+            createONB(normal, tangent, bitangent);
+            const float3 view_world = make_float3(-ray_dir.x, -ray_dir.y, -ray_dir.z);
+            const float3 view_local = make_float3(
+                dot(view_world, tangent), dot(view_world, bitangent), dot(view_world, normal));
+            // Fresh ad-hoc TEA-hash draws, same technique the Russian-roulette split below uses
+            // for rr_seed (:1139-1140) -- different hit_point/flux component combinations, so this
+            // draw doesn't correlate with the RR draw. No payload plumbing needed: the true photon
+            // RNG seed is inaccessible here regardless, exactly as it is for rr_seed today.
+            unsigned int ggx_seed1 = tea(__float_as_uint(hit_point.y + hit_point.z),
+                                         __float_as_uint(flux.y + hit_point.x));
+            unsigned int ggx_seed2 = tea(__float_as_uint(flux.z + hit_point.x),
+                                         __float_as_uint(hit_point.y + flux.x));
+            const float u1 = rnd(ggx_seed1);
+            const float u2 = rnd(ggx_seed2);
+            const float3 m_local = sampleGGXVNDF(alpha, view_local, u1, u2);
+            shading_normal = normalize(
+                m_local.x * tangent + m_local.y * bitangent + m_local.z * normal);
+        }
+    }
+
+    const float cos_theta_i = fabsf(dot(ray_dir, shading_normal));
     const float sin_theta_i_sq = 1.0f - cos_theta_i * cos_theta_i;
     const float sin_theta_t_sq = eta * eta * sin_theta_i_sq;
 
@@ -1087,13 +1169,13 @@ extern "C" __global__ void __closesthit__photon() {
     applyPhotonBeerLambert(flux, t, entering, glass_color, glass_color[3], glass_scale);
 
     // Reflection direction, used both for TIR and for Fresnel-reflected photons.
-    // `normal` faces against the incoming ray (dot(ray_dir, normal) = -cos_theta_i), so the
-    // mirror reflection is ray_dir + 2*cos_theta_i*normal — the sign that bounces the ray back
-    // out of the surface (the old `- 2*cos*normal` sent the reflected ray straight through).
+    // `shading_normal` faces against the incoming ray (dot(ray_dir, shading_normal) = -cos_theta_i), so the
+    // mirror reflection is ray_dir + 2*cos_theta_i*shading_normal — the sign that bounces the ray back
+    // out of the surface (the old `- 2*cos*shading_normal` sent the reflected ray straight through).
     const float3 reflect_dir = normalize(make_float3(
-        ray_dir.x + 2.0f * cos_theta_i * normal.x,
-        ray_dir.y + 2.0f * cos_theta_i * normal.y,
-        ray_dir.z + 2.0f * cos_theta_i * normal.z
+        ray_dir.x + 2.0f * cos_theta_i * shading_normal.x,
+        ray_dir.y + 2.0f * cos_theta_i * shading_normal.y,
+        ray_dir.z + 2.0f * cos_theta_i * shading_normal.z
     ));
 
     float3 new_dir;
@@ -1143,9 +1225,9 @@ extern "C" __global__ void __closesthit__photon() {
         } else {
             if (params.caustics.stats) atomicAdd(&params.caustics.stats->refraction_events, 1ULL);
             new_dir = normalize(make_float3(
-                eta * ray_dir.x + (eta * cos_theta_i - cos_theta_t) * normal.x,
-                eta * ray_dir.y + (eta * cos_theta_i - cos_theta_t) * normal.y,
-                eta * ray_dir.z + (eta * cos_theta_i - cos_theta_t) * normal.z
+                eta * ray_dir.x + (eta * cos_theta_i - cos_theta_t) * shading_normal.x,
+                eta * ray_dir.y + (eta * cos_theta_i - cos_theta_t) * shading_normal.y,
+                eta * ray_dir.z + (eta * cos_theta_i - cos_theta_t) * shading_normal.z
             ));
         }
     }
