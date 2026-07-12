@@ -941,6 +941,28 @@ extern "C" __global__ void __closesthit__photon() {
         }
     }
 
+    // Phase 2 Task 2: probe-mode branch. __raygen__hitpoints reuses this already-registered
+    // RAY_TYPE_PHOTON closest-hit (same SBT hit groups as real photon transport, for every
+    // geometry type) to discover what the camera ray actually hit, without running any of the
+    // photon-transport side effects below (stats, Beer-Lambert, refraction). Gated on payload_9
+    // bit4, which tracePhoton() never sets — real photon bounces are unaffected byte-for-byte.
+    const bool probe_mode = (optixGetPayload_9() & 16u) != 0u;
+    if (probe_mode) {
+        const bool is_diffuse = ior_material <= 1.05f;
+
+        optixSetPayload_0(__float_as_uint(hit_point.x));
+        optixSetPayload_1(__float_as_uint(hit_point.y));
+        optixSetPayload_2(__float_as_uint(hit_point.z));
+        optixSetPayload_3(__float_as_uint(outward_normal.x));
+        optixSetPayload_4(__float_as_uint(outward_normal.y));
+        optixSetPayload_5(__float_as_uint(outward_normal.z));
+        optixSetPayload_6(__float_as_uint(glass_color[0]));
+        optixSetPayload_7(__float_as_uint(glass_color[1]));
+        optixSetPayload_8(__float_as_uint(glass_color[2]));
+        optixSetPayload_9(1u | (is_diffuse ? 2u : 0u));
+        return;
+    }
+
     // Unpack photon flux from payload
     float3 flux = make_float3(
         __uint_as_float(optixGetPayload_0()),
@@ -1071,6 +1093,13 @@ extern "C" __global__ void __closesthit__photon() {
  * for energy deposition. Sets payload flags accordingly.
  */
 extern "C" __global__ void __miss__photon() {
+    // Phase 2 Task 2: probe-mode miss — nothing hit, report flags=0 and stop (no plane
+    // deposit, no stats — those belong to real photon transport only).
+    if ((optixGetPayload_9() & 16u) != 0u) {
+        optixSetPayload_9(0u);
+        return;
+    }
+
     const float3 origin = optixGetWorldRayOrigin();
     const float3 dir    = optixGetWorldRayDirection();
     const float3 flux   = make_float3(
