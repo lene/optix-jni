@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18] - 2026-07-12
+
+Arbitrary receiver surfaces for caustics (Phase 2 of the production-caustics roadmap).
+
+### Added
+
+- **Multi-plane caustic deposit**: `checkPlaneIntersection` and the hit-point-seeding path in
+  `__raygen__hitpoints` now consider all enabled planes (`num_planes`, up to `MAX_PLANES = 4`)
+  and target the nearest intersection, instead of always reading `planes[0]`. Scenes with a
+  single enabled plane (every prior reference scene) are unaffected — the multi-plane loop
+  reduces to the prior single-plane arithmetic exactly.
+- **Diffuse mesh/sphere instance receivers**: caustics now deposit onto diffuse instances
+  (`ior <= 1.05`), not only analytic planes. `__raygen__hitpoints` probes the camera ray against
+  real geometry first (reusing the existing `RAY_TYPE_PHOTON` hit groups via a new probe-mode
+  branch — no new ray type or SBT changes) and seeds a hit point at the real position/normal/
+  albedo when it hits a diffuse instance; `__closesthit__photon` gains a matching deposit branch
+  for real photon transport, preserving the existing LS⁺D gate (only photons that already
+  touched glass may deposit).
+- `CausticsWallReceiverSuite`, `CausticsMeshReceiverSuite` — regression tests locking both new
+  receiver paths, using deterministic native stats (`CausticsStats.photonsDeposited`) rather than
+  pixel deltas where a cross-scene pixel comparison proved noisy (~10% scene-composition noise
+  from an added plane's own visible shading, measured empirically).
+
 ## [0.1.17] - 2026-07-11
 
 Fix dead `CausticsStats.totalFluxReflected` (Sprint 33.11 / caustics coverage net).
@@ -256,6 +279,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.18]: https://github.com/lene/optix-jni/compare/0.1.17...0.1.18
 [0.1.17]: https://github.com/lene/optix-jni/compare/0.1.16...0.1.17
 [0.1.16]: https://github.com/lene/optix-jni/compare/0.1.15...0.1.16
 [0.1.15]: https://github.com/lene/optix-jni/compare/0.1.14...0.1.15
