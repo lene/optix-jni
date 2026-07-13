@@ -70,4 +70,31 @@ class CausticsRoughGlassSuite extends AnyFlatSpec with Matchers with RendererFix
       roughHits should be > smoothHits
     }
 
+  // Mirrors CausticsCoverageSuite's regression-guard pattern: energyConservationError is NOT a
+  // physical energy-conservation bound (totalFluxDeposited is raw pre-normalization flux, see
+  // CausticsCoverageSuite's comment) -- this locks the RATIO so future accounting drift is
+  // caught, across a roughness sweep so GGX sampling doesn't introduce its own drift.
+  private val MaxEnergyConservationErrorRatio: Double = 780.0
+
+  it should "report a bounded, deterministic energy-conservation error across a roughness sweep" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    for roughness <- Seq(0.0f, 0.2f, 0.5f, 0.8f) do
+      val glass = Material(
+        Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass, roughness = roughness
+      )
+      setupScene(glass)
+      renderer.enableCaustics(photonsPerIter, causticIterations)
+      val statsA = { renderer.renderWithStats(imageSize).get; renderer.getCausticsStats }
+      setupScene(glass)
+      renderer.enableCaustics(photonsPerIter, causticIterations)
+      val statsB = { renderer.renderWithStats(imageSize).get; renderer.getCausticsStats }
+      withClue(
+        s"roughness=$roughness energyConservationError A=${statsA.energyConservationError} " +
+        s"B=${statsB.energyConservationError}; must be bounded and deterministic. "
+      ) {
+        statsA.totalFluxEmitted should be > 0.0
+        statsA.energyConservationError shouldBe statsB.energyConservationError +- 1e-6
+        statsA.energyConservationError should be < MaxEnergyConservationErrorRatio
+      }
+
 end CausticsRoughGlassSuite
