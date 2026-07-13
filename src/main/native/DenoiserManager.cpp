@@ -67,6 +67,13 @@ bool DenoiserManager::denoiseFloat4(
         ensureSetup(width, height);
         if (temporal_) {
             const size_t npix = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+            const size_t new_size_bytes = npix * sizeof(float);
+            if (previous_output_buffer_.sizeBytes() != new_size_bytes) {
+                // A resolution change reallocates the buffer below, discarding whatever
+                // previous-frame output it held -- any stale has_previous_output_=true from
+                // before the resize would tell OptiX to blend against uninitialized memory.
+                has_previous_output_ = false;
+            }
             previous_output_buffer_.allocate(npix);
             // Same requirement as guide_layer.flow below: OptiX rejects a null
             // previousOutput data pointer even when temporalModeUsePreviousLayers is 0,
