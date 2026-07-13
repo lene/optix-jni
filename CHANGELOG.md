@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19] - 2026-07-13
+
+### Added
+
+- Rough/frosted refraction: GGX-VNDF microfacet importance sampling (Heitz 2018) in the photon
+  closest-hit path, gated on `InstanceMaterial.roughness > 0` (alpha = roughness^2). Perturbs
+  both the reflect and refract directions off one sampled microfacet normal, using the existing
+  Fresnel/Russian-roulette split unchanged. Smooth glass (roughness=0.0, every existing preset)
+  is byte-identical to pre-0.1.19 behavior.
+
 ## [0.1.18] - 2026-07-12
 
 Arbitrary receiver surfaces for caustics (Phase 2 of the production-caustics roadmap).
@@ -279,6 +289,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.1.19]: https://github.com/lene/optix-jni/compare/0.1.18...0.1.19
 [0.1.18]: https://github.com/lene/optix-jni/compare/0.1.17...0.1.18
 [0.1.17]: https://github.com/lene/optix-jni/compare/0.1.16...0.1.17
 [0.1.16]: https://github.com/lene/optix-jni/compare/0.1.15...0.1.16
