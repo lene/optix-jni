@@ -300,6 +300,21 @@ class OptiXRenderer
   def isDenoisingEnabled: Boolean =
     isInitialized && isDenoisingEnabledNative
 
+  @native private def setTemporalDenoisingEnabledNative(enabled: Boolean): Unit
+
+  /** Enables or disables camera+object motion-vector tracking for the OptiX temporal
+    * denoiser. Has no effect unless [[setDenoisingEnabled]] is also on. Safe to call at any
+    * time -- silently no-ops when the renderer is not initialized. */
+  def setTemporalDenoisingEnabled(enabled: Boolean): Unit =
+    if isInitialized then setTemporalDenoisingEnabledNative(enabled)
+
+  @native private def getInstanceMotionDeltaNative(instanceId: Int): Array[Float]
+
+  /** Returns the 12-float (4x3 row-major) affine delta transform mapping this frame's
+    * world-space points on `instanceId` to where that same point was last frame. Identity
+    * when there is no previous temporal frame or the instance topology changed. */
+  def getInstanceMotionDelta(instanceId: Int): Array[Float] = getInstanceMotionDeltaNative(instanceId)
+
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
   @native private[optix] def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit

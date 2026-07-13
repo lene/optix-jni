@@ -148,6 +148,16 @@ public:
     void setDenoisingEnabled(bool enabled);
     bool isDenoisingEnabled() const;
 
+    // Phase 4: enables camera+object motion-vector tracking for the OptiX temporal denoiser.
+    void setTemporalDenoisingEnabled(bool enabled);
+
+    // Phase 4: returns the affine delta transform (12 floats, same 4x3 layout as instance
+    // transforms) mapping this frame's world-space points on `instanceId` to where that same
+    // material point was last frame. Returns identity (and writes it to out12) when there is no
+    // previous frame yet, the instance count/geometry-type doesn't match the previous frame
+    // (topology change), or instanceId is out of range -- never throws, never crashes.
+    void getInstanceMotionDelta(int instanceId, float* out12) const;
+
 
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);

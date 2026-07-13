@@ -30,6 +30,91 @@
 namespace {
 constexpr unsigned int RGBA8_BYTES_PER_PIXEL = 4;
 constexpr unsigned int FLOAT_RGBA_BYTES_PER_PIXEL = 4 * sizeof(float);
+
+// Inverts a 3x3 row-major matrix via the cofactor/adjugate method. Returns false (leaves `out`
+// unmodified) if the matrix is singular (determinant ~0) -- callers must fall back to identity.
+bool invert3x3(const float m[9], float out[9]) {
+    const float det =
+        m[0] * (m[4] * m[8] - m[5] * m[7]) -
+        m[1] * (m[3] * m[8] - m[5] * m[6]) +
+        m[2] * (m[3] * m[7] - m[4] * m[6]);
+    if (std::fabs(det) < 1e-8f) return false;
+    const float inv_det = 1.0f / det;
+    out[0] = (m[4] * m[8] - m[5] * m[7]) * inv_det;
+    out[1] = (m[2] * m[7] - m[1] * m[8]) * inv_det;
+    out[2] = (m[1] * m[5] - m[2] * m[4]) * inv_det;
+    out[3] = (m[5] * m[6] - m[3] * m[8]) * inv_det;
+    out[4] = (m[0] * m[8] - m[2] * m[6]) * inv_det;
+    out[5] = (m[2] * m[3] - m[0] * m[5]) * inv_det;
+    out[6] = (m[3] * m[7] - m[4] * m[6]) * inv_det;
+    out[7] = (m[1] * m[6] - m[0] * m[7]) * inv_det;
+    out[8] = (m[0] * m[4] - m[1] * m[3]) * inv_det;
+    return true;
+}
+
+void mat3MulMat3(const float a[9], const float b[9], float out[9]) {
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) {
+            out[r * 3 + c] = a[r * 3 + 0] * b[0 * 3 + c]
+                            + a[r * 3 + 1] * b[1 * 3 + c]
+                            + a[r * 3 + 2] * b[2 * 3 + c];
+        }
+    }
+}
+
+void mat3MulVec3(const float m[9], const float v[3], float out[3]) {
+    for (int r = 0; r < 3; ++r) {
+        out[r] = m[r * 3 + 0] * v[0] + m[r * 3 + 1] * v[1] + m[r * 3 + 2] * v[2];
+    }
+}
+
+// Splits a 12-float OptiX-style row-major 3x4 affine transform (3 rows of 4: the first 3
+// columns of each row are the linear part, the 4th is that row's translation component --
+// confirmed against this file's own instance-center extraction at :1872-1874, which reads
+// transform[3]/[7]/[11] as (cx, cy, cz)) into a plain 3x3 linear matrix and a 3-vector
+// translation.
+void extractLinearAndTranslation(const float t[12], float m[9], float trans[3]) {
+    m[0] = t[0]; m[1] = t[1]; m[2] = t[2];   trans[0] = t[3];
+    m[3] = t[4]; m[4] = t[5]; m[5] = t[6];   trans[1] = t[7];
+    m[6] = t[8]; m[7] = t[9]; m[8] = t[10];  trans[2] = t[11];
+}
+
+// Inverse of extractLinearAndTranslation: repacks a 3x3 linear matrix + translation back into
+// the 12-float row-major 3x4 layout.
+void packLinearAndTranslation(const float m[9], const float trans[3], float out[12]) {
+    out[0] = m[0]; out[1] = m[1]; out[2] = m[2];   out[3]  = trans[0];
+    out[4] = m[3]; out[5] = m[4]; out[6] = m[5];   out[7]  = trans[1];
+    out[8] = m[6]; out[9] = m[7]; out[10] = m[8];  out[11] = trans[2];
+}
+
+// Computes delta such that delta_transform(curr_world_point) ~= where that same material point
+// was last frame. transform[] layout: row-major 3x4 (OptiX OptixInstance::transform
+// convention) -- see extractLinearAndTranslation. Returns false (identity) if curr's linear
+// part is singular.
+bool computeInstanceMotionDelta(const float prev_transform[12], const float curr_transform[12],
+                                 float out_delta[12]) {
+    float prev_m[9], prev_t[3], curr_m[9], curr_t[3];
+    extractLinearAndTranslation(prev_transform, prev_m, prev_t);
+    extractLinearAndTranslation(curr_transform, curr_m, curr_t);
+
+    float curr_inv[9];
+    if (!invert3x3(curr_m, curr_inv)) return false;
+
+    float delta_m[9];
+    mat3MulMat3(prev_m, curr_inv, delta_m);
+
+    float delta_m_curr_t[3];
+    mat3MulVec3(delta_m, curr_t, delta_m_curr_t);
+    const float delta_t[3] = {
+        prev_t[0] - delta_m_curr_t[0],
+        prev_t[1] - delta_m_curr_t[1],
+        prev_t[2] - delta_m_curr_t[2]
+    };
+
+    packLinearAndTranslation(delta_m, delta_t, out_delta);
+    return true;
+}
+
 }  // namespace
 
 /**
@@ -111,6 +196,28 @@ struct OptiXWrapper::Impl {
     };
 
     std::vector<ObjectInstance> instances;    // All object instances
+
+    // Phase 4: cross-frame temporal state, used only when denoising_enabled + temporal_denoising_enabled.
+    bool temporal_denoising_enabled = false;
+    std::vector<ObjectInstance> previous_instances;
+    bool has_previous_frame = false;
+    float previous_cam_eye[3] = {0.0f, 0.0f, 0.0f};
+    float previous_cam_u[3] = {0.0f, 0.0f, 0.0f};
+    float previous_cam_v[3] = {0.0f, 0.0f, 0.0f};
+    float previous_cam_w[3] = {0.0f, 0.0f, 0.0f};
+    // One-render-call-delayed staging buffer: render() writes "this frame's" snapshot here at
+    // its end, and promotes it into previous_* at the START of the *next* render() call (before
+    // that call's own instances/camera are used) -- so previous_* always lags instances/camera
+    // by exactly one completed render(), instead of being self-overwritten same-call. See
+    // root-cause trace in .superpowers/sdd/task-1-report.md for why the naive same-call
+    // snapshot (this task's original brief) cannot work.
+    std::vector<ObjectInstance> pending_instances;
+    bool has_pending_snapshot = false;
+    float pending_cam_eye[3] = {0.0f, 0.0f, 0.0f};
+    float pending_cam_u[3] = {0.0f, 0.0f, 0.0f};
+    float pending_cam_v[3] = {0.0f, 0.0f, 0.0f};
+    float pending_cam_w[3] = {0.0f, 0.0f, 0.0f};
+
     OptixTraversableHandle ias_handle = 0;    // Top-level IAS handle
     CUdeviceptr d_ias_output_buffer = 0;      // IAS memory
     CUdeviceptr d_instances_buffer = 0;       // OptixInstance array on GPU
@@ -369,6 +476,16 @@ void OptiXWrapper::setDenoisingEnabled(bool enabled) {
 
 bool OptiXWrapper::isDenoisingEnabled() const {
     return impl->denoising_enabled;
+}
+
+void OptiXWrapper::setTemporalDenoisingEnabled(bool enabled) {
+    impl->temporal_denoising_enabled = enabled;
+    if (!enabled) {
+        impl->has_previous_frame = false;  // force a fresh start if re-enabled later
+        impl->previous_instances.clear();
+        impl->has_pending_snapshot = false;
+        impl->pending_instances.clear();
+    }
 }
 
 void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
@@ -1328,6 +1445,19 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         throw std::runtime_error("[OptiX] render() called before initialize()");
     }
 
+    // Phase 4: promote last render() call's pending snapshot into previous_* BEFORE this call
+    // does any GPU work or touches impl->instances/camera for the frame it's about to render.
+    // This keeps previous_* exactly one render() call behind "current", instead of the pending
+    // snapshot being overwritten by the same call that produced it.
+    if (impl->temporal_denoising_enabled && impl->has_pending_snapshot) {
+        impl->previous_instances = impl->pending_instances;
+        std::memcpy(impl->previous_cam_eye, impl->pending_cam_eye, 3 * sizeof(float));
+        std::memcpy(impl->previous_cam_u, impl->pending_cam_u, 3 * sizeof(float));
+        std::memcpy(impl->previous_cam_v, impl->pending_cam_v, 3 * sizeof(float));
+        std::memcpy(impl->previous_cam_w, impl->pending_cam_w, 3 * sizeof(float));
+        impl->has_previous_frame = true;
+    }
+
     try {
         // Build pipeline on first render or when geometry changes (expensive)
         if (!impl->pipeline_built || impl->scene.isGeometryDirty()) {
@@ -2034,6 +2164,22 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             output[i * 4 + 2] = 0;    // B
             output[i * 4 + 3] = 255;  // A
         }
+    }
+
+    // Phase 4: snapshot this frame's instances + camera into the pending staging buffer. This
+    // is promoted to previous_* at the START of the *next* render() call (see the promotion
+    // block at the top of this function) -- not applied to previous_* here, so previous_*
+    // always stays one full render() call behind "current" rather than being self-overwritten
+    // by this very call. Gated on temporal_denoising_enabled so Off/Final paths never pay this
+    // cost or retain this state.
+    if (impl->temporal_denoising_enabled) {
+        impl->pending_instances = impl->instances;
+        const auto& cam = impl->scene.getCamera();
+        std::memcpy(impl->pending_cam_eye, cam.eye, 3 * sizeof(float));
+        std::memcpy(impl->pending_cam_u, cam.u, 3 * sizeof(float));
+        std::memcpy(impl->pending_cam_v, cam.v, 3 * sizeof(float));
+        std::memcpy(impl->pending_cam_w, cam.w, 3 * sizeof(float));
+        impl->has_pending_snapshot = true;
     }
 }
 
@@ -3558,6 +3704,30 @@ void OptiXWrapper::clearAllInstances() {
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cerr << "[OptiXWrapper::clearAllInstances] CUDA error after cleanup: " << cudaGetErrorString(err) << std::endl;
+    }
+}
+
+/** Phase 4: returns the affine delta transform (12 floats, same 4x3 layout as instance
+ * transforms) mapping this frame's world-space points on `instanceId` to where that same
+ * material point was last frame. Returns identity (and writes it to out12) when there is no
+ * previous frame yet, the instance count/geometry-type doesn't match the previous frame
+ * (topology change), or instanceId is out of range -- never throws, never crashes.
+ */
+void OptiXWrapper::getInstanceMotionDelta(int instanceId, float* out12) const {
+    const float identity[12] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+    std::memcpy(out12, identity, 12 * sizeof(float));
+
+    if (!impl->has_previous_frame) return;
+    if (instanceId < 0 || static_cast<size_t>(instanceId) >= impl->instances.size()) return;
+    if (impl->previous_instances.size() != impl->instances.size()) return;  // topology mismatch
+
+    const auto& curr = impl->instances[static_cast<size_t>(instanceId)];
+    const auto& prev = impl->previous_instances[static_cast<size_t>(instanceId)];
+    if (prev.geometry_type != curr.geometry_type) return;  // topology mismatch, this slot
+
+    float delta[12];
+    if (computeInstanceMotionDelta(prev.transform, curr.transform, delta)) {
+        std::memcpy(out12, delta, 12 * sizeof(float));
     }
 }
 

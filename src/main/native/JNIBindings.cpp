@@ -389,6 +389,34 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabl
     }
 }
 
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTemporalDenoisingEnabledNative(
+    JNIEnv* env, jobject obj, jboolean enabled) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr)
+            wrapper->setTemporalDenoisingEnabled(enabled == JNI_TRUE);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setTemporalDenoisingEnabledNative: " << e.what() << std::endl;
+    }
+}
+
+JNIEXPORT jfloatArray JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanceMotionDeltaNative(
+    JNIEnv* env, jobject obj, jint instanceId) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        jfloatArray result = env->NewFloatArray(12);
+        if (wrapper != nullptr && result != nullptr) {
+            float delta[12];
+            wrapper->getInstanceMotionDelta(static_cast<int>(instanceId), delta);
+            env->SetFloatArrayRegion(result, 0, 12, delta);
+        }
+        return result;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in getInstanceMotionDeltaNative: " << e.what() << std::endl;
+        return env->NewFloatArray(12);
+    }
+}
+
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabledNative(
     JNIEnv* env, jobject obj) {
     try {
