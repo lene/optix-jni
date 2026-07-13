@@ -1519,7 +1519,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 impl->denoiser_manager = std::make_unique<DenoiserManager>(
                     impl->optix_context.getContext(),
                     true,
-                    true
+                    true,
+                    impl->temporal_denoising_enabled
                 );
             } catch (const std::exception& guided_error) {
                 std::cerr << "[OptiX] Guided denoiser unavailable: "
@@ -1528,7 +1529,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                     impl->denoiser_manager = std::make_unique<DenoiserManager>(
                         impl->optix_context.getContext(),
                         false,
-                        false
+                        false,
+                        impl->temporal_denoising_enabled
                     );
                 } catch (const std::exception& color_error) {
                     std::cerr << "[OptiX] Color-only denoiser unavailable: "
@@ -2151,13 +2153,20 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             CUdeviceptr normal = write_denoise_guides
                 ? impl->buffer_manager.getDenoiseNormalBuffer()
                 : 0;
+            // Same gate render() uses for params.flow (Phase 4 Task 2): only pass the
+            // flow buffer once temporal denoising is on AND a previous frame exists to
+            // reproject against -- 0 otherwise, including the first temporal-mode frame.
+            const CUdeviceptr flow = (impl->temporal_denoising_enabled && impl->has_previous_frame)
+                ? impl->buffer_manager.getFlowBuffer()
+                : 0;
             const bool denoised = impl->denoiser_manager->denoiseFloat4(
                 width,
                 height,
                 denoise_input,
                 impl->buffer_manager.getDenoisedColorBuffer(),
                 albedo,
-                normal
+                normal,
+                flow
             );
             const CUdeviceptr final_linear = denoised
                 ? impl->buffer_manager.getDenoisedColorBuffer()

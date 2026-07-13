@@ -17,8 +17,9 @@ size_t maxScratchSize(const OptixDenoiserSizes& sizes) {
 DenoiserManager::DenoiserManager(
     OptixDeviceContext context,
     bool guide_albedo,
-    bool guide_normal
-) : guide_albedo_(guide_albedo), guide_normal_(guide_normal) {
+    bool guide_normal,
+    bool temporal
+) : guide_albedo_(guide_albedo), guide_normal_(guide_normal), temporal_(temporal) {
     if (context == nullptr) {
         throw std::runtime_error("OptiX context is null");
     }
@@ -28,9 +29,12 @@ DenoiserManager::DenoiserManager(
     options.guideNormal = guide_normal ? 1u : 0u;
     options.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
 
+    const OptixDenoiserModelKind model_kind =
+        temporal ? OPTIX_DENOISER_MODEL_KIND_TEMPORAL : OPTIX_DENOISER_MODEL_KIND_HDR;
+
     OPTIX_CHECK(optixDenoiserCreate(
         context,
-        OPTIX_DENOISER_MODEL_KIND_HDR,
+        model_kind,
         &options,
         &denoiser_
     ));
@@ -49,7 +53,8 @@ bool DenoiserManager::denoiseFloat4(
     CUdeviceptr input,
     CUdeviceptr output,
     CUdeviceptr albedo,
-    CUdeviceptr normal
+    CUdeviceptr normal,
+    CUdeviceptr flow
 ) {
     if (denoiser_ == nullptr || width <= 0 || height <= 0 || input == 0 || output == 0) {
         return false;
@@ -60,6 +65,16 @@ bool DenoiserManager::denoiseFloat4(
 
     try {
         ensureSetup(width, height);
+        if (temporal_) {
+            const size_t npix = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+            previous_output_buffer_.allocate(npix);
+            // Same requirement as guide_layer.flow below: OptiX rejects a null
+            // previousOutput data pointer even when temporalModeUsePreviousLayers is 0,
+            // so zero-fill on the first call before any real output has been captured.
+            if (!has_previous_output_) {
+                previous_output_buffer_.zero(npix);
+            }
+        }
 
         OptixDenoiserGuideLayer guide_layer = {};
         if (guide_albedo_) {
@@ -68,11 +83,36 @@ bool DenoiserManager::denoiseFloat4(
         if (guide_normal_) {
             guide_layer.normal = makeImage(normal, width, height);
         }
+        if (temporal_) {
+            // OPTIX_DENOISER_MODEL_KIND_TEMPORAL requires guide_layer.flow to always carry
+            // a valid (non-null) image, even on the very first temporal-mode frame when the
+            // caller has no real flow data yet (temporalModeUsePreviousLayers is 0 then, so
+            // its contents don't influence the result) -- optixDenoiserInvoke otherwise
+            // rejects the call with OPTIX_ERROR_INVALID_VALUE ("guide flow: data pointer null").
+            CUdeviceptr flow_ptr = flow;
+            if (flow_ptr == 0) {
+                const size_t npix2 = static_cast<size_t>(width) * static_cast<size_t>(height) * 2;
+                zero_flow_buffer_.allocate(npix2);
+                zero_flow_buffer_.zero(npix2);
+                flow_ptr = zero_flow_buffer_.get();
+            }
+            OptixImage2D flow_image = {};
+            flow_image.data = flow_ptr;
+            flow_image.width = static_cast<unsigned int>(width);
+            flow_image.height = static_cast<unsigned int>(height);
+            flow_image.rowStrideInBytes = static_cast<unsigned int>(width) * 2 * sizeof(float);
+            flow_image.pixelStrideInBytes = 2 * sizeof(float);
+            flow_image.format = OPTIX_PIXEL_FORMAT_FLOAT2;
+            guide_layer.flow = flow_image;
+        }
 
         OptixDenoiserLayer layer = {};
         layer.input = makeImage(input, width, height);
         layer.output = makeImage(output, width, height);
         layer.type = OPTIX_DENOISER_AOV_TYPE_BEAUTY;
+        if (temporal_) {
+            layer.previousOutput = makeImage(previous_output_buffer_.get(), width, height);
+        }
 
         OPTIX_CHECK(optixDenoiserComputeIntensity(
             denoiser_,
@@ -86,6 +126,8 @@ bool DenoiserManager::denoiseFloat4(
         OptixDenoiserParams params = {};
         params.hdrIntensity = hdr_intensity_buffer_.get();
         params.blendFactor = 0.0f;
+        params.temporalModeUsePreviousLayers = (temporal_ && has_previous_output_) ? 1u : 0u;
+        last_invoke_used_previous_layers_ = params.temporalModeUsePreviousLayers != 0u;
 
         OPTIX_CHECK(optixDenoiserInvoke(
             denoiser_,
@@ -103,6 +145,17 @@ bool DenoiserManager::denoiseFloat4(
         ));
 
         CUDA_CHECK(cudaDeviceSynchronize());
+
+        if (temporal_) {
+            CUDA_CHECK(cudaMemcpy(
+                reinterpret_cast<void*>(previous_output_buffer_.get()),
+                reinterpret_cast<void*>(output),
+                static_cast<size_t>(width) * static_cast<size_t>(height) * 4 * sizeof(float),
+                cudaMemcpyDeviceToDevice
+            ));
+            has_previous_output_ = true;
+        }
+
         return true;
     } catch (const std::exception& e) {
         std::cerr << "[OptiX] Denoise failed: " << e.what() << std::endl;

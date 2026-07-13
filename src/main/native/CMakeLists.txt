@@ -275,8 +275,10 @@ if(BUILD_OPTIX_TESTS)
     add_executable(optixcontext_test
         tests/OptiXContextTest.cpp
         tests/EnvMapCDFTest.cpp
+        tests/DenoiserManagerTest.cpp
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
+        DenoiserManager.cpp  # Need to compile DenoiserManager again for tests
     )
 
     target_include_directories(optixcontext_test PRIVATE
