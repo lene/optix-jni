@@ -1,7 +1,6 @@
 package io.github.lene.optix.caustics
 
 import io.github.lene.optix.RendererFixture
-import io.github.lene.optix.CausticsStats
 import menger.common.Color
 import menger.common.Const
 import menger.common.ImageSize
@@ -16,7 +15,8 @@ import org.scalatest.matchers.should.Matchers
   * the rough caustic must spread its energy over a wider area — measured as more hit points
   * receiving nonzero photon flux than the smooth case (same total photon energy spread over more
   * hit points), using the deterministic hitPointsWithFlux counter from the native caustics
-  * pipeline (counts how many scene hit points accumulate nonzero photon flux after all PPM iterations).
+  * pipeline (counts how many scene hit points accumulate nonzero photon flux after all PPM
+  * iterations).
   */
 class CausticsRoughGlassSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -56,15 +56,17 @@ class CausticsRoughGlassSuite extends AnyFlatSpec with Matchers with RendererFix
 
   behavior of "GGX-VNDF rough refraction"
 
-  it should "spread a rough-glass caustic wider (more hit points with flux) than a smooth-glass caustic" in:
+  it should "spread a rough-glass caustic wider (more hit points w/ flux) than a smooth one" in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
-    val smoothGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass, roughness = 0.0f)
-    val roughGlass = Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass, roughness = 0.4f)
+    val smoothGlass =
+      Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass, roughness = 0.0f)
+    val roughGlass =
+      Material(Color(0.95f, 0.95f, 1.0f, 0.5f), ior = Const.iorGlass, roughness = 0.4f)
     val smoothHits = hitPointsWithFlux(smoothGlass)
     val roughHits = hitPointsWithFlux(roughGlass)
     withClue(s"hitPointsWithFlux: smooth=$smoothHits rough=$roughHits; a rough (frosted) glass " +
-      "caustic must spread its photon energy over a wider area than a smooth one, so the rough caustic " +
-      "should touch more distinct hit points on the floor (more nonzero flux hit points). ") {
+      "caustic must spread its photon energy over a wider area than a smooth one, so the rough " +
+      "caustic should touch more distinct hit points on the floor (more nonzero flux points). ") {
       roughHits should be > smoothHits
     }
 
