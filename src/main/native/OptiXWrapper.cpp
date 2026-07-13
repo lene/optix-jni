@@ -218,6 +218,13 @@ struct OptiXWrapper::Impl {
     float pending_cam_v[3] = {0.0f, 0.0f, 0.0f};
     float pending_cam_w[3] = {0.0f, 0.0f, 0.0f};
 
+    // Phase 4 Task 2: per-instance motion-delta array (12 floats/instance), re-uploaded every
+    // render() call when temporal_denoising_enabled + has_previous_frame (values change every
+    // frame regardless of instance count, so unlike d_texture_objects/d_cylinder_data this is
+    // NOT skipped when the instance count is unchanged -- only the cudaMalloc is).
+    CUdeviceptr d_instance_motion = 0;
+    size_t last_instance_motion_count = 0;     // Avoids redundant cudaFree+cudaMalloc per frame
+
     OptixTraversableHandle ias_handle = 0;    // Top-level IAS handle
     CUdeviceptr d_ias_output_buffer = 0;      // IAS memory
     CUdeviceptr d_instances_buffer = 0;       // OptixInstance array on GPU
@@ -1840,6 +1847,59 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         std::memcpy(params.camera_u, camera.u, sizeof(float) * 3);
         std::memcpy(params.camera_v, camera.v, sizeof(float) * 3);
         std::memcpy(params.camera_w, camera.w, sizeof(float) * 3);
+
+        // Phase 4 Task 2: per-pixel flow-vector computation for the OptiX temporal denoiser.
+        // Gated on temporal_denoising_enabled + a completed previous frame; when either is
+        // false, params.instance_motion/params.flow stay nullptr, matching writeDenoiseGuides's
+        // own null-check gate in helpers.cu -- a true no-op for Off/Final and the very first
+        // temporal-mode frame (nothing to reproject against yet).
+        params.instance_motion = nullptr;
+        params.flow = nullptr;
+        if (impl->temporal_denoising_enabled && impl->has_previous_frame) {
+            impl->buffer_manager.ensureFlowBuffer(width, height);
+
+            const size_t inst_count = impl->instances.size();
+            std::vector<float> motion(inst_count * 12);
+            const bool topology_ok = impl->previous_instances.size() == inst_count;
+            const float identity[12] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+            for (size_t i = 0; i < inst_count; ++i) {
+                float* out = &motion[i * 12];
+                const bool same_type = topology_ok &&
+                    impl->previous_instances[i].geometry_type == impl->instances[i].geometry_type;
+                if (!same_type || !computeInstanceMotionDelta(
+                        impl->previous_instances[i].transform,
+                        impl->instances[i].transform, out)) {
+                    std::memcpy(out, identity, 12 * sizeof(float));
+                }
+            }
+
+            const size_t motion_bytes = motion.size() * sizeof(float);
+            if (inst_count != impl->last_instance_motion_count) {
+                if (impl->d_instance_motion) {
+                    cudaFree(reinterpret_cast<void*>(impl->d_instance_motion));
+                    impl->d_instance_motion = 0;
+                }
+                if (motion_bytes > 0) {
+                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_instance_motion), motion_bytes));
+                }
+                impl->last_instance_motion_count = inst_count;
+            }
+            if (motion_bytes > 0) {
+                CUDA_CHECK(cudaMemcpy(
+                    reinterpret_cast<void*>(impl->d_instance_motion),
+                    motion.data(),
+                    motion_bytes,
+                    cudaMemcpyHostToDevice
+                ));
+                params.instance_motion = reinterpret_cast<float*>(impl->d_instance_motion);
+                params.flow = reinterpret_cast<float2*>(impl->buffer_manager.getFlowBuffer());
+            }
+
+            std::memcpy(params.previous_cam_eye, impl->previous_cam_eye, 3 * sizeof(float));
+            std::memcpy(params.previous_cam_u, impl->previous_cam_u, 3 * sizeof(float));
+            std::memcpy(params.previous_cam_v, impl->previous_cam_v, 3 * sizeof(float));
+            std::memcpy(params.previous_cam_w, impl->previous_cam_w, 3 * sizeof(float));
+        }
 
         // IBL
         params.ibl_enabled       = impl->config.getIBLEnabled();
@@ -3731,6 +3791,17 @@ void OptiXWrapper::getInstanceMotionDelta(int instanceId, float* out12) const {
     }
 }
 
+/** Phase 4 Task 2: downloads the per-pixel flow buffer (2 floats/pixel: dx, dy) computed during
+ * the most recent render() call. Writes all zeros when temporal denoising was inactive or no
+ * previous frame existed yet (flow buffer was never populated this session). Debug/test-only
+ * accessor -- not part of the production render path.
+ */
+void OptiXWrapper::getFlowBuffer(int width, int height, float* out) const {
+    const size_t count = static_cast<size_t>(width) * static_cast<size_t>(height) * 2;
+    std::fill(out, out + count, 0.0f);
+    impl->buffer_manager.downloadFlowBuffer(reinterpret_cast<float2*>(out), width, height);
+}
+
 int OptiXWrapper::getInstanceCount() const {
     int count = 0;
     for (const auto& inst : impl->instances) {
@@ -4100,6 +4171,12 @@ void OptiXWrapper::dispose() {
         // BufferManager automatically cleans up buffers via RAII; just reset state.
         impl->pipeline_built = false;
     });
+    step("releaseInstanceMotionBuffer", [this] {
+        if (impl->d_instance_motion) {
+            cudaFree(reinterpret_cast<void*>(impl->d_instance_motion));
+            impl->d_instance_motion = 0;
+        }
+    });
     step("destroyContext", [this] { impl->optix_context.destroy(); });
     step("deviceSynchronize", [] {
         // Synchronize CUDA device to clear any pending errors
@@ -4122,6 +4199,7 @@ void OptiXWrapper::dispose() {
         impl->last_menger4d_count = 0;
         impl->last_sierpinski4d_count = 0;
         impl->last_hexadecachoron4d_count = 0;
+        impl->last_instance_motion_count = 0;
     });
 
     impl->initialized = false;

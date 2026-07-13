@@ -158,6 +158,12 @@ public:
     // (topology change), or instanceId is out of range -- never throws, never crashes.
     void getInstanceMotionDelta(int instanceId, float* out12) const;
 
+    // Phase 4: downloads the per-pixel flow buffer (2 floats/pixel: dx, dy) computed during the
+    // most recent render() call. Writes all zeros when temporal denoising was inactive or no
+    // previous frame existed yet (flow buffer was never populated). Debug/test-only accessor --
+    // not part of the production render path.
+    void getFlowBuffer(int width, int height, float* out) const;
+
 
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);

@@ -315,6 +315,14 @@ class OptiXRenderer
     * when there is no previous temporal frame or the instance topology changed. */
   def getInstanceMotionDelta(instanceId: Int): Array[Float] = getInstanceMotionDeltaNative(instanceId)
 
+  @native private def getFlowBufferNative(width: Int, height: Int): Array[Float]
+
+  /** Returns the per-pixel flow buffer (2 floats per pixel: dx, dy) computed during the most
+    * recent [[render]]/[[renderWithStats]] call, when temporal denoising is active. All zeros
+    * when temporal denoising is off or no previous frame existed yet. Debug/test-only
+    * accessor -- not part of the production render path. */
+  def getFlowBuffer(width: Int, height: Int): Array[Float] = getFlowBufferNative(width, height)
+
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
   @native private[optix] def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit

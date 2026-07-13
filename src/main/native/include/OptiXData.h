@@ -647,6 +647,15 @@ struct BaseParams {
     // Fog / depth cue
     float fog_density;     // 0.0 = no fog; exponential: exp(-fog_density * t)
     float fog_r, fog_g, fog_b;  // Fog color [0,1]
+
+    // Phase 4: GPU per-pixel flow-vector computation for the OptiX temporal denoiser.
+    float* instance_motion;    // 12 floats per instance (row-major 3x4 delta transform),
+                                // or nullptr when temporal denoising is off
+    float2* flow;               // One flow vector per pixel, or nullptr when off
+    float previous_cam_eye[3];  // Previous frame's camera eye, u, v, w (temporal reprojection)
+    float previous_cam_u[3];
+    float previous_cam_v[3];
+    float previous_cam_w[3];
 };
 
 // Ray generation shader data (camera)

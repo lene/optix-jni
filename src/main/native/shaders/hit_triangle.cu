@@ -309,7 +309,7 @@ extern "C" __global__ void __closesthit__triangle() {
     metallic   = applyMetallicMap(metallic, geom.uv_coords, getInstanceMetallicTextureIndex());
     applyAOMap(mesh_color, geom.uv_coords, getInstanceAoTextureIndex());
 
-    writeDenoiseGuides(mesh_color, geom.normal);
+    writeDenoiseGuides(mesh_color, geom.normal, geom.hit_point);
 
     const float mesh_alpha = mesh_color.w;
 

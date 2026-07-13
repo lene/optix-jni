@@ -389,14 +389,17 @@ git commit -m "feat(temporal): track cross-frame instance-transform + camera his
 **Repo:** optix-jni
 
 **Files:**
-- Modify: `src/main/native/shaders/caustics_ppm.cu` (near `generateCameraRay`, `:196-213`) or the primary-ray raygen used for the beauty buffer (`__raygen__hitpoints` or the main primary raygen — **confirm the exact insertion point during implementation** by finding which raygen writes to the buffer that becomes `params.linear_color`, since that's the buffer the denoiser actually consumes)
+- Modify: `src/main/native/shaders/helpers.cu` (`writeDenoiseGuides`, `:1574` — this is the single correct insertion point, verified this session, see below)
+- Modify: all 9 geometry closest-hit shaders' `writeDenoiseGuides(...)` call sites (one-line signature extension each): `hit_sphere.cu:63`, `hit_cone.cu:189`, `hit_curve.cu:81`, `hit_cylinder.cu:272`, `hit_hexadecachoron4d.cu:276`, `hit_menger4d.cu:359`, `hit_plane.cu:147`, `hit_sierpinski4d.cu:248`, `hit_triangle.cu:312`
 - Modify: `src/main/native/include/OptiXData.h` (new `params.instance_motion` device pointer field, new `flow` output buffer pointer field on `BaseParams` or equivalent)
 - Modify: `src/main/native/BufferManager.cpp`/`.h` (new flow-buffer allocation, mirroring `ensureDenoiseBuffers`)
 - Modify: `src/main/native/OptiXWrapper.cpp` (upload `instance_motion` array before launch, wire flow buffer pointer into `params`, gated on `temporal_denoising_enabled`)
 
+**Why `writeDenoiseGuides` and not a raygen (verified this session, do not redesign):** the primary ray's `optixTrace` call (`raygen_primary.cu:85-98`) already carries exactly 11 payload values (`r,g,b,p3=depth,albedo_r/g/b,normal_x/y/z,p10=hero_lambda`) — the pipeline's fixed `numPayloadValues` ceiling, with zero free slots to also carry `hit_point`/instance-ID back to the raygen for a flow-vector write there. Reflection/refraction is also recursive with multiple exit points per geometry file (`handleFullyTransparent`/`handleMetallicOpaque`/`handleFullyOpaque`/`traceFinalNonRecursiveRay`/`blendFresnelColorsAndSetPayload` in `hit_sphere.cu` alone), so there is no single shared "final color" call site either. `writeDenoiseGuides(albedo, world_normal)` (`helpers.cu:1574`), however, is called exactly once per geometry type, at an equivalent point in all 9 `hit_*.cu` files (confirmed by grep), BEFORE any bounce recursion begins, and it already opens with `if (!params.write_denoise_guides || optixGetPayload_3() != 0u) return;` — i.e. it already gates on "primary ray, depth 0 only," which is exactly the semantics flow-vector computation needs (G-buffer-style: track the FIRST surface a camera ray hits, not deep multi-bounce reflection/refraction content). `optixGetInstanceId()` and `optixGetLaunchIndex()` are both callable from anywhere inside an active OptiX program (standard device intrinsics, no payload needed) — only `hit_point` needs to be passed in, since it's a local variable at each call site (confirmed present, computed before `writeDenoiseGuides`, in all 9 files).
+
 **Interfaces:**
-- Consumes: Task 1's `getInstanceMotionDelta`-equivalent host-side computation (reuse `computeInstanceMotionDelta`, called once per instance per frame from `OptiXWrapper::render()`, not per-pixel), `previous_cam_eye/u/v/w` from Task 1.
-- Produces: a new `__device__ float2 reprojectToPreviousFrame(const float3& world_point, const float3& prev_eye, const float3& prev_u, const float3& prev_v, const float3& prev_w, int width, int height)` device function; `params.flow` (a `float2*` device buffer, one entry per pixel) written by the primary-shading pass.
+- Consumes: Task 1's `computeInstanceMotionDelta`-populated `params.instance_motion` device array (uploaded once per frame by `OptiXWrapper::render()`, not recomputed per-pixel), `params.previous_cam_eye/u/v/w` (uploaded from Task 1's `Impl::previous_cam_*`, NOT `pending_cam_*` — the promoted, one-frame-behind values).
+- Produces: a new `__device__ float2 reprojectToPreviousFrame(const float3& world_point, const float3& prev_eye, const float3& prev_u, const float3& prev_v, const float3& prev_w, int width, int height)` device function in `helpers.cu`; `writeDenoiseGuides` gains a third parameter `const float3& hit_point` and, when `params.instance_motion`/`params.flow` are non-null, writes `params.flow[pixel_idx]` (a `float2*` device buffer, one entry per pixel) for the primary hit only.
 
 **Algorithm (exact — this inverts `generateCameraRay`'s formula, `caustics_ppm.cu:196-213`, do not redesign):**
 
@@ -437,16 +440,34 @@ __device__ float2 reprojectToPreviousFrame(
 }
 ```
 
-Per-pixel flow write (in the primary-shading raygen, after the hit point's world position and instance ID are known — **the exact variable names depend on which raygen you land this in; find where `outward_normal`/`hit_point`/instance ID are already computed for primary rays and add this immediately after**):
+`writeDenoiseGuides`'s new signature and body (`helpers.cu:1574`, replace the existing function — the guard changes from a single early-return to two independently-gated sections, since flow must be written even on frames where `write_denoise_guides` is false, e.g. every frame of a temporal-mode animation, not just accumulation-frame 0):
 
 ```cpp
+__device__ void writeDenoiseGuides(const float4& albedo, const float3& world_normal, const float3& hit_point) {
+    if (optixGetPayload_3() != 0u) {
+        return;  // not the primary (depth-0) hit -- flow and guides are both primary-only.
+    }
+
+    if (params.write_denoise_guides) {
+        const float3 camera_u = normalize(make_float3(
+            params.camera_u[0], params.camera_u[1], params.camera_u[2]));
+        const float3 camera_v = normalize(make_float3(
+            params.camera_v[0], params.camera_v[1], params.camera_v[2]));
+        const float3 camera_w = normalize(make_float3(
+            params.camera_w[0], params.camera_w[1], params.camera_w[2]));
+        const float3 normal = normalize(world_normal);
+        const float3 camera_normal = make_float3(
+            dot(normal, camera_u), dot(normal, camera_v), dot(normal, camera_w));
+        // ... existing body below this point is UNCHANGED, just re-indented under this if ...
+    }
+
     if (params.instance_motion != nullptr && params.flow != nullptr) {
         const unsigned int inst_id = optixGetInstanceId();
         const float* delta = &params.instance_motion[inst_id * 12];
-        // Apply the instance's motion delta to get where this material point was last frame.
-        // delta[] is row-major 3x4 (OptiX transform convention, corrected during Task 1 --
-        // see that task's algorithm note): row0=[delta[0..2], tx=delta[3]], row1=[delta[4..6],
-        // ty=delta[7]], row2=[delta[8..10], tz=delta[11]]. NOT a 9-linear+3-translation layout.
+        // delta[] is row-major 3x4 (OptiX transform convention, see Task 1's algorithm note):
+        // row0=[delta[0..2], tx=delta[3]], row1=[delta[4..6], ty=delta[7]],
+        // row2=[delta[8..10], tz=delta[11]]. Apply the instance's motion delta to get where
+        // this material point was last frame.
         const float3 prev_local = make_float3(
             delta[0]*hit_point.x + delta[1]*hit_point.y + delta[2]*hit_point.z + delta[3],
             delta[4]*hit_point.x + delta[5]*hit_point.y + delta[6]*hit_point.z + delta[7],
@@ -459,6 +480,7 @@ Per-pixel flow write (in the primary-shading raygen, after the hit point's world
         const float2 prev_pixel = reprojectToPreviousFrame(
             prev_local, prev_cam_eye, prev_cam_u, prev_cam_v, prev_cam_w,
             params.image_width, params.image_height);
+        const uint3 idx = optixGetLaunchIndex();
         const unsigned int pixel_idx = idx.y * params.image_width + idx.x;
         if (prev_pixel.x >= 0.0f) {
             params.flow[pixel_idx] = make_float2(
@@ -468,7 +490,10 @@ Per-pixel flow write (in the primary-shading raygen, after the hit point's world
             params.flow[pixel_idx] = make_float2(0.0f, 0.0f);  // disoccluded/degenerate: no motion hint
         }
     }
+}
 ```
+
+Each of the 9 call sites (`writeDenoiseGuides(material_color, normal);` or, in `hit_triangle.cu`, `writeDenoiseGuides(mesh_color, geom.normal);`) becomes a one-line signature extension adding the already-locally-available `hit_point` (or `geom.hit_point` in `hit_triangle.cu`) as the third argument — e.g. `writeDenoiseGuides(material_color, normal, hit_point);`.
 
 - [ ] **Step 1: Write the failing test — flow buffer reflects known object motion**
 
@@ -482,9 +507,9 @@ Add to `OptiXData.h`'s params struct (near the other `denoise_*` pointer fields)
 
 `BufferManager`: add `ensureFlowBuffer(width, height)` / `getFlowBuffer()` mirroring the existing `ensureDenoiseBuffers`/`getDenoiseAlbedoBuffer` pattern (same file, same class — read the existing methods for the exact style before adding). In `OptiXWrapper::render()`, gated on `impl->temporal_denoising_enabled`: allocate the flow buffer, build a host-side `std::vector<float>` of `12 * instances.size()` by calling `computeInstanceMotionDelta` once per instance (reusing Task 1's function directly, not `getInstanceMotionDelta`'s public wrapper — call the internal helper to avoid redundant identity-fallback logic), upload it to a device buffer, and set `params.instance_motion`/`params.flow`/`params.previous_cam_*` before the launch. When `temporal_denoising_enabled` is false, leave both pointers `nullptr` (matches the shader's own null-check gate, so this is a true no-op for `Off`/`Final`).
 
-- [ ] **Step 4: Implement — the two device functions + per-pixel write, in the correct raygen**
+- [ ] **Step 4: Implement — the two device functions + `writeDenoiseGuides` extension + 9 call-site updates**
 
-Add `solveBasisCoefficients`/`reprojectToPreviousFrame` per the algorithm above. Locate the primary-shading raygen (the one whose output becomes `params.linear_color`, feeding the denoiser) and add the per-pixel flow write immediately after that raygen's own `hit_point`/instance-ID are computed for a real geometry hit; skip the write (leave `flow` at its zeroed default) on a miss.
+Add `solveBasisCoefficients`/`reprojectToPreviousFrame` to `helpers.cu` (near `writeDenoiseGuides`). Replace `writeDenoiseGuides` per the exact body above (new `hit_point` parameter, restructured guard, new flow-write block). Update all 9 call sites to pass `hit_point` (or `geom.hit_point`) as the third argument. On a primary-ray MISS (no geometry hit at all), `writeDenoiseGuides` is never called — `params.flow` for that pixel keeps whatever was already there; if the flow buffer isn't explicitly zeroed before each launch, add a `cudaMemset` to `BufferManager::ensureFlowBuffer` (Step 3) or the render-loop's per-frame setup so miss pixels report zero motion rather than stale data from a previous frame's buffer contents.
 
 - [ ] **Step 5: Rebuild, run the new test**
 
@@ -505,7 +530,13 @@ sbt test
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/main/native/shaders/caustics_ppm.cu src/main/native/include/OptiXData.h \
+git add src/main/native/shaders/helpers.cu \
+    src/main/native/shaders/hit_sphere.cu src/main/native/shaders/hit_cone.cu \
+    src/main/native/shaders/hit_curve.cu src/main/native/shaders/hit_cylinder.cu \
+    src/main/native/shaders/hit_hexadecachoron4d.cu src/main/native/shaders/hit_menger4d.cu \
+    src/main/native/shaders/hit_plane.cu src/main/native/shaders/hit_sierpinski4d.cu \
+    src/main/native/shaders/hit_triangle.cu \
+    src/main/native/include/OptiXData.h \
     src/main/native/BufferManager.cpp src/main/native/include/BufferManager.h \
     src/main/native/OptiXWrapper.cpp src/main/native/include/OptiXWrapper.h \
     src/main/native/JNIBindings.cpp src/main/scala/io/github/lene/optix/OptiXRenderer.scala \

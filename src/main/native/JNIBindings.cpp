@@ -2,6 +2,7 @@
 #include "include/OptiXWrapper.h"
 #include <iostream>
 #include <cstring>
+#include <vector>
 
 /**
  * @file JNIBindings.cpp
@@ -414,6 +415,24 @@ JNIEXPORT jfloatArray JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanc
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in getInstanceMotionDeltaNative: " << e.what() << std::endl;
         return env->NewFloatArray(12);
+    }
+}
+
+JNIEXPORT jfloatArray JNICALL Java_io_github_lene_optix_OptiXRenderer_getFlowBufferNative(
+    JNIEnv* env, jobject obj, jint width, jint height) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        const jsize count = static_cast<jsize>(width) * static_cast<jsize>(height) * 2;
+        jfloatArray result = env->NewFloatArray(count);
+        if (wrapper != nullptr && result != nullptr) {
+            std::vector<float> flow(static_cast<size_t>(count));
+            wrapper->getFlowBuffer(static_cast<int>(width), static_cast<int>(height), flow.data());
+            env->SetFloatArrayRegion(result, 0, count, flow.data());
+        }
+        return result;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in getFlowBufferNative: " << e.what() << std::endl;
+        return env->NewFloatArray(0);
     }
 }
 

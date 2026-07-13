@@ -144,7 +144,7 @@ extern "C" __global__ void __closesthit__plane() {
     applyAOMap(material_color, plane_uv, getInstanceAoTextureIndex());
     }
 
-    writeDenoiseGuides(material_color, normal);
+    writeDenoiseGuides(material_color, normal, hit_point);
 
     const float material_alpha = material_color.w;
 

@@ -1571,39 +1571,104 @@ __device__ float3 payloadToFloat3(unsigned int r, unsigned int g, unsigned int b
     );
 }
 
-__device__ void writeDenoiseGuides(const float4& albedo, const float3& world_normal) {
-    if (!params.write_denoise_guides || optixGetPayload_3() != 0u) {
-        return;
+/**
+ * Solve dir = a*u + b*v + c*w for (a,b,c) via Cramer's rule (cross-product 3x3 solve).
+ */
+__device__ float3 solveBasisCoefficients(const float3& dir, const float3& u, const float3& v, const float3& w) {
+    const float3 cvw = cross(v, w);
+    const float det = dot(u, cvw);
+    if (fabsf(det) < 1e-8f) return make_float3(0.0f, 0.0f, 0.0f);
+    const float3 cwu = cross(w, u);
+    const float3 cuv = cross(u, v);
+    return make_float3(dot(dir, cvw) / det, dot(dir, cwu) / det, dot(dir, cuv) / det);
+}
+
+/**
+ * Reproject a world-space point into the PREVIOUS frame's pixel coordinates, by inverting
+ * generateCameraRay's u_ndc*cam_u + v_ndc*cam_v + cam_w formula (caustics_ppm.cu:212). Returns
+ * (-1,-1) if the point is behind the previous camera or the basis is degenerate (caller must
+ * treat this as "no valid flow" and skip writing to the flow buffer for that pixel).
+ */
+__device__ float2 reprojectToPreviousFrame(
+    const float3& world_point, const float3& prev_eye,
+    const float3& prev_u, const float3& prev_v, const float3& prev_w,
+    int width, int height
+) {
+    const float3 dir = world_point - prev_eye;
+    const float3 coeffs = solveBasisCoefficients(dir, prev_u, prev_v, prev_w);
+    if (coeffs.z < 1e-6f) return make_float2(-1.0f, -1.0f);
+    const float u_ndc = coeffs.x / coeffs.z;
+    const float v_ndc = coeffs.y / coeffs.z;
+    const float px = (u_ndc + 1.0f) * 0.5f * static_cast<float>(width) - 0.5f;
+    const float py = (1.0f - v_ndc) * 0.5f * static_cast<float>(height) - 0.5f;
+    return make_float2(px, py);
+}
+
+__device__ void writeDenoiseGuides(const float4& albedo, const float3& world_normal, const float3& hit_point) {
+    if (optixGetPayload_3() != 0u) {
+        return;  // not the primary (depth-0) hit -- flow and guides are both primary-only.
     }
 
-    const float3 camera_u = normalize(make_float3(
-        params.camera_u[0],
-        params.camera_u[1],
-        params.camera_u[2]
-    ));
-    const float3 camera_v = normalize(make_float3(
-        params.camera_v[0],
-        params.camera_v[1],
-        params.camera_v[2]
-    ));
-    const float3 camera_w = normalize(make_float3(
-        params.camera_w[0],
-        params.camera_w[1],
-        params.camera_w[2]
-    ));
-    const float3 normal = normalize(world_normal);
-    const float3 camera_normal = make_float3(
-        dot(normal, camera_u),
-        dot(normal, camera_v),
-        dot(normal, camera_w)
-    );
+    if (params.write_denoise_guides) {
+        const float3 camera_u = normalize(make_float3(
+            params.camera_u[0],
+            params.camera_u[1],
+            params.camera_u[2]
+        ));
+        const float3 camera_v = normalize(make_float3(
+            params.camera_v[0],
+            params.camera_v[1],
+            params.camera_v[2]
+        ));
+        const float3 camera_w = normalize(make_float3(
+            params.camera_w[0],
+            params.camera_w[1],
+            params.camera_w[2]
+        ));
+        const float3 normal = normalize(world_normal);
+        const float3 camera_normal = make_float3(
+            dot(normal, camera_u),
+            dot(normal, camera_v),
+            dot(normal, camera_w)
+        );
 
-    optixSetPayload_4(__float_as_uint(fmaxf(albedo.x, 0.0f)));
-    optixSetPayload_5(__float_as_uint(fmaxf(albedo.y, 0.0f)));
-    optixSetPayload_6(__float_as_uint(fmaxf(albedo.z, 0.0f)));
-    optixSetPayload_7(__float_as_uint(camera_normal.x));
-    optixSetPayload_8(__float_as_uint(camera_normal.y));
-    optixSetPayload_9(__float_as_uint(camera_normal.z));
+        optixSetPayload_4(__float_as_uint(fmaxf(albedo.x, 0.0f)));
+        optixSetPayload_5(__float_as_uint(fmaxf(albedo.y, 0.0f)));
+        optixSetPayload_6(__float_as_uint(fmaxf(albedo.z, 0.0f)));
+        optixSetPayload_7(__float_as_uint(camera_normal.x));
+        optixSetPayload_8(__float_as_uint(camera_normal.y));
+        optixSetPayload_9(__float_as_uint(camera_normal.z));
+    }
+
+    if (params.instance_motion != nullptr && params.flow != nullptr) {
+        const unsigned int inst_id = optixGetInstanceId();
+        const float* delta = &params.instance_motion[inst_id * 12];
+        // delta[] is row-major 3x4 (OptiX transform convention, see Task 1's algorithm note):
+        // row0=[delta[0..2], tx=delta[3]], row1=[delta[4..6], ty=delta[7]],
+        // row2=[delta[8..10], tz=delta[11]]. Apply the instance's motion delta to get where
+        // this material point was last frame.
+        const float3 prev_local = make_float3(
+            delta[0]*hit_point.x + delta[1]*hit_point.y + delta[2]*hit_point.z + delta[3],
+            delta[4]*hit_point.x + delta[5]*hit_point.y + delta[6]*hit_point.z + delta[7],
+            delta[8]*hit_point.x + delta[9]*hit_point.y + delta[10]*hit_point.z + delta[11]
+        );
+        const float3 prev_cam_eye = make_float3(params.previous_cam_eye[0], params.previous_cam_eye[1], params.previous_cam_eye[2]);
+        const float3 prev_cam_u = make_float3(params.previous_cam_u[0], params.previous_cam_u[1], params.previous_cam_u[2]);
+        const float3 prev_cam_v = make_float3(params.previous_cam_v[0], params.previous_cam_v[1], params.previous_cam_v[2]);
+        const float3 prev_cam_w = make_float3(params.previous_cam_w[0], params.previous_cam_w[1], params.previous_cam_w[2]);
+        const float2 prev_pixel = reprojectToPreviousFrame(
+            prev_local, prev_cam_eye, prev_cam_u, prev_cam_v, prev_cam_w,
+            params.image_width, params.image_height);
+        const uint3 idx = optixGetLaunchIndex();
+        const unsigned int pixel_idx = idx.y * params.image_width + idx.x;
+        if (prev_pixel.x >= 0.0f) {
+            params.flow[pixel_idx] = make_float2(
+                static_cast<float>(idx.x) - prev_pixel.x,
+                static_cast<float>(idx.y) - prev_pixel.y);
+        } else {
+            params.flow[pixel_idx] = make_float2(0.0f, 0.0f);  // disoccluded/degenerate: no motion hint
+        }
+    }
 }
 
 //==============================================================================

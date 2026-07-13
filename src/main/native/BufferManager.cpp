@@ -34,6 +34,15 @@ void BufferManager::ensureDenoiseBuffers(int width, int height) {
     }
 }
 
+void BufferManager::ensureFlowBuffer(int width, int height) {
+    const size_t pixel_count = static_cast<size_t>(width) * static_cast<size_t>(height);
+    flow_buffer.allocate(pixel_count);
+    // Zeroed every call (not just on (re)allocation) so primary-ray MISS pixels report zero
+    // motion instead of stale data from a previous frame's buffer contents (writeDenoiseGuides
+    // is only invoked for actual hits, so miss pixels are never overwritten by the launch).
+    flow_buffer.zero(pixel_count);
+}
+
 void BufferManager::ensureParamsBuffer() {
     if (!params_buffer.isAllocated()) {
         params_buffer.allocate(1);
@@ -127,6 +136,13 @@ void BufferManager::downloadStats(RayStats* stats) {
 void BufferManager::downloadCausticsStats(CausticsStats* stats) {
     if (stats && caustics_stats_buffer.isAllocated()) {
         caustics_stats_buffer.downloadTo(stats, 1);
+    }
+}
+
+void BufferManager::downloadFlowBuffer(float2* output, int width, int height) const {
+    const size_t pixel_count = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (flow_buffer.isAllocated()) {
+        flow_buffer.downloadTo(output, pixel_count);
     }
 }
 

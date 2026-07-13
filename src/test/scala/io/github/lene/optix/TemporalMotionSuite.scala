@@ -72,4 +72,57 @@ class TemporalMotionSuite extends AnyFlatSpec with Matchers with RendererFixture
     renderer.getInstanceMotionDelta(idA) shouldBe identityTransform
     renderer.getInstanceMotionDelta(idB) shouldBe identityTransform
 
+  behavior of "GPU per-pixel flow-vector computation"
+
+  it should "produce nonzero flow, in the geometrically correct direction, at the pixel " +
+    "where a moved instance is visible" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    renderer.clearAllInstances()
+    val id1 = renderer.addSphereInstance(identityTransform, whiteMatte)
+    renderer.setDenoisingEnabled(true)
+    renderer.setTemporalDenoisingEnabled(true)
+    renderer.renderWithStats(imageSize).get
+    renderer.clearAllInstances()
+    val id2 = renderer.addSphereInstance(translatedTransform(0.5f), whiteMatte)
+    id2 shouldBe id1 // same positional index -> same identity, per this design
+    renderer.renderWithStats(imageSize).get
+
+    val flow = renderer.getFlowBuffer(imageSize.width, imageSize.height)
+    flow.length shouldBe imageSize.width * imageSize.height * 2
+
+    val pixelCount = imageSize.width * imageSize.height
+    val magnitudes = (0 until pixelCount).map { i =>
+      val dx = flow(i * 2)
+      val dy = flow(i * 2 + 1)
+      dx * dx + dy * dy
+    }
+    val maxIdx = magnitudes.indices.maxBy(i => magnitudes(i))
+    magnitudes(maxIdx) should be > 0.0f
+    // Sphere moved by +0.5 in world X. This fixture's camera (eye (0,0.5,3), looking at the
+    // origin) builds its right vector as u = cross(up, w) (SceneParameters.cpp:38), which for
+    // this eye/lookAt/up works out to point toward world -X, not +X -- so the sphere moves LEFT
+    // on screen. The reprojected previous-frame position is therefore to the RIGHT of the
+    // current pixel, and flow.x (current minus previous, per the OptiX temporal-denoiser
+    // convention) must be negative.
+    flow(maxIdx * 2) should be < 0.0f
+
+  it should "produce ~(0,0) flow everywhere a primary ray hits geometry in a fully static " +
+    "scene (no instance motion, no camera motion)" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    renderer.clearAllInstances()
+    renderer.addSphereInstance(identityTransform, whiteMatte)
+    renderer.setDenoisingEnabled(true)
+    renderer.setTemporalDenoisingEnabled(true)
+    renderer.renderWithStats(imageSize).get
+    renderer.renderWithStats(imageSize).get // second frame: identical instances + camera
+
+    val flow = renderer.getFlowBuffer(imageSize.width, imageSize.height)
+    val pixelCount = imageSize.width * imageSize.height
+    val maxMagnitude = (0 until pixelCount).map { i =>
+      val dx = flow(i * 2)
+      val dy = flow(i * 2 + 1)
+      math.sqrt((dx * dx + dy * dy).toDouble)
+    }.max
+    maxMagnitude should be < 0.05
+
 end TemporalMotionSuite

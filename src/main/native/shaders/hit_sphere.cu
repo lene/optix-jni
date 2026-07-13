@@ -60,7 +60,7 @@ extern "C" __global__ void __closesthit__ch() {
     metallic = applyMetallicMap(metallic, sphere_uv, getInstanceMetallicTextureIndex());
     applyAOMap(material_color, sphere_uv, getInstanceAoTextureIndex());
 
-    writeDenoiseGuides(material_color, normal);
+    writeDenoiseGuides(material_color, normal, hit_point);
 
     const float sphere_alpha = material_color.w;
 

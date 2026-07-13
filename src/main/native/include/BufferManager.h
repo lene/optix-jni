@@ -26,6 +26,7 @@ public:
     // Core buffer management
     void ensureImageBuffer(int width, int height);
     void ensureDenoiseBuffers(int width, int height);
+    void ensureFlowBuffer(int width, int height);
     void ensureParamsBuffer();
     void ensureStatsBuffer();
     void ensureGASBuffer(const OptiXContext::GASBuildResult& gasResult);
@@ -48,6 +49,7 @@ public:
     CUdeviceptr getDenoisedColorBuffer() const { return denoised_color_buffer.get(); }
     CUdeviceptr getDenoiseAlbedoBuffer() const { return denoise_albedo_buffer.get(); }
     CUdeviceptr getDenoiseNormalBuffer() const { return denoise_normal_buffer.get(); }
+    CUdeviceptr getFlowBuffer() const { return flow_buffer.get(); }
     CUdeviceptr getParamsBuffer() const { return params_buffer.get(); }
     CUdeviceptr getStatsBuffer() const { return stats_buffer.get(); }
     CUdeviceptr getGASBuffer() const { return gas_buffer; }
@@ -63,6 +65,7 @@ public:
     void downloadImage(unsigned char* output, int width, int height);
     void downloadStats(RayStats* stats);
     void downloadCausticsStats(CausticsStats* stats);
+    void downloadFlowBuffer(float2* output, int width, int height) const;
 
     // Upload data to GPU
     void uploadParams(const BaseParams& params);
@@ -77,6 +80,7 @@ private:
     CudaBuffer<float4> denoised_color_buffer;   // Denoised linear float4 color
     CudaBuffer<float4> denoise_albedo_buffer;   // First-frame albedo guide
     CudaBuffer<float4> denoise_normal_buffer;   // First-frame normal guide
+    CudaBuffer<float2> flow_buffer;             // Phase 4: per-pixel flow vectors
     CudaBuffer<BaseParams> params_buffer;           // Launch parameters
     CudaBuffer<RayStats> stats_buffer;          // Ray statistics
     CUdeviceptr gas_buffer = 0;                 // Geometry Acceleration Structure (managed by OptiXContext)

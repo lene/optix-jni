@@ -269,7 +269,7 @@ extern "C" __global__ void __closesthit__cylinder() {
     if (proc_type != 0)
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
 
-    writeDenoiseGuides(material_color, normal);
+    writeDenoiseGuides(material_color, normal, hit_point);
 
     // Handle metallic reflection for depth 0 only (single bounce)
     if (depth == 0 && metallic > 0.0f) {

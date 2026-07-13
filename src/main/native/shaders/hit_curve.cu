@@ -78,7 +78,7 @@ extern "C" __global__ void __closesthit__curve() {
         );
     }
 
-    writeDenoiseGuides(material_color, normal);
+    writeDenoiseGuides(material_color, normal, hit_point);
 
     const float alpha = material_color.w;
 
