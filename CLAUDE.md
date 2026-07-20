@@ -6,13 +6,21 @@ This is a JNI bridge exposing NVIDIA OptiX ray tracing to JVM languages (Scala, 
 
 ---
 
+<!-- BEGIN shared rules (synced from menger-toplevel — edit there) -->
 ## Critical rules
 
-1. **Never commit directly to `main`.** Always work on a feature branch. Open a PR to merge into main. If on `main`, switch to (or create) a feature branch first.
+These are non-negotiable. Violating any of them causes real harm.
+
+1. **Never commit directly to `main`.** Work on a feature branch and open a PR/MR to merge in. If currently on `main`, switch to (or create) a feature branch first.
 2. **Never push without explicit user confirmation.** Commit locally, show the diff, wait for "push."
-3. **Always monitor the CI pipeline after pushing.** Fix any failures.
+3. **Always monitor the CI pipeline after pushing.** If any failures occur, fix them.
 4. **Never `git add -A`.** Add files explicitly.
-5. **Never commit failing tests.**
+5. **Never commit failing tests.** Hooks enforce this; do not bypass them.
+6. **Never rewrite a test to make it pass without investigation.** Failing tests usually catch real bugs.
+7. **Never delete data without explicit user confirmation.** This includes generated artifacts, caches, and reference images.
+8. **Never infer values the user should provide** (version numbers, branch names, paths). Ask.
+9. **When a skill or instruction says "confirm with user," it is a hard stop.** A prior message in the conversation does not satisfy a fresh checkpoint — ask again.
+<!-- END shared rules -->
 
 ---
 
