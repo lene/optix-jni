@@ -31,7 +31,14 @@ jobs:
           grep -F "[$VERSION]:" CHANGELOG.md
           # Only enforce today's date when this PR bumps the version vs main
           MAIN_VERSION=$(git show origin/main:build.sbt 2>/dev/null | grep 'version :=' | cut -d'"' -f2)
+          # ...and not when the branch is an already-released version being merged
+          # back: $VERSION is then the most recent tag reachable from HEAD, the
+          # release happened on its own date, and demanding today's date would
+          # mean falsifying the changelog to get the merge through.
+          git fetch --tags --quiet 2>/dev/null || true
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ "$VERSION" != "$MAIN_VERSION" ] && \
+             [ "${LATEST_TAG#v}" != "$VERSION" ] && \
              ! echo "${{ github.event.pull_request.title }}" | grep -q '^Draft:'; then
             grep -F "## [$VERSION] - $(date +%Y-%m-%d)" CHANGELOG.md
           fi
