@@ -18,7 +18,9 @@ The `Test:OptiXJni` CI job requires a GitLab Runner with:
 
 ### Software
 - Docker Engine 19.03+ (for `--gpus` flag support)
-- NVIDIA Driver (version compatible with CUDA 12.8)
+- NVIDIA Driver R570 or newer (OptiX 9.0's floor; 9.1 needs R590+). It must also be new
+  enough for whichever CUDA toolkit the image is built against — R570+ covers CUDA 12.8,
+  the 13.2 default wants a 580+ driver.
 - GitLab Runner 13.9+ (for GPU support)
 
 ## Installation Steps
@@ -81,7 +83,7 @@ sudo systemctl restart docker
 
 ```bash
 # Test that Docker can access the GPU
-sudo docker run --rm --gpus all nvidia/cuda:12.8.0-devel-ubuntu24.04 nvidia-smi
+sudo docker run --rm --gpus all nvidia/cuda:13.2.0-devel-ubuntu24.04 nvidia-smi
 
 # You should see GPU information similar to running nvidia-smi directly
 ```
@@ -164,7 +166,7 @@ Create a test job in your `.gitlab-ci.yml`:
 test_gpu:
   tags:
     - nvidia
-  image: nvidia/cuda:12.8.0-devel-ubuntu24.04
+  image: nvidia/cuda:13.2.0-devel-ubuntu24.04
   script:
     - nvidia-smi
 ```
@@ -285,7 +287,7 @@ GitLab.com offers hosted runners with GPU support (requires GitLab Premium/Ultim
 test_gpu:
   tags:
     - saas-linux-medium-amd64-gpu-standard  # GitLab SaaS GPU runner
-  image: nvidia/cuda:12.8.0-devel-ubuntu24.04
+  image: nvidia/cuda:13.2.0-devel-ubuntu24.04
   script:
     - nvidia-smi
 ```

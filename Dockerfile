@@ -10,12 +10,16 @@
 #   6. CI tools (xvfb, valgrind, curl, etc., ~150MB)
 #
 # Image tag format: {CUDA}-{OptiX}-{Java}-{sbt}
-# Example: registry.gitlab.com/lilacashes/menger/optix-cuda:12.8-9.0-25-1.12.0
+# Example: registry.gitlab.com/lilacashes/menger/optix-cuda:13.2-9.0-25-1.12.0
 # Build args:
-#   CUDA_VERSION   (default: 12.8.0)
+#   CUDA_VERSION   (default: 13.2.0) — must be 13.x: src/main/native/CMakeLists.txt
+#                  pins find_package(CUDAToolkit 13.0 REQUIRED) and the published
+#                  artifacts link libcudart.so.13. This is a project decision
+#                  (standardized in Sprint 27, see menger arc42 TC-4), NOT an OptiX
+#                  requirement — OptiX 9.0 itself is fine on CUDA 12.x.
 #   OPTIX_VERSION  (default: 9.0.0) — must match installer filename in build context
 #
-ARG CUDA_VERSION=12.8.0
+ARG CUDA_VERSION=13.2.0
 ARG OPTIX_VERSION=9.0.0
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu24.04
 
