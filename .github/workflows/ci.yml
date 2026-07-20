@@ -52,8 +52,29 @@ jobs:
           MAIN_VERSION=$(git show origin/main:build.sbt 2>/dev/null | grep 'version :=' | cut -d'"' -f2)
           # Only fail if this branch bumps the version and the tag already exists
           if [ "$VERSION" != "$MAIN_VERSION" ] && git tag | grep -q "^${VERSION}$"; then
-            echo "ERROR: Tag $VERSION already exists"
-            exit 1
+            # ...unless $VERSION is the most recent tag reachable from HEAD. That
+            # means this branch IS the release that produced the tag and is being
+            # merged back — not an attempt to reuse a published version. Without
+            # this the gate blocks exactly the merge that keeps main in sync with
+            # what was published. menger-common hit this: 0.1.6 went to Maven
+            # Central from a branch that could then never be merged back.
+            #
+            # "most recent reachable tag" rather than merely "an ancestor": every
+            # older release tag is also an ancestor, so an ancestor test would
+            # happily accept build.sbt being reverted to an already-published
+            # version, which is the very thing this gate exists to catch.
+            #
+            # The leading "v" is stripped because optix-jni carries both 0.1.19
+            # and v0.1.19 style tags and git describe may return either. This
+            # block is kept byte-identical across repos so it can later become a
+            # single reusable workflow.
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ "${LATEST_TAG#v}" = "$VERSION" ]; then
+              echo "Tag $VERSION is the latest tag reachable from HEAD — merging the release back, allowed"
+            else
+              echo "ERROR: Tag $VERSION already exists (latest reachable tag is ${LATEST_TAG:-none})"
+              exit 1
+            fi
           fi
 
   # ── release gate ───────────────────────────────────────────────────────────
