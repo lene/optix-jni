@@ -104,11 +104,14 @@ fi
 # Scalafix
 # ---------------------------------------------------------------------------
 echo "=== Scalafix ==="
-sbt "scalafix --check" || STATUS=1
-if [ $STATUS -gt 0 ]; then
-  echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
-else
+# Report scalafix's own result, not the accumulated $STATUS. Testing the shared
+# flag makes every later step inherit an earlier failure and claim it as its
+# own, which sends you debugging the wrong check.
+if sbt "scalafix --check"; then
   echo "Scalafix: ${GREEN_TEXT}OK${RESET_TEXT}"
+else
+  STATUS=1
+  echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -116,14 +119,16 @@ fi
 # ---------------------------------------------------------------------------
 if [ "$HAS_NATIVE" -gt 0 ] && command -v cppcheck > /dev/null 2>&1; then
   echo "=== cppcheck ==="
-  find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
-    xargs cppcheck --error-exitcode=1 --enable=warning,style \
-    --language=c++ \
-    --suppressions-list=.cppcheck-suppress 2>&1 || STATUS=1
-  if [ $STATUS -gt 0 ]; then
-    echo "cppcheck: ${RED_TEXT}FAILED${RESET_TEXT}"
-  else
+  # Same reasoning as the scalafix step: report cppcheck's own result rather
+  # than the accumulated $STATUS, which would attribute an earlier failure here.
+  if find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
+      xargs cppcheck --error-exitcode=1 --enable=warning,style \
+      --language=c++ \
+      --suppressions-list=.cppcheck-suppress 2>&1; then
     echo "cppcheck: ${GREEN_TEXT}OK${RESET_TEXT}"
+  else
+    STATUS=1
+    echo "cppcheck: ${RED_TEXT}FAILED${RESET_TEXT}"
   fi
 elif [ "$HAS_NATIVE" -gt 0 ]; then
   echo "${YELLOW_TEXT}cppcheck not installed — skipping (runs in CI)${RESET_TEXT}"
