@@ -170,11 +170,16 @@ Images are tagged with version numbers of all pre-installed components:
 - The `latest` tag always points to the newest stable version
 - Scala version is NOT in the tag (managed by sbt from build.sbt at runtime)
 
-### GitLab Runner Setup
+### GPU runner setup
 
-**IMPORTANT**: The OptiX JNI CI tests require a GitLab Runner with GPU support. The Docker image alone is not sufficient - the runner itself must be configured to expose GPU access to containers.
+This repo's own CI runs on **GitHub Actions** against a self-hosted NVIDIA runner (label
+`nvidia`). The Docker image built here is additionally consumed by **menger**'s GitLab CI,
+which needs a GPU-capable GitLab runner — the Docker image alone is not sufficient, the runner
+must expose GPU access to its containers.
 
-See [RUNNER_SETUP.md](RUNNER_SETUP.md) for complete instructions on configuring a GitLab Runner with NVIDIA GPU support.
+Both runner setups are documented in the workspace repo: `../infra/RUNNER_SETUP.md` for the
+GitLab runner, and `../infra/ci-runners/README.md` for registering and hardening the GitHub
+Actions runners. (See also `RUNNER_SETUP.md` in this repo, now a pointer to those.)
 
 ### Building and Pushing the Docker Image
 
