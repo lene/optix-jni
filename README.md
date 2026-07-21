@@ -344,7 +344,13 @@ individually.
 
 ## Local Development
 
-For local development with OptiX support, see the main project's `GPU_DEVELOPMENT.md`.
+Setting up CUDA, OptiX, the driver, Java and sbt from scratch is documented once for the whole
+workspace in `../docs/INSTALLATION_FROM_SCRATCH.md`.
+
+Build and native-linkage troubleshooting — PTX-not-found, `libcudart.so.13` linkage, stale
+`optix-jni/target/native`, OptiX/driver mismatches — is collected in
+`../menger/docs/TROUBLESHOOTING.md`. It is written from a full workspace checkout (it refers to
+`optix-jni/` as a sibling), so run those commands from the workspace root.
 
 ## Environment Variables
 
