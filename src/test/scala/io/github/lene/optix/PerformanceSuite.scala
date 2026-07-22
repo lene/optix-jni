@@ -5,6 +5,7 @@ import io.github.lene.optix.ColorConstants.HIGHLY_TRANSPARENT_WHITE
 import io.github.lene.optix.ColorConstants.PERFORMANCE_TEST_GREEN_CYAN
 import io.github.lene.optix.Slow
 import io.github.lene.optix.ThresholdConstants.MIN_FPS
+import io.github.lene.optix.ThresholdConstants.MIN_FPS_ANTIALIASING
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import menger.common.Const
 import menger.common.Vector
@@ -102,4 +103,4 @@ class PerformanceSuite extends AnyFlatSpec
         .applyTo(renderer)
       renderer.setAntialiasing(enabled = true, maxDepth = 2, threshold = 0.1f)
 
-    fps should be > MIN_FPS
+    fps should be > MIN_FPS_ANTIALIASING
