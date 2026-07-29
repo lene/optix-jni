@@ -159,8 +159,16 @@ nativeTest := {
     }
     log.info("C++ unit tests passed")
   } else {
+    // On a CUDA-capable host the native test binary must exist and run — a missing binary would
+    // silently skip the gate (Sprint 35 Task 1.5 / F4). Fail loudly there; only skip off-GPU.
+    val cudaCapable = file("/usr/local/cuda/bin/nvcc").exists()
+    if (cudaCapable) {
+      throw new RuntimeException(
+        s"C++ native test executable not found at ${testExe.getAbsolutePath} on a CUDA-capable " +
+        "host — native tests must run. Ensure BUILD_OPTIX_TESTS is on and nativeCompile produced it.")
+    }
     log.warn(s"C++ test executable not found at ${testExe.getAbsolutePath}")
-    log.warn("Skipping native tests (BUILD_OPTIX_TESTS may be disabled)")
+    log.warn("Skipping native tests (no CUDA toolchain detected)")
   }
 }
 
@@ -174,6 +182,9 @@ Test / test := {
 Test / javaOptions ++= Seq(
   s"-Djava.library.path=${(Test / classDirectory).value / "native" / "x86_64-linux"}:${(Compile / classDirectory).value / "native" / "x86_64-linux"}:${target.value / "native" / "x86_64-linux" / "bin"}",
   "-Dlogback.statusListenerClass=ch.qos.logback.core.status.NopStatusListener"
+  // -Xcheck:jni is deliberately NOT applied to the full suite: its instrumentation overhead drops
+  // PerformanceSuite below its FPS threshold, and it flags ScalaMock's JNI usage (not our code).
+  // It belongs in a targeted job over the JNI-exercising suites — deferred to Ph2 with CR-4 (F4).
 )
 Test / fork := true
 

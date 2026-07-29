@@ -27,7 +27,8 @@ static OptiXWrapper* getWrapper(JNIEnv* env, jobject obj) {
     jfieldID fid = env->GetFieldID(cls, "nativeHandle", "J");
     if (fid == nullptr) {
         std::cerr << "[JNI] Failed to get nativeHandle field" << std::endl;
-        return nullptr;
+        env->ExceptionClear();  // GetFieldID sets a pending NoSuchFieldError; clear it so
+        return nullptr;         // returning nullptr to the caller doesn't trigger JNI UB.
     }
     jlong handle = env->GetLongField(obj, fid);
     return reinterpret_cast<OptiXWrapper*>(handle);
@@ -866,11 +867,10 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
-            // Surface a clear error unless getWrapper already left one pending.
-            if (!env->ExceptionCheck()) {
-                throwException(env, "java/lang/IllegalStateException",
-                               "OptiX renderer is not initialized");
-            }
+            // A disposed / not-yet-initialized renderer is a "not ready" signal, not a GPU
+            // render failure — return null so the Scala side maps it to None. (1.6 stops
+            // swallowing genuine render *failures*, below; it deliberately does not turn a
+            // not-ready renderer into an exception, which callers/tests treat as graceful.)
             return nullptr;
         }
 
