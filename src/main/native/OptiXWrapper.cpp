@@ -2026,14 +2026,12 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         }
 
     } catch (const std::exception& e) {
+        // Propagate: a render failure must surface, not be swallowed into a "successful"
+        // red frame with (previously uninitialized) stats — that is what made the July
+        // MultiObjectCaustics crashes look like success. render() already throws on the
+        // not-initialized path, so callers already handle a throw here.
         std::cerr << "[OptiX] Render failed: " << e.what() << std::endl;
-        // Fill with error color (red)
-        for (int i = 0; i < width * height; i++) {
-            output[i * 4 + 0] = 255;  // R
-            output[i * 4 + 1] = 0;    // G
-            output[i * 4 + 2] = 0;    // B
-            output[i * 4 + 3] = 255;  // A
-        }
+        throw;
     }
 }
 

@@ -866,6 +866,11 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
+            // Surface a clear error unless getWrapper already left one pending.
+            if (!env->ExceptionCheck()) {
+                throwException(env, "java/lang/IllegalStateException",
+                               "OptiX renderer is not initialized");
+            }
             return nullptr;
         }
 
@@ -882,8 +887,9 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
             return nullptr;
         }
 
-        // Get stats from render; release buffer even if render throws
-        RayStats stats;
+        // Get stats from render; release buffer even if render throws.
+        // Zero-init so a failure path can never ship uninitialized stats to Scala.
+        RayStats stats{};
         try {
             wrapper->render(width, height, reinterpret_cast<unsigned char*>(buffer), &stats);
         } catch (...) {
@@ -921,15 +927,17 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
         );
 
         if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            std::cerr << "[JNI] renderWithStats: NewObject failed — RenderResult constructor mismatch" << std::endl;
+            // Let the constructor failure propagate to Scala; do not clear it into a silent null.
+            std::cerr << "[JNI] renderWithStats: RenderResult constructor threw" << std::endl;
             return nullptr;
         }
 
         return result;
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in renderWithStats: " << e.what() << std::endl;
+        // Propagate as a Java exception instead of swallowing to a silent null — the swallow
+        // here is what made the render-path failures (July MultiObjectCaustics crashes)
+        // undiagnosable from the JVM side.
+        throwException(env, "java/lang/RuntimeException", e.what());
         return nullptr;
     }
 }
