@@ -149,6 +149,16 @@ endif()
 find_package(JNI REQUIRED)
 message(STATUS "✓ JNI: ${JNI_INCLUDE_DIRS}")
 
+# Generated JNI headers (sbt JniJavah, passed as -DJAVAH_INCLUDE_DIR): the JNI .cpp files
+# #include these so a Scala @native / C++ signature mismatch becomes a compile error
+# (Sprint 35 Task 1.4).
+if(DEFINED JAVAH_INCLUDE_DIR)
+  include_directories(${JAVAH_INCLUDE_DIR})
+  message(STATUS "✓ Generated JNI headers: ${JAVAH_INCLUDE_DIR}")
+else()
+  message(WARNING "JAVAH_INCLUDE_DIR not set — JNI signature checks disabled for this build")
+endif()
+
 #=============================================================================
 # Build Configuration Summary
 #=============================================================================

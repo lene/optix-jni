@@ -4,7 +4,7 @@ name := "optix-jni"
 version := "0.1.19"
 scalaVersion := "3.8.3"
 
-enablePlugins(JniNative)
+enablePlugins(JniNative, JniJavah)
 
 organization := "io.github.lene"
 description := "JNI bindings for NVIDIA OptiX ray tracing"
@@ -57,8 +57,16 @@ Compile / scalacOptions := (Compile / scalacOptions).value.map(
 nativeCompile / sourceDirectory := sourceDirectory.value / "main" / "native"
 nativeBuildTool := CMakeWithoutVersionBug.make(Seq(
   "-Wno-dev",
-  "--log-level=WARNING"
+  "--log-level=WARNING",
+  s"-DJAVAH_INCLUDE_DIR=${(target.value / "native" / "include").getAbsolutePath}"
 ))
+
+// Generated JNI headers (JniJavah) must exist before the native build so the JNI .cpp files
+// can #include them — a Scala @native vs C++ signature mismatch then fails compilation
+// (Sprint 35 Task 1.4). javah emits the long/mangled name for the 5 methods whose name collides
+// with a non-native overload (renderWithStats, setLight, setLights, setSphere,
+// updateImageDimensions); those stay a documented gap to close in Ph3's API cleanup.
+nativeCompile := nativeCompile.dependsOn(javah).value
 
 // Auto-clean CMake cache if it's from a different build location (e.g., Docker)
 Compile / compile := {

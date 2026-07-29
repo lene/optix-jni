@@ -1,4 +1,6 @@
 #include <jni.h>
+// Generated from the Scala @native declarations (sbt JniJavah); see Sprint 35 Task 1.4.
+#include "io_github_lene_optix_api_NativeOptiXApi.h"
 #include "include/CudaBuffer.h"
 #include "include/DenoiserManager.h"
 #include "include/OptiXContext.h"
