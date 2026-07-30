@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0-dev] - 2026-07-30
+
+Unreleased dev version for Sprint 35 Phase 1 (Native Seam Remediation). Pinned
+locally by menger via `publishLocal` until the real 0.2.0 is cut at Release A.
+
+### Added
+
+- Custom-geometry SPI: register an external primitive (a PTX module + IS/CH/shadow/
+  photon entry points) as a runtime geometry type and instance it, with optional
+  generic per-instance data. Lets consumers (e.g. menger-geometry) supply their own
+  intersection shaders without optix-jni knowing their geometry types. (Tasks 1.1a-d)
+
+### Removed
+
+- **BREAKING**: the built-in 4D fractal geometry (Menger4D / Sierpinski4D /
+  Hexadecachoron4D), its `add/update*4DInstance` API, shaders, and geometry-type
+  ids 5-7 — these move to menger-geometry via the SPI. (Task 1.2a)
+
 ## [0.1.19] - 2026-07-13
 
 ### Added
@@ -289,6 +307,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.2.0-dev]: https://github.com/lene/optix-jni/compare/0.1.19...feat/sprint-35
 [0.1.19]: https://github.com/lene/optix-jni/compare/0.1.18...0.1.19
 [0.1.18]: https://github.com/lene/optix-jni/compare/0.1.17...0.1.18
 [0.1.17]: https://github.com/lene/optix-jni/compare/0.1.16...0.1.17
