@@ -181,47 +181,6 @@ void PipelineManager::createProgramGroups() {
         module, "__closesthit__photon",
         module, "__intersection__plane");
 
-    // Menger4D hit groups (primary + shadow + photon)
-    menger4d_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__menger4d",
-        module, "__intersection__menger4d"
-    );
-    menger4d_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
-        module, "__closesthit__menger4d_shadow",
-        module, "__anyhit__menger4d_shadow",
-        module, "__intersection__menger4d"
-    );
-    photon_menger4d_hitgroup = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__photon",
-        module, "__intersection__menger4d");
-
-    // Sierpinski4D hit groups (primary + shadow + photon)
-    sierpinski4d_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__sierpinski4d",
-        module, "__intersection__sierpinski4d"
-    );
-    sierpinski4d_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
-        module, "__closesthit__sierpinski4d_shadow",
-        module, "__anyhit__sierpinski4d_shadow",
-        module, "__intersection__sierpinski4d"
-    );
-    photon_sierpinski4d_hitgroup = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__photon",
-        module, "__intersection__sierpinski4d");
-
-    // Hexadecachoron4D hit groups (primary + shadow + photon)
-    hexadecachoron4d_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__hexadecachoron4d",
-        module, "__intersection__hexadecachoron4d"
-    );
-    hexadecachoron4d_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
-        module, "__closesthit__hexadecachoron4d_shadow",
-        module, "__anyhit__hexadecachoron4d_shadow",
-        module, "__intersection__hexadecachoron4d"
-    );
-    photon_hexadecachoron4d_hitgroup = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__photon",
-        module, "__intersection__hexadecachoron4d");
     // Photon miss program
     photon_miss_prog_group = optix_context.createMissProgramGroup(
         module, "__miss__photon");
@@ -266,21 +225,12 @@ void PipelineManager::createPipeline() {
         curve_shadow_hitgroup_prog_group,
         plane_hitgroup_prog_group,
         plane_shadow_hitgroup_prog_group,
-        menger4d_hitgroup_prog_group,
-        menger4d_shadow_hitgroup_prog_group,
         photon_sphere_hitgroup,
         photon_triangle_hitgroup,
         photon_cylinder_hitgroup,
         photon_cone_hitgroup,
         photon_curve_hitgroup,
         photon_plane_hitgroup,
-        photon_menger4d_hitgroup,
-        sierpinski4d_hitgroup_prog_group,
-        sierpinski4d_shadow_hitgroup_prog_group,
-        photon_sierpinski4d_hitgroup,
-        hexadecachoron4d_hitgroup_prog_group,
-        hexadecachoron4d_shadow_hitgroup_prog_group,
-        photon_hexadecachoron4d_hitgroup,
         photon_miss_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
@@ -414,10 +364,8 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     //             [6]=cylinder_primary, [7]=cylinder_shadow, [8]=cylinder_photon,
     //             [9]=cone_primary, [10]=cone_shadow, [11]=cone_photon,
     //             [12]=plane_primary, [13]=plane_shadow, [14]=plane_photon,
-    //             [15]=menger4d_primary, [16]=menger4d_shadow, [17]=menger4d_photon,
-    //             [18]=sierpinski4d_primary, [19]=sierpinski4d_shadow, [20]=sierpinski4d_photon,
-    //             [21]=hexadecachoron4d_primary, [22]=hexadecachoron4d_shadow,
-    //             [23]=hexadecachoron4d_photon,
+    //             [15..23]=unused gaps (former Menger4D/Sierpinski4D/Hexadecachoron4D
+    //                      types 5-7, removed in Sprint 35 Task 1.2; never dispatched),
     //             [24]=curve_primary, [25]=curve_shadow, [26]=curve_photon
     // Offset calculation: geometry_type * 3 + ray_type (0=primary, 1=shadow, 2=photon)
     constexpr size_t record_size = std::max(
@@ -512,44 +460,8 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     optixSbtRecordPackHeader(photon_plane_hitgroup, plane_photon);
     plane_photon->data = sphere_data;
 
-    // Menger4D hitgroup records [15]=primary, [16]=shadow, [17]=photon
-    HitGroupSbtRecord* menger4d_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +15 * record_size);
-    optixSbtRecordPackHeader(menger4d_hitgroup_prog_group, menger4d_primary);
-    menger4d_primary->data = sphere_data;  // Placeholder (not used by menger4d shader)
-
-    HitGroupSbtRecord* menger4d_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +16 * record_size);
-    optixSbtRecordPackHeader(menger4d_shadow_hitgroup_prog_group, menger4d_shadow);
-    menger4d_shadow->data = sphere_data;
-
-    HitGroupSbtRecord* menger4d_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +17 * record_size);
-    optixSbtRecordPackHeader(photon_menger4d_hitgroup, menger4d_photon);
-    menger4d_photon->data = sphere_data;
-
-    // Sierpinski4D hitgroup records [18]=primary, [19]=shadow, [20]=photon
-    HitGroupSbtRecord* sierpinski4d_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +18 * record_size);
-    optixSbtRecordPackHeader(sierpinski4d_hitgroup_prog_group, sierpinski4d_primary);
-    sierpinski4d_primary->data = sphere_data;  // Placeholder (not used by sierpinski4d shader)
-
-    HitGroupSbtRecord* sierpinski4d_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +19 * record_size);
-    optixSbtRecordPackHeader(sierpinski4d_shadow_hitgroup_prog_group, sierpinski4d_shadow);
-    sierpinski4d_shadow->data = sphere_data;
-
-    HitGroupSbtRecord* sierpinski4d_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +20 * record_size);
-    optixSbtRecordPackHeader(photon_sierpinski4d_hitgroup, sierpinski4d_photon);
-    sierpinski4d_photon->data = sphere_data;
-
-    // Hexadecachoron4D hitgroup records [21]=primary, [22]=shadow, [23]=photon
-    HitGroupSbtRecord* hexadecachoron4d_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +21 * record_size);
-    optixSbtRecordPackHeader(hexadecachoron4d_hitgroup_prog_group, hexadecachoron4d_primary);
-    hexadecachoron4d_primary->data = sphere_data;  // Placeholder (not used by hexadecachoron4d shader)
-
-    HitGroupSbtRecord* hexadecachoron4d_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +22 * record_size);
-    optixSbtRecordPackHeader(hexadecachoron4d_shadow_hitgroup_prog_group, hexadecachoron4d_shadow);
-    hexadecachoron4d_shadow->data = sphere_data;
-
-    HitGroupSbtRecord* hexadecachoron4d_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +23 * record_size);
-    optixSbtRecordPackHeader(photon_hexadecachoron4d_hitgroup, hexadecachoron4d_photon);
-    hexadecachoron4d_photon->data = sphere_data;
+    // SBT slots 15-23 (former Menger4D/Sierpinski4D/Hexadecachoron4D types 5-7,
+    // removed in Sprint 35 Task 1.2) are left zero-initialised and never dispatched.
 
     // Curve hitgroup records [24]=primary, [25]=shadow, [26]=photon
     HitGroupSbtRecord* curve_primary =
@@ -654,15 +566,6 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(plane_hitgroup_prog_group);
     destroyProgramGroupIfExists(plane_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(photon_plane_hitgroup);
-    destroyProgramGroupIfExists(menger4d_hitgroup_prog_group);
-    destroyProgramGroupIfExists(menger4d_shadow_hitgroup_prog_group);
-    destroyProgramGroupIfExists(photon_menger4d_hitgroup);
-    destroyProgramGroupIfExists(sierpinski4d_hitgroup_prog_group);
-    destroyProgramGroupIfExists(sierpinski4d_shadow_hitgroup_prog_group);
-    destroyProgramGroupIfExists(photon_sierpinski4d_hitgroup);
-    destroyProgramGroupIfExists(hexadecachoron4d_hitgroup_prog_group);
-    destroyProgramGroupIfExists(hexadecachoron4d_shadow_hitgroup_prog_group);
-    destroyProgramGroupIfExists(photon_hexadecachoron4d_hitgroup);
     destroyProgramGroupIfExists(photon_miss_prog_group);
 
     if (includeCaustics) {

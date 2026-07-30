@@ -265,69 +265,6 @@ public:
         float checker_size = 1.0f
     );
 
-    // 4D Menger sponge analog via iterative IFS ray traversal (Sprint 21.1).
-    // O(1) VRAM: single AABB GAS + per-thread stack in intersection shader.
-    int addMenger4DInstance(
-        int level, int dist_threshold,
-        float x, float y, float z, float scale,
-        float eye_w, float screen_w,
-        float rot_xw, float rot_yw, float rot_zw,
-        float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f,
-        float emission = 0.0f, float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
-    );
-
-    // Update 4D projection params for an existing menger4d instance.
-    // menger4d_data is re-uploaded every frame, so changes take effect next render.
-    // Returns 0 on success; negative on error (invalid instanceId or wrong geometry type).
-    int updateMenger4DProjection(
-        int instanceId,
-        float eye_w, float screen_w,
-        float rot_xw, float rot_yw, float rot_zw
-    );
-
-    // 4D Sierpinski pentachoron analog via iterative IFS ray traversal.
-    // O(1) VRAM: single AABB GAS + per-thread stack in intersection shader.
-    // No dist_threshold — Sierpinski4D has no threshold filtering.
-    int addSierpinski4DInstance(
-        int level,
-        float x, float y, float z, float scale,
-        float eye_w, float screen_w,
-        float rot_xw, float rot_yw, float rot_zw,
-        float r, float g, float b, float a, float ior,
-        float roughness, float metallic, float specular,
-        float emission, float film_thickness, float cauchy_a = 0.0f, float cauchy_b = 0.0f
-    );
-
-    // Update 4D projection params for an existing sierpinski4d instance.
-    // Returns 0 on success; negative on error (invalid instanceId or wrong geometry type).
-    int updateSierpinski4DProjection(
-        int instanceId,
-        float eye_w, float screen_w,
-        float rot_xw, float rot_yw, float rot_zw
-    );
-
-    // 4D Sierpinski 16-cell (hexadecachoron) analog via iterative IFS ray traversal.
-    // O(1) VRAM: single AABB GAS + per-thread stack in intersection shader.
-    // No dist_threshold — Hexadecachoron4D has no threshold filtering.
-    int addHexadecachoron4DInstance(
-        int level,
-        float x, float y, float z, float scale,
-        float eye_w, float screen_w,
-        float rot_xw, float rot_yw, float rot_zw,
-        float r, float g, float b, float a, float ior,
-        float roughness, float metallic, float specular,
-        float emission, float film_thickness, float cauchy_a = 0.0f, float cauchy_b = 0.0f
-    );
-
-    // Update 4D projection params for an existing hexadecachoron4d instance.
-    // Returns 0 on success; negative on error (invalid instanceId or wrong geometry type).
-    int updateHexadecachoron4DProjection(
-        int instanceId,
-        float eye_w, float screen_w,
-        float rot_xw, float rot_yw, float rot_zw
-    );
-
     // Recursive-IAS Menger sponge (Sprint 18.4).
     // Wraps the most-recently-uploaded triangle mesh (call setTriangleMesh first with a
     // unit cube) in `level` nested IAS layers using the 20 Menger generator transforms.
