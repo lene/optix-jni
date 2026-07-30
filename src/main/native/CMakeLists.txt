@@ -285,6 +285,7 @@ if(BUILD_OPTIX_TESTS)
     add_executable(optixcontext_test
         tests/OptiXContextTest.cpp
         tests/EnvMapCDFTest.cpp
+        tests/CustomGeometryRegistryTest.cpp  # SPI (Task 1.1a) runtime type-id allocator
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
     )
