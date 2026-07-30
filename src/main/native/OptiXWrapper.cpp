@@ -115,6 +115,12 @@ struct OptiXWrapper::Impl {
     CUdeviceptr d_ias_output_buffer = 0;      // IAS memory
     CUdeviceptr d_instances_buffer = 0;       // OptixInstance array on GPU
     CUdeviceptr d_instance_materials = 0;     // InstanceMaterial array on GPU
+    // Custom-geometry SPI (Task 1.1c): per-instance data blobs for registered
+    // primitives. Host-side, indexed by ObjectInstance.geometry_data_index;
+    // packed + uploaded (uniform stride) to d_custom_geometry_data in buildIAS.
+    std::vector<std::vector<char>> custom_geometry_blobs;
+    CUdeviceptr d_custom_geometry_data = 0;   // Packed per-instance custom data on GPU
+    size_t custom_geometry_stride = 0;        // Bytes per blob (uniform)
     bool ias_dirty = false;                   // True if IAS needs rebuild
     bool use_ias = false;                     // True = multi-object mode
     unsigned int max_instances = 64;          // Configurable instance limit
@@ -1224,6 +1230,30 @@ void OptiXWrapper::buildIAS() {
         cudaMemcpyHostToDevice
     ));
 
+    // Task 1.1c: pack per-instance custom-geometry blobs (uniform stride = the
+    // largest blob) and upload for the registrants' intersection shaders. Indexed
+    // by ObjectInstance.geometry_data_index (== position in custom_geometry_blobs).
+    if (impl->d_custom_geometry_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_custom_geometry_data));
+        impl->d_custom_geometry_data = 0;
+    }
+    impl->custom_geometry_stride = 0;
+    if (!impl->custom_geometry_blobs.empty()) {
+        for (const auto& blob : impl->custom_geometry_blobs) {
+            impl->custom_geometry_stride = std::max(impl->custom_geometry_stride, blob.size());
+        }
+        const size_t n = impl->custom_geometry_blobs.size();
+        std::vector<char> packed(n * impl->custom_geometry_stride, 0);
+        for (size_t i = 0; i < n; ++i) {
+            std::memcpy(packed.data() + i * impl->custom_geometry_stride,
+                        impl->custom_geometry_blobs[i].data(),
+                        impl->custom_geometry_blobs[i].size());
+        }
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_custom_geometry_data), packed.size()));
+        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_custom_geometry_data),
+                              packed.data(), packed.size(), cudaMemcpyHostToDevice));
+    }
+
     // Build IAS input
     OptixBuildInput ias_input = {};
     ias_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
@@ -1407,6 +1437,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.sbt_base_offset = 0;  // IAS instances carry their own sbtOffset
             params.instance_materials = reinterpret_cast<InstanceMaterial*>(impl->d_instance_materials);
             params.num_instances = getInstanceCount();
+            params.custom_geometry_data = reinterpret_cast<const void*>(impl->d_custom_geometry_data);  // Task 1.1c
+            params.custom_geometry_stride = static_cast<unsigned int>(impl->custom_geometry_stride);
 
             // Upload texture objects array for IAS mode
             if (!impl->textures.empty()) {
@@ -1556,6 +1588,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 : GEOMETRY_TYPE_SPHERE * SBTConstants::STRIDE_RAY_TYPES;
             params.instance_materials = nullptr;
             params.num_instances = 0;
+            params.custom_geometry_data = nullptr;  // Task 1.1c
+            params.custom_geometry_stride = 0;
             params.textures = nullptr;
             params.num_textures = 0;
             params.cylinder_data = nullptr;
@@ -2057,7 +2091,8 @@ int OptiXWrapper::registerCustomGeometry(
 // within it) and the 3x4 transform. The instance's sbtOffset = typeId * STRIDE
 // is set generically by the IAS build, targeting the type's registered SBT block.
 int OptiXWrapper::addCustomGeometryInstance(
-    int typeId, const float* aabbMin, const float* aabbMax, const float* transform) {
+    int typeId, const float* aabbMin, const float* aabbMax, const float* transform,
+    const void* customData, int customDataSize) {
     if (impl->instances.size() >= impl->max_instances) return -1;
 
     // gas_registry / ObjectInstance.geometry_type are keyed by the GeometryType
@@ -2088,7 +2123,15 @@ int OptiXWrapper::addCustomGeometryInstance(
     inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f; inst.color[3] = 1.0f;
     inst.ior = 1.0f; inst.roughness = 0.5f; inst.metallic = 0.0f; inst.specular = 0.5f;
     inst.emission = 0.0f; inst.film_thickness = 0.0f; inst.cauchy_a = 0.0f; inst.cauchy_b = 0.0f;
-    inst.geometry_data_index = -1;
+    // Task 1.1c: stash the per-instance blob (if any) and index it via
+    // geometry_data_index; buildIAS packs it into params.custom_geometry_data.
+    if (customData != nullptr && customDataSize > 0) {
+        const char* bytes = static_cast<const char*>(customData);
+        inst.geometry_data_index = static_cast<int>(impl->custom_geometry_blobs.size());
+        impl->custom_geometry_blobs.emplace_back(bytes, bytes + customDataSize);
+    } else {
+        inst.geometry_data_index = -1;
+    }
     inst.procedural_type = 0; inst.procedural_scale = 1.0f;
     inst.normal_texture_index = -1; inst.roughness_texture_index = -1;
     inst.image_texture_index = -1; inst.metallic_texture_index = -1;
@@ -2953,6 +2996,7 @@ int OptiXWrapper::addPlaneInstance(
 
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
+    impl->custom_geometry_blobs.clear();  // Task 1.1c
     impl->ias_dirty = true;
     impl->use_ias = false;
     impl->max_instances_warning_shown = false;
@@ -2970,6 +3014,11 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
         impl->d_instance_materials = 0;
     }
+    if (impl->d_custom_geometry_data) {  // Task 1.1c
+        cudaFree(reinterpret_cast<void*>(impl->d_custom_geometry_data));
+        impl->d_custom_geometry_data = 0;
+    }
+    impl->custom_geometry_stride = 0;
     impl->ias_handle = 0;
 
     // Clear cylinder data

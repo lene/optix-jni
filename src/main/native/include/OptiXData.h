@@ -527,6 +527,13 @@ struct BaseParams {
     InstanceMaterial* instance_materials;   // Device pointer to per-instance material array
     unsigned int num_instances;             // Number of active instances
 
+    // Custom-geometry SPI (Task 1.1c): generic per-instance data for externally-
+    // registered primitives. A registrant's IS reads its own struct at
+    //   (const char*)custom_geometry_data
+    //     + instance_materials[optixGetInstanceId()].geometry_data_index * custom_geometry_stride
+    const void* custom_geometry_data;       // Device buffer of packed per-instance blobs (nullptr if none)
+    unsigned int custom_geometry_stride;    // Bytes per blob (uniform across custom instances); 0 if none
+
     // Texture support (IAS mode only)
     cudaTextureObject_t* textures;          // Device pointer to array of texture objects
     unsigned int num_textures;              // Number of textures in array

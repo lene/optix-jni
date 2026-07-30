@@ -44,12 +44,16 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
     renderer.registerCustomGeometry(
       loadStubPtx(), "__intersection__spi_stub", "__closesthit__spi_stub")
 
-  // The stub's closest hit writes a fixed magenta (R=230, G=40, B=200).
-  private def magentaPixelCount(image: Array[Byte]): Int =
+  private def countColor(image: Array[Byte], pred: (Int, Int, Int) => Boolean): Int =
     (0 until (TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height)).count { idx =>
       val px = ImageValidation.getRGB(image, idx)
-      px.r > 150 && px.b > 150 && px.g < 100
+      pred(px.r, px.g, px.b)
     }
+
+  // The stub's closest hit writes a fixed magenta (R=230, G=40, B=200) unless per-
+  // instance data overrides it.
+  private def magentaPixelCount(image: Array[Byte]): Int =
+    countColor(image, (r, g, b) => r > 150 && b > 150 && g < 100)
 
   "The custom-geometry SPI" should "allocate a runtime type id past the built-ins" in:
     registerStub() shouldBe FirstRuntimeTypeId
@@ -70,3 +74,25 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
     // The stub's magenta must appear: the instance dispatched through
     // sbtOffset = typeId*STRIDE to the registered SBT block and ran its IS/CH.
     magenta should be > 100
+
+  it should "pass per-instance data to a registered primitive's shader (Task 1.1c)" in:
+    val typeId = registerStub()
+    val aabbMin = Array(-0.6f, -0.6f, -0.6f)
+    val aabbMax = Array(0.6f, 0.6f, 0.6f)
+    // 3x4 row-major transform translating along X so the two instances don't overlap.
+    def xform(x: Float): Array[Float] = Array(1f, 0f, 0f, x, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f)
+    // Per-instance colour blobs (R,G,B bytes) read back by __closesthit__spi_stub.
+    val green = Array[Byte](0, 255.toByte, 0)
+    val red   = Array[Byte](255.toByte, 0, 0)
+
+    renderer.addCustomGeometryInstance(typeId, aabbMin, aabbMax, xform(-0.9f), green) should be >= 0
+    renderer.addCustomGeometryInstance(typeId, aabbMin, aabbMax, xform(0.9f), red) should be >= 0
+
+    val image = renderImage(TEST_IMAGE_SIZE)
+    val greenPixels = countColor(image, (r, g, b) => g > 150 && r < 100 && b < 100)
+    val redPixels = countColor(image, (r, g, b) => r > 150 && g < 100 && b < 100)
+    logger.info(s"per-instance data: green=$greenPixels red=$redPixels px")
+    // Each instance must render its OWN colour — proves per-instance custom data
+    // reached the registrant's shader (indexed by geometry_data_index).
+    greenPixels should be > 100
+    redPixels should be > 100

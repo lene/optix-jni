@@ -1127,7 +1127,8 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_registerCustomGeo
 // Custom-geometry SPI (Task 1.1d): add an IAS instance of a registered custom type.
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCustomGeometryInstanceNative(
     JNIEnv* env, jobject obj,
-    jint typeId, jfloatArray aabbMin, jfloatArray aabbMax, jfloatArray transform) {
+    jint typeId, jfloatArray aabbMin, jfloatArray aabbMax, jfloatArray transform,
+    jbyteArray customData) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) return -1;
@@ -1140,9 +1141,14 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCustomGeometry
         jfloat* minArr = env->GetFloatArrayElements(aabbMin, nullptr);
         jfloat* maxArr = env->GetFloatArrayElements(aabbMax, nullptr);
         jfloat* xformArr = env->GetFloatArrayElements(transform, nullptr);
+        jbyte* dataArr = customData ? env->GetByteArrayElements(customData, nullptr) : nullptr;  // Task 1.1c
+        jsize dataLen = customData ? env->GetArrayLength(customData) : 0;
 
-        int instanceId = wrapper->addCustomGeometryInstance(typeId, minArr, maxArr, xformArr);
+        int instanceId = wrapper->addCustomGeometryInstance(
+            typeId, minArr, maxArr, xformArr,
+            reinterpret_cast<const void*>(dataArr), static_cast<int>(dataLen));
 
+        if (dataArr) env->ReleaseByteArrayElements(customData, dataArr, JNI_ABORT);
         env->ReleaseFloatArrayElements(transform, xformArr, JNI_ABORT);
         env->ReleaseFloatArrayElements(aabbMax, maxArr, JNI_ABORT);
         env->ReleaseFloatArrayElements(aabbMin, minArr, JNI_ABORT);

@@ -41,9 +41,23 @@ extern "C" __global__ void __intersection__spi_stub() {
     optixReportIntersection(t, 0u);
 }
 
-// Flat magenta into the radiance payload — no params, no material.
+// Writes this instance's colour into the radiance payload. If the SPI supplied
+// per-instance custom data (Task 1.1c), the colour is read from it (blob = 3
+// bytes R,G,B); otherwise a fixed magenta. This also exercises that a REGISTRANT
+// module reads `params` correctly — the path menger-geometry's 4D shaders need.
 extern "C" __global__ void __closesthit__spi_stub() {
-    optixSetPayload_0(230u);  // R
-    optixSetPayload_1(40u);   // G
-    optixSetPayload_2(200u);  // B
+    unsigned int r = 230u, g = 40u, b = 200u;  // default magenta
+    if (params.custom_geometry_data != nullptr && params.instance_materials != nullptr) {
+        const unsigned int id = optixGetInstanceId();
+        const int idx = params.instance_materials[id].geometry_data_index;
+        if (idx >= 0) {
+            const unsigned char* blob =
+                reinterpret_cast<const unsigned char*>(params.custom_geometry_data)
+                + static_cast<size_t>(idx) * params.custom_geometry_stride;
+            r = blob[0]; g = blob[1]; b = blob[2];
+        }
+    }
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
 }

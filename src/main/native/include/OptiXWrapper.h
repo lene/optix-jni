@@ -224,7 +224,8 @@ public:
         const char* shadowChEntry, const char* shadowAhEntry,
         const char* photonChEntry);
     int addCustomGeometryInstance(
-        int typeId, const float* aabbMin, const float* aabbMax, const float* transform);
+        int typeId, const float* aabbMin, const float* aabbMax, const float* transform,
+        const void* customData = nullptr, int customDataSize = 0);
     int addTriangleMeshInstance(
         const float* transform, float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,

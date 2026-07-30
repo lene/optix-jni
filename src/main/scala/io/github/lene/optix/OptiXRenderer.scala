@@ -316,18 +316,22 @@ class OptiXRenderer
       ptx, intersectionEntry, closestHitEntry,
       shadowClosestHitEntry.orNull, shadowAnyHitEntry.orNull, photonClosestHitEntry.orNull)
 
+  // customData: an optional per-instance blob the registrant's IS reads back
+  // (Task 1.1c). Empty = none. The registered shader casts it to its own struct.
   def addCustomGeometryInstance(
       typeId: Int,
       aabbMin: Array[Float],
       aabbMax: Array[Float],
-      transform: Array[Float]): Int =
-    addCustomGeometryInstanceNative(typeId, aabbMin, aabbMax, transform)
+      transform: Array[Float],
+      customData: Array[Byte] = Array.emptyByteArray): Int =
+    addCustomGeometryInstanceNative(typeId, aabbMin, aabbMax, transform, customData)
 
   @native private def registerCustomGeometryNative(
       ptxBytes: Array[Byte], isEntry: String, chEntry: String,
       shadowChEntry: String, shadowAhEntry: String, photonChEntry: String): Int
   @native private def addCustomGeometryInstanceNative(
-      typeId: Int, aabbMin: Array[Float], aabbMax: Array[Float], transform: Array[Float]): Int
+      typeId: Int, aabbMin: Array[Float], aabbMax: Array[Float], transform: Array[Float],
+      customData: Array[Byte]): Int
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
