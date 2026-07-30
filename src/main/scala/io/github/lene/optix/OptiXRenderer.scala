@@ -305,16 +305,20 @@ class OptiXRenderer
   // then instance it. This is the optix-jni side of the seam that will let
   // menger-geometry supply its 4D fractal shaders without optix-jni knowing them.
   // Requires initialize() first (the module is built in the renderer's context).
+  // Optional shadow/photon entries use "" for "none". The published io.github.lene.optix
+  // API stays Java-interoperable (no scala.Option) — enforced by menger's ArchUnit rule.
   def registerCustomGeometry(
       ptx: Array[Byte],
       intersectionEntry: String,
       closestHitEntry: String,
-      shadowClosestHitEntry: Option[String] = None,
-      shadowAnyHitEntry: Option[String] = None,
-      photonClosestHitEntry: Option[String] = None): Int =
+      shadowClosestHitEntry: String = "",
+      shadowAnyHitEntry: String = "",
+      photonClosestHitEntry: String = ""): Int =
     registerCustomGeometryNative(
       ptx, intersectionEntry, closestHitEntry,
-      shadowClosestHitEntry.orNull, shadowAnyHitEntry.orNull, photonClosestHitEntry.orNull)
+      blankToNull(shadowClosestHitEntry), blankToNull(shadowAnyHitEntry), blankToNull(photonClosestHitEntry))
+
+  private def blankToNull(s: String): String = if s.isEmpty then null else s
 
   // customData: an optional per-instance blob the registrant's IS reads back
   // (Task 1.1c). Empty = none. The registered shader casts it to its own struct.
