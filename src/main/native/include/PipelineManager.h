@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 #include "OptiXContext.h"
 #include "SceneParameters.h"
+#include "CustomGeometryRegistry.h"
 
 // Forward declarations
 struct BaseParams;
@@ -28,6 +29,18 @@ public:
     // Pipeline build/rebuild
     void buildPipeline(const SceneParameters& scene, OptixTraversableHandle gasHandle);
     void cleanup(bool includeCaustics);
+
+    // Custom-geometry SPI (Task 1.1b): register an external primitive's hit
+    // programs from a caller-provided PTX module (see createModuleFromPTX).
+    // Creates the primary/shadow/photon hit groups and allocates a runtime
+    // geometry-type id (>= GEOMETRY_TYPE_COUNT), returned to the caller for use
+    // as an instance's geometry_type. Pass nullptr for shadow/photon entries to
+    // reuse the primary group. Register before the first buildPipeline().
+    int registerCustomGeometry(
+        OptixModule geomModule,
+        const char* isEntry, const char* chEntry,
+        const char* shadowChEntry, const char* shadowAhEntry,
+        const char* photonChEntry);
 
     // Lightweight camera-only update (avoids full pipeline rebuild)
     void updateCameraInSBT(const SceneParameters& scene);
@@ -59,6 +72,9 @@ private:
     // Pipeline resources
     OptixPipeline pipeline = nullptr;
     OptixModule module = nullptr;
+    // Custom-geometry SPI (Task 1.1b): externally-registered primitives' runtime
+    // ids + program groups. Empty for a pure built-in scene (no behavior change).
+    CustomGeometryRegistry custom_geometry_registry;
     OptixProgramGroup raygen_prog_group = nullptr;
     OptixProgramGroup miss_prog_group = nullptr;
     OptixProgramGroup hitgroup_prog_group = nullptr;
