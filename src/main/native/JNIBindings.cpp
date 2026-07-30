@@ -1160,6 +1160,48 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCustomGeometry
     }
 }
 
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceMaterialNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness, jfloat cauchyA, jfloat cauchyB) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        return wrapper->setInstanceMaterial(
+            instanceId, r, g, b, a, ior,
+            roughness, metallic, specular, emission, filmThickness, cauchyA, cauchyB);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setInstanceMaterial: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        return -1;
+    }
+}
+
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCustomGeometryInstanceDataNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId, jbyteArray customData) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        if (customData == nullptr) {
+            env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                "customData must not be null");
+            return -1;
+        }
+        jbyte* dataArr = env->GetByteArrayElements(customData, nullptr);
+        jsize dataLen = env->GetArrayLength(customData);
+        int rc = wrapper->updateCustomGeometryInstanceData(
+            instanceId, reinterpret_cast<const void*>(dataArr), static_cast<int>(dataLen));
+        env->ReleaseByteArrayElements(customData, dataArr, JNI_ABORT);
+        return rc;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateCustomGeometryInstanceData: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        return -1;
+    }
+}
+
 /**
  * Add a triangle mesh instance to the scene with transform and material.
  * The mesh must be set first with setTriangleMesh().

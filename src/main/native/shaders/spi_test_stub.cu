@@ -61,3 +61,21 @@ extern "C" __global__ void __closesthit__spi_stub() {
     optixSetPayload_1(g);
     optixSetPayload_2(b);
 }
+
+// Alternate closest hit that reads its colour from the InstanceMaterial set via
+// setInstanceMaterial (Task 1.2b) — the same params.instance_materials[id] path the
+// real 4D shaders reach through getInstanceMaterialPBR. Proves a registrant's shader
+// sees materials assigned generically, without a per-instance blob.
+extern "C" __global__ void __closesthit__spi_material() {
+    unsigned int r = 230u, g = 40u, b = 200u;  // default magenta
+    if (params.instance_materials != nullptr) {
+        const unsigned int id = optixGetInstanceId();
+        const float* c = params.instance_materials[id].color;
+        r = static_cast<unsigned int>(__saturatef(c[0]) * 255.0f + 0.5f);
+        g = static_cast<unsigned int>(__saturatef(c[1]) * 255.0f + 0.5f);
+        b = static_cast<unsigned int>(__saturatef(c[2]) * 255.0f + 0.5f);
+    }
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
+}

@@ -326,12 +326,37 @@ class OptiXRenderer
       customData: Array[Byte] = Array.emptyByteArray): Int =
     addCustomGeometryInstanceNative(typeId, aabbMin, aabbMax, transform, customData)
 
+  // Set PBR material on any instance (built-in or custom). Custom instances start
+  // white; a registrant calls this so its shader reads colour/PBR via
+  // getInstanceMaterialPBR exactly like built-ins. Returns 0 on success.
+  def setInstanceMaterial(
+      instanceId: Int,
+      r: Float, g: Float, b: Float, a: Float, ior: Float,
+      roughness: Float = 0.5f, metallic: Float = 0.0f, specular: Float = 0.5f,
+      emission: Float = 0.0f, filmThickness: Float = 0.0f,
+      cauchyA: Float = 0.0f, cauchyB: Float = 0.0f): Int =
+    setInstanceMaterialNative(
+      instanceId, r, g, b, a, ior, roughness, metallic, specular, emission,
+      filmThickness, cauchyA, cauchyB)
+
+  // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
+  // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
+  // updates such as a 4D fractal's projection (eye/screen/rotation). Returns 0 on ok.
+  def updateCustomGeometryInstanceData(instanceId: Int, customData: Array[Byte]): Int =
+    updateCustomGeometryInstanceDataNative(instanceId, customData)
+
   @native private def registerCustomGeometryNative(
       ptxBytes: Array[Byte], isEntry: String, chEntry: String,
       shadowChEntry: String, shadowAhEntry: String, photonChEntry: String): Int
   @native private def addCustomGeometryInstanceNative(
       typeId: Int, aabbMin: Array[Float], aabbMax: Array[Float], transform: Array[Float],
       customData: Array[Byte]): Int
+  @native private def setInstanceMaterialNative(
+      instanceId: Int, r: Float, g: Float, b: Float, a: Float, ior: Float,
+      roughness: Float, metallic: Float, specular: Float, emission: Float,
+      filmThickness: Float, cauchyA: Float, cauchyB: Float): Int
+  @native private def updateCustomGeometryInstanceDataNative(
+      instanceId: Int, customData: Array[Byte]): Int
 
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit

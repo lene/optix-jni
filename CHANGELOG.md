@@ -16,6 +16,13 @@ locally by menger via `publishLocal` until the real 0.2.0 is cut at Release A.
   photon entry points) as a runtime geometry type and instance it, with optional
   generic per-instance data. Lets consumers (e.g. menger-geometry) supply their own
   intersection shaders without optix-jni knowing their geometry types. (Tasks 1.1a-d)
+- `setInstanceMaterial(instanceId, ...)`: assign PBR material to any instance
+  (built-in or custom). Custom instances start white; a registrant calls this so its
+  shader reads colour/PBR via `getInstanceMaterialPBR`, keeping custom geometry on the
+  shared material/texture pipeline. (Task 1.2b)
+- `updateCustomGeometryInstanceData(instanceId, blob)`: overwrite a custom instance's
+  per-instance blob in place. No GAS/IAS rebuild when the size is unchanged — for
+  per-frame updates such as a 4D fractal's projection (eye/screen/rotation). (Task 1.2b)
 
 ### Removed
 

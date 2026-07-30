@@ -226,6 +226,20 @@ public:
     int addCustomGeometryInstance(
         int typeId, const float* aabbMin, const float* aabbMax, const float* transform,
         const void* customData = nullptr, int customDataSize = 0);
+    // Set PBR material on any existing instance (built-in or custom-geometry). Custom
+    // instances start with a white default; registrants (e.g. menger-geometry's 4D
+    // fractals) call this so their shaders read colour/PBR via getInstanceMaterialPBR
+    // exactly like built-ins. Marks the IAS dirty (material re-uploads next render).
+    int setInstanceMaterial(
+        int instanceId, float r, float g, float b, float a, float ior,
+        float roughness, float metallic, float specular, float emission,
+        float film_thickness, float cauchy_a, float cauchy_b);
+    // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
+    // Cheap: patches the CPU blob and, if the GPU buffer already exists, memcpy's just
+    // this instance's slot — no GAS/IAS rebuild (custom AABBs are pose-independent, e.g.
+    // the 4D projection stays inside x±scale). Used by per-frame projection updates.
+    int updateCustomGeometryInstanceData(
+        int instanceId, const void* customData, int customDataSize);
     int addTriangleMeshInstance(
         const float* transform, float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,

@@ -2147,6 +2147,51 @@ int OptiXWrapper::addCustomGeometryInstance(
     return instanceId;
 }
 
+int OptiXWrapper::setInstanceMaterial(
+    int instanceId, float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, float emission,
+    float film_thickness, float cauchy_a, float cauchy_b
+) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
+    Impl::ObjectInstance& inst = impl->instances[instanceId];
+    inst.color[0] = r; inst.color[1] = g; inst.color[2] = b; inst.color[3] = a;
+    inst.ior = ior;
+    inst.roughness = roughness;
+    inst.metallic = metallic;
+    inst.specular = specular;
+    inst.emission = emission;
+    inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
+    // Material lives in the InstanceMaterial array rebuilt by buildIAS; re-upload it.
+    impl->ias_dirty = true;
+    return 0;
+}
+
+int OptiXWrapper::updateCustomGeometryInstanceData(
+    int instanceId, const void* customData, int customDataSize
+) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
+    if (customData == nullptr || customDataSize <= 0) return -2;
+    const int idx = impl->instances[instanceId].geometry_data_index;
+    if (idx < 0 || idx >= static_cast<int>(impl->custom_geometry_blobs.size())) return -3;
+
+    const char* bytes = static_cast<const char*>(customData);
+    impl->custom_geometry_blobs[idx].assign(bytes, bytes + customDataSize);
+
+    // If the packed GPU buffer already exists and this blob fits the uniform stride,
+    // patch just this slot — no rebuild. Otherwise the next buildIAS packs it.
+    if (impl->d_custom_geometry_data != 0 &&
+        static_cast<size_t>(customDataSize) <= impl->custom_geometry_stride) {
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(impl->d_custom_geometry_data + idx * impl->custom_geometry_stride),
+            bytes, customDataSize, cudaMemcpyHostToDevice));
+    } else {
+        impl->ias_dirty = true;
+    }
+    return 0;
+}
+
 int OptiXWrapper::addTriangleMeshInstance(
     const float* transform, float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission, int textureIndex,

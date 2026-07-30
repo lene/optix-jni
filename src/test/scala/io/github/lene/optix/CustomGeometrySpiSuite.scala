@@ -44,6 +44,12 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
     renderer.registerCustomGeometry(
       loadStubPtx(), "__intersection__spi_stub", "__closesthit__spi_stub")
 
+  // Registers the variant whose closest hit reads the InstanceMaterial colour
+  // (set via setInstanceMaterial) rather than a per-instance blob.
+  private def registerMaterialStub(): Int =
+    renderer.registerCustomGeometry(
+      loadStubPtx(), "__intersection__spi_stub", "__closesthit__spi_material")
+
   private def countColor(image: Array[Byte], pred: (Int, Int, Int) => Boolean): Int =
     (0 until (TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height)).count { idx =>
       val px = ImageValidation.getRGB(image, idx)
@@ -95,4 +101,35 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
     // Each instance must render its OWN colour — proves per-instance custom data
     // reached the registrant's shader (indexed by geometry_data_index).
     greenPixels should be > 100
+    redPixels should be > 100
+
+  it should "read a material set via setInstanceMaterial (Task 1.2b)" in:
+    val typeId = registerMaterialStub()
+    val instanceId = renderer.addCustomGeometryInstance(
+      typeId, Array(-0.6f, -0.6f, -0.6f), Array(0.6f, 0.6f, 0.6f), identityTransform)
+    instanceId should be >= 0
+    // No per-instance blob: the shader must fall back to the InstanceMaterial colour.
+    renderer.setInstanceMaterial(instanceId, 0f, 1f, 0f, 1f, 1.5f) shouldBe 0
+
+    val image = renderImage(TEST_IMAGE_SIZE)
+    val greenPixels = countColor(image, (r, g, b) => g > 150 && r < 100 && b < 100)
+    logger.info(s"setInstanceMaterial: green=$greenPixels px")
+    greenPixels should be > 100
+
+  it should "overwrite a custom instance's blob in place (Task 1.2b update path)" in:
+    val typeId = registerStub()
+    val green = Array[Byte](0, 255.toByte, 0)
+    val red   = Array[Byte](255.toByte, 0, 0)
+    val instanceId = renderer.addCustomGeometryInstance(
+      typeId, Array(-0.6f, -0.6f, -0.6f), Array(0.6f, 0.6f, 0.6f), identityTransform, green)
+    instanceId should be >= 0
+
+    val before = renderImage(TEST_IMAGE_SIZE)
+    countColor(before, (r, g, b) => g > 150 && r < 100 && b < 100) should be > 100
+
+    // In-place update (no rebuild): the same instance must now render red.
+    renderer.updateCustomGeometryInstanceData(instanceId, red) shouldBe 0
+    val after = renderImage(TEST_IMAGE_SIZE)
+    val redPixels = countColor(after, (r, g, b) => r > 150 && g < 100 && b < 100)
+    logger.info(s"blob update: red=$redPixels px")
     redPixels should be > 100
