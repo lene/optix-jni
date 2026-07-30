@@ -206,6 +206,23 @@ set_target_properties(optix_shaders PROPERTIES
     CUDA_ARCHITECTURES "75-virtual"
 )
 
+# Custom-geometry SPI test fixture (Task 1.1d): a minimal external primitive
+# compiled to its OWN PTX module, used by CustomGeometrySpiSuite to regression-
+# test the managed-pipeline registration path.
+add_library(spi_test_stub_shaders OBJECT
+    shaders/spi_test_stub.cu
+)
+target_include_directories(spi_test_stub_shaders PRIVATE
+    ${OptiX_INCLUDE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+set_target_properties(spi_test_stub_shaders PROPERTIES
+    CUDA_PTX_COMPILATION ON
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_ARCHITECTURES "75-virtual"
+)
+
 #=============================================================================
 # Main JNI Library
 #=============================================================================
@@ -247,6 +264,12 @@ install(TARGETS optixjni LIBRARY DESTINATION .)
 install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/optix_shaders.dir/shaders/optix_shaders.ptx"
         DESTINATION .
         RENAME "optix_shaders.ptx"
+)
+
+# SPI test-fixture stub PTX (Task 1.1d)
+install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/spi_test_stub_shaders.dir/shaders/spi_test_stub.ptx"
+        DESTINATION .
+        RENAME "spi_test_stub.ptx"
 )
 
 # Cylinder programs are now included in optix_shaders.ptx via hit_cylinder.cu

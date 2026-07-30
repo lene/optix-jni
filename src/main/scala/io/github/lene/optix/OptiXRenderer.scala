@@ -300,6 +300,35 @@ class OptiXRenderer
   def isDenoisingEnabled: Boolean =
     isInitialized && isDenoisingEnabledNative
 
+  // ---- Custom-geometry SPI (Task 1.1d) ----
+  // Register an external primitive (compiled to PTX) as a runtime geometry type,
+  // then instance it. This is the optix-jni side of the seam that will let
+  // menger-geometry supply its 4D fractal shaders without optix-jni knowing them.
+  // Requires initialize() first (the module is built in the renderer's context).
+  def registerCustomGeometry(
+      ptx: Array[Byte],
+      intersectionEntry: String,
+      closestHitEntry: String,
+      shadowClosestHitEntry: Option[String] = None,
+      shadowAnyHitEntry: Option[String] = None,
+      photonClosestHitEntry: Option[String] = None): Int =
+    registerCustomGeometryNative(
+      ptx, intersectionEntry, closestHitEntry,
+      shadowClosestHitEntry.orNull, shadowAnyHitEntry.orNull, photonClosestHitEntry.orNull)
+
+  def addCustomGeometryInstance(
+      typeId: Int,
+      aabbMin: Array[Float],
+      aabbMax: Array[Float],
+      transform: Array[Float]): Int =
+    addCustomGeometryInstanceNative(typeId, aabbMin, aabbMax, transform)
+
+  @native private def registerCustomGeometryNative(
+      ptxBytes: Array[Byte], isEntry: String, chEntry: String,
+      shadowChEntry: String, shadowAhEntry: String, photonChEntry: String): Int
+  @native private def addCustomGeometryInstanceNative(
+      typeId: Int, aabbMin: Array[Float], aabbMax: Array[Float], transform: Array[Float]): Int
+
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
   @native private[optix] def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit

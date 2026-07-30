@@ -215,6 +215,16 @@ public:
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
         float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
+    // Custom-geometry SPI (Task 1.1d): register an external primitive from PTX
+    // bytes (returns a runtime geometry-type id) and instance it. See definitions
+    // in OptiXWrapper.cpp.
+    int registerCustomGeometry(
+        const char* ptxBytes, size_t ptxSize,
+        const char* isEntry, const char* chEntry,
+        const char* shadowChEntry, const char* shadowAhEntry,
+        const char* photonChEntry);
+    int addCustomGeometryInstance(
+        int typeId, const float* aabbMin, const float* aabbMax, const float* transform);
     int addTriangleMeshInstance(
         const float* transform, float r, float g, float b, float a, float ior,
         float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,

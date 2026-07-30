@@ -344,6 +344,27 @@ int PipelineManager::registerCustomGeometry(
     return custom_geometry_registry.registerGeometry(primary, shadow, photon);
 }
 
+int PipelineManager::registerCustomGeometryFromPTX(
+    const char* ptxBytes, size_t ptxSize,
+    const char* isEntry, const char* chEntry,
+    const char* shadowChEntry, const char* shadowAhEntry,
+    const char* photonChEntry) {
+    OptixModuleCompileOptions module_compile_options = {};
+    module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+    module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+    module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
+    // Must match the pipeline the module links into (payload/attribute counts,
+    // primitive-type flags, params name) — reuse the pipeline's own options.
+    OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
+
+    std::string ptx_content(ptxBytes, ptxSize);
+    OptixModule geomModule = optix_context.createModuleFromPTX(
+        ptx_content, module_compile_options, pipeline_compile_options);
+
+    return registerCustomGeometry(
+        geomModule, isEntry, chEntry, shadowChEntry, shadowAhEntry, photonChEntry);
+}
+
 void PipelineManager::createRaygenRecord(const SceneParameters& scene) {
     const auto& camera = scene.getCamera();
     RayGenData rg_data;

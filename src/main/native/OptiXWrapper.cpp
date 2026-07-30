@@ -2137,6 +2137,74 @@ int OptiXWrapper::addSphereInstance(
     return instanceId;
 }
 
+// Custom-geometry SPI (Task 1.1d): register an external primitive's hit programs
+// from PTX bytes; returns a runtime geometry-type id for use with
+// addCustomGeometryInstance. Module + groups are created in the pipeline's own
+// context/options (PipelineManager); a rebuild is forced so the new groups + SBT
+// records are picked up on the next render.
+int OptiXWrapper::registerCustomGeometry(
+    const char* ptxBytes, size_t ptxSize,
+    const char* isEntry, const char* chEntry,
+    const char* shadowChEntry, const char* shadowAhEntry,
+    const char* photonChEntry) {
+    int typeId = impl->pipeline_manager.registerCustomGeometryFromPTX(
+        ptxBytes, ptxSize, isEntry, chEntry, shadowChEntry, shadowAhEntry, photonChEntry);
+    impl->pipeline_built = false;
+    return typeId;
+}
+
+// Custom-geometry SPI (Task 1.1d): add an IAS instance of a registered custom
+// type. The caller supplies the object-space AABB (its custom IS intersects
+// within it) and the 3x4 transform. The instance's sbtOffset = typeId * STRIDE
+// is set generically by the IAS build, targeting the type's registered SBT block.
+int OptiXWrapper::addCustomGeometryInstance(
+    int typeId, const float* aabbMin, const float* aabbMax, const float* transform) {
+    if (impl->instances.size() >= impl->max_instances) return -1;
+
+    // gas_registry / ObjectInstance.geometry_type are keyed by the GeometryType
+    // enum (int-backed); runtime custom ids (>= GEOMETRY_TYPE_COUNT) are stored
+    // by casting. Safe for the small id counts in use.
+    const GeometryType gtype = static_cast<GeometryType>(typeId);
+
+    if (impl->gas_registry.find(gtype) == impl->gas_registry.end()) {
+        OptixAabb aabb;
+        aabb.minX = aabbMin[0]; aabb.minY = aabbMin[1]; aabb.minZ = aabbMin[2];
+        aabb.maxX = aabbMax[0]; aabb.maxY = aabbMax[1]; aabb.maxZ = aabbMax[2];
+        OptixAccelBuildOptions accel_options = {};
+        accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+        accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+        OptiXContext::GASBuildResult result =
+            impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+        Impl::GASData gas_data;
+        gas_data.handle = result.handle;
+        gas_data.gas_buffer = result.gas_buffer;
+        gas_data.aabb_buffer = result.aabb_buffer;
+        impl->gas_registry[gtype] = gas_data;
+    }
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = gtype;
+    inst.gas_handle = impl->gas_registry[gtype].handle;
+    std::memcpy(inst.transform, transform, 12 * sizeof(float));
+    inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f; inst.color[3] = 1.0f;
+    inst.ior = 1.0f; inst.roughness = 0.5f; inst.metallic = 0.0f; inst.specular = 0.5f;
+    inst.emission = 0.0f; inst.film_thickness = 0.0f; inst.cauchy_a = 0.0f; inst.cauchy_b = 0.0f;
+    inst.geometry_data_index = -1;
+    inst.procedural_type = 0; inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1; inst.roughness_texture_index = -1;
+    inst.image_texture_index = -1; inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1; inst.height_texture_index = -1;
+    inst.active = true;
+    inst.mesh_index = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+    impl->ias_dirty = true;
+    if (!impl->use_ias) impl->pipeline_built = false;
+    impl->use_ias = true;
+    return instanceId;
+}
+
 int OptiXWrapper::addTriangleMeshInstance(
     const float* transform, float r, float g, float b, float a, float ior,
     float roughness, float metallic, float specular, float emission, int textureIndex,

@@ -42,6 +42,15 @@ public:
         const char* shadowChEntry, const char* shadowAhEntry,
         const char* photonChEntry);
 
+    // Task 1.1d: same, but from PTX bytes — creates the module in THIS pipeline's
+    // context with the pipeline's compile options (a module made in a foreign
+    // context can't link here), then registers it. This is the public SPI entry.
+    int registerCustomGeometryFromPTX(
+        const char* ptxBytes, size_t ptxSize,
+        const char* isEntry, const char* chEntry,
+        const char* shadowChEntry, const char* shadowAhEntry,
+        const char* photonChEntry);
+
     // Lightweight camera-only update (avoids full pipeline rebuild)
     void updateCameraInSBT(const SceneParameters& scene);
 

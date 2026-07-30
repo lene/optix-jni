@@ -1082,6 +1082,78 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstance
     }
 }
 
+// Custom-geometry SPI (Task 1.1d): register an external primitive from PTX bytes.
+// Pass null for shadowCh/shadowAh/photonCh entry names to reuse the primary group.
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_registerCustomGeometryNative(
+    JNIEnv* env, jobject obj,
+    jbyteArray ptxBytes, jstring isEntry, jstring chEntry,
+    jstring shadowChEntry, jstring shadowAhEntry, jstring photonChEntry) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+
+        jsize ptxLen = env->GetArrayLength(ptxBytes);
+        jbyte* ptxArr = env->GetByteArrayElements(ptxBytes, nullptr);
+        if (ptxArr == nullptr) {
+            env->ThrowNew(env->FindClass("java/lang/RuntimeException"), "Failed to get PTX bytes");
+            return -1;
+        }
+
+        const char* is_c = env->GetStringUTFChars(isEntry, nullptr);
+        const char* ch_c = env->GetStringUTFChars(chEntry, nullptr);
+        const char* shadowCh_c = shadowChEntry ? env->GetStringUTFChars(shadowChEntry, nullptr) : nullptr;
+        const char* shadowAh_c = shadowAhEntry ? env->GetStringUTFChars(shadowAhEntry, nullptr) : nullptr;
+        const char* photonCh_c = photonChEntry ? env->GetStringUTFChars(photonChEntry, nullptr) : nullptr;
+
+        int typeId = wrapper->registerCustomGeometry(
+            reinterpret_cast<const char*>(ptxArr), static_cast<size_t>(ptxLen),
+            is_c, ch_c, shadowCh_c, shadowAh_c, photonCh_c);
+
+        if (photonCh_c) env->ReleaseStringUTFChars(photonChEntry, photonCh_c);
+        if (shadowAh_c) env->ReleaseStringUTFChars(shadowAhEntry, shadowAh_c);
+        if (shadowCh_c) env->ReleaseStringUTFChars(shadowChEntry, shadowCh_c);
+        env->ReleaseStringUTFChars(chEntry, ch_c);
+        env->ReleaseStringUTFChars(isEntry, is_c);
+        env->ReleaseByteArrayElements(ptxBytes, ptxArr, JNI_ABORT);
+
+        return typeId;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in registerCustomGeometry: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        return -1;
+    }
+}
+
+// Custom-geometry SPI (Task 1.1d): add an IAS instance of a registered custom type.
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCustomGeometryInstanceNative(
+    JNIEnv* env, jobject obj,
+    jint typeId, jfloatArray aabbMin, jfloatArray aabbMax, jfloatArray transform) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        if (env->GetArrayLength(aabbMin) != 3 || env->GetArrayLength(aabbMax) != 3 ||
+            env->GetArrayLength(transform) != 12) {
+            env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                "aabbMin/aabbMax must be length 3 and transform length 12");
+            return -1;
+        }
+        jfloat* minArr = env->GetFloatArrayElements(aabbMin, nullptr);
+        jfloat* maxArr = env->GetFloatArrayElements(aabbMax, nullptr);
+        jfloat* xformArr = env->GetFloatArrayElements(transform, nullptr);
+
+        int instanceId = wrapper->addCustomGeometryInstance(typeId, minArr, maxArr, xformArr);
+
+        env->ReleaseFloatArrayElements(transform, xformArr, JNI_ABORT);
+        env->ReleaseFloatArrayElements(aabbMax, maxArr, JNI_ABORT);
+        env->ReleaseFloatArrayElements(aabbMin, minArr, JNI_ABORT);
+        return instanceId;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addCustomGeometryInstance: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        return -1;
+    }
+}
+
 /**
  * Add a triangle mesh instance to the scene with transform and material.
  * The mesh must be set first with setTriangleMesh().
