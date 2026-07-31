@@ -2,12 +2,8 @@ package io.github.lene.optix
 
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.nio.file.Files
 
-import scala.util.Failure
-import scala.util.Success
 import scala.util.Try
-import scala.util.control.Exception.catching
 
 import com.typesafe.scalalogging.LazyLogging
 import menger.common.Color
@@ -690,29 +686,13 @@ class OptiXRenderer
 object OptiXRenderer extends LazyLogging:
   private val libraryName = "optixjni"
 
-  private val libraryLoaded: Boolean = loadNativeLibrary().isSuccess
+  // liboptixjni.so via the shared NativeLibrary loader, then extract the bundled
+  // PTX (optix-jni-specific); both must succeed for the renderer to be usable.
+  private val libraryLoaded: Boolean =
+    NativeLibrary.load(libraryName) && extractPTX(NativeLibrary.platform()).isSuccess
 
   /** Returns whether `liboptixjni.so` was loaded from `java.library.path` or the classpath. */
   def isLibraryLoaded: Boolean = libraryLoaded
-
-  // Functional helper methods for library loading
-  private def loadFromSystemPath(): Try[Unit] =
-    for
-      _ <- catching(classOf[UnsatisfiedLinkError]).withTry:
-             System.loadLibrary(libraryName)
-             logger.info(s"Loaded $libraryName from java.library.path")
-      platform <- detectPlatform()
-      _ <- extractPTX(platform)
-    yield ()
-
-  private def detectPlatform(): Try[String] =
-    val os = System.getProperty("os.name").toLowerCase
-    val arch = System.getProperty("os.arch").toLowerCase
-    (os, arch) match
-      case (o, a) if o.contains("linux") && (a.contains("amd64") || a.contains("x86_64")) =>
-        Success("x86_64-linux")
-      case _ =>
-        Failure(new UnsupportedOperationException(s"Unsupported platform: $os/$arch"))
 
   private def copyStreamToFile(stream: InputStream, out: FileOutputStream): Try[Unit] = Try:
     val buffer = new Array[Byte](8192)
@@ -741,40 +721,6 @@ object OptiXRenderer extends LazyLogging:
           ptxStream.close()
       case None =>
         logger.debug(s"PTX resource not found: $ptxResourcePath")
-
-  private def extractAndLoadLibrary(stream: InputStream, resourcePath: String): Try[Unit] = Try:
-    val tempFile = Files.createTempFile(s"lib$libraryName", ".so")
-    tempFile.toFile.deleteOnExit()
-    val out = new FileOutputStream(tempFile.toFile)
-    try
-      copyStreamToFile(stream, out).get
-    finally
-      out.close()
-      stream.close()
-    System.load(tempFile.toAbsolutePath.toString)
-    logger.debug(s"Loaded $libraryName from classpath via temp file: ${tempFile.toAbsolutePath}")
-
-  private def loadFromClasspath(): Try[Unit] =
-    for
-      platform <- detectPlatform()
-      resourcePath = s"/native/$platform/lib$libraryName.so"
-      _ = logger.debug(s"Attempting to load library from resource: $resourcePath")
-      stream <- Option(getClass.getResourceAsStream(resourcePath))
-        .toRight(new IllegalStateException(s"Library resource not found: $resourcePath"))
-        .toTry
-      _ <- extractAndLoadLibrary(stream, resourcePath)
-      _ <- extractPTX(platform)
-    yield ()
-
-  private def loadNativeLibrary(): Try[Unit] =
-    loadFromSystemPath().recoverWith:
-      case _: UnsatisfiedLinkError =>
-        logger.debug(s"Failed to load $libraryName from java.library.path, trying classpath")
-        loadFromClasspath()
-    .recoverWith:
-      case e: Exception =>
-        logger.error(s"Failed to load native library '$libraryName'", e)
-        Failure(e)
 
 /** Raised by [[OptiXRenderer.ensureAvailable]] when native OptiX cannot be used. */
 case class OptiXNotAvailableException(message: String) extends Exception(message)

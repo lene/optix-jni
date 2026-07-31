@@ -23,6 +23,11 @@ locally by menger via `publishLocal` until the real 0.2.0 is cut at Release A.
 - `updateCustomGeometryInstanceData(instanceId, blob)`: overwrite a custom instance's
   per-instance blob in place. No GAS/IAS rebuild when the size is unchanged — for
   per-frame updates such as a 4D fractal's projection (eye/screen/rotation). (Task 1.2b)
+- `NativeLibrary.load(name)` / `NativeLibrary.platform()`: the JNI native-library loader
+  (java.library.path first, then classpath resource `/native/<platform>/lib<name>.so`
+  extracted to a temp file) is now published API. Downstream JNI libraries that ship
+  native code alongside optix-jni (e.g. menger-geometry's `libmengergeometry.so`) load
+  via this instead of forking the loader. Java-interoperable signatures. (Task 1.3b)
 
 ### Removed
 
