@@ -185,7 +185,17 @@ void PipelineManager::createProgramGroups() {
     photon_miss_prog_group = optix_context.createMissProgramGroup(
         module, "__miss__photon");
 
-    // Caustics raygen programs (for Progressive Photon Mapping)
+    // Caustics raygen programs (for Progressive Photon Mapping).
+    // CR-5(c): these are bound to `module`, which buildPipeline() destroys and recreates on every
+    // geometry-dirty rebuild via cleanup(false) — which intentionally preserves these handles.
+    // Destroy any stale handles before recreating, or each rebuild overwrites 6 live program
+    // groups (leak) that also dangle on the already-destroyed module.
+    destroyProgramGroupIfExists(caustics_hitpoints_raygen);
+    destroyProgramGroupIfExists(caustics_photons_raygen);
+    destroyProgramGroupIfExists(caustics_radiance_raygen);
+    destroyProgramGroupIfExists(caustics_update_radii_raygen);
+    destroyProgramGroupIfExists(caustics_grid_count_raygen);
+    destroyProgramGroupIfExists(caustics_grid_scatter_raygen);
     caustics_hitpoints_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__hitpoints"
     );

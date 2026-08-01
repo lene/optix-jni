@@ -439,29 +439,44 @@ void OptiXWrapper::setTriangleMesh(
 ) {
     Impl::TriangleMeshGPU mesh_entry;
 
+    // CR-5(f): check every allocation/copy and free what was already allocated on failure —
+    // otherwise a failed cudaMalloc/cudaMemcpy left the mesh registered (push_back below) with
+    // garbage/leaked device pointers. Throwing surfaces as a Java exception via JNIBindings.
+    cudaError_t cuda_err;
+
     // Allocate and copy vertex buffer
     size_t vertex_size =
         num_vertices * vertex_stride * sizeof(float);
-    cudaMalloc(
-        reinterpret_cast<void**>(&mesh_entry.d_vertices),
-        vertex_size
-    );
-    cudaMemcpy(
-        reinterpret_cast<void*>(mesh_entry.d_vertices),
-        vertices, vertex_size, cudaMemcpyHostToDevice
-    );
+    if ((cuda_err = cudaMalloc(
+            reinterpret_cast<void**>(&mesh_entry.d_vertices), vertex_size)) != cudaSuccess) {
+        throw std::runtime_error(
+            std::string("setTriangleMesh: vertex cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
+    }
+    if ((cuda_err = cudaMemcpy(
+            reinterpret_cast<void*>(mesh_entry.d_vertices),
+            vertices, vertex_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        throw std::runtime_error(
+            std::string("setTriangleMesh: vertex cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
+    }
 
     // Allocate and copy index buffer (3 indices per triangle)
     size_t index_size =
         num_triangles * 3 * sizeof(unsigned int);
-    cudaMalloc(
-        reinterpret_cast<void**>(&mesh_entry.d_indices),
-        index_size
-    );
-    cudaMemcpy(
-        reinterpret_cast<void*>(mesh_entry.d_indices),
-        indices, index_size, cudaMemcpyHostToDevice
-    );
+    if ((cuda_err = cudaMalloc(
+            reinterpret_cast<void**>(&mesh_entry.d_indices), index_size)) != cudaSuccess) {
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        throw std::runtime_error(
+            std::string("setTriangleMesh: index cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
+    }
+    if ((cuda_err = cudaMemcpy(
+            reinterpret_cast<void*>(mesh_entry.d_indices),
+            indices, index_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_indices));
+        throw std::runtime_error(
+            std::string("setTriangleMesh: index cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
+    }
 
     // Store mesh metadata for GAS building
     mesh_entry.num_vertices = num_vertices;
@@ -838,6 +853,9 @@ int OptiXWrapper::updateMesh4DProjection(
             reinterpret_cast<void**>(&d_temp),
             gas_sizes.tempUpdateSizeInBytes
         ));
+        // CR-5(d): free the build-temp even if optixAccelBuild throws; .release() on success.
+        auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+            reinterpret_cast<void*>(d_temp), cudaFree);
         OPTIX_CHECK(optixAccelBuild(
             impl->optix_context.getContext(),
             0,
@@ -848,6 +866,7 @@ int OptiXWrapper::updateMesh4DProjection(
             &mesh.gas_handle,
             nullptr, 0
         ));
+        d_temp_guard.release();
         CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp)));
     }
 
@@ -883,6 +902,9 @@ int OptiXWrapper::updateMesh4DProjection(
             reinterpret_cast<void**>(&d_ias_temp),
             ias_sizes.tempUpdateSizeInBytes
         ));
+        // CR-5(d): free the build-temp even if optixAccelBuild throws; .release() on success.
+        auto d_ias_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+            reinterpret_cast<void*>(d_ias_temp), cudaFree);
         OPTIX_CHECK(optixAccelBuild(
             impl->optix_context.getContext(),
             0,
@@ -893,6 +915,7 @@ int OptiXWrapper::updateMesh4DProjection(
             &impl->ias_handle,
             nullptr, 0
         ));
+        d_ias_temp_guard.release();
         CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_ias_temp)));
         CUDA_CHECK(cudaDeviceSynchronize());
     }
@@ -1277,6 +1300,9 @@ void OptiXWrapper::buildIAS() {
     // Allocate temp and output buffers
     CUdeviceptr d_temp_buffer;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp_buffer), ias_buffer_sizes.tempSizeInBytes));
+    // CR-5(d): free the build-temp even if a later CUDA_CHECK/OPTIX_CHECK throws; .release() on success.
+    auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp_buffer), cudaFree);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_ias_output_buffer), ias_buffer_sizes.outputSizeInBytes));
 
     // Build IAS
@@ -1296,6 +1322,7 @@ void OptiXWrapper::buildIAS() {
     ));
 
     // Free temp buffer
+    d_temp_guard.release();
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
 
     // Synchronize to ensure IAS build is complete before rendering
@@ -2357,6 +2384,9 @@ OptixTraversableHandle OptiXWrapper::buildSubIAS(
 
     CUdeviceptr d_temp = 0;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp), sizes.tempSizeInBytes));
+    // CR-5(d): free the build-temp even if a later CUDA_CHECK/OPTIX_CHECK throws; .release() on success.
+    auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp), cudaFree);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&sub.d_output_buffer), sizes.outputSizeInBytes));
 
     OPTIX_CHECK(optixAccelBuild(
@@ -2366,6 +2396,7 @@ OptixTraversableHandle OptiXWrapper::buildSubIAS(
         sub.d_output_buffer, sizes.outputSizeInBytes,
         &sub.handle, nullptr, 0));
 
+    d_temp_guard.release();
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp)));
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -3195,9 +3226,19 @@ void OptiXWrapper::clearAllInstances() {
     }
     impl->triangle_meshes.clear();
 
-    // CRITICAL: Clear gas_registry to remove stale GAS handles
-    // The registry maps geometry types to GAS data, and after freeing the GAS buffers above,
-    // these handles are invalid. Not clearing this causes illegal memory access on rebuild.
+    // CR-5(a)/(b): free the GAS buffers the registry OWNS (the cached unit-sphere GAS + any
+    // custom-geometry GAS) before clearing it. Previously the map was cleared without freeing,
+    // and dispose()'s freeGASBuffers ran AFTER this on the already-empty map — so these buffers
+    // leaked on every scene reload and on dispose (freed on no path). cylinder/cone/plane/curve
+    // GAS live in their own vectors (freed above); only registry-keyed GAS is handled here.
+    for (auto& entry : impl->gas_registry) {
+        if (entry.second.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(entry.second.gas_buffer));
+        }
+        if (entry.second.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(entry.second.aabb_buffer));
+        }
+    }
     impl->gas_registry.clear();
 
     // Check CUDA error state after freeing
