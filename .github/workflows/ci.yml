@@ -158,11 +158,18 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Generate JNI headers (javah)
+        # The JNI .cpp files #include the generated io_github_lene_optix_*.h headers (Task 1.4).
+        # clang-tidy parses the real sources, so those headers must exist AND be on the include
+        # path here, exactly as the sbt/CMake build arranges via JAVAH_INCLUDE_DIR. Without this
+        # clang-tidy fails with 'io_github_lene_optix_api_NativeOptiXApi.h file not found'.
+        run: sbt javah
       - name: Configure CMake (fetches FetchContent deps, generates compile_commands.json)
         run: |
           cmake -B target/cmake-clang-check \
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DJAVAH_INCLUDE_DIR="$PWD/target/native/include" \
             -Wno-dev --log-level=WARNING \
             src/main/native
       - name: Run clang-tidy
