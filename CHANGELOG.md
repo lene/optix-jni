@@ -5,10 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0-dev] - 2026-08-01
+## [0.2.0] - 2026-08-01
 
-Unreleased dev version for Sprint 35 Phases 1-2 (Native Seam Remediation). Pinned
-locally by menger via `publishLocal` until the real 0.2.0 is cut at Release A.
+First strictly-generic release (Sprint 35 Native Seam Remediation, Phases 1-2). The
+built-in 4D fractal geometry is removed; custom geometry is now supplied by consumers
+through the custom-geometry SPI. The Critical native-seam bugs (caustics OOB, GPU
+leaks, unguarded JNI, stale-buffer reuse) are fixed and validated under
+compute-sanitizer. See **BREAKING** under Removed.
 
 ### Added
 
@@ -348,7 +351,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
-[0.2.0-dev]: https://github.com/lene/optix-jni/compare/0.1.19...feat/sprint-35
+[0.2.0]: https://github.com/lene/optix-jni/compare/0.1.19...0.2.0
 [0.1.19]: https://github.com/lene/optix-jni/compare/0.1.18...0.1.19
 [0.1.18]: https://github.com/lene/optix-jni/compare/0.1.17...0.1.18
 [0.1.17]: https://github.com/lene/optix-jni/compare/0.1.16...0.1.17
