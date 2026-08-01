@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0-dev] - 2026-07-30
+## [0.2.0-dev] - 2026-08-01
 
-Unreleased dev version for Sprint 35 Phase 1 (Native Seam Remediation). Pinned
+Unreleased dev version for Sprint 35 Phases 1-2 (Native Seam Remediation). Pinned
 locally by menger via `publishLocal` until the real 0.2.0 is cut at Release A.
 
 ### Added
@@ -28,12 +28,41 @@ locally by menger via `publishLocal` until the real 0.2.0 is cut at Release A.
   extracted to a temp file) is now published API. Downstream JNI libraries that ship
   native code alongside optix-jni (e.g. menger-geometry's `libmengergeometry.so`) load
   via this instead of forking the loader. Java-interoperable signatures. (Task 1.3b)
+- `freeGpuMemoryBytes()`: device free-memory probe (`cudaMemGetInfo`) over JNI, for
+  leak-assertion tests that check a create/render/dispose or clear→re-add loop returns
+  device memory to ~baseline. (Task 2.6)
+
+### Fixed
+
+- **Caustics hit-point counter overflow (CR-1)**: a dense scene (one hit point per
+  camera pixel — e.g. full-HD is 2,073,600 > the 2,000,000 cap) bumped the atomic
+  counter past `MAX_HIT_POINTS` before the per-thread capacity check, so the grid,
+  radius-update and radiance passes launched at the raw count and read past the
+  hit-point buffer (the July out-of-bounds corruption). The host now clamps the count,
+  the four hit-point-width kernels clamp defensively, and the radiance pass
+  bounds-checks the image write. Validated clean under compute-sanitizer memcheck.
+  (Tasks 2.1, 2.7)
+- **GPU memory leaks (CR-5)**: registry-owned GAS + AABB buffers are freed before the
+  registry is cleared (previously freed on no path across scene reloads and on dispose);
+  caustics raygen program groups are destroyed before recreation on a geometry-dirty
+  rebuild; accel-build temp buffers free on the throw path via an RAII guard; and
+  `setTriangleMesh` checks every `cudaMalloc`/`cudaMemcpy` and frees what it allocated on
+  failure instead of registering a mesh with garbage pointers. (Task 2.3)
+- **Stale device-buffer reuse after clear (CR-2)**: `clearAllInstances`/`releaseTextures`
+  reset `last_*_count` (cylinder/cone/plane/curve/texture) when the backing device buffer
+  is freed, so a clear→re-add of the same object count no longer skips the re-upload and
+  renders against a freed pointer. (Task 2.2)
+- **Unguarded JNI array arguments (CR-4)**: `setCamera` and `setLights` null- and
+  length-check their `float[]` arguments and throw `IllegalArgumentException` instead of
+  dereferencing null one bad field from a public entry point. (Task 2.4)
 
 ### Removed
 
 - **BREAKING**: the built-in 4D fractal geometry (Menger4D / Sierpinski4D /
   Hexadecachoron4D), its `add/update*4DInstance` API, shaders, and geometry-type
   ids 5-7 — these move to menger-geometry via the SPI. (Task 1.2a)
+- Dead `MAX_INSTANCES` (=64) native constant — unused and contradicting the real
+  65536-instance limit. (CR-8, Task 2.5)
 
 ## [0.1.19] - 2026-07-13
 
