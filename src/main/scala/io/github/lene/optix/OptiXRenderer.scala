@@ -408,6 +408,12 @@ class OptiXRenderer
     */
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
+  // ---- Diagnostics ----
+  /** Free device memory in bytes (`cudaMemGetInfo`). For leak-assertion tests: a create/render/
+    * dispose or clear→re-add loop should return this to ~baseline. Device-global, but exposed as an
+    * instance method so a live CUDA context is guaranteed. */
+  @native def freeGpuMemoryBytes(): Long
+
   // ---- Plane @native declarations (called from OptiXPlaneApi) ----
   @native private[optix] def clearPlanesNative(): Unit
   @native private[optix] def addPlaneNative(axis: Int, positive: Boolean, value: Float): Unit

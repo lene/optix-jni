@@ -82,6 +82,24 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNat
     }
 }
 
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_OptiXRenderer_freeGpuMemoryBytes(
+    JNIEnv* env, jobject /*obj*/) {
+    try {
+        size_t free_bytes = 0;
+        size_t total_bytes = 0;
+        cudaError_t err = cudaMemGetInfo(&free_bytes, &total_bytes);
+        if (err != cudaSuccess) {
+            throwException(env, "java/lang/RuntimeException",
+                (std::string("cudaMemGetInfo failed: ") + cudaGetErrorString(err)).c_str());
+            return 0;
+        }
+        return static_cast<jlong>(free_bytes);
+    } catch (const std::exception& e) {
+        throwException(env, "java/lang/RuntimeException", e.what());
+        return 0;
+    }
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphere(
     JNIEnv* env, jobject obj, jfloat x, jfloat y, jfloat z, jfloat radius) {
     try {
