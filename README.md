@@ -166,15 +166,20 @@ The CI uses a pre-built Docker image based on NVIDIA's official CUDA image with 
 
 Images are tagged with version numbers of all pre-installed components:
 - Format: `{CUDA}-{OptiX}-{Java}-{sbt}`
-- Example: `12.8-9.0-25-1.11.7` = CUDA 12.8, OptiX 9.0, Java 25, sbt 1.11.7
+- Example: `13.2-9.0-25-1.12.0` = CUDA 13.2, OptiX 9.0, Java 25, sbt 1.12.0
 - The `latest` tag always points to the newest stable version
 - Scala version is NOT in the tag (managed by sbt from build.sbt at runtime)
 
-### GitLab Runner Setup
+### GPU runner setup
 
-**IMPORTANT**: The OptiX JNI CI tests require a GitLab Runner with GPU support. The Docker image alone is not sufficient - the runner itself must be configured to expose GPU access to containers.
+This repo's own CI runs on **GitHub Actions** against a self-hosted NVIDIA runner (label
+`nvidia`). The Docker image built here is additionally consumed by **menger**'s GitLab CI,
+which needs a GPU-capable GitLab runner — the Docker image alone is not sufficient, the runner
+must expose GPU access to its containers.
 
-See [RUNNER_SETUP.md](RUNNER_SETUP.md) for complete instructions on configuring a GitLab Runner with NVIDIA GPU support.
+Both runner setups are documented in the workspace repo: `../infra/RUNNER_SETUP.md` for the
+GitLab runner, and `../infra/ci-runners/README.md` for registering and hardening the GitHub
+Actions runners. (See also `RUNNER_SETUP.md` in this repo, now a pointer to those.)
 
 ### Building and Pushing the Docker Image
 
@@ -182,7 +187,7 @@ See [RUNNER_SETUP.md](RUNNER_SETUP.md) for complete instructions on configuring 
 
 ```bash
 # Set version tag (update when upgrading CUDA/OptiX/Java/sbt)
-export VERSION=12.8-9.0-25-1.11.7
+export VERSION=13.2-9.0-25-1.12.0
 
 # Build the image (uses NVIDIA CUDA base image, faster than manual install)
 docker build -t registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION -f optix-jni/Dockerfile optix-jni/
@@ -202,21 +207,28 @@ docker push registry.gitlab.com/lilacashes/menger/optix-cuda:latest
 
 **After pushing a new version**, update `OPTIX_DOCKER_VERSION` in `.gitlab-ci.yml` to match.
 
-#### Building the CUDA 13 variant
+#### Building against a different CUDA version
 
-The Dockerfile accepts a `CUDA_VERSION` build arg (default `12.8.0`):
+The toolkit must be **13.x**: `src/main/native/CMakeLists.txt` pins
+`find_package(CUDAToolkit 13.0 REQUIRED)`, and the artifacts published to Maven Central link
+`libcudart.so.13`, so a 12.x build would not reproduce them. That is a project decision
+(standardized in Sprint 27 — see menger arc42 TC-4), **not** an OptiX constraint: OptiX 9.0
+runs fine against CUDA 12.x. The driver floor is separate again (R570+ for OptiX 9.0, R590+
+for 9.1; CUDA 13.0 itself wants ≥580.65).
+
+13.2 specifically is what the CI runner and dev machines have installed; menger pins the
+resulting tag as `OPTIX_DOCKER_VERSION` in its `.gitlab-ci.yml`. To build against a different
+13.x toolkit, override the build arg and tag accordingly:
 
 ```bash
-export VERSION13=13.2-9.0-25-1.12.0
+export VERSION_ALT=13.0-9.0-25-1.12.0
 
-docker build --build-arg CUDA_VERSION=13.2.0 \
-  -t registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION13 \
+docker build --build-arg CUDA_VERSION=13.0.0 \
+  -t registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION_ALT \
   -f optix-jni/Dockerfile optix-jni/
 
-docker push registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION13
+docker push registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION_ALT
 ```
-
-After pushing, update `OPTIX_DOCKER_VERSION_CUDA13` in `.gitlab-ci.yml` if the tag changed.
 
 ### Updating the Image
 
@@ -235,7 +247,7 @@ When you need to update components (e.g., new CUDA/Java/sbt version):
 
 ### Image Contents
 
-- Base: `nvidia/cuda:12.8.0-devel-ubuntu24.04` (~9GB, pulled from DockerHub)
+- Base: `nvidia/cuda:13.2.0-devel-ubuntu24.04` (~9GB, pulled from DockerHub)
 - Layer 2: Build tools (cmake, g++, wget, ~200MB)
 - Layer 3: OptiX SDK 9.0 (~500MB)
 - Layer 4: Java 25 LTS from Eclipse Temurin (~400MB)
@@ -332,7 +344,13 @@ individually.
 
 ## Local Development
 
-For local development with OptiX support, see the main project's `GPU_DEVELOPMENT.md`.
+Setting up CUDA, OptiX, the driver, Java and sbt from scratch is documented once for the whole
+workspace in `../docs/INSTALLATION_FROM_SCRATCH.md`.
+
+Build and native-linkage troubleshooting — PTX-not-found, `libcudart.so.13` linkage, stale
+`optix-jni/target/native`, OptiX/driver mismatches — is collected in
+`../menger/docs/TROUBLESHOOTING.md`. It is written from a full workspace checkout (it refers to
+`optix-jni/` as a sibling), so run those commands from the workspace root.
 
 ## Environment Variables
 

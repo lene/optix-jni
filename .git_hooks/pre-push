@@ -5,21 +5,25 @@ GREEN_TEXT='\e[38;5;46m'
 YELLOW_TEXT='\e[38;5;226m'
 RESET_TEXT='\e[0m'
 
-# Detect changed files vs remote
-CHANGED_FILES=""
+# Detect changed files. The inline loop this replaces read only git's pre-push
+# protocol from stdin, so running the hook by hand — no stdin — produced an empty
+# file set, skipped every check below and exited 0 regardless of the diff. See
+# standards/hooks/lib.sh for the three invocation contexts and why a TTY test
+# alone does not cover them.
 git fetch origin --quiet 2>/dev/null || true
-while read local_ref local_sha remote_ref remote_sha; do
-  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
-    exit 0  # deleting branch, nothing to check
-  fi
-  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-    BASE=$(git merge-base origin/main "$local_sha" 2>/dev/null || git rev-list --max-parents=0 "$local_sha")
-  else
-    BASE="$remote_sha"
-  fi
-  CHANGED_FILES="$CHANGED_FILES$(git diff --name-only "$BASE" "$local_sha")
-"
-done
+if [ -r ./standards/hooks/lib.sh ]; then
+  . ./standards/hooks/lib.sh
+  RANGES=$(push_ranges); _rc=$?
+  [ "$_rc" -eq 2 ] && exit 0   # push only deletes a branch
+  # unquoted on purpose: split the newline-separated ranges into arguments
+  CHANGED_FILES=$(changed_files $RANGES)
+  assert_detection "$CHANGED_FILES" || exit 1
+else
+  # Branch predating standards enrollment: degrade to the same branch-vs-main
+  # comparison rather than silently skipping.
+  BASE=$(git merge-base origin/main HEAD 2>/dev/null)
+  CHANGED_FILES=$(git diff --name-only "${BASE:-HEAD}" HEAD)
+fi
 
 HAS_SCALA=$(echo "$CHANGED_FILES" | grep -cE '\.(scala|sbt)$|^project/')
 HAS_NATIVE=$(echo "$CHANGED_FILES" | grep -cE 'src/main/native/.*\.(cpp|cu|cuh|h)$|CMakeLists\.txt')
@@ -100,11 +104,14 @@ fi
 # Scalafix
 # ---------------------------------------------------------------------------
 echo "=== Scalafix ==="
-sbt "scalafix --check" || STATUS=1
-if [ $STATUS -gt 0 ]; then
-  echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
-else
+# Report scalafix's own result, not the accumulated $STATUS. Testing the shared
+# flag makes every later step inherit an earlier failure and claim it as its
+# own, which sends you debugging the wrong check.
+if sbt "scalafix --check"; then
   echo "Scalafix: ${GREEN_TEXT}OK${RESET_TEXT}"
+else
+  STATUS=1
+  echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -112,14 +119,16 @@ fi
 # ---------------------------------------------------------------------------
 if [ "$HAS_NATIVE" -gt 0 ] && command -v cppcheck > /dev/null 2>&1; then
   echo "=== cppcheck ==="
-  find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
-    xargs cppcheck --error-exitcode=1 --enable=warning,style \
-    --language=c++ \
-    --suppressions-list=.cppcheck-suppress 2>&1 || STATUS=1
-  if [ $STATUS -gt 0 ]; then
-    echo "cppcheck: ${RED_TEXT}FAILED${RESET_TEXT}"
-  else
+  # Same reasoning as the scalafix step: report cppcheck's own result rather
+  # than the accumulated $STATUS, which would attribute an earlier failure here.
+  if find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
+      xargs cppcheck --error-exitcode=1 --enable=warning,style \
+      --language=c++ \
+      --suppressions-list=.cppcheck-suppress 2>&1; then
     echo "cppcheck: ${GREEN_TEXT}OK${RESET_TEXT}"
+  else
+    STATUS=1
+    echo "cppcheck: ${RED_TEXT}FAILED${RESET_TEXT}"
   fi
 elif [ "$HAS_NATIVE" -gt 0 ]; then
   echo "${YELLOW_TEXT}cppcheck not installed — skipping (runs in CI)${RESET_TEXT}"

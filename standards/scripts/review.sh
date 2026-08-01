@@ -33,9 +33,20 @@ done
 command -v jq      > /dev/null || { echo "error: jq required" >&2;      exit 1; }
 command -v python3 > /dev/null || { echo "error: python3 required" >&2; exit 1; }
 
-# Skip gracefully if no API keys are configured — CI defers key setup,
-# local runs without credentials should not fail the hook.
+# No API key configured: fail in CI, skip locally.
+#
+# In CI a review that cannot run is a broken gate — writing an empty findings
+# file there reports a clean review that never happened, which is worse than a
+# red job. Locally, missing credentials should not block a commit, so the hook
+# degrades to a no-op with a visible message.
+#
+# $CI is set by both GitHub Actions and GitLab CI.
 if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+  if [ -n "${CI:-}" ]; then
+    echo "error: no API key set — the review gate cannot run in CI." >&2
+    echo "       set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY in the CI secrets." >&2
+    exit 1
+  fi
   echo "review: skipped — set ANTHROPIC_API_KEY or DEEPSEEK_API_KEY to enable"
   printf '{"findings":[],"stats":{"total":0,"agreed":0,"single_model":0},"summaries":{"claude":"skipped (no key)","deepseek":"skipped (no key)"}}\n' > "$OUTPUT_FILE"
   exit 0
