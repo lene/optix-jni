@@ -51,9 +51,6 @@ namespace RayTracingConstants {
     // Multiple planes (floor, walls, etc.)
     constexpr int MAX_PLANES = 4;  // Maximum number of simultaneous planes
 
-    // Instance Acceleration Structure (IAS) limits
-    constexpr unsigned int MAX_INSTANCES = 64;  // Maximum object instances in scene
-
     // Default geometry values
     constexpr float DEFAULT_SPHERE_RADIUS = 1.5f;      // Default sphere size for demos and tests
     constexpr float DEFAULT_CAMERA_Z_DISTANCE = 3.0f;  // Default camera distance from origin
