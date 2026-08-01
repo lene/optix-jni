@@ -139,6 +139,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
+            // CR-4: guard the array fetches — a null or short eye/lookAt/up would otherwise reach
+            // GetFloatArrayElements(null)/setCamera and SEGV from this public JNI entry point.
+            if (eye == nullptr || lookAt == nullptr || up == nullptr ||
+                env->GetArrayLength(eye) < 3 || env->GetArrayLength(lookAt) < 3 ||
+                env->GetArrayLength(up) < 3) {
+                throwException(env, "java/lang/IllegalArgumentException",
+                    "setCamera: eye/lookAt/up must each be a non-null float[>=3]");
+                return;
+            }
             jfloat* eyeArr = env->GetFloatArrayElements(eye, nullptr);
             jfloat* lookAtArr = env->GetFloatArrayElements(lookAt, nullptr);
             jfloat* upArr = env->GetFloatArrayElements(up, nullptr);
@@ -149,7 +158,6 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
             env->ReleaseFloatArrayElements(eye, eyeArr, JNI_ABORT);
             env->ReleaseFloatArrayElements(lookAt, lookAtArr, JNI_ABORT);
             env->ReleaseFloatArrayElements(up, upArr, JNI_ABORT);
-        } else {
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setCamera: " << e.what() << std::endl;
@@ -226,6 +234,36 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
             return;
         }
 
+        // CR-4: fetch a float3 array field with null + length guards. A Light with a null or
+        // short direction/position/color/normal array previously reached memcpy(dst, nullptr, 12)
+        // → guaranteed SEGV one null field away from this public JNI entry point. On a bad field
+        // this throws IllegalArgumentException and the caller returns (pending exception propagates).
+        auto copyFloat3Field = [&](jobject lightObj, jfieldID field, const char* name, float* dst) -> bool {
+            jfloatArray arr = static_cast<jfloatArray>(env->GetObjectField(lightObj, field));
+            if (arr == nullptr) {
+                throwException(env, "java/lang/IllegalArgumentException",
+                    (std::string("setLights: light ") + name + " array is null").c_str());
+                return false;
+            }
+            if (env->GetArrayLength(arr) < 3) {
+                env->DeleteLocalRef(arr);
+                throwException(env, "java/lang/IllegalArgumentException",
+                    (std::string("setLights: light ") + name + " array length < 3").c_str());
+                return false;
+            }
+            jfloat* p = env->GetFloatArrayElements(arr, nullptr);
+            if (p == nullptr) {
+                env->DeleteLocalRef(arr);
+                throwException(env, "java/lang/IllegalArgumentException",
+                    (std::string("setLights: could not read light ") + name + " array").c_str());
+                return false;
+            }
+            std::memcpy(dst, p, 3 * sizeof(float));
+            env->ReleaseFloatArrayElements(arr, p, JNI_ABORT);
+            env->DeleteLocalRef(arr);
+            return true;
+        };
+
         // Convert Java lights to C++ lights
         Light lights[RayTracingConstants::MAX_LIGHTS];
         for (jsize i = 0; i < count; ++i) {
@@ -239,34 +277,16 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
             jint type = env->GetIntField(lightObj, typeField);
             lights[i].type = static_cast<LightType>(type);
 
-            jfloatArray dirArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, directionField));
-            jfloat* dirArr = env->GetFloatArrayElements(dirArray, nullptr);
-            std::memcpy(lights[i].direction, dirArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(dirArray, dirArr, JNI_ABORT);
-            env->DeleteLocalRef(dirArray);
-
-            jfloatArray posArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, positionField));
-            jfloat* posArr = env->GetFloatArrayElements(posArray, nullptr);
-            std::memcpy(lights[i].position, posArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(posArray, posArr, JNI_ABORT);
-            env->DeleteLocalRef(posArray);
-
-            jfloatArray colArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, colorField));
-            jfloat* colArr = env->GetFloatArrayElements(colArray, nullptr);
-            std::memcpy(lights[i].color, colArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(colArray, colArr, JNI_ABORT);
-            env->DeleteLocalRef(colArray);
+            if (!copyFloat3Field(lightObj, directionField, "direction", lights[i].direction)) return;
+            if (!copyFloat3Field(lightObj, positionField, "position", lights[i].position)) return;
+            if (!copyFloat3Field(lightObj, colorField, "color", lights[i].color)) return;
 
             lights[i].intensity = env->GetFloatField(lightObj, intensityField);
 
             // Area light fields (harmlessly ignored for DIRECTIONAL/POINT)
             lights[i].shape = static_cast<AreaLightShape>(env->GetIntField(lightObj, shapeField));
 
-            jfloatArray normalArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, normalField));
-            jfloat* normalArr = env->GetFloatArrayElements(normalArray, nullptr);
-            std::memcpy(lights[i].normal, normalArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(normalArray, normalArr, JNI_ABORT);
-            env->DeleteLocalRef(normalArray);
+            if (!copyFloat3Field(lightObj, normalField, "normal", lights[i].normal)) return;
 
             lights[i].radius = env->GetFloatField(lightObj, radiusField);
             lights[i].shadow_samples = env->GetIntField(lightObj, samplesField);
