@@ -3066,12 +3066,15 @@ void OptiXWrapper::clearAllInstances() {
     impl->custom_geometry_stride = 0;
     impl->ias_handle = 0;
 
-    // Clear cylinder data
+    // Clear cylinder data. CR-2: reset last_*_count here (not only in dispose) — otherwise a
+    // clear → re-add of the same count skips the re-upload branch in render() and leaves
+    // params.*_data == nullptr with a non-zero count → illegal address in the intersection shader.
     impl->cylinder_data.clear();
     if (impl->d_cylinder_data) {
         cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
         impl->d_cylinder_data = 0;
     }
+    impl->last_cylinder_count = 0;
 
     // Clear cone data
     impl->cone_data.clear();
@@ -3079,6 +3082,7 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
         impl->d_cone_data = 0;
     }
+    impl->last_cone_count = 0;
 
     // Clear plane data
     impl->plane_data.clear();
@@ -3086,6 +3090,7 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
         impl->d_plane_data = 0;
     }
+    impl->last_plane_count = 0;
 
     // Clear curve data
     impl->curve_data.clear();
@@ -3093,6 +3098,7 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
         impl->d_curve_data = 0;
     }
+    impl->last_curve_count = 0;
 
 
     // CRITICAL: Synchronize CUDA before freeing GAS buffers
@@ -3532,6 +3538,9 @@ void OptiXWrapper::releaseTextures() {
         cudaFree(reinterpret_cast<void*>(impl->d_texture_objects));
         impl->d_texture_objects = 0;
     }
+    // CR-2: reset the count so a re-upload of the same texture count isn't skipped against
+    // the now-freed d_texture_objects (same skip-upload null-pointer class as the geometry data).
+    impl->last_texture_count = 0;
 }
 
 void OptiXWrapper::dispose() {
