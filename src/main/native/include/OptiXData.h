@@ -51,9 +51,6 @@ namespace RayTracingConstants {
     // Multiple planes (floor, walls, etc.)
     constexpr int MAX_PLANES = 4;  // Maximum number of simultaneous planes
 
-    // Instance Acceleration Structure (IAS) limits
-    constexpr unsigned int MAX_INSTANCES = 64;  // Maximum object instances in scene
-
     // Default geometry values
     constexpr float DEFAULT_SPHERE_RADIUS = 1.5f;      // Default sphere size for demos and tests
     constexpr float DEFAULT_CAMERA_Z_DISTANCE = 3.0f;  // Default camera distance from origin
@@ -166,9 +163,9 @@ enum GeometryType {
     GEOMETRY_TYPE_CYLINDER = 2,  // Custom cylinder primitive (uses intersection program)
     GEOMETRY_TYPE_CONE = 3,      // Custom cone primitive (uses intersection program)
     GEOMETRY_TYPE_PLANE = 4,     // Custom plane primitive (uses intersection program)
-    GEOMETRY_TYPE_MENGER4D = 5,      // 4D Menger sponge analog (iterative IFS in custom IS)
-    GEOMETRY_TYPE_SIERPINSKI4D = 6,  // 4D Sierpinski pentachoron analog (iterative IFS in custom IS)
-    GEOMETRY_TYPE_HEXADECACHORON4D = 7,  // 4D Sierpinski 16-cell analog (iterative IFS in custom IS)
+    // Ids 5,6,7 (Menger4D/Sierpinski4D/Hexadecachoron4D) were removed in Sprint 35
+    // Task 1.2 — 4D fractals now register via the custom-geometry SPI. They remain
+    // unused gaps so CURVE/COUNT and the built-in SBT layout are unchanged.
     GEOMETRY_TYPE_CURVE = 8,         // Built-in round cubic B-spline curve
     GEOMETRY_TYPE_COUNT = 9          // Number of geometry types
 };
@@ -507,45 +504,6 @@ struct CurveData {
     unsigned int num_segments;  // num_points - 3
 };
 
-// 4D Menger sponge per-instance data for the IFS intersection shader.
-// Stored in params.menger4d_data buffer, indexed via InstanceMaterial.geometry_data_index
-struct Menger4DData {
-    float pos[3];          // 3D world position of the sponge center (12 bytes)
-    float scale;           // World scale (projected coords multiplied by this) (4 bytes)
-    float rotation4d[16];  // 4x4 rotation matrix in 4D, row-major (64 bytes)
-    float eye_w;           // W coordinate of perspective eye point (4 bytes)
-    float screen_w;        // W coordinate of projection screen (4 bytes)
-    int   level;           // IFS recursion depth (4 bytes)
-    int   dist_threshold;  // Generator keep predicate: abs-sum > dist_threshold (4 bytes)
-    // Total: 96 bytes
-};
-
-// 4D Sierpinski pentachoron per-instance data for the IFS intersection shader.
-// Stored in params.sierpinski4d_data buffer, indexed via InstanceMaterial.geometry_data_index
-struct Sierpinski4DData {
-    float pos[3];          // 3D world position of the fractal center (12 bytes)
-    float scale;           // World scale (projected coords multiplied by this) (4 bytes)
-    float rotation4d[16];  // 4x4 rotation matrix in 4D, row-major (64 bytes)
-    float eye_w;           // W coordinate of perspective eye point (4 bytes)
-    float screen_w;        // W coordinate of projection screen (4 bytes)
-    int   level;           // IFS recursion depth (4 bytes)
-    float hit_bias;        // Added to reported t to let the fine instance win over the coarse (4 bytes)
-    // Total: 96 bytes
-};
-
-// 4D Sierpinski 16-cell (hexadecachoron) per-instance data for the IFS intersection shader.
-// Stored in params.hexadecachoron4d_data buffer, indexed via InstanceMaterial.geometry_data_index
-struct Hexadecachoron4DData {
-    float pos[3];          // 3D world position of the fractal center (12 bytes)
-    float scale;           // World scale (projected coords multiplied by this) (4 bytes)
-    float rotation4d[16];  // 4x4 rotation matrix in 4D, row-major (64 bytes)
-    float eye_w;           // W coordinate of perspective eye point (4 bytes)
-    float screen_w;        // W coordinate of projection screen (4 bytes)
-    int   level;           // IFS recursion depth (4 bytes)
-    float hit_bias;        // Added to reported t to let the fine instance win over the coarse (4 bytes)
-    // Total: 96 bytes
-};
-
 // Launch parameters passed to OptiX shaders
 // NOTE: Dynamic scene data moved here from SBT for better performance
 // (parameter changes require only cudaMemcpy, not SBT rebuild)
@@ -565,6 +523,13 @@ struct BaseParams {
                                             // = geometry_type * STRIDE_RAY_TYPES (0 in IAS mode)
     InstanceMaterial* instance_materials;   // Device pointer to per-instance material array
     unsigned int num_instances;             // Number of active instances
+
+    // Custom-geometry SPI (Task 1.1c): generic per-instance data for externally-
+    // registered primitives. A registrant's IS reads its own struct at
+    //   (const char*)custom_geometry_data
+    //     + instance_materials[optixGetInstanceId()].geometry_data_index * custom_geometry_stride
+    const void* custom_geometry_data;       // Device buffer of packed per-instance blobs (nullptr if none)
+    unsigned int custom_geometry_stride;    // Bytes per blob (uniform across custom instances); 0 if none
 
     // Texture support (IAS mode only)
     cudaTextureObject_t* textures;          // Device pointer to array of texture objects
@@ -620,18 +585,6 @@ struct BaseParams {
     // Curve geometry data buffer (for built-in curve closest-hit helpers)
     CurveData* curve_data;          // Device pointer to array of curve geometry
     unsigned int num_curves;        // Number of curve instances
-
-    // 4D Menger sponge geometry data buffer (for IFS intersection shader)
-    Menger4DData* menger4d_data;    // Device pointer to array of Menger4DData
-    unsigned int num_menger4d;      // Number of menger4d instances
-
-    // 4D Sierpinski pentachoron geometry data buffer (for IFS intersection shader)
-    Sierpinski4DData* sierpinski4d_data;    // Device pointer to array of Sierpinski4DData
-    unsigned int num_sierpinski4d;          // Number of sierpinski4d instances
-
-    // 4D Sierpinski 16-cell (hexadecachoron) geometry data buffer (for IFS intersection shader)
-    Hexadecachoron4DData* hexadecachoron4d_data;    // Device pointer to array of Hexadecachoron4DData
-    unsigned int num_hexadecachoron4d;              // Number of hexadecachoron4d instances
 
     // Adaptive antialiasing
     bool  aa_enabled;           // Enable adaptive antialiasing

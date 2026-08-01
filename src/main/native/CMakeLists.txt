@@ -149,6 +149,16 @@ endif()
 find_package(JNI REQUIRED)
 message(STATUS "✓ JNI: ${JNI_INCLUDE_DIRS}")
 
+# Generated JNI headers (sbt JniJavah, passed as -DJAVAH_INCLUDE_DIR): the JNI .cpp files
+# #include these so a Scala @native / C++ signature mismatch becomes a compile error
+# (Sprint 35 Task 1.4).
+if(DEFINED JAVAH_INCLUDE_DIR)
+  include_directories(${JAVAH_INCLUDE_DIR})
+  message(STATUS "✓ Generated JNI headers: ${JAVAH_INCLUDE_DIR}")
+else()
+  message(WARNING "JAVAH_INCLUDE_DIR not set — JNI signature checks disabled for this build")
+endif()
+
 #=============================================================================
 # Build Configuration Summary
 #=============================================================================
@@ -191,6 +201,23 @@ target_include_directories(optix_shaders PRIVATE
 # JIT-compiled at runtime for forward compatibility with any GPU >= sm_75
 # (covers T4/g4dn=sm_75, A10G/g5=sm_86, H100=sm_90, etc.)
 set_target_properties(optix_shaders PROPERTIES
+    CUDA_PTX_COMPILATION ON
+    CUDA_SEPARABLE_COMPILATION ON
+    CUDA_ARCHITECTURES "75-virtual"
+)
+
+# Custom-geometry SPI test fixture (Task 1.1d): a minimal external primitive
+# compiled to its OWN PTX module, used by CustomGeometrySpiSuite to regression-
+# test the managed-pipeline registration path.
+add_library(spi_test_stub_shaders OBJECT
+    shaders/spi_test_stub.cu
+)
+target_include_directories(spi_test_stub_shaders PRIVATE
+    ${OptiX_INCLUDE_DIR}
+    ${CUDAToolkit_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+set_target_properties(spi_test_stub_shaders PROPERTIES
     CUDA_PTX_COMPILATION ON
     CUDA_SEPARABLE_COMPILATION ON
     CUDA_ARCHITECTURES "75-virtual"
@@ -239,6 +266,12 @@ install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/optix_shaders.dir/shaders/optix_sh
         RENAME "optix_shaders.ptx"
 )
 
+# SPI test-fixture stub PTX (Task 1.1d)
+install(FILES "${CMAKE_BINARY_DIR}/CMakeFiles/spi_test_stub_shaders.dir/shaders/spi_test_stub.ptx"
+        DESTINATION .
+        RENAME "spi_test_stub.ptx"
+)
+
 # Cylinder programs are now included in optix_shaders.ptx via hit_cylinder.cu
 
 # Set output directory for development
@@ -275,6 +308,7 @@ if(BUILD_OPTIX_TESTS)
     add_executable(optixcontext_test
         tests/OptiXContextTest.cpp
         tests/EnvMapCDFTest.cpp
+        tests/CustomGeometryRegistryTest.cpp  # SPI (Task 1.1a) runtime type-id allocator
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
     )

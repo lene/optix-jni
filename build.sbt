@@ -1,10 +1,10 @@
 import com.github.sbt.jni.build.CMakeWithoutVersionBug
 
 name := "optix-jni"
-version := "0.1.19"
+version := "0.2.0"
 scalaVersion := "3.8.3"
 
-enablePlugins(JniNative)
+enablePlugins(JniNative, JniJavah)
 
 organization := "io.github.lene"
 description := "JNI bindings for NVIDIA OptiX ray tracing"
@@ -57,8 +57,16 @@ Compile / scalacOptions := (Compile / scalacOptions).value.map(
 nativeCompile / sourceDirectory := sourceDirectory.value / "main" / "native"
 nativeBuildTool := CMakeWithoutVersionBug.make(Seq(
   "-Wno-dev",
-  "--log-level=WARNING"
+  "--log-level=WARNING",
+  s"-DJAVAH_INCLUDE_DIR=${(target.value / "native" / "include").getAbsolutePath}"
 ))
+
+// Generated JNI headers (JniJavah) must exist before the native build so the JNI .cpp files
+// can #include them — a Scala @native vs C++ signature mismatch then fails compilation
+// (Sprint 35 Task 1.4). javah emits the long/mangled name for the 5 methods whose name collides
+// with a non-native overload (renderWithStats, setLight, setLights, setSphere,
+// updateImageDimensions); those stay a documented gap to close in Ph3's API cleanup.
+nativeCompile := nativeCompile.dependsOn(javah).value
 
 // Auto-clean CMake cache if it's from a different build location (e.g., Docker)
 Compile / compile := {
@@ -151,8 +159,16 @@ nativeTest := {
     }
     log.info("C++ unit tests passed")
   } else {
+    // On a CUDA-capable host the native test binary must exist and run — a missing binary would
+    // silently skip the gate (Sprint 35 Task 1.5 / F4). Fail loudly there; only skip off-GPU.
+    val cudaCapable = file("/usr/local/cuda/bin/nvcc").exists()
+    if (cudaCapable) {
+      throw new RuntimeException(
+        s"C++ native test executable not found at ${testExe.getAbsolutePath} on a CUDA-capable " +
+        "host — native tests must run. Ensure BUILD_OPTIX_TESTS is on and nativeCompile produced it.")
+    }
     log.warn(s"C++ test executable not found at ${testExe.getAbsolutePath}")
-    log.warn("Skipping native tests (BUILD_OPTIX_TESTS may be disabled)")
+    log.warn("Skipping native tests (no CUDA toolchain detected)")
   }
 }
 
@@ -166,6 +182,9 @@ Test / test := {
 Test / javaOptions ++= Seq(
   s"-Djava.library.path=${(Test / classDirectory).value / "native" / "x86_64-linux"}:${(Compile / classDirectory).value / "native" / "x86_64-linux"}:${target.value / "native" / "x86_64-linux" / "bin"}",
   "-Dlogback.statusListenerClass=ch.qos.logback.core.status.NopStatusListener"
+  // -Xcheck:jni is deliberately NOT applied to the full suite: its instrumentation overhead drops
+  // PerformanceSuite below its FPS threshold, and it flags ScalaMock's JNI usage (not our code).
+  // It belongs in a targeted job over the JNI-exercising suites — deferred to Ph2 with CR-4 (F4).
 )
 Test / fork := true
 

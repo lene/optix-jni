@@ -95,7 +95,7 @@ class PerformanceSuite extends AnyFlatSpec
 
     fps should be > 50.0
 
-  it should "achieve >10 FPS with antialiasing enabled" taggedAs (Slow) in:
+  it should "stay above the antialiasing FPS floor" taggedAs (Slow) in:
     val fps = measureAndLog("Antialiasing"):
       TestScenario.default()
         .withSphereRadius(0.5f)

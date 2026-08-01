@@ -2,12 +2,8 @@ package io.github.lene.optix
 
 import java.io.FileOutputStream
 import java.io.InputStream
-import java.nio.file.Files
 
-import scala.util.Failure
-import scala.util.Success
 import scala.util.Try
-import scala.util.control.Exception.catching
 
 import com.typesafe.scalalogging.LazyLogging
 import menger.common.Color
@@ -300,6 +296,68 @@ class OptiXRenderer
   def isDenoisingEnabled: Boolean =
     isInitialized && isDenoisingEnabledNative
 
+  // ---- Custom-geometry SPI (Task 1.1d) ----
+  // Register an external primitive (compiled to PTX) as a runtime geometry type,
+  // then instance it. This is the optix-jni side of the seam that will let
+  // menger-geometry supply its 4D fractal shaders without optix-jni knowing them.
+  // Requires initialize() first (the module is built in the renderer's context).
+  // Optional shadow/photon entries use "" for "none". The published io.github.lene.optix
+  // API stays Java-interoperable (no scala.Option) — enforced by menger's ArchUnit rule.
+  def registerCustomGeometry(
+      ptx: Array[Byte],
+      intersectionEntry: String,
+      closestHitEntry: String,
+      shadowClosestHitEntry: String = "",
+      shadowAnyHitEntry: String = "",
+      photonClosestHitEntry: String = ""): Int =
+    registerCustomGeometryNative(
+      ptx, intersectionEntry, closestHitEntry,
+      blankToNull(shadowClosestHitEntry), blankToNull(shadowAnyHitEntry), blankToNull(photonClosestHitEntry))
+
+  private def blankToNull(s: String): String = if s.isEmpty then null else s
+
+  // customData: an optional per-instance blob the registrant's IS reads back
+  // (Task 1.1c). Empty = none. The registered shader casts it to its own struct.
+  def addCustomGeometryInstance(
+      typeId: Int,
+      aabbMin: Array[Float],
+      aabbMax: Array[Float],
+      transform: Array[Float],
+      customData: Array[Byte] = Array.emptyByteArray): Int =
+    addCustomGeometryInstanceNative(typeId, aabbMin, aabbMax, transform, customData)
+
+  // Set PBR material on any instance (built-in or custom). Custom instances start
+  // white; a registrant calls this so its shader reads colour/PBR via
+  // getInstanceMaterialPBR exactly like built-ins. Returns 0 on success.
+  def setInstanceMaterial(
+      instanceId: Int,
+      r: Float, g: Float, b: Float, a: Float, ior: Float,
+      roughness: Float = 0.5f, metallic: Float = 0.0f, specular: Float = 0.5f,
+      emission: Float = 0.0f, filmThickness: Float = 0.0f,
+      cauchyA: Float = 0.0f, cauchyB: Float = 0.0f): Int =
+    setInstanceMaterialNative(
+      instanceId, r, g, b, a, ior, roughness, metallic, specular, emission,
+      filmThickness, cauchyA, cauchyB)
+
+  // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
+  // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
+  // updates such as a 4D fractal's projection (eye/screen/rotation). Returns 0 on ok.
+  def updateCustomGeometryInstanceData(instanceId: Int, customData: Array[Byte]): Int =
+    updateCustomGeometryInstanceDataNative(instanceId, customData)
+
+  @native private def registerCustomGeometryNative(
+      ptxBytes: Array[Byte], isEntry: String, chEntry: String,
+      shadowChEntry: String, shadowAhEntry: String, photonChEntry: String): Int
+  @native private def addCustomGeometryInstanceNative(
+      typeId: Int, aabbMin: Array[Float], aabbMax: Array[Float], transform: Array[Float],
+      customData: Array[Byte]): Int
+  @native private def setInstanceMaterialNative(
+      instanceId: Int, r: Float, g: Float, b: Float, a: Float, ior: Float,
+      roughness: Float, metallic: Float, specular: Float, emission: Float,
+      filmThickness: Float, cauchyA: Float, cauchyB: Float): Int
+  @native private def updateCustomGeometryInstanceDataNative(
+      instanceId: Int, customData: Array[Byte]): Int
+
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
   @native private[optix] def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
@@ -349,6 +407,12 @@ class OptiXRenderer
     * that contract with `Option[RenderResult]`.
     */
   @native def renderWithStats(width: Int, height: Int): RenderResult
+
+  // ---- Diagnostics ----
+  /** Free device memory in bytes (`cudaMemGetInfo`). For leak-assertion tests: a create/render/
+    * dispose or clear→re-add loop should return this to ~baseline. Device-global, but exposed as an
+    * instance method so a live CUDA context is guaranteed. */
+  @native def freeGpuMemoryBytes(): Long
 
   // ---- Plane @native declarations (called from OptiXPlaneApi) ----
   @native private[optix] def clearPlanesNative(): Unit
@@ -492,58 +556,6 @@ class OptiXRenderer
     cauchy_a: Float, cauchy_b: Float
   ): Int
 
-  @native private[optix] def addMenger4DInstanceNative(
-    level: Int,
-    distanceThreshold: Int,
-    x: Float, y: Float, z: Float, scale: Float,
-    eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float,
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
-  ): Int
-
-  @native private[optix] def updateMenger4DProjectionNative(
-    instanceId: Int,
-    eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float
-  ): Int
-
-  @native private[optix] def addSierpinski4DInstanceNative(
-    level: Int,
-    x: Float, y: Float, z: Float,
-    scale: Float, eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float,
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float,
-    specular: Float, emission: Float, filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
-  ): Int
-
-  @native private[optix] def updateSierpinski4DProjectionNative(
-    instanceId: Int,
-    eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float
-  ): Int
-
-  @native private[optix] def addHexadecachoron4DInstanceNative(
-    level: Int,
-    x: Float, y: Float, z: Float,
-    scale: Float, eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float,
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float,
-    specular: Float, emission: Float, filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
-  ): Int
-
-  @native private[optix] def updateHexadecachoron4DProjectionNative(
-    instanceId: Int,
-    eyeW: Float, screenW: Float,
-    rotXW: Float, rotYW: Float, rotZW: Float
-  ): Int
-
   /** Removes one IAS instance by id. Invalid ids are ignored by native code. */
   @native def removeInstance(instanceId: Int): Unit
 
@@ -680,29 +692,13 @@ class OptiXRenderer
 object OptiXRenderer extends LazyLogging:
   private val libraryName = "optixjni"
 
-  private val libraryLoaded: Boolean = loadNativeLibrary().isSuccess
+  // liboptixjni.so via the shared NativeLibrary loader, then extract the bundled
+  // PTX (optix-jni-specific); both must succeed for the renderer to be usable.
+  private val libraryLoaded: Boolean =
+    NativeLibrary.load(libraryName) && extractPTX(NativeLibrary.platform()).isSuccess
 
   /** Returns whether `liboptixjni.so` was loaded from `java.library.path` or the classpath. */
   def isLibraryLoaded: Boolean = libraryLoaded
-
-  // Functional helper methods for library loading
-  private def loadFromSystemPath(): Try[Unit] =
-    for
-      _ <- catching(classOf[UnsatisfiedLinkError]).withTry:
-             System.loadLibrary(libraryName)
-             logger.info(s"Loaded $libraryName from java.library.path")
-      platform <- detectPlatform()
-      _ <- extractPTX(platform)
-    yield ()
-
-  private def detectPlatform(): Try[String] =
-    val os = System.getProperty("os.name").toLowerCase
-    val arch = System.getProperty("os.arch").toLowerCase
-    (os, arch) match
-      case (o, a) if o.contains("linux") && (a.contains("amd64") || a.contains("x86_64")) =>
-        Success("x86_64-linux")
-      case _ =>
-        Failure(new UnsupportedOperationException(s"Unsupported platform: $os/$arch"))
 
   private def copyStreamToFile(stream: InputStream, out: FileOutputStream): Try[Unit] = Try:
     val buffer = new Array[Byte](8192)
@@ -731,40 +727,6 @@ object OptiXRenderer extends LazyLogging:
           ptxStream.close()
       case None =>
         logger.debug(s"PTX resource not found: $ptxResourcePath")
-
-  private def extractAndLoadLibrary(stream: InputStream, resourcePath: String): Try[Unit] = Try:
-    val tempFile = Files.createTempFile(s"lib$libraryName", ".so")
-    tempFile.toFile.deleteOnExit()
-    val out = new FileOutputStream(tempFile.toFile)
-    try
-      copyStreamToFile(stream, out).get
-    finally
-      out.close()
-      stream.close()
-    System.load(tempFile.toAbsolutePath.toString)
-    logger.debug(s"Loaded $libraryName from classpath via temp file: ${tempFile.toAbsolutePath}")
-
-  private def loadFromClasspath(): Try[Unit] =
-    for
-      platform <- detectPlatform()
-      resourcePath = s"/native/$platform/lib$libraryName.so"
-      _ = logger.debug(s"Attempting to load library from resource: $resourcePath")
-      stream <- Option(getClass.getResourceAsStream(resourcePath))
-        .toRight(new IllegalStateException(s"Library resource not found: $resourcePath"))
-        .toTry
-      _ <- extractAndLoadLibrary(stream, resourcePath)
-      _ <- extractPTX(platform)
-    yield ()
-
-  private def loadNativeLibrary(): Try[Unit] =
-    loadFromSystemPath().recoverWith:
-      case _: UnsatisfiedLinkError =>
-        logger.debug(s"Failed to load $libraryName from java.library.path, trying classpath")
-        loadFromClasspath()
-    .recoverWith:
-      case e: Exception =>
-        logger.error(s"Failed to load native library '$libraryName'", e)
-        Failure(e)
 
 /** Raised by [[OptiXRenderer.ensureAvailable]] when native OptiX cannot be used. */
 case class OptiXNotAvailableException(message: String) extends Exception(message)

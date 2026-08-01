@@ -40,7 +40,7 @@ jobs:
           if [ "$VERSION" != "$MAIN_VERSION" ] && \
              [ "${LATEST_TAG#v}" != "$VERSION" ] && \
              ! echo "${{ github.event.pull_request.title }}" | grep -q '^Draft:'; then
-            grep -F "## [$VERSION] - $(date +%Y-%m-%d)" CHANGELOG.md
+            grep -F "## [$VERSION] - $(TZ=UTC date +%Y-%m-%d)" CHANGELOG.md
           fi
 
   version-not-tagged:
@@ -129,6 +129,9 @@ jobs:
   archunit:
     name: ArchUnit
     runs-on: [self-hosted, Linux, X64, nvidia]
+    # CR-14: bound every self-hosted GPU job so a hung run cannot wedge the single
+    # shared nvidia runner's queue (its default is GitHub's 360-minute ceiling).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
@@ -152,13 +155,21 @@ jobs:
   clang-tidy:
     name: clang-tidy
     runs-on: [self-hosted, Linux, X64, nvidia]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Generate JNI headers (javah)
+        # The JNI .cpp files #include the generated io_github_lene_optix_*.h headers (Task 1.4).
+        # clang-tidy parses the real sources, so those headers must exist AND be on the include
+        # path here, exactly as the sbt/CMake build arranges via JAVAH_INCLUDE_DIR. Without this
+        # clang-tidy fails with 'io_github_lene_optix_api_NativeOptiXApi.h file not found'.
+        run: sbt javah
       - name: Configure CMake (fetches FetchContent deps, generates compile_commands.json)
         run: |
           cmake -B target/cmake-clang-check \
             -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DJAVAH_INCLUDE_DIR="$PWD/target/native/include" \
             -Wno-dev --log-level=WARNING \
             src/main/native
       - name: Run clang-tidy
@@ -183,6 +194,7 @@ jobs:
   scala-tests:
     name: Scala Tests (GPU)
     runs-on: [self-hosted, Linux, X64, nvidia]
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
@@ -195,6 +207,7 @@ jobs:
   build-native:
     name: Build native .so + JAR
     runs-on: [self-hosted, Linux, X64, nvidia]
+    timeout-minutes: 30
     needs: [scala-tests, scalafix]
     steps:
       - uses: actions/checkout@v4
@@ -215,6 +228,7 @@ jobs:
   smoke-tests:
     name: Smoke Tests (Java + Kotlin)
     runs-on: [self-hosted, Linux, X64, nvidia]
+    timeout-minutes: 30
     needs: [build-native]
     steps:
       - uses: actions/checkout@v4
@@ -272,6 +286,7 @@ jobs:
   publish:
     name: Publish to Maven Central + GitHub Release
     runs-on: [self-hosted, Linux, X64, nvidia]
+    timeout-minutes: 60
     needs: [smoke-tests, build-native]
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     permissions:
@@ -291,7 +306,7 @@ jobs:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
           PGP_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2.6.2 (CR-14: pin to commit SHA)
         with:
           # On workflow_dispatch from a branch, github.ref is not a tag ref; pin the
           # release/tag to the build.sbt version so the tag-triggered default doesn't
@@ -309,6 +324,7 @@ jobs:
   post-publish-smoke:
     name: Post-Publish Smoke Test (Maven Central)
     runs-on: [self-hosted, Linux, X64, nvidia]
+    timeout-minutes: 30
     needs: [publish]
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     permissions:

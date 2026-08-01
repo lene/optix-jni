@@ -27,7 +27,8 @@ static OptiXWrapper* getWrapper(JNIEnv* env, jobject obj) {
     jfieldID fid = env->GetFieldID(cls, "nativeHandle", "J");
     if (fid == nullptr) {
         std::cerr << "[JNI] Failed to get nativeHandle field" << std::endl;
-        return nullptr;
+        env->ExceptionClear();  // GetFieldID sets a pending NoSuchFieldError; clear it so
+        return nullptr;         // returning nullptr to the caller doesn't trigger JNI UB.
     }
     jlong handle = env->GetLongField(obj, fid);
     return reinterpret_cast<OptiXWrapper*>(handle);
@@ -78,6 +79,24 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNat
         std::cerr << "[JNI] Error in initializeNative: " << e.what() << std::endl;
         throwException(env, "java/lang/RuntimeException", e.what());
         return JNI_FALSE;
+    }
+}
+
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_OptiXRenderer_freeGpuMemoryBytes(
+    JNIEnv* env, jobject /*obj*/) {
+    try {
+        size_t free_bytes = 0;
+        size_t total_bytes = 0;
+        cudaError_t err = cudaMemGetInfo(&free_bytes, &total_bytes);
+        if (err != cudaSuccess) {
+            throwException(env, "java/lang/RuntimeException",
+                (std::string("cudaMemGetInfo failed: ") + cudaGetErrorString(err)).c_str());
+            return 0;
+        }
+        return static_cast<jlong>(free_bytes);
+    } catch (const std::exception& e) {
+        throwException(env, "java/lang/RuntimeException", e.what());
+        return 0;
     }
 }
 
@@ -138,6 +157,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper != nullptr) {
+            // CR-4: guard the array fetches — a null or short eye/lookAt/up would otherwise reach
+            // GetFloatArrayElements(null)/setCamera and SEGV from this public JNI entry point.
+            if (eye == nullptr || lookAt == nullptr || up == nullptr ||
+                env->GetArrayLength(eye) < 3 || env->GetArrayLength(lookAt) < 3 ||
+                env->GetArrayLength(up) < 3) {
+                throwException(env, "java/lang/IllegalArgumentException",
+                    "setCamera: eye/lookAt/up must each be a non-null float[>=3]");
+                return;
+            }
             jfloat* eyeArr = env->GetFloatArrayElements(eye, nullptr);
             jfloat* lookAtArr = env->GetFloatArrayElements(lookAt, nullptr);
             jfloat* upArr = env->GetFloatArrayElements(up, nullptr);
@@ -148,7 +176,6 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
             env->ReleaseFloatArrayElements(eye, eyeArr, JNI_ABORT);
             env->ReleaseFloatArrayElements(lookAt, lookAtArr, JNI_ABORT);
             env->ReleaseFloatArrayElements(up, upArr, JNI_ABORT);
-        } else {
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setCamera: " << e.what() << std::endl;
@@ -225,6 +252,36 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
             return;
         }
 
+        // CR-4: fetch a float3 array field with null + length guards. A Light with a null or
+        // short direction/position/color/normal array previously reached memcpy(dst, nullptr, 12)
+        // → guaranteed SEGV one null field away from this public JNI entry point. On a bad field
+        // this throws IllegalArgumentException and the caller returns (pending exception propagates).
+        auto copyFloat3Field = [&](jobject lightObj, jfieldID field, const char* name, float* dst) -> bool {
+            jfloatArray arr = static_cast<jfloatArray>(env->GetObjectField(lightObj, field));
+            if (arr == nullptr) {
+                throwException(env, "java/lang/IllegalArgumentException",
+                    (std::string("setLights: light ") + name + " array is null").c_str());
+                return false;
+            }
+            if (env->GetArrayLength(arr) < 3) {
+                env->DeleteLocalRef(arr);
+                throwException(env, "java/lang/IllegalArgumentException",
+                    (std::string("setLights: light ") + name + " array length < 3").c_str());
+                return false;
+            }
+            jfloat* p = env->GetFloatArrayElements(arr, nullptr);
+            if (p == nullptr) {
+                env->DeleteLocalRef(arr);
+                throwException(env, "java/lang/IllegalArgumentException",
+                    (std::string("setLights: could not read light ") + name + " array").c_str());
+                return false;
+            }
+            std::memcpy(dst, p, 3 * sizeof(float));
+            env->ReleaseFloatArrayElements(arr, p, JNI_ABORT);
+            env->DeleteLocalRef(arr);
+            return true;
+        };
+
         // Convert Java lights to C++ lights
         Light lights[RayTracingConstants::MAX_LIGHTS];
         for (jsize i = 0; i < count; ++i) {
@@ -238,34 +295,16 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
             jint type = env->GetIntField(lightObj, typeField);
             lights[i].type = static_cast<LightType>(type);
 
-            jfloatArray dirArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, directionField));
-            jfloat* dirArr = env->GetFloatArrayElements(dirArray, nullptr);
-            std::memcpy(lights[i].direction, dirArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(dirArray, dirArr, JNI_ABORT);
-            env->DeleteLocalRef(dirArray);
-
-            jfloatArray posArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, positionField));
-            jfloat* posArr = env->GetFloatArrayElements(posArray, nullptr);
-            std::memcpy(lights[i].position, posArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(posArray, posArr, JNI_ABORT);
-            env->DeleteLocalRef(posArray);
-
-            jfloatArray colArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, colorField));
-            jfloat* colArr = env->GetFloatArrayElements(colArray, nullptr);
-            std::memcpy(lights[i].color, colArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(colArray, colArr, JNI_ABORT);
-            env->DeleteLocalRef(colArray);
+            if (!copyFloat3Field(lightObj, directionField, "direction", lights[i].direction)) return;
+            if (!copyFloat3Field(lightObj, positionField, "position", lights[i].position)) return;
+            if (!copyFloat3Field(lightObj, colorField, "color", lights[i].color)) return;
 
             lights[i].intensity = env->GetFloatField(lightObj, intensityField);
 
             // Area light fields (harmlessly ignored for DIRECTIONAL/POINT)
             lights[i].shape = static_cast<AreaLightShape>(env->GetIntField(lightObj, shapeField));
 
-            jfloatArray normalArray = static_cast<jfloatArray>(env->GetObjectField(lightObj, normalField));
-            jfloat* normalArr = env->GetFloatArrayElements(normalArray, nullptr);
-            std::memcpy(lights[i].normal, normalArr, 3 * sizeof(float));
-            env->ReleaseFloatArrayElements(normalArray, normalArr, JNI_ABORT);
-            env->DeleteLocalRef(normalArray);
+            if (!copyFloat3Field(lightObj, normalField, "normal", lights[i].normal)) return;
 
             lights[i].radius = env->GetFloatField(lightObj, radiusField);
             lights[i].shadow_samples = env->GetIntField(lightObj, samplesField);
@@ -866,6 +905,10 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
+            // A disposed / not-yet-initialized renderer is a "not ready" signal, not a GPU
+            // render failure — return null so the Scala side maps it to None. (1.6 stops
+            // swallowing genuine render *failures*, below; it deliberately does not turn a
+            // not-ready renderer into an exception, which callers/tests treat as graceful.)
             return nullptr;
         }
 
@@ -882,8 +925,9 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
             return nullptr;
         }
 
-        // Get stats from render; release buffer even if render throws
-        RayStats stats;
+        // Get stats from render; release buffer even if render throws.
+        // Zero-init so a failure path can never ship uninitialized stats to Scala.
+        RayStats stats{};
         try {
             wrapper->render(width, height, reinterpret_cast<unsigned char*>(buffer), &stats);
         } catch (...) {
@@ -921,15 +965,17 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
         );
 
         if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            std::cerr << "[JNI] renderWithStats: NewObject failed — RenderResult constructor mismatch" << std::endl;
+            // Let the constructor failure propagate to Scala; do not clear it into a silent null.
+            std::cerr << "[JNI] renderWithStats: RenderResult constructor threw" << std::endl;
             return nullptr;
         }
 
         return result;
     } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in renderWithStats: " << e.what() << std::endl;
+        // Propagate as a Java exception instead of swallowing to a silent null — the swallow
+        // here is what made the render-path failures (July MultiObjectCaustics crashes)
+        // undiagnosable from the JVM side.
+        throwException(env, "java/lang/RuntimeException", e.what());
         return nullptr;
     }
 }
@@ -1070,6 +1116,126 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstance
         std::cerr << "[JNI] Error in addSphereInstance: " << e.what() << std::endl;
         jclass exception_class = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(exception_class, e.what());
+        return -1;
+    }
+}
+
+// Custom-geometry SPI (Task 1.1d): register an external primitive from PTX bytes.
+// Pass null for shadowCh/shadowAh/photonCh entry names to reuse the primary group.
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_registerCustomGeometryNative(
+    JNIEnv* env, jobject obj,
+    jbyteArray ptxBytes, jstring isEntry, jstring chEntry,
+    jstring shadowChEntry, jstring shadowAhEntry, jstring photonChEntry) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+
+        jsize ptxLen = env->GetArrayLength(ptxBytes);
+        jbyte* ptxArr = env->GetByteArrayElements(ptxBytes, nullptr);
+        if (ptxArr == nullptr) {
+            env->ThrowNew(env->FindClass("java/lang/RuntimeException"), "Failed to get PTX bytes");
+            return -1;
+        }
+
+        const char* is_c = env->GetStringUTFChars(isEntry, nullptr);
+        const char* ch_c = env->GetStringUTFChars(chEntry, nullptr);
+        const char* shadowCh_c = shadowChEntry ? env->GetStringUTFChars(shadowChEntry, nullptr) : nullptr;
+        const char* shadowAh_c = shadowAhEntry ? env->GetStringUTFChars(shadowAhEntry, nullptr) : nullptr;
+        const char* photonCh_c = photonChEntry ? env->GetStringUTFChars(photonChEntry, nullptr) : nullptr;
+
+        int typeId = wrapper->registerCustomGeometry(
+            reinterpret_cast<const char*>(ptxArr), static_cast<size_t>(ptxLen),
+            is_c, ch_c, shadowCh_c, shadowAh_c, photonCh_c);
+
+        if (photonCh_c) env->ReleaseStringUTFChars(photonChEntry, photonCh_c);
+        if (shadowAh_c) env->ReleaseStringUTFChars(shadowAhEntry, shadowAh_c);
+        if (shadowCh_c) env->ReleaseStringUTFChars(shadowChEntry, shadowCh_c);
+        env->ReleaseStringUTFChars(chEntry, ch_c);
+        env->ReleaseStringUTFChars(isEntry, is_c);
+        env->ReleaseByteArrayElements(ptxBytes, ptxArr, JNI_ABORT);
+
+        return typeId;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in registerCustomGeometry: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        return -1;
+    }
+}
+
+// Custom-geometry SPI (Task 1.1d): add an IAS instance of a registered custom type.
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCustomGeometryInstanceNative(
+    JNIEnv* env, jobject obj,
+    jint typeId, jfloatArray aabbMin, jfloatArray aabbMax, jfloatArray transform,
+    jbyteArray customData) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        if (env->GetArrayLength(aabbMin) != 3 || env->GetArrayLength(aabbMax) != 3 ||
+            env->GetArrayLength(transform) != 12) {
+            env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                "aabbMin/aabbMax must be length 3 and transform length 12");
+            return -1;
+        }
+        jfloat* minArr = env->GetFloatArrayElements(aabbMin, nullptr);
+        jfloat* maxArr = env->GetFloatArrayElements(aabbMax, nullptr);
+        jfloat* xformArr = env->GetFloatArrayElements(transform, nullptr);
+        jbyte* dataArr = customData ? env->GetByteArrayElements(customData, nullptr) : nullptr;  // Task 1.1c
+        jsize dataLen = customData ? env->GetArrayLength(customData) : 0;
+
+        int instanceId = wrapper->addCustomGeometryInstance(
+            typeId, minArr, maxArr, xformArr,
+            reinterpret_cast<const void*>(dataArr), static_cast<int>(dataLen));
+
+        if (dataArr) env->ReleaseByteArrayElements(customData, dataArr, JNI_ABORT);
+        env->ReleaseFloatArrayElements(transform, xformArr, JNI_ABORT);
+        env->ReleaseFloatArrayElements(aabbMax, maxArr, JNI_ABORT);
+        env->ReleaseFloatArrayElements(aabbMin, minArr, JNI_ABORT);
+        return instanceId;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in addCustomGeometryInstance: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        return -1;
+    }
+}
+
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceMaterialNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId, jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
+    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
+    jfloat filmThickness, jfloat cauchyA, jfloat cauchyB) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        return wrapper->setInstanceMaterial(
+            instanceId, r, g, b, a, ior,
+            roughness, metallic, specular, emission, filmThickness, cauchyA, cauchyB);
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in setInstanceMaterial: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        return -1;
+    }
+}
+
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCustomGeometryInstanceDataNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId, jbyteArray customData) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        if (customData == nullptr) {
+            env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                "customData must not be null");
+            return -1;
+        }
+        jbyte* dataArr = env->GetByteArrayElements(customData, nullptr);
+        jsize dataLen = env->GetArrayLength(customData);
+        int rc = wrapper->updateCustomGeometryInstanceData(
+            instanceId, reinterpret_cast<const void*>(dataArr), static_cast<int>(dataLen));
+        env->ReleaseByteArrayElements(customData, dataArr, JNI_ABORT);
+        return rc;
+    } catch (const std::exception& e) {
+        std::cerr << "[JNI] Error in updateCustomGeometryInstanceData: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
         return -1;
     }
 }
@@ -1355,159 +1521,6 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneInstanceN
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addPlaneInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
-        return -1;
-    }
-}
-
-/**
- * Add a 4D Menger sponge analog instance (iterative IFS, O(1) VRAM).
- */
-JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addMenger4DInstanceNative(
-    JNIEnv* env, jobject obj,
-    jint level, jint distThreshold,
-    jfloat x, jfloat y, jfloat z, jfloat scale,
-    jfloat eyeW, jfloat screenW,
-    jfloat rotXW, jfloat rotYW, jfloat rotZW,
-    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
-    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
-    try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
-        if (wrapper == nullptr) return -1;
-
-        return wrapper->addMenger4DInstance(
-            (int)level, (int)distThreshold,
-            x, y, z, scale,
-            eyeW, screenW,
-            rotXW, rotYW, rotZW,
-            r, g, b, a, ior,
-            roughness, metallic, specular, emission, filmThickness, cauchy_a, cauchy_b
-        );
-    } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in addMenger4DInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
-        return -1;
-    }
-}
-
-/**
- * Update 4D projection params for an existing menger4d instance.
- */
-JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateMenger4DProjectionNative(
-    JNIEnv* env, jobject obj,
-    jint instanceId,
-    jfloat eyeW, jfloat screenW,
-    jfloat rotXW, jfloat rotYW, jfloat rotZW) {
-    try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
-        if (wrapper == nullptr) return -1;
-        return wrapper->updateMenger4DProjection(instanceId, eyeW, screenW, rotXW, rotYW, rotZW);
-    } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in updateMenger4DProjection: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
-        return -1;
-    }
-}
-
-/**
- * Add a 4D Sierpinski pentachoron analog instance (iterative IFS, O(1) VRAM).
- */
-JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSierpinski4DInstanceNative(
-    JNIEnv* env, jobject obj,
-    jint level,
-    jfloat x, jfloat y, jfloat z, jfloat scale,
-    jfloat eyeW, jfloat screenW,
-    jfloat rotXW, jfloat rotYW, jfloat rotZW,
-    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
-    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
-    try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
-        if (wrapper == nullptr) return -1;
-
-        return wrapper->addSierpinski4DInstance(
-            (int)level,
-            x, y, z, scale,
-            eyeW, screenW,
-            rotXW, rotYW, rotZW,
-            r, g, b, a, ior,
-            roughness, metallic, specular, emission, filmThickness, cauchy_a, cauchy_b
-        );
-    } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in addSierpinski4DInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
-        return -1;
-    }
-}
-
-/**
- * Update 4D projection params for an existing sierpinski4d instance.
- */
-JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateSierpinski4DProjectionNative(
-    JNIEnv* env, jobject obj,
-    jint instanceId,
-    jfloat eyeW, jfloat screenW,
-    jfloat rotXW, jfloat rotYW, jfloat rotZW) {
-    try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
-        if (wrapper == nullptr) return -1;
-        return wrapper->updateSierpinski4DProjection(instanceId, eyeW, screenW, rotXW, rotYW, rotZW);
-    } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in updateSierpinski4DProjection: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
-        return -1;
-    }
-}
-
-JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addHexadecachoron4DInstanceNative(
-    JNIEnv* env, jobject obj,
-    jint level,
-    jfloat x, jfloat y, jfloat z, jfloat scale,
-    jfloat eyeW, jfloat screenW,
-    jfloat rotXW, jfloat rotYW, jfloat rotZW,
-    jfloat r, jfloat g, jfloat b, jfloat a, jfloat ior,
-    jfloat roughness, jfloat metallic, jfloat specular, jfloat emission,
-    jfloat filmThickness, jfloat cauchy_a, jfloat cauchy_b) {
-    try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
-        if (wrapper == nullptr) return -1;
-
-        return wrapper->addHexadecachoron4DInstance(
-            (int)level,
-            x, y, z, scale,
-            eyeW, screenW,
-            rotXW, rotYW, rotZW,
-            r, g, b, a, ior,
-            roughness, metallic, specular, emission, filmThickness, cauchy_a, cauchy_b
-        );
-    } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in addHexadecachoron4DInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
-        env->ThrowNew(exception_class, e.what());
-        return -1;
-    }
-}
-
-/**
- * Update 4D projection params for an existing hexadecachoron4d instance.
- */
-JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateHexadecachoron4DProjectionNative(
-    JNIEnv* env, jobject obj,
-    jint instanceId,
-    jfloat eyeW, jfloat screenW,
-    jfloat rotXW, jfloat rotYW, jfloat rotZW) {
-    try {
-        OptiXWrapper* wrapper = getWrapper(env, obj);
-        if (wrapper == nullptr) return -1;
-        return wrapper->updateHexadecachoron4DProjection(instanceId, eyeW, screenW, rotXW, rotYW, rotZW);
-    } catch (const std::exception& e) {
-        std::cerr << "[JNI] Error in updateHexadecachoron4DProjection: " << e.what() << std::endl;
         jclass exception_class = env->FindClass("java/lang/RuntimeException");
         env->ThrowNew(exception_class, e.what());
         return -1;

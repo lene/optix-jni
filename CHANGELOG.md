@@ -5,6 +5,68 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-08-01
+
+First strictly-generic release (Sprint 35 Native Seam Remediation, Phases 1-2). The
+built-in 4D fractal geometry is removed; custom geometry is now supplied by consumers
+through the custom-geometry SPI. The Critical native-seam bugs (caustics OOB, GPU
+leaks, unguarded JNI, stale-buffer reuse) are fixed and validated under
+compute-sanitizer. See **BREAKING** under Removed.
+
+### Added
+
+- Custom-geometry SPI: register an external primitive (a PTX module + IS/CH/shadow/
+  photon entry points) as a runtime geometry type and instance it, with optional
+  generic per-instance data. Lets consumers (e.g. menger-geometry) supply their own
+  intersection shaders without optix-jni knowing their geometry types. (Tasks 1.1a-d)
+- `setInstanceMaterial(instanceId, ...)`: assign PBR material to any instance
+  (built-in or custom). Custom instances start white; a registrant calls this so its
+  shader reads colour/PBR via `getInstanceMaterialPBR`, keeping custom geometry on the
+  shared material/texture pipeline. (Task 1.2b)
+- `updateCustomGeometryInstanceData(instanceId, blob)`: overwrite a custom instance's
+  per-instance blob in place. No GAS/IAS rebuild when the size is unchanged — for
+  per-frame updates such as a 4D fractal's projection (eye/screen/rotation). (Task 1.2b)
+- `NativeLibrary.load(name)` / `NativeLibrary.platform()`: the JNI native-library loader
+  (java.library.path first, then classpath resource `/native/<platform>/lib<name>.so`
+  extracted to a temp file) is now published API. Downstream JNI libraries that ship
+  native code alongside optix-jni (e.g. menger-geometry's `libmengergeometry.so`) load
+  via this instead of forking the loader. Java-interoperable signatures. (Task 1.3b)
+- `freeGpuMemoryBytes()`: device free-memory probe (`cudaMemGetInfo`) over JNI, for
+  leak-assertion tests that check a create/render/dispose or clear→re-add loop returns
+  device memory to ~baseline. (Task 2.6)
+
+### Fixed
+
+- **Caustics hit-point counter overflow (CR-1)**: a dense scene (one hit point per
+  camera pixel — e.g. full-HD is 2,073,600 > the 2,000,000 cap) bumped the atomic
+  counter past `MAX_HIT_POINTS` before the per-thread capacity check, so the grid,
+  radius-update and radiance passes launched at the raw count and read past the
+  hit-point buffer (the July out-of-bounds corruption). The host now clamps the count,
+  the four hit-point-width kernels clamp defensively, and the radiance pass
+  bounds-checks the image write. Validated clean under compute-sanitizer memcheck.
+  (Tasks 2.1, 2.7)
+- **GPU memory leaks (CR-5)**: registry-owned GAS + AABB buffers are freed before the
+  registry is cleared (previously freed on no path across scene reloads and on dispose);
+  caustics raygen program groups are destroyed before recreation on a geometry-dirty
+  rebuild; accel-build temp buffers free on the throw path via an RAII guard; and
+  `setTriangleMesh` checks every `cudaMalloc`/`cudaMemcpy` and frees what it allocated on
+  failure instead of registering a mesh with garbage pointers. (Task 2.3)
+- **Stale device-buffer reuse after clear (CR-2)**: `clearAllInstances`/`releaseTextures`
+  reset `last_*_count` (cylinder/cone/plane/curve/texture) when the backing device buffer
+  is freed, so a clear→re-add of the same object count no longer skips the re-upload and
+  renders against a freed pointer. (Task 2.2)
+- **Unguarded JNI array arguments (CR-4)**: `setCamera` and `setLights` null- and
+  length-check their `float[]` arguments and throw `IllegalArgumentException` instead of
+  dereferencing null one bad field from a public entry point. (Task 2.4)
+
+### Removed
+
+- **BREAKING**: the built-in 4D fractal geometry (Menger4D / Sierpinski4D /
+  Hexadecachoron4D), its `add/update*4DInstance` API, shaders, and geometry-type
+  ids 5-7 — these move to menger-geometry via the SPI. (Task 1.2a)
+- Dead `MAX_INSTANCES` (=64) native constant — unused and contradicting the real
+  65536-instance limit. (CR-8, Task 2.5)
+
 ## [0.1.19] - 2026-07-13
 
 ### Added
@@ -289,6 +351,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.2.0]: https://github.com/lene/optix-jni/compare/0.1.19...0.2.0
 [0.1.19]: https://github.com/lene/optix-jni/compare/0.1.18...0.1.19
 [0.1.18]: https://github.com/lene/optix-jni/compare/0.1.17...0.1.18
 [0.1.17]: https://github.com/lene/optix-jni/compare/0.1.16...0.1.17

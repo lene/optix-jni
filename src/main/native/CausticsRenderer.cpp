@@ -89,6 +89,18 @@ void CausticsRenderer::renderWithCaustics(
     ));
     std::cout << "[Caustics] Phase 1: Collected " << num_hit_points << " hit points" << std::endl;
 
+    // CR-1: the device counter is atomically bumped once per diffuse hit *before* the
+    // per-thread capacity check, so on a scene that overflows the cap it reports more hit
+    // points than were actually stored. Every later pass (grid build, radius update, radiance)
+    // uses this value as a launch width and indexes hit_points[idx]; clamp it to the buffer
+    // cap here so no pass reads past MAX_HIT_POINTS. The kernels clamp defensively too.
+    if (num_hit_points > RayTracingConstants::MAX_HIT_POINTS) {
+        std::cerr << "[Caustics] hit-point count " << num_hit_points
+                  << " exceeds MAX_HIT_POINTS (" << RayTracingConstants::MAX_HIT_POINTS
+                  << "); clamping to cap." << std::endl;
+        num_hit_points = RayTracingConstants::MAX_HIT_POINTS;
+    }
+
     // =====================================
     // Grid Building: Spatial acceleration for photon deposition
     // =====================================

@@ -27,7 +27,9 @@ trait RendererFixture extends BeforeAndAfterEach:
     // This prevents UnsatisfiedLinkError with testOnly on certain test classes
     require(OptiXRenderer.isLibraryLoaded, "OptiX native library failed to load")
     val r = new OptiXRenderer()
-    r.initialize()
+    // CR-13: fail fast on init instead of ignoring the result — a false here otherwise surfaces
+    // later as a downstream symptom (exactly how the July-20 crashes first presented).
+    require(r.initialize(), "OptiXRenderer.initialize() returned false — native init failed")
     rendererOpt = Some(r)
     setupDefaults()
 

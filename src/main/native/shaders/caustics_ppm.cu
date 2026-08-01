@@ -407,9 +407,18 @@ extern "C" __global__ void __raygen__hitpoints() {
  * Called after hit point generation to build spatial hash grid.
  * Launch with dimensions = (num_hit_points, 1).
  */
+// CR-1: the hit-point counter is bumped before the per-thread capacity check, so it can
+// exceed the buffer cap on dense scenes. Treat MAX_HIT_POINTS as the hard upper bound (the
+// host clamps launch widths to match; this guards the device side against any pass launched
+// from the raw counter and keeps hit_points[idx] in bounds).
+static __forceinline__ __device__ unsigned int clampedHitPointCount() {
+    const unsigned int n = *params.caustics.num_hit_points;
+    return n < MAX_HIT_POINTS ? n : MAX_HIT_POINTS;
+}
+
 extern "C" __global__ void __raygen__grid_count() {
     const unsigned int idx = optixGetLaunchIndex().x;
-    if (idx >= *params.caustics.num_hit_points) return;
+    if (idx >= clampedHitPointCount()) return;
 
     const HitPoint& hp = params.caustics.hit_points[idx];
     const float3 pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
@@ -429,7 +438,7 @@ extern "C" __global__ void __raygen__grid_count() {
  */
 extern "C" __global__ void __raygen__grid_scatter() {
     const unsigned int idx = optixGetLaunchIndex().x;
-    if (idx >= *params.caustics.num_hit_points) return;
+    if (idx >= clampedHitPointCount()) return;
 
     const HitPoint& hp = params.caustics.hit_points[idx];
     const float3 pos = make_float3(hp.position[0], hp.position[1], hp.position[2]);
@@ -1375,7 +1384,7 @@ extern "C" __global__ void __raygen__photons() {
  */
 extern "C" __global__ void __raygen__update_radii() {
     const unsigned int idx = optixGetLaunchIndex().x;
-    if (idx >= *params.caustics.num_hit_points) return;
+    if (idx >= clampedHitPointCount()) return;
 
     HitPoint& hp = params.caustics.hit_points[idx];
 
@@ -1427,7 +1436,7 @@ extern "C" __global__ void __raygen__update_radii() {
  */
 extern "C" __global__ void __raygen__caustics_radiance() {
     const uint3 idx = optixGetLaunchIndex();
-    if (idx.x >= *params.caustics.num_hit_points) return;
+    if (idx.x >= clampedHitPointCount()) return;
 
     const HitPoint& hp = params.caustics.hit_points[idx.x];
 
@@ -1476,6 +1485,11 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     // result); for Reinhard/ACES the caustic is tone-mapped separately and added, an
     // approximation until the pre-tone-map float-HDR film buffer lands (backlog F-HDR-FILM).
     const float3 mapped = applyToneMapping(radiance);
+
+    // CR-1: never index the image buffer from an out-of-range hit point. Normally
+    // pixel_x/pixel_y come from the hit-point pass launch (== image dims), but guard the
+    // write defensively so a stale/overflowed slot can't cause an out-of-bounds image write.
+    if (hp.pixel_x >= params.image_width || hp.pixel_y >= params.image_height) return;
 
     const unsigned int pixel_idx = (hp.pixel_y * params.image_width + hp.pixel_x) * 4;
     const float cur_r = static_cast<float>(params.image[pixel_idx + 0]) / COLOR_BYTE_MAX;

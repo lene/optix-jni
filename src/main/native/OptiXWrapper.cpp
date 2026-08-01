@@ -115,6 +115,12 @@ struct OptiXWrapper::Impl {
     CUdeviceptr d_ias_output_buffer = 0;      // IAS memory
     CUdeviceptr d_instances_buffer = 0;       // OptixInstance array on GPU
     CUdeviceptr d_instance_materials = 0;     // InstanceMaterial array on GPU
+    // Custom-geometry SPI (Task 1.1c): per-instance data blobs for registered
+    // primitives. Host-side, indexed by ObjectInstance.geometry_data_index;
+    // packed + uploaded (uniform stride) to d_custom_geometry_data in buildIAS.
+    std::vector<std::vector<char>> custom_geometry_blobs;
+    CUdeviceptr d_custom_geometry_data = 0;   // Packed per-instance custom data on GPU
+    size_t custom_geometry_stride = 0;        // Bytes per blob (uniform)
     bool ias_dirty = false;                   // True if IAS needs rebuild
     bool use_ias = false;                     // True = multi-object mode
     unsigned int max_instances = 64;          // Configurable instance limit
@@ -180,30 +186,6 @@ struct OptiXWrapper::Impl {
         GASData gas = {};
     };
     std::vector<CurveGPUData> curve_gpu_buffers;
-
-    // 4D Menger sponge geometry data (host-side, uploaded to GPU before render)
-    std::vector<Menger4DData> menger4d_data;
-    CUdeviceptr d_menger4d_data = 0;            // Device array of Menger4DData for Params
-    size_t last_menger4d_count = 0;            // Avoids redundant re-upload per frame
-
-    // Track menger4d GAS buffers (each instance has its own AABB GAS)
-    std::vector<GASData> menger4d_gas_buffers;
-
-    // 4D Sierpinski pentachoron geometry data (host-side, uploaded to GPU before render)
-    std::vector<Sierpinski4DData> sierpinski4d_data;
-    CUdeviceptr d_sierpinski4d_data = 0;            // Device array of Sierpinski4DData for Params
-    size_t last_sierpinski4d_count = 0;            // Avoids redundant re-upload per frame
-
-    // Track sierpinski4d GAS buffers (each instance has its own AABB GAS)
-    std::vector<GASData> sierpinski4d_gas_buffers;
-
-    // 4D Sierpinski 16-cell (hexadecachoron) geometry data (host-side, uploaded to GPU before render)
-    std::vector<Hexadecachoron4DData> hexadecachoron4d_data;
-    CUdeviceptr d_hexadecachoron4d_data = 0;        // Device array of Hexadecachoron4DData for Params
-    size_t last_hexadecachoron4d_count = 0;        // Avoids redundant re-upload per frame
-
-    // Track hexadecachoron4d GAS buffers (each instance has its own AABB GAS)
-    std::vector<GASData> hexadecachoron4d_gas_buffers;
 
     // Sub-IAS lifetime storage for recursive-IAS Menger sponges (Sprint 18.4).
     // Each entry owns one nested IAS layer's instance buffer + IAS output buffer.
@@ -457,29 +439,44 @@ void OptiXWrapper::setTriangleMesh(
 ) {
     Impl::TriangleMeshGPU mesh_entry;
 
+    // CR-5(f): check every allocation/copy and free what was already allocated on failure —
+    // otherwise a failed cudaMalloc/cudaMemcpy left the mesh registered (push_back below) with
+    // garbage/leaked device pointers. Throwing surfaces as a Java exception via JNIBindings.
+    cudaError_t cuda_err;
+
     // Allocate and copy vertex buffer
     size_t vertex_size =
         num_vertices * vertex_stride * sizeof(float);
-    cudaMalloc(
-        reinterpret_cast<void**>(&mesh_entry.d_vertices),
-        vertex_size
-    );
-    cudaMemcpy(
-        reinterpret_cast<void*>(mesh_entry.d_vertices),
-        vertices, vertex_size, cudaMemcpyHostToDevice
-    );
+    if ((cuda_err = cudaMalloc(
+            reinterpret_cast<void**>(&mesh_entry.d_vertices), vertex_size)) != cudaSuccess) {
+        throw std::runtime_error(
+            std::string("setTriangleMesh: vertex cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
+    }
+    if ((cuda_err = cudaMemcpy(
+            reinterpret_cast<void*>(mesh_entry.d_vertices),
+            vertices, vertex_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        throw std::runtime_error(
+            std::string("setTriangleMesh: vertex cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
+    }
 
     // Allocate and copy index buffer (3 indices per triangle)
     size_t index_size =
         num_triangles * 3 * sizeof(unsigned int);
-    cudaMalloc(
-        reinterpret_cast<void**>(&mesh_entry.d_indices),
-        index_size
-    );
-    cudaMemcpy(
-        reinterpret_cast<void*>(mesh_entry.d_indices),
-        indices, index_size, cudaMemcpyHostToDevice
-    );
+    if ((cuda_err = cudaMalloc(
+            reinterpret_cast<void**>(&mesh_entry.d_indices), index_size)) != cudaSuccess) {
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        throw std::runtime_error(
+            std::string("setTriangleMesh: index cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
+    }
+    if ((cuda_err = cudaMemcpy(
+            reinterpret_cast<void*>(mesh_entry.d_indices),
+            indices, index_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_indices));
+        throw std::runtime_error(
+            std::string("setTriangleMesh: index cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
+    }
 
     // Store mesh metadata for GAS building
     mesh_entry.num_vertices = num_vertices;
@@ -856,6 +853,9 @@ int OptiXWrapper::updateMesh4DProjection(
             reinterpret_cast<void**>(&d_temp),
             gas_sizes.tempUpdateSizeInBytes
         ));
+        // CR-5(d): free the build-temp even if optixAccelBuild throws; .release() on success.
+        auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+            reinterpret_cast<void*>(d_temp), cudaFree);
         OPTIX_CHECK(optixAccelBuild(
             impl->optix_context.getContext(),
             0,
@@ -866,6 +866,7 @@ int OptiXWrapper::updateMesh4DProjection(
             &mesh.gas_handle,
             nullptr, 0
         ));
+        d_temp_guard.release();
         CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp)));
     }
 
@@ -901,6 +902,9 @@ int OptiXWrapper::updateMesh4DProjection(
             reinterpret_cast<void**>(&d_ias_temp),
             ias_sizes.tempUpdateSizeInBytes
         ));
+        // CR-5(d): free the build-temp even if optixAccelBuild throws; .release() on success.
+        auto d_ias_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+            reinterpret_cast<void*>(d_ias_temp), cudaFree);
         OPTIX_CHECK(optixAccelBuild(
             impl->optix_context.getContext(),
             0,
@@ -911,6 +915,7 @@ int OptiXWrapper::updateMesh4DProjection(
             &impl->ias_handle,
             nullptr, 0
         ));
+        d_ias_temp_guard.release();
         CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_ias_temp)));
         CUDA_CHECK(cudaDeviceSynchronize());
     }
@@ -1248,6 +1253,30 @@ void OptiXWrapper::buildIAS() {
         cudaMemcpyHostToDevice
     ));
 
+    // Task 1.1c: pack per-instance custom-geometry blobs (uniform stride = the
+    // largest blob) and upload for the registrants' intersection shaders. Indexed
+    // by ObjectInstance.geometry_data_index (== position in custom_geometry_blobs).
+    if (impl->d_custom_geometry_data) {
+        cudaFree(reinterpret_cast<void*>(impl->d_custom_geometry_data));
+        impl->d_custom_geometry_data = 0;
+    }
+    impl->custom_geometry_stride = 0;
+    if (!impl->custom_geometry_blobs.empty()) {
+        for (const auto& blob : impl->custom_geometry_blobs) {
+            impl->custom_geometry_stride = std::max(impl->custom_geometry_stride, blob.size());
+        }
+        const size_t n = impl->custom_geometry_blobs.size();
+        std::vector<char> packed(n * impl->custom_geometry_stride, 0);
+        for (size_t i = 0; i < n; ++i) {
+            std::memcpy(packed.data() + i * impl->custom_geometry_stride,
+                        impl->custom_geometry_blobs[i].data(),
+                        impl->custom_geometry_blobs[i].size());
+        }
+        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_custom_geometry_data), packed.size()));
+        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_custom_geometry_data),
+                              packed.data(), packed.size(), cudaMemcpyHostToDevice));
+    }
+
     // Build IAS input
     OptixBuildInput ias_input = {};
     ias_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
@@ -1271,6 +1300,9 @@ void OptiXWrapper::buildIAS() {
     // Allocate temp and output buffers
     CUdeviceptr d_temp_buffer;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp_buffer), ias_buffer_sizes.tempSizeInBytes));
+    // CR-5(d): free the build-temp even if a later CUDA_CHECK/OPTIX_CHECK throws; .release() on success.
+    auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp_buffer), cudaFree);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_ias_output_buffer), ias_buffer_sizes.outputSizeInBytes));
 
     // Build IAS
@@ -1290,6 +1322,7 @@ void OptiXWrapper::buildIAS() {
     ));
 
     // Free temp buffer
+    d_temp_guard.release();
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
 
     // Synchronize to ensure IAS build is complete before rendering
@@ -1431,6 +1464,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.sbt_base_offset = 0;  // IAS instances carry their own sbtOffset
             params.instance_materials = reinterpret_cast<InstanceMaterial*>(impl->d_instance_materials);
             params.num_instances = getInstanceCount();
+            params.custom_geometry_data = reinterpret_cast<const void*>(impl->d_custom_geometry_data);  // Task 1.1c
+            params.custom_geometry_stride = static_cast<unsigned int>(impl->custom_geometry_stride);
 
             // Upload texture objects array for IAS mode
             if (!impl->textures.empty()) {
@@ -1571,77 +1606,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 params.num_curves = 0;
             }
 
-            if (!impl->menger4d_data.empty()) {
-                size_t m4d_count = impl->menger4d_data.size();
-                if (m4d_count != impl->last_menger4d_count) {
-                    if (impl->d_menger4d_data) {
-                        cudaFree(reinterpret_cast<void*>(impl->d_menger4d_data));
-                        impl->d_menger4d_data = 0;
-                    }
-                    size_t m4d_size = m4d_count * sizeof(Menger4DData);
-                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_menger4d_data), m4d_size));
-                    CUDA_CHECK(cudaMemcpy(
-                        reinterpret_cast<void*>(impl->d_menger4d_data),
-                        impl->menger4d_data.data(),
-                        m4d_size,
-                        cudaMemcpyHostToDevice
-                    ));
-                    impl->last_menger4d_count = m4d_count;
-                }
-                params.menger4d_data = reinterpret_cast<Menger4DData*>(impl->d_menger4d_data);
-                params.num_menger4d = static_cast<unsigned int>(impl->menger4d_data.size());
-            } else {
-                params.menger4d_data = nullptr;
-                params.num_menger4d = 0;
-            }
-
-            if (!impl->sierpinski4d_data.empty()) {
-                size_t s4d_count = impl->sierpinski4d_data.size();
-                if (s4d_count != impl->last_sierpinski4d_count) {
-                    if (impl->d_sierpinski4d_data) {
-                        cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
-                        impl->d_sierpinski4d_data = 0;
-                    }
-                    size_t s4d_size = s4d_count * sizeof(Sierpinski4DData);
-                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_sierpinski4d_data), s4d_size));
-                    CUDA_CHECK(cudaMemcpy(
-                        reinterpret_cast<void*>(impl->d_sierpinski4d_data),
-                        impl->sierpinski4d_data.data(),
-                        s4d_size,
-                        cudaMemcpyHostToDevice
-                    ));
-                    impl->last_sierpinski4d_count = s4d_count;
-                }
-                params.sierpinski4d_data = reinterpret_cast<Sierpinski4DData*>(impl->d_sierpinski4d_data);
-                params.num_sierpinski4d = static_cast<unsigned int>(impl->sierpinski4d_data.size());
-            } else {
-                params.sierpinski4d_data = nullptr;
-                params.num_sierpinski4d = 0;
-            }
-
-            if (!impl->hexadecachoron4d_data.empty()) {
-                size_t h4d_count = impl->hexadecachoron4d_data.size();
-                if (h4d_count != impl->last_hexadecachoron4d_count) {
-                    if (impl->d_hexadecachoron4d_data) {
-                        cudaFree(reinterpret_cast<void*>(impl->d_hexadecachoron4d_data));
-                        impl->d_hexadecachoron4d_data = 0;
-                    }
-                    size_t h4d_size = h4d_count * sizeof(Hexadecachoron4DData);
-                    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_hexadecachoron4d_data), h4d_size));
-                    CUDA_CHECK(cudaMemcpy(
-                        reinterpret_cast<void*>(impl->d_hexadecachoron4d_data),
-                        impl->hexadecachoron4d_data.data(),
-                        h4d_size,
-                        cudaMemcpyHostToDevice
-                    ));
-                    impl->last_hexadecachoron4d_count = h4d_count;
-                }
-                params.hexadecachoron4d_data = reinterpret_cast<Hexadecachoron4DData*>(impl->d_hexadecachoron4d_data);
-                params.num_hexadecachoron4d = static_cast<unsigned int>(impl->hexadecachoron4d_data.size());
-            } else {
-                params.hexadecachoron4d_data = nullptr;
-                params.num_hexadecachoron4d = 0;
-            }
         } else {
             params.handle = impl->gas_handle;
             params.use_ias = false;
@@ -1651,6 +1615,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 : GEOMETRY_TYPE_SPHERE * SBTConstants::STRIDE_RAY_TYPES;
             params.instance_materials = nullptr;
             params.num_instances = 0;
+            params.custom_geometry_data = nullptr;  // Task 1.1c
+            params.custom_geometry_stride = 0;
             params.textures = nullptr;
             params.num_textures = 0;
             params.cylinder_data = nullptr;
@@ -1661,12 +1627,6 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             params.num_plane_data = 0;
             params.curve_data = nullptr;
             params.num_curves = 0;
-            params.menger4d_data = nullptr;
-            params.num_menger4d = 0;
-            params.sierpinski4d_data = nullptr;
-            params.num_sierpinski4d = 0;
-            params.hexadecachoron4d_data = nullptr;
-            params.num_hexadecachoron4d = 0;
         }
 
         // Dynamic scene data
@@ -2026,14 +1986,12 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         }
 
     } catch (const std::exception& e) {
+        // Propagate: a render failure must surface, not be swallowed into a "successful"
+        // red frame with (previously uninitialized) stats — that is what made the July
+        // MultiObjectCaustics crashes look like success. render() already throws on the
+        // not-initialized path, so callers already handle a throw here.
         std::cerr << "[OptiX] Render failed: " << e.what() << std::endl;
-        // Fill with error color (red)
-        for (int i = 0; i < width * height; i++) {
-            output[i * 4 + 0] = 255;  // R
-            output[i * 4 + 1] = 0;    // G
-            output[i * 4 + 2] = 0;    // B
-            output[i * 4 + 3] = 255;  // A
-        }
+        throw;
     }
 }
 
@@ -2137,6 +2095,128 @@ int OptiXWrapper::addSphereInstance(
     impl->use_ias = true;
 
     return instanceId;
+}
+
+// Custom-geometry SPI (Task 1.1d): register an external primitive's hit programs
+// from PTX bytes; returns a runtime geometry-type id for use with
+// addCustomGeometryInstance. Module + groups are created in the pipeline's own
+// context/options (PipelineManager); a rebuild is forced so the new groups + SBT
+// records are picked up on the next render.
+int OptiXWrapper::registerCustomGeometry(
+    const char* ptxBytes, size_t ptxSize,
+    const char* isEntry, const char* chEntry,
+    const char* shadowChEntry, const char* shadowAhEntry,
+    const char* photonChEntry) {
+    int typeId = impl->pipeline_manager.registerCustomGeometryFromPTX(
+        ptxBytes, ptxSize, isEntry, chEntry, shadowChEntry, shadowAhEntry, photonChEntry);
+    impl->pipeline_built = false;
+    return typeId;
+}
+
+// Custom-geometry SPI (Task 1.1d): add an IAS instance of a registered custom
+// type. The caller supplies the object-space AABB (its custom IS intersects
+// within it) and the 3x4 transform. The instance's sbtOffset = typeId * STRIDE
+// is set generically by the IAS build, targeting the type's registered SBT block.
+int OptiXWrapper::addCustomGeometryInstance(
+    int typeId, const float* aabbMin, const float* aabbMax, const float* transform,
+    const void* customData, int customDataSize) {
+    if (impl->instances.size() >= impl->max_instances) return -1;
+
+    // gas_registry / ObjectInstance.geometry_type are keyed by the GeometryType
+    // enum (int-backed); runtime custom ids (>= GEOMETRY_TYPE_COUNT) are stored
+    // by casting. Safe for the small id counts in use.
+    const GeometryType gtype = static_cast<GeometryType>(typeId);
+
+    if (impl->gas_registry.find(gtype) == impl->gas_registry.end()) {
+        OptixAabb aabb;
+        aabb.minX = aabbMin[0]; aabb.minY = aabbMin[1]; aabb.minZ = aabbMin[2];
+        aabb.maxX = aabbMax[0]; aabb.maxY = aabbMax[1]; aabb.maxZ = aabbMax[2];
+        OptixAccelBuildOptions accel_options = {};
+        accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+        accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+        OptiXContext::GASBuildResult result =
+            impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+        Impl::GASData gas_data;
+        gas_data.handle = result.handle;
+        gas_data.gas_buffer = result.gas_buffer;
+        gas_data.aabb_buffer = result.aabb_buffer;
+        impl->gas_registry[gtype] = gas_data;
+    }
+
+    Impl::ObjectInstance inst;
+    inst.geometry_type = gtype;
+    inst.gas_handle = impl->gas_registry[gtype].handle;
+    std::memcpy(inst.transform, transform, 12 * sizeof(float));
+    inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f; inst.color[3] = 1.0f;
+    inst.ior = 1.0f; inst.roughness = 0.5f; inst.metallic = 0.0f; inst.specular = 0.5f;
+    inst.emission = 0.0f; inst.film_thickness = 0.0f; inst.cauchy_a = 0.0f; inst.cauchy_b = 0.0f;
+    // Task 1.1c: stash the per-instance blob (if any) and index it via
+    // geometry_data_index; buildIAS packs it into params.custom_geometry_data.
+    if (customData != nullptr && customDataSize > 0) {
+        const char* bytes = static_cast<const char*>(customData);
+        inst.geometry_data_index = static_cast<int>(impl->custom_geometry_blobs.size());
+        impl->custom_geometry_blobs.emplace_back(bytes, bytes + customDataSize);
+    } else {
+        inst.geometry_data_index = -1;
+    }
+    inst.procedural_type = 0; inst.procedural_scale = 1.0f;
+    inst.normal_texture_index = -1; inst.roughness_texture_index = -1;
+    inst.image_texture_index = -1; inst.metallic_texture_index = -1;
+    inst.ao_texture_index = -1; inst.height_texture_index = -1;
+    inst.active = true;
+    inst.mesh_index = SIZE_MAX;
+
+    int instanceId = static_cast<int>(impl->instances.size());
+    impl->instances.push_back(inst);
+    impl->ias_dirty = true;
+    if (!impl->use_ias) impl->pipeline_built = false;
+    impl->use_ias = true;
+    return instanceId;
+}
+
+int OptiXWrapper::setInstanceMaterial(
+    int instanceId, float r, float g, float b, float a, float ior,
+    float roughness, float metallic, float specular, float emission,
+    float film_thickness, float cauchy_a, float cauchy_b
+) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
+    Impl::ObjectInstance& inst = impl->instances[instanceId];
+    inst.color[0] = r; inst.color[1] = g; inst.color[2] = b; inst.color[3] = a;
+    inst.ior = ior;
+    inst.roughness = roughness;
+    inst.metallic = metallic;
+    inst.specular = specular;
+    inst.emission = emission;
+    inst.film_thickness = film_thickness;
+    inst.cauchy_a = cauchy_a;
+    inst.cauchy_b = cauchy_b;
+    // Material lives in the InstanceMaterial array rebuilt by buildIAS; re-upload it.
+    impl->ias_dirty = true;
+    return 0;
+}
+
+int OptiXWrapper::updateCustomGeometryInstanceData(
+    int instanceId, const void* customData, int customDataSize
+) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
+    if (customData == nullptr || customDataSize <= 0) return -2;
+    const int idx = impl->instances[instanceId].geometry_data_index;
+    if (idx < 0 || idx >= static_cast<int>(impl->custom_geometry_blobs.size())) return -3;
+
+    const char* bytes = static_cast<const char*>(customData);
+    impl->custom_geometry_blobs[idx].assign(bytes, bytes + customDataSize);
+
+    // If the packed GPU buffer already exists and this blob fits the uniform stride,
+    // patch just this slot — no rebuild. Otherwise the next buildIAS packs it.
+    if (impl->d_custom_geometry_data != 0 &&
+        static_cast<size_t>(customDataSize) <= impl->custom_geometry_stride) {
+        CUDA_CHECK(cudaMemcpy(
+            reinterpret_cast<void*>(impl->d_custom_geometry_data + idx * impl->custom_geometry_stride),
+            bytes, customDataSize, cudaMemcpyHostToDevice));
+    } else {
+        impl->ias_dirty = true;
+    }
+    return 0;
 }
 
 int OptiXWrapper::addTriangleMeshInstance(
@@ -2250,10 +2330,6 @@ const float (*getMengerGenerators())[12] {
 
 constexpr int MENGER_GENERATOR_COUNT = 20;
 constexpr int MAX_RECURSIVE_IAS_LEVEL = 14;  // matches MAX_TRAVERSABLE_GRAPH_DEPTH = 16
-// Recursion-depth bounds for GPU-projected 4D fractals (Menger4D, Sierpinski4D,
-// Hexadecachoron4D). Upper bound matches MAX_TRAVERSABLE_GRAPH_DEPTH constraints.
-constexpr int MIN_4D_LEVEL = 0;
-constexpr int MAX_4D_LEVEL = 14;
 
 }  // namespace
 
@@ -2308,6 +2384,9 @@ OptixTraversableHandle OptiXWrapper::buildSubIAS(
 
     CUdeviceptr d_temp = 0;
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp), sizes.tempSizeInBytes));
+    // CR-5(d): free the build-temp even if a later CUDA_CHECK/OPTIX_CHECK throws; .release() on success.
+    auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp), cudaFree);
     CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&sub.d_output_buffer), sizes.outputSizeInBytes));
 
     OPTIX_CHECK(optixAccelBuild(
@@ -2317,6 +2396,7 @@ OptixTraversableHandle OptiXWrapper::buildSubIAS(
         sub.d_output_buffer, sizes.outputSizeInBytes,
         &sub.handle, nullptr, 0));
 
+    d_temp_guard.release();
     CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp)));
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -2990,389 +3070,9 @@ int OptiXWrapper::addPlaneInstance(
     return instanceId;
 }
 
-int OptiXWrapper::addMenger4DInstance(
-    int level, int dist_threshold,
-    float x, float y, float z, float scale,
-    float eye_w, float screen_w,
-    float rot_xw, float rot_yw, float rot_zw,
-    float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular,
-    float emission, float film_thickness, float cauchy_a, float cauchy_b
-) {
-    if (impl->instances.size() >= impl->max_instances) {
-        if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Menger4D] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
-            impl->max_instances_warning_shown = true;
-        }
-        return -1;
-    }
-    if (level < MIN_4D_LEVEL || level > MAX_4D_LEVEL) {
-        std::cerr << "[OptiX][Menger4D] Level must be 0-14, got " << level << std::endl;
-        return -1;
-    }
-
-    // Conservative AABB: projected sponge fits within scale radius of pos
-    OptixAabb aabb;
-    aabb.minX = x - scale; aabb.maxX = x + scale;
-    aabb.minY = y - scale; aabb.maxY = y + scale;
-    aabb.minZ = z - scale; aabb.maxZ = z + scale;
-
-    OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-    accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
-
-    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
-
-    // Build per-instance data
-    Menger4DData m4d;
-    m4d.pos[0]  = x; m4d.pos[1] = y; m4d.pos[2] = z;
-    m4d.scale   = scale;
-    m4d.eye_w   = eye_w;
-    m4d.screen_w = screen_w;
-    m4d.level   = level;
-    m4d.dist_threshold = dist_threshold;
-    compose_rotation_xw_yw_zw(m4d.rotation4d, rot_xw, rot_yw, rot_zw);
-
-    int m4d_index = static_cast<int>(impl->menger4d_data.size());
-    impl->menger4d_data.push_back(m4d);
-
-    Impl::GASData gas_data;
-    gas_data.handle      = result.handle;
-    gas_data.gas_buffer  = result.gas_buffer;
-    gas_data.aabb_buffer = result.aabb_buffer;
-    impl->menger4d_gas_buffers.push_back(gas_data);
-
-    Impl::ObjectInstance inst;
-    inst.geometry_type = GEOMETRY_TYPE_MENGER4D;
-    inst.gas_handle    = gas_data.handle;
-
-    const float identity_transform[12] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f
-    };
-    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
-
-    inst.color[0]      = r;
-    inst.color[1]      = g;
-    inst.color[2]      = b;
-    inst.color[3]      = a;
-    inst.ior           = ior;
-    inst.roughness     = roughness;
-    inst.metallic      = metallic;
-    inst.specular      = specular;
-    inst.emission      = emission;
-    inst.film_thickness = film_thickness;
-    inst.cauchy_a = cauchy_a;
-    inst.cauchy_b = cauchy_b;
-    inst.geometry_data_index = m4d_index;
-    inst.procedural_type = 0;
-    inst.procedural_scale = 1.0f;
-    inst.normal_texture_index = -1;
-    inst.roughness_texture_index = -1;
-    inst.image_texture_index = -1;
-    inst.metallic_texture_index = -1;
-    inst.ao_texture_index = -1;
-    inst.height_texture_index = -1;
-    inst.active        = true;
-    inst.mesh_index    = SIZE_MAX;
-
-    int instanceId = static_cast<int>(impl->instances.size());
-    impl->instances.push_back(inst);
-
-    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
-
-    impl->ias_dirty = true;
-
-    if (!impl->use_ias) {
-        impl->pipeline_built = false;
-    }
-    impl->use_ias = true;
-
-    return instanceId;
-}
-
-int OptiXWrapper::updateMenger4DProjection(
-    int instanceId,
-    float eye_w, float screen_w,
-    float rot_xw, float rot_yw, float rot_zw
-) {
-    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) {
-        std::cerr << "[OptiX][Menger4D] updateMenger4DProjection: instanceId "
-                  << instanceId << " out of range" << std::endl;
-        return -1;
-    }
-    auto& inst = impl->instances[instanceId];
-    if (inst.geometry_type != GEOMETRY_TYPE_MENGER4D) {
-        std::cerr << "[OptiX][Menger4D] updateMenger4DProjection: instance "
-                  << instanceId << " is not a Menger4D instance" << std::endl;
-        return -2;
-    }
-    int m4d_index = inst.geometry_data_index;
-    if (m4d_index < 0 || m4d_index >= (int)impl->menger4d_data.size()) {
-        return -3;
-    }
-    auto& m4d = impl->menger4d_data[m4d_index];
-    m4d.eye_w    = eye_w;
-    m4d.screen_w = screen_w;
-    compose_rotation_xw_yw_zw(m4d.rotation4d, rot_xw, rot_yw, rot_zw);
-    return 0;
-}
-
-int OptiXWrapper::addSierpinski4DInstance(
-    int level,
-    float x, float y, float z, float scale,
-    float eye_w, float screen_w,
-    float rot_xw, float rot_yw, float rot_zw,
-    float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular,
-    float emission, float film_thickness, float cauchy_a, float cauchy_b
-) {
-    if (impl->instances.size() >= impl->max_instances) {
-        if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Sierpinski4D] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
-            impl->max_instances_warning_shown = true;
-        }
-        return -1;
-    }
-    if (level < MIN_4D_LEVEL || level > MAX_4D_LEVEL) {
-        std::cerr << "[OptiX][Sierpinski4D] Level must be 0-14, got " << level << std::endl;
-        return -1;
-    }
-
-    OptixAabb aabb;
-    aabb.minX = x - scale; aabb.maxX = x + scale;
-    aabb.minY = y - scale; aabb.maxY = y + scale;
-    aabb.minZ = z - scale; aabb.maxZ = z + scale;
-
-    OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-    accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
-
-    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
-
-    Sierpinski4DData s4d;
-    s4d.pos[0]   = x; s4d.pos[1] = y; s4d.pos[2] = z;
-    s4d.scale    = scale;
-    s4d.eye_w    = eye_w;
-    s4d.screen_w = screen_w;
-    s4d.level    = level;
-    s4d.hit_bias = (a < 0.999f) ? 9e-4f : 0.0f;
-    compose_rotation_xw_yw_zw(s4d.rotation4d, rot_xw, rot_yw, rot_zw);
-
-    int s4d_index = static_cast<int>(impl->sierpinski4d_data.size());
-    impl->sierpinski4d_data.push_back(s4d);
-
-    Impl::GASData gas_data;
-    gas_data.handle      = result.handle;
-    gas_data.gas_buffer  = result.gas_buffer;
-    gas_data.aabb_buffer = result.aabb_buffer;
-    impl->sierpinski4d_gas_buffers.push_back(gas_data);
-
-    Impl::ObjectInstance inst;
-    inst.geometry_type = GEOMETRY_TYPE_SIERPINSKI4D;
-    inst.gas_handle    = gas_data.handle;
-
-    const float identity_transform[12] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f
-    };
-    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
-
-    inst.color[0]       = r;
-    inst.color[1]       = g;
-    inst.color[2]       = b;
-    inst.color[3]       = a;
-    inst.ior            = ior;
-    inst.roughness      = roughness;
-    inst.metallic       = metallic;
-    inst.specular       = specular;
-    inst.emission       = emission;
-    inst.film_thickness = film_thickness;
-    inst.cauchy_a = cauchy_a;
-    inst.cauchy_b = cauchy_b;
-    inst.geometry_data_index = s4d_index;
-    inst.procedural_type = 0;
-    inst.procedural_scale = 1.0f;
-    inst.normal_texture_index = -1;
-    inst.roughness_texture_index = -1;
-    inst.image_texture_index = -1;
-    inst.metallic_texture_index = -1;
-    inst.ao_texture_index = -1;
-    inst.height_texture_index = -1;
-    inst.active    = true;
-    inst.mesh_index = SIZE_MAX;
-
-    int instanceId = static_cast<int>(impl->instances.size());
-    impl->instances.push_back(inst);
-
-    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
-    impl->ias_dirty = true;
-
-    if (!impl->use_ias) {
-        impl->pipeline_built = false;
-    }
-    impl->use_ias = true;
-
-    return instanceId;
-}
-
-int OptiXWrapper::updateSierpinski4DProjection(
-    int instanceId,
-    float eye_w, float screen_w,
-    float rot_xw, float rot_yw, float rot_zw
-) {
-    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) {
-        std::cerr << "[OptiX][Sierpinski4D] updateSierpinski4DProjection: instanceId "
-                  << instanceId << " out of range" << std::endl;
-        return -1;
-    }
-    auto& inst = impl->instances[instanceId];
-    if (inst.geometry_type != GEOMETRY_TYPE_SIERPINSKI4D) {
-        std::cerr << "[OptiX][Sierpinski4D] updateSierpinski4DProjection: instance "
-                  << instanceId << " is not a Sierpinski4D instance" << std::endl;
-        return -2;
-    }
-    int s4d_index = inst.geometry_data_index;
-    if (s4d_index < 0 || s4d_index >= (int)impl->sierpinski4d_data.size()) {
-        return -3;
-    }
-    auto& s4d = impl->sierpinski4d_data[s4d_index];
-    s4d.eye_w    = eye_w;
-    s4d.screen_w = screen_w;
-    compose_rotation_xw_yw_zw(s4d.rotation4d, rot_xw, rot_yw, rot_zw);
-    return 0;
-}
-
-int OptiXWrapper::addHexadecachoron4DInstance(
-    int level,
-    float x, float y, float z, float scale,
-    float eye_w, float screen_w,
-    float rot_xw, float rot_yw, float rot_zw,
-    float r, float g, float b, float a, float ior,
-    float roughness, float metallic, float specular,
-    float emission, float film_thickness, float cauchy_a, float cauchy_b
-) {
-    if (impl->instances.size() >= impl->max_instances) {
-        if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Hexadecachoron4D] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
-            impl->max_instances_warning_shown = true;
-        }
-        return -1;
-    }
-    if (level < MIN_4D_LEVEL || level > MAX_4D_LEVEL) {
-        std::cerr << "[OptiX][Hexadecachoron4D] Level must be 0-14, got " << level << std::endl;
-        return -1;
-    }
-
-    OptixAabb aabb;
-    aabb.minX = x - scale; aabb.maxX = x + scale;
-    aabb.minY = y - scale; aabb.maxY = y + scale;
-    aabb.minZ = z - scale; aabb.maxZ = z + scale;
-
-    OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-    accel_options.operation  = OPTIX_BUILD_OPERATION_BUILD;
-
-    OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
-
-    Hexadecachoron4DData h4d;
-    h4d.pos[0]   = x; h4d.pos[1] = y; h4d.pos[2] = z;
-    h4d.scale    = scale;
-    h4d.eye_w    = eye_w;
-    h4d.screen_w = screen_w;
-    h4d.level    = level;
-    h4d.hit_bias = (a < 0.999f) ? 0.01f : 0.0f;
-    compose_rotation_xw_yw_zw(h4d.rotation4d, rot_xw, rot_yw, rot_zw);
-
-    int h4d_index = static_cast<int>(impl->hexadecachoron4d_data.size());
-    impl->hexadecachoron4d_data.push_back(h4d);
-
-    Impl::GASData gas_data;
-    gas_data.handle      = result.handle;
-    gas_data.gas_buffer  = result.gas_buffer;
-    gas_data.aabb_buffer = result.aabb_buffer;
-    impl->hexadecachoron4d_gas_buffers.push_back(gas_data);
-
-    Impl::ObjectInstance inst;
-    inst.geometry_type = GEOMETRY_TYPE_HEXADECACHORON4D;
-    inst.gas_handle    = gas_data.handle;
-
-    const float identity_transform[12] = {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f
-    };
-    std::memcpy(inst.transform, identity_transform, 12 * sizeof(float));
-
-    inst.color[0]       = r;
-    inst.color[1]       = g;
-    inst.color[2]       = b;
-    inst.color[3]       = a;
-    inst.ior            = ior;
-    inst.roughness      = roughness;
-    inst.metallic       = metallic;
-    inst.specular       = specular;
-    inst.emission       = emission;
-    inst.film_thickness = film_thickness;
-    inst.cauchy_a = cauchy_a;
-    inst.cauchy_b = cauchy_b;
-    inst.geometry_data_index = h4d_index;
-    inst.procedural_type = 0;
-    inst.procedural_scale = 1.0f;
-    inst.normal_texture_index = -1;
-    inst.roughness_texture_index = -1;
-    inst.image_texture_index = -1;
-    inst.metallic_texture_index = -1;
-    inst.ao_texture_index = -1;
-    inst.height_texture_index = -1;
-    inst.active    = true;
-    inst.mesh_index = SIZE_MAX;
-
-    int instanceId = static_cast<int>(impl->instances.size());
-    impl->instances.push_back(inst);
-
-    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
-    impl->ias_dirty = true;
-
-    if (!impl->use_ias) {
-        impl->pipeline_built = false;
-    }
-    impl->use_ias = true;
-
-    return instanceId;
-}
-
-int OptiXWrapper::updateHexadecachoron4DProjection(
-    int instanceId,
-    float eye_w, float screen_w,
-    float rot_xw, float rot_yw, float rot_zw
-) {
-    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) {
-        std::cerr << "[OptiX][Hexadecachoron4D] updateHexadecachoron4DProjection: instanceId "
-                  << instanceId << " out of range" << std::endl;
-        return -1;
-    }
-    auto& inst = impl->instances[instanceId];
-    if (inst.geometry_type != GEOMETRY_TYPE_HEXADECACHORON4D) {
-        std::cerr << "[OptiX][Hexadecachoron4D] updateHexadecachoron4DProjection: instance "
-                  << instanceId << " is not a Hexadecachoron4D instance" << std::endl;
-        return -2;
-    }
-    int h4d_index = inst.geometry_data_index;
-    if (h4d_index < 0 || h4d_index >= (int)impl->hexadecachoron4d_data.size()) {
-        return -3;
-    }
-    auto& h4d = impl->hexadecachoron4d_data[h4d_index];
-    h4d.eye_w    = eye_w;
-    h4d.screen_w = screen_w;
-    compose_rotation_xw_yw_zw(h4d.rotation4d, rot_xw, rot_yw, rot_zw);
-    return 0;
-}
-
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
+    impl->custom_geometry_blobs.clear();  // Task 1.1c
     impl->ias_dirty = true;
     impl->use_ias = false;
     impl->max_instances_warning_shown = false;
@@ -3390,14 +3090,22 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
         impl->d_instance_materials = 0;
     }
+    if (impl->d_custom_geometry_data) {  // Task 1.1c
+        cudaFree(reinterpret_cast<void*>(impl->d_custom_geometry_data));
+        impl->d_custom_geometry_data = 0;
+    }
+    impl->custom_geometry_stride = 0;
     impl->ias_handle = 0;
 
-    // Clear cylinder data
+    // Clear cylinder data. CR-2: reset last_*_count here (not only in dispose) — otherwise a
+    // clear → re-add of the same count skips the re-upload branch in render() and leaves
+    // params.*_data == nullptr with a non-zero count → illegal address in the intersection shader.
     impl->cylinder_data.clear();
     if (impl->d_cylinder_data) {
         cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
         impl->d_cylinder_data = 0;
     }
+    impl->last_cylinder_count = 0;
 
     // Clear cone data
     impl->cone_data.clear();
@@ -3405,6 +3113,7 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
         impl->d_cone_data = 0;
     }
+    impl->last_cone_count = 0;
 
     // Clear plane data
     impl->plane_data.clear();
@@ -3412,6 +3121,7 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
         impl->d_plane_data = 0;
     }
+    impl->last_plane_count = 0;
 
     // Clear curve data
     impl->curve_data.clear();
@@ -3419,20 +3129,8 @@ void OptiXWrapper::clearAllInstances() {
         cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
         impl->d_curve_data = 0;
     }
+    impl->last_curve_count = 0;
 
-    // Clear sierpinski4d data
-    impl->sierpinski4d_data.clear();
-    if (impl->d_sierpinski4d_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_sierpinski4d_data));
-        impl->d_sierpinski4d_data = 0;
-    }
-
-    // Clear hexadecachoron4d data
-    impl->hexadecachoron4d_data.clear();
-    if (impl->d_hexadecachoron4d_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_hexadecachoron4d_data));
-        impl->d_hexadecachoron4d_data = 0;
-    }
 
     // CRITICAL: Synchronize CUDA before freeing GAS buffers
     // The IAS may still have pending GPU operations referencing these buffers
@@ -3494,27 +3192,6 @@ void OptiXWrapper::clearAllInstances() {
     }
     impl->curve_gpu_buffers.clear();
 
-    // Free sierpinski4d GAS buffers
-    for (const auto& gas : impl->sierpinski4d_gas_buffers) {
-        if (gas.gas_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
-        }
-        if (gas.aabb_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
-        }
-    }
-    impl->sierpinski4d_gas_buffers.clear();
-
-    // Free hexadecachoron4d GAS buffers
-    for (const auto& gas : impl->hexadecachoron4d_gas_buffers) {
-        if (gas.gas_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
-        }
-        if (gas.aabb_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
-        }
-    }
-    impl->hexadecachoron4d_gas_buffers.clear();
 
     // Free recursive-IAS sponge sub-IAS buffers (Sprint 18.4)
     for (const auto& sub : impl->sub_ias_buffers) {
@@ -3549,9 +3226,19 @@ void OptiXWrapper::clearAllInstances() {
     }
     impl->triangle_meshes.clear();
 
-    // CRITICAL: Clear gas_registry to remove stale GAS handles
-    // The registry maps geometry types to GAS data, and after freeing the GAS buffers above,
-    // these handles are invalid. Not clearing this causes illegal memory access on rebuild.
+    // CR-5(a)/(b): free the GAS buffers the registry OWNS (the cached unit-sphere GAS + any
+    // custom-geometry GAS) before clearing it. Previously the map was cleared without freeing,
+    // and dispose()'s freeGASBuffers ran AFTER this on the already-empty map — so these buffers
+    // leaked on every scene reload and on dispose (freed on no path). cylinder/cone/plane/curve
+    // GAS live in their own vectors (freed above); only registry-keyed GAS is handled here.
+    for (auto& entry : impl->gas_registry) {
+        if (entry.second.gas_buffer) {
+            cudaFree(reinterpret_cast<void*>(entry.second.gas_buffer));
+        }
+        if (entry.second.aabb_buffer) {
+            cudaFree(reinterpret_cast<void*>(entry.second.aabb_buffer));
+        }
+    }
     impl->gas_registry.clear();
 
     // Check CUDA error state after freeing
@@ -3892,6 +3579,9 @@ void OptiXWrapper::releaseTextures() {
         cudaFree(reinterpret_cast<void*>(impl->d_texture_objects));
         impl->d_texture_objects = 0;
     }
+    // CR-2: reset the count so a re-upload of the same texture count isn't skipped against
+    // the now-freed d_texture_objects (same skip-upload null-pointer class as the geometry data).
+    impl->last_texture_count = 0;
 }
 
 void OptiXWrapper::dispose() {
@@ -3949,9 +3639,6 @@ void OptiXWrapper::dispose() {
         impl->last_cone_count = 0;
         impl->last_plane_count = 0;
         impl->last_curve_count = 0;
-        impl->last_menger4d_count = 0;
-        impl->last_sierpinski4d_count = 0;
-        impl->last_hexadecachoron4d_count = 0;
     });
 
     impl->initialized = false;

@@ -181,52 +181,21 @@ void PipelineManager::createProgramGroups() {
         module, "__closesthit__photon",
         module, "__intersection__plane");
 
-    // Menger4D hit groups (primary + shadow + photon)
-    menger4d_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__menger4d",
-        module, "__intersection__menger4d"
-    );
-    menger4d_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
-        module, "__closesthit__menger4d_shadow",
-        module, "__anyhit__menger4d_shadow",
-        module, "__intersection__menger4d"
-    );
-    photon_menger4d_hitgroup = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__photon",
-        module, "__intersection__menger4d");
-
-    // Sierpinski4D hit groups (primary + shadow + photon)
-    sierpinski4d_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__sierpinski4d",
-        module, "__intersection__sierpinski4d"
-    );
-    sierpinski4d_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
-        module, "__closesthit__sierpinski4d_shadow",
-        module, "__anyhit__sierpinski4d_shadow",
-        module, "__intersection__sierpinski4d"
-    );
-    photon_sierpinski4d_hitgroup = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__photon",
-        module, "__intersection__sierpinski4d");
-
-    // Hexadecachoron4D hit groups (primary + shadow + photon)
-    hexadecachoron4d_hitgroup_prog_group = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__hexadecachoron4d",
-        module, "__intersection__hexadecachoron4d"
-    );
-    hexadecachoron4d_shadow_hitgroup_prog_group = optix_context.createHitgroupProgramGroupWithAH(
-        module, "__closesthit__hexadecachoron4d_shadow",
-        module, "__anyhit__hexadecachoron4d_shadow",
-        module, "__intersection__hexadecachoron4d"
-    );
-    photon_hexadecachoron4d_hitgroup = optix_context.createHitgroupProgramGroup(
-        module, "__closesthit__photon",
-        module, "__intersection__hexadecachoron4d");
     // Photon miss program
     photon_miss_prog_group = optix_context.createMissProgramGroup(
         module, "__miss__photon");
 
-    // Caustics raygen programs (for Progressive Photon Mapping)
+    // Caustics raygen programs (for Progressive Photon Mapping).
+    // CR-5(c): these are bound to `module`, which buildPipeline() destroys and recreates on every
+    // geometry-dirty rebuild via cleanup(false) — which intentionally preserves these handles.
+    // Destroy any stale handles before recreating, or each rebuild overwrites 6 live program
+    // groups (leak) that also dangle on the already-destroyed module.
+    destroyProgramGroupIfExists(caustics_hitpoints_raygen);
+    destroyProgramGroupIfExists(caustics_photons_raygen);
+    destroyProgramGroupIfExists(caustics_radiance_raygen);
+    destroyProgramGroupIfExists(caustics_update_radii_raygen);
+    destroyProgramGroupIfExists(caustics_grid_count_raygen);
+    destroyProgramGroupIfExists(caustics_grid_scatter_raygen);
     caustics_hitpoints_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__hitpoints"
     );
@@ -248,9 +217,9 @@ void PipelineManager::createProgramGroups() {
 }
 
 void PipelineManager::createPipeline() {
-    // raygen(1) + miss(3) + hitgroups: 9 geometry types * 3 + caustics(6)
-    constexpr int NUM_PROGRAM_GROUPS = 37;
-    OptixProgramGroup program_groups[] = {
+    // Built-in program groups: raygen(1)+miss(3)+hitgroups(9 types*3)+caustics(6)=37.
+    // Task 1.1b appends any SPI-registered custom-geometry groups after these.
+    std::vector<OptixProgramGroup> program_groups = {
         raygen_prog_group,
         miss_prog_group,
         hitgroup_prog_group,
@@ -266,21 +235,12 @@ void PipelineManager::createPipeline() {
         curve_shadow_hitgroup_prog_group,
         plane_hitgroup_prog_group,
         plane_shadow_hitgroup_prog_group,
-        menger4d_hitgroup_prog_group,
-        menger4d_shadow_hitgroup_prog_group,
         photon_sphere_hitgroup,
         photon_triangle_hitgroup,
         photon_cylinder_hitgroup,
         photon_cone_hitgroup,
         photon_curve_hitgroup,
         photon_plane_hitgroup,
-        photon_menger4d_hitgroup,
-        sierpinski4d_hitgroup_prog_group,
-        sierpinski4d_shadow_hitgroup_prog_group,
-        photon_sierpinski4d_hitgroup,
-        hexadecachoron4d_hitgroup_prog_group,
-        hexadecachoron4d_shadow_hitgroup_prog_group,
-        photon_hexadecachoron4d_hitgroup,
         photon_miss_prog_group,
         caustics_hitpoints_raygen,
         caustics_photons_raygen,
@@ -289,6 +249,14 @@ void PipelineManager::createPipeline() {
         caustics_grid_count_raygen,
         caustics_grid_scatter_raygen
     };
+
+    // Custom-geometry SPI (Task 1.1b): append registered primitives' program
+    // groups. Empty for a pure built-in scene, so the group set is unchanged.
+    for (const auto& reg : custom_geometry_registry.registrations()) {
+        program_groups.push_back(reg.primary);
+        if (reg.shadow) program_groups.push_back(reg.shadow);
+        if (reg.photon) program_groups.push_back(reg.photon);
+    }
 
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
 
@@ -303,9 +271,58 @@ void PipelineManager::createPipeline() {
     pipeline = optix_context.createPipeline(
         pipeline_compile_options,
         pipeline_link_options,
-        program_groups,
-        NUM_PROGRAM_GROUPS
+        program_groups.data(),
+        static_cast<int>(program_groups.size())
     );
+}
+
+// Custom-geometry SPI (Task 1.1b): create an external primitive's hit programs
+// from a caller-provided module and record them under a fresh runtime type id.
+// Program groups are created immediately (the context exists post-init) and
+// linked into the pipeline by the next createPipeline(); their SBT records are
+// filled by createHitgroupRecords(). Register before the first buildPipeline().
+int PipelineManager::registerCustomGeometry(
+    OptixModule geomModule,
+    const char* isEntry, const char* chEntry,
+    const char* shadowChEntry, const char* shadowAhEntry,
+    const char* photonChEntry) {
+    OptixProgramGroup primary = optix_context.createHitgroupProgramGroup(
+        geomModule, chEntry, geomModule, isEntry);
+
+    OptixProgramGroup shadow = nullptr;
+    if (shadowChEntry && shadowAhEntry) {
+        shadow = optix_context.createHitgroupProgramGroupWithAH(
+            geomModule, shadowChEntry, geomModule, shadowAhEntry, geomModule, isEntry);
+    }
+
+    OptixProgramGroup photon = nullptr;
+    if (photonChEntry) {
+        photon = optix_context.createHitgroupProgramGroup(
+            geomModule, photonChEntry, geomModule, isEntry);
+    }
+
+    return custom_geometry_registry.registerGeometry(primary, shadow, photon);
+}
+
+int PipelineManager::registerCustomGeometryFromPTX(
+    const char* ptxBytes, size_t ptxSize,
+    const char* isEntry, const char* chEntry,
+    const char* shadowChEntry, const char* shadowAhEntry,
+    const char* photonChEntry) {
+    OptixModuleCompileOptions module_compile_options = {};
+    module_compile_options.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
+    module_compile_options.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
+    module_compile_options.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
+    // Must match the pipeline the module links into (payload/attribute counts,
+    // primitive-type flags, params name) — reuse the pipeline's own options.
+    OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
+
+    std::string ptx_content(ptxBytes, ptxSize);
+    OptixModule geomModule = optix_context.createModuleFromPTX(
+        ptx_content, module_compile_options, pipeline_compile_options);
+
+    return registerCustomGeometry(
+        geomModule, isEntry, chEntry, shadowChEntry, shadowAhEntry, photonChEntry);
 }
 
 void PipelineManager::createRaygenRecord(const SceneParameters& scene) {
@@ -357,19 +374,20 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     //             [6]=cylinder_primary, [7]=cylinder_shadow, [8]=cylinder_photon,
     //             [9]=cone_primary, [10]=cone_shadow, [11]=cone_photon,
     //             [12]=plane_primary, [13]=plane_shadow, [14]=plane_photon,
-    //             [15]=menger4d_primary, [16]=menger4d_shadow, [17]=menger4d_photon,
-    //             [18]=sierpinski4d_primary, [19]=sierpinski4d_shadow, [20]=sierpinski4d_photon,
-    //             [21]=hexadecachoron4d_primary, [22]=hexadecachoron4d_shadow,
-    //             [23]=hexadecachoron4d_photon,
+    //             [15..23]=unused gaps (former Menger4D/Sierpinski4D/Hexadecachoron4D
+    //                      types 5-7, removed in Sprint 35 Task 1.2; never dispatched),
     //             [24]=curve_primary, [25]=curve_shadow, [26]=curve_photon
     // Offset calculation: geometry_type * 3 + ray_type (0=primary, 1=shadow, 2=photon)
     constexpr size_t record_size = std::max(
         sizeof(HitGroupSbtRecord),
         sizeof(TriangleHitGroupSbtRecord)
     );
-    constexpr int num_records = GEOMETRY_TYPE_COUNT * SBTConstants::STRIDE_RAY_TYPES;
-    char hitgroup_records[num_records * record_size];
-    std::memset(hitgroup_records, 0, sizeof(hitgroup_records));
+    // Custom-geometry SPI (Task 1.1b): the SBT holds the built-in types plus any
+    // SPI-registered custom types (empty registry -> exactly GEOMETRY_TYPE_COUNT).
+    // Heap vector so the record count is a runtime value, not a compile constant.
+    const int num_records =
+        custom_geometry_registry.totalGeometryTypeCount() * SBTConstants::STRIDE_RAY_TYPES;
+    std::vector<char> hitgroup_records(static_cast<size_t>(num_records) * record_size, 0);
 
     // Sphere hitgroup records [0]=primary, [1]=shadow, [2]=photon
     const auto& sphere = scene.getSphere();
@@ -377,15 +395,15 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
     std::memcpy(sphere_data.sphere_center, sphere.center, sizeof(float) * 3);
     sphere_data.sphere_radius = sphere.radius;
 
-    HitGroupSbtRecord* sphere_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 0 * record_size);
+    HitGroupSbtRecord* sphere_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +0 * record_size);
     optixSbtRecordPackHeader(hitgroup_prog_group, sphere_primary);
     sphere_primary->data = sphere_data;
 
-    HitGroupSbtRecord* sphere_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 1 * record_size);
+    HitGroupSbtRecord* sphere_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +1 * record_size);
     optixSbtRecordPackHeader(shadow_hitgroup_prog_group, sphere_shadow);
     sphere_shadow->data = sphere_data;
 
-    HitGroupSbtRecord* sphere_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 2 * record_size);
+    HitGroupSbtRecord* sphere_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +2 * record_size);
     optixSbtRecordPackHeader(photon_sphere_hitgroup, sphere_photon);
     sphere_photon->data = sphere_data;
 
@@ -399,120 +417,104 @@ void PipelineManager::createHitgroupRecords(const SceneParameters& scene) {
         std::memcpy(tri_data.color, mesh.color, sizeof(float) * 4);
         tri_data.ior = mesh.ior;
 
-        TriangleHitGroupSbtRecord* tri_primary = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 3 * record_size);
+        TriangleHitGroupSbtRecord* tri_primary = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records.data() +3 * record_size);
         optixSbtRecordPackHeader(triangle_hitgroup_prog_group, tri_primary);
         tri_primary->data = tri_data;
 
-        TriangleHitGroupSbtRecord* tri_shadow = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 4 * record_size);
+        TriangleHitGroupSbtRecord* tri_shadow = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records.data() +4 * record_size);
         optixSbtRecordPackHeader(triangle_shadow_hitgroup_prog_group, tri_shadow);
         tri_shadow->data = tri_data;
 
-        TriangleHitGroupSbtRecord* tri_photon = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records + 5 * record_size);
+        TriangleHitGroupSbtRecord* tri_photon = reinterpret_cast<TriangleHitGroupSbtRecord*>(hitgroup_records.data() +5 * record_size);
         optixSbtRecordPackHeader(photon_triangle_hitgroup, tri_photon);
         tri_photon->data = tri_data;
     }
 
     // Cylinder hitgroup records [6]=primary, [7]=shadow, [8]=photon
     // Geometry data is per-instance in params, so SBT record just needs header
-    HitGroupSbtRecord* cylinder_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 6 * record_size);
+    HitGroupSbtRecord* cylinder_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +6 * record_size);
     optixSbtRecordPackHeader(cylinder_hitgroup_prog_group, cylinder_primary);
     cylinder_primary->data = sphere_data;  // Placeholder data (not used by cylinder shader)
 
-    HitGroupSbtRecord* cylinder_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 7 * record_size);
+    HitGroupSbtRecord* cylinder_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +7 * record_size);
     optixSbtRecordPackHeader(cylinder_shadow_hitgroup_prog_group, cylinder_shadow);
     cylinder_shadow->data = sphere_data;  // Placeholder data (not used by cylinder shader)
 
-    HitGroupSbtRecord* cylinder_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 8 * record_size);
+    HitGroupSbtRecord* cylinder_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +8 * record_size);
     optixSbtRecordPackHeader(photon_cylinder_hitgroup, cylinder_photon);
     cylinder_photon->data = sphere_data;  // Placeholder data (not used by cylinder shader)
 
     // Cone hitgroup records [9]=primary, [10]=shadow, [11]=photon
-    HitGroupSbtRecord* cone_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 9 * record_size);
+    HitGroupSbtRecord* cone_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +9 * record_size);
     optixSbtRecordPackHeader(cone_hitgroup_prog_group, cone_primary);
     cone_primary->data = sphere_data;  // Placeholder data (not used by cone shader)
 
-    HitGroupSbtRecord* cone_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 10 * record_size);
+    HitGroupSbtRecord* cone_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +10 * record_size);
     optixSbtRecordPackHeader(cone_shadow_hitgroup_prog_group, cone_shadow);
     cone_shadow->data = sphere_data;
 
-    HitGroupSbtRecord* cone_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 11 * record_size);
+    HitGroupSbtRecord* cone_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +11 * record_size);
     optixSbtRecordPackHeader(photon_cone_hitgroup, cone_photon);
     cone_photon->data = sphere_data;
 
     // Plane hitgroup records [12]=primary, [13]=shadow, [14]=photon
-    HitGroupSbtRecord* plane_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 12 * record_size);
+    HitGroupSbtRecord* plane_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +12 * record_size);
     optixSbtRecordPackHeader(plane_hitgroup_prog_group, plane_primary);
     plane_primary->data = sphere_data;  // Placeholder data (not used by plane shader)
 
-    HitGroupSbtRecord* plane_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 13 * record_size);
+    HitGroupSbtRecord* plane_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +13 * record_size);
     optixSbtRecordPackHeader(plane_shadow_hitgroup_prog_group, plane_shadow);
     plane_shadow->data = sphere_data;
 
-    HitGroupSbtRecord* plane_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 14 * record_size);
+    HitGroupSbtRecord* plane_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +14 * record_size);
     optixSbtRecordPackHeader(photon_plane_hitgroup, plane_photon);
     plane_photon->data = sphere_data;
 
-    // Menger4D hitgroup records [15]=primary, [16]=shadow, [17]=photon
-    HitGroupSbtRecord* menger4d_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 15 * record_size);
-    optixSbtRecordPackHeader(menger4d_hitgroup_prog_group, menger4d_primary);
-    menger4d_primary->data = sphere_data;  // Placeholder (not used by menger4d shader)
-
-    HitGroupSbtRecord* menger4d_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 16 * record_size);
-    optixSbtRecordPackHeader(menger4d_shadow_hitgroup_prog_group, menger4d_shadow);
-    menger4d_shadow->data = sphere_data;
-
-    HitGroupSbtRecord* menger4d_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 17 * record_size);
-    optixSbtRecordPackHeader(photon_menger4d_hitgroup, menger4d_photon);
-    menger4d_photon->data = sphere_data;
-
-    // Sierpinski4D hitgroup records [18]=primary, [19]=shadow, [20]=photon
-    HitGroupSbtRecord* sierpinski4d_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 18 * record_size);
-    optixSbtRecordPackHeader(sierpinski4d_hitgroup_prog_group, sierpinski4d_primary);
-    sierpinski4d_primary->data = sphere_data;  // Placeholder (not used by sierpinski4d shader)
-
-    HitGroupSbtRecord* sierpinski4d_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 19 * record_size);
-    optixSbtRecordPackHeader(sierpinski4d_shadow_hitgroup_prog_group, sierpinski4d_shadow);
-    sierpinski4d_shadow->data = sphere_data;
-
-    HitGroupSbtRecord* sierpinski4d_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 20 * record_size);
-    optixSbtRecordPackHeader(photon_sierpinski4d_hitgroup, sierpinski4d_photon);
-    sierpinski4d_photon->data = sphere_data;
-
-    // Hexadecachoron4D hitgroup records [21]=primary, [22]=shadow, [23]=photon
-    HitGroupSbtRecord* hexadecachoron4d_primary = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 21 * record_size);
-    optixSbtRecordPackHeader(hexadecachoron4d_hitgroup_prog_group, hexadecachoron4d_primary);
-    hexadecachoron4d_primary->data = sphere_data;  // Placeholder (not used by hexadecachoron4d shader)
-
-    HitGroupSbtRecord* hexadecachoron4d_shadow = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 22 * record_size);
-    optixSbtRecordPackHeader(hexadecachoron4d_shadow_hitgroup_prog_group, hexadecachoron4d_shadow);
-    hexadecachoron4d_shadow->data = sphere_data;
-
-    HitGroupSbtRecord* hexadecachoron4d_photon = reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 23 * record_size);
-    optixSbtRecordPackHeader(photon_hexadecachoron4d_hitgroup, hexadecachoron4d_photon);
-    hexadecachoron4d_photon->data = sphere_data;
+    // SBT slots 15-23 (former Menger4D/Sierpinski4D/Hexadecachoron4D types 5-7,
+    // removed in Sprint 35 Task 1.2) are left zero-initialised and never dispatched.
 
     // Curve hitgroup records [24]=primary, [25]=shadow, [26]=photon
     HitGroupSbtRecord* curve_primary =
-        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 24 * record_size);
+        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +24 * record_size);
     optixSbtRecordPackHeader(curve_hitgroup_prog_group, curve_primary);
     curve_primary->data = sphere_data;
 
     HitGroupSbtRecord* curve_shadow =
-        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 25 * record_size);
+        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +25 * record_size);
     optixSbtRecordPackHeader(curve_shadow_hitgroup_prog_group, curve_shadow);
     curve_shadow->data = sphere_data;
 
     HitGroupSbtRecord* curve_photon =
-        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records + 26 * record_size);
+        reinterpret_cast<HitGroupSbtRecord*>(hitgroup_records.data() +26 * record_size);
     optixSbtRecordPackHeader(photon_curve_hitgroup, curve_photon);
     curve_photon->data = sphere_data;
 
+    // Custom-geometry SPI (Task 1.1b): fill the SBT slots for each registered
+    // custom type at its runtime id (type_id * STRIDE + ray_type). shadow/photon
+    // fall back to the primary group when the registrant didn't supply them.
+    // Per-instance custom data is routed through the SBT record in Task 1.1c; for
+    // now these records carry the (shader-unused) placeholder header data.
+    for (const auto& reg : custom_geometry_registry.registrations()) {
+        const int base = reg.type_id * SBTConstants::STRIDE_RAY_TYPES;
+        OptixProgramGroup ray_groups[SBTConstants::STRIDE_RAY_TYPES] = {
+            reg.primary,
+            reg.shadow ? reg.shadow : reg.primary,
+            reg.photon ? reg.photon : reg.primary
+        };
+        for (int ray = 0; ray < SBTConstants::STRIDE_RAY_TYPES; ++ray) {
+            HitGroupSbtRecord* rec = reinterpret_cast<HitGroupSbtRecord*>(
+                hitgroup_records.data() + (base + ray) * record_size);
+            optixSbtRecordPackHeader(ray_groups[ray], rec);
+            rec->data = sphere_data;
+        }
+    }
+
     CUdeviceptr d_hitgroup_records;
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), sizeof(hitgroup_records)));
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroup_records), hitgroup_records.size()));
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<void*>(d_hitgroup_records),
-        hitgroup_records,
-        sizeof(hitgroup_records),
+        hitgroup_records.data(),
+        hitgroup_records.size(),
         cudaMemcpyHostToDevice
     ));
     sbt.hitgroupRecordBase = d_hitgroup_records;
@@ -574,15 +576,6 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(plane_hitgroup_prog_group);
     destroyProgramGroupIfExists(plane_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(photon_plane_hitgroup);
-    destroyProgramGroupIfExists(menger4d_hitgroup_prog_group);
-    destroyProgramGroupIfExists(menger4d_shadow_hitgroup_prog_group);
-    destroyProgramGroupIfExists(photon_menger4d_hitgroup);
-    destroyProgramGroupIfExists(sierpinski4d_hitgroup_prog_group);
-    destroyProgramGroupIfExists(sierpinski4d_shadow_hitgroup_prog_group);
-    destroyProgramGroupIfExists(photon_sierpinski4d_hitgroup);
-    destroyProgramGroupIfExists(hexadecachoron4d_hitgroup_prog_group);
-    destroyProgramGroupIfExists(hexadecachoron4d_shadow_hitgroup_prog_group);
-    destroyProgramGroupIfExists(photon_hexadecachoron4d_hitgroup);
     destroyProgramGroupIfExists(photon_miss_prog_group);
 
     if (includeCaustics) {
