@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Material now crosses the JNI boundary as a single packed `float[]` (see `MaterialPayload`),
+  unpacked once natively by `readMaterialPayload`, instead of ~12 positional `jfloat` arguments
+  repeated across eight `add*Instance` / `setInstanceMaterial` entries. This removes the
+  positional-mismatch hazard at the untyped JVM↔native seam and gives the Cauchy-coefficient
+  derivation one home. Public Scala API (`addSphereInstance(transform, Material)` etc.) is
+  unchanged; only the private `@native` decls and their native counterparts changed. Guarded by
+  a native sizeof/field-count test (`MaterialPayloadTest`) and a Scala layout test
+  (`MaterialPayloadSuite`). (Sprint 35 Task 3.1 / F2)
+
 ## [0.2.0] - 2026-08-01
 
 First strictly-generic release (Sprint 35 Native Seam Remediation, Phases 1-2). The

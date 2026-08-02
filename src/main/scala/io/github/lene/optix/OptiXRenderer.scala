@@ -336,8 +336,9 @@ class OptiXRenderer
       emission: Float = 0.0f, filmThickness: Float = 0.0f,
       cauchyA: Float = 0.0f, cauchyB: Float = 0.0f): Int =
     setInstanceMaterialNative(
-      instanceId, r, g, b, a, ior, roughness, metallic, specular, emission,
-      filmThickness, cauchyA, cauchyB)
+      instanceId,
+      MaterialPayload.of(r, g, b, a, ior, roughness, metallic, specular, emission,
+        filmThickness, cauchyA, cauchyB))
 
   // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
   // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
@@ -352,9 +353,7 @@ class OptiXRenderer
       typeId: Int, aabbMin: Array[Float], aabbMax: Array[Float], transform: Array[Float],
       customData: Array[Byte]): Int
   @native private def setInstanceMaterialNative(
-      instanceId: Int, r: Float, g: Float, b: Float, a: Float, ior: Float,
-      roughness: Float, metallic: Float, specular: Float, emission: Float,
-      filmThickness: Float, cauchyA: Float, cauchyB: Float): Int
+      instanceId: Int, material: Array[Float]): Int
   @native private def updateCustomGeometryInstanceDataNative(
       instanceId: Int, customData: Array[Byte]): Int
 
@@ -499,61 +498,45 @@ class OptiXRenderer
   ): Int
 
   // ---- IAS instance @native declarations (called from OptiXMeshApi / OptiXPlaneApi) ----
+  // Material crosses as a single packed float[] (see MaterialPayload) — one length-checked
+  // array per entry instead of ~12 positional floats (Sprint 35 Task 3.1 / F2).
   @native private[optix] def addSphereInstanceNative(
     transform: Array[Float],
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
+    material: Array[Float]
   ): Int
 
   @native private[optix] def addTriangleMeshInstanceNative(
     transform: Array[Float],
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    textureIndex: Int,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
+    material: Array[Float],
+    textureIndex: Int
   ): Int
 
   @native private[optix] def addCylinderInstanceNative(
     p0_x: Float, p0_y: Float, p0_z: Float,
     p1_x: Float, p1_y: Float, p1_z: Float,
     radius: Float,
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
+    material: Array[Float]
   ): Int
 
   @native private[optix] def addConeInstanceNative(
     apex_x: Float, apex_y: Float, apex_z: Float,
     base_x: Float, base_y: Float, base_z: Float,
     radius: Float,
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
+    material: Array[Float]
   ): Int
 
   @native private[optix] def addCurveInstanceNative(
     points: Array[Float],
     widths: Array[Float],
     numPoints: Int,
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
+    material: Array[Float]
   ): Int
 
   @native private[optix] def addRecursiveIASSpongeInstanceNative(
     level: Int,
     transform: Array[Float],
-    r: Float, g: Float, b: Float, a: Float,
-    ior: Float, roughness: Float, metallic: Float, specular: Float, emission: Float,
-    textureIndex: Int,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float
+    material: Array[Float],
+    textureIndex: Int
   ): Int
 
   /** Removes one IAS instance by id. Invalid ids are ignored by native code. */
@@ -574,10 +557,7 @@ class OptiXRenderer
   @native private[optix] def addPlaneInstanceNative(
     normal_x: Float, normal_y: Float, normal_z: Float,
     distance: Float,
-    r: Float, g: Float, b: Float, a: Float, ior: Float,
-    roughness: Float, metallic: Float, specular: Float, emission: Float,
-    filmThickness: Float,
-    cauchy_a: Float, cauchy_b: Float,
+    material: Array[Float],
     r2: Float, g2: Float, b2: Float,
     solidColor: Int, checkerSize: Float
   ): Int
