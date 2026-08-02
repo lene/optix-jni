@@ -218,13 +218,17 @@ class OptiXRenderer
   with OptiXPlaneApi
   with OptiXTextureApi
   with OptiXRenderApi
+  with AutoCloseable
   with LazyLogging:
 
-  // Native handle to the C++ OptiXWrapper instance (0 = not initialized)
-  // Note: Must be accessible to JNI (not private) - JNI reads/writes this field directly
-  // This var is required by the JNI handle pattern - no functional alternative exists
+  // Native handle to the C++ OptiXWrapper instance (0 = not initialized).
+  // JNI reads/writes this field by name via GetFieldID/SetLongField, which bypasses Scala
+  // access control — so `private[optix]` (CR-11) narrows write access to the package without
+  // affecting the native handle lookup. `@volatile` keeps the handle visible across threads;
+  // lifecycle transitions that swap it are serialized by `lifecycleLock`.
+  // This var is required by the JNI handle pattern - no functional alternative exists.
   @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  @volatile var nativeHandle: Long = 0L
+  @volatile private[optix] var nativeHandle: Long = 0L
 
   // Derive initialization state from nativeHandle (0 = not initialized)
   private[optix] def isInitialized: Boolean = nativeHandle != 0L
@@ -611,6 +615,12 @@ class OptiXRenderer
     setFogNative(density, r, g, b)
 
   // ---- Lifecycle ----
+  // Serializes lifecycle transitions (initialize/dispose/reinitialize) so a handle swap is
+  // atomic with respect to other lifecycle calls: no window where a concurrent caller observes
+  // or frees a half-swapped handle (CR-6). Rendering itself is thread-confined — use one
+  // renderer per thread; OptiX contexts are not safe for concurrent launches on a shared handle.
+  private val lifecycleLock = new Object
+
   /** Initializes the native OptiX wrapper if it is not already initialized.
     *
     * The method is idempotent: after a successful initialization, later calls
@@ -618,32 +628,45 @@ class OptiXRenderer
     * the initial IAS instance capacity.
     */
   def initialize(maxInstances: Int = 64): Boolean =
-    if isInitialized then
-      true  // Already initialized, return success
-    else
-      val result = initializeNative(maxInstances)
-      if !result then
-        logger.error("Failed to initialize OptiX renderer")
-      result
+    lifecycleLock.synchronized:
+      if isInitialized then
+        true  // Already initialized, return success
+      else
+        val result = initializeNative(maxInstances)
+        if !result then
+          logger.error("Failed to initialize OptiX renderer")
+        result
 
   /** Reinitializes the renderer with a new IAS instance capacity.
     *
-    * Disposes the current native handle, if one exists, and creates a new one.
-    * Use this when scene analysis determines a higher instance limit is needed.
+    * Disposes the current native handle, if one exists, and creates a new one. The
+    * dispose-then-create swap runs under [[lifecycleLock]] as one critical section, so no
+    * other lifecycle caller sees the intermediate uninitialized state. Use this when scene
+    * analysis determines a higher instance limit is needed.
     */
   def reinitialize(newMaxInstances: Int): Boolean =
-    if isInitialized then
-      dispose()
-    initialize(newMaxInstances)
+    lifecycleLock.synchronized:
+      if isInitialized then
+        disposeNative()
+      val result = initializeNative(newMaxInstances)
+      if !result then
+        logger.error("Failed to re-initialize OptiX renderer")
+      result
 
   /** Releases native resources owned by this renderer.
     *
     * The renderer can be initialized again after disposal. Calling `dispose` on
-    * an uninitialized renderer is a no-op.
+    * an uninitialized renderer is a no-op, and concurrent `dispose` calls are safe
+    * (serialized by [[lifecycleLock]]); the second sees the handle already cleared.
     */
   def dispose(): Unit =
-    if isInitialized then
-      disposeNative()
+    lifecycleLock.synchronized:
+      if isInitialized then
+        disposeNative()
+
+  /** Releases native resources; [[AutoCloseable]] alias for [[dispose]] so a renderer can be
+    * used with `scala.util.Using` or Java try-with-resources (CR-6). */
+  override def close(): Unit = dispose()
 
   /** Returns whether the native library loads and OptiX initialization succeeds. */
   def isAvailable: Boolean =

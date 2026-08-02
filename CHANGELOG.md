@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OptiXRenderer` now implements `AutoCloseable` (`close()` delegates to `dispose()`), so it can
+  be used with `scala.util.Using` or Java try-with-resources. Lifecycle transitions
+  (`initialize` / `dispose` / `reinitialize`) are serialized by a per-renderer lock, making
+  `reinitialize`'s dispose-then-create an atomic handle swap with no window where another
+  lifecycle caller sees a half-swapped handle. Renderers remain thread-confined for rendering
+  (one renderer per thread; OptiX contexts are not safe for concurrent launches on a shared
+  handle). New `ThreadedLifecycleStressSuite` drives concurrent create/render/reinitialize/close
+  across threads to catch handle races under compute-sanitizer. (Sprint 35 Tasks 3.2 / 3.5 —
+  CR-6, CR-13)
+
 ### Changed
 
+- `OptiXRenderer.nativeHandle` is now `private[optix]` (was public) — JNI still resolves it by
+  name via `GetFieldID`, so the handle lookup is unaffected while external code can no longer
+  read or overwrite it. (Sprint 35 Task 3.2 — CR-11)
 - Material now crosses the JNI boundary as a single packed `float[]` (see `MaterialPayload`),
   unpacked once natively by `readMaterialPayload`, instead of ~12 positional `jfloat` arguments
   repeated across eight `add*Instance` / `setInstanceMaterial` entries. This removes the
