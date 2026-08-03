@@ -37,7 +37,15 @@ PipelineManager::PipelineManager(OptiXContext& context)
 }
 
 PipelineManager::~PipelineManager() {
-    cleanup(true);
+    // cleanup() has no internal try/catch around its many destroy* calls; guard here so a
+    // throw escaping it cannot also escape this destructor and call std::terminate.
+    try {
+        cleanup(true);
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[PipelineManager] Cleanup error in destructor: " << e.what() << std::endl;
+    } catch (...) {
+        OPTIX_LOG(ERROR) << "[PipelineManager] Unknown cleanup error in destructor" << std::endl;
+    }
 }
 
 OptixModule PipelineManager::loadPTXModules() {

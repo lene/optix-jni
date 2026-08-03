@@ -3591,13 +3591,17 @@ void OptiXWrapper::dispose() {
     }
 
     // Isolate each cleanup step in its own try-catch so a failure in one step
-    // does not skip the remaining steps (which would leak GPU resources).
+    // does not skip the remaining steps (which would leak GPU resources). The catch-all is
+    // required, not just defensive: dispose() runs inside ~OptiXWrapper() (via disposeNative),
+    // and a non-std::exception throw escaping a destructor calls std::terminate.
     auto step = [](const char* what, const std::function<void()>& fn) {
         try {
             fn();
         } catch (const std::exception& e) {
             OPTIX_LOG(ERROR) << "[OptiX] Cleanup error during " << what << ": "
                       << e.what() << std::endl;
+        } catch (...) {
+            OPTIX_LOG(ERROR) << "[OptiX] Unknown cleanup error during " << what << std::endl;
         }
     };
 

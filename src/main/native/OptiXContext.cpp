@@ -178,12 +178,16 @@ bool OptiXContext::initialize() {
 
 void OptiXContext::destroy() {
     if (initialized_ && context_) {
+        // catch(...) is required, not just defensive: destroy() runs inside ~OptiXContext(),
+        // and a non-std::exception throw escaping a destructor calls std::terminate.
         try {
             optixDeviceContextDestroy(context_);
             context_ = nullptr;
             initialized_ = false;
         } catch (const std::exception& e) {
             OPTIX_LOG(ERROR) << "[OptiXContext] Cleanup error: " << e.what() << std::endl;
+        } catch (...) {
+            OPTIX_LOG(ERROR) << "[OptiXContext] Unknown cleanup error" << std::endl;
         }
     }
 }
