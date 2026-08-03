@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-08-03
+
+Sprint 35 Native Seam Remediation, Phase 3 (Release B). All remaining public-API changes at the
+JVM↔native seam, batched into one break: the material payload is packed (F2), the renderer
+lifecycle is `AutoCloseable` with an atomic handle swap and a package-private handle (CR-6/CR-11),
+the error surface is a typed `OptiXException` with a catch-all on every `JNIEXPORT` (F11/CR-9,
+CR-4), and native logging is env-gated (F12). Breaking: the private `@native` material signatures,
+`nativeHandle` visibility, and the native exception type all changed — consumers take one pin-bump.
 
 ### Added
 
@@ -399,6 +406,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.3.0]: https://github.com/lene/optix-jni/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/lene/optix-jni/compare/0.1.19...0.2.0
 [0.1.19]: https://github.com/lene/optix-jni/compare/0.1.18...0.1.19
 [0.1.18]: https://github.com/lene/optix-jni/compare/0.1.17...0.1.18
