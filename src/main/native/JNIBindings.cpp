@@ -54,6 +54,30 @@ static void throwException(JNIEnv* env, const char* className, const char* msg) 
     if (cls) env->ThrowNew(cls, msg);
 }
 
+// Sprint 35 F11/CR-9: native runtime failures cross into the JVM as this optix-jni-owned type
+// (io.github.lene.optix.OptiXException extends RuntimeException) instead of a bare
+// java.lang.RuntimeException, giving the application one type to translate at its boundary.
+// Argument-precondition failures stay as IllegalArgumentException (readMaterialPayload, and the
+// per-entry array-length / texture-dimension / light-count checks) — see JniErrorSurfaceSuite.
+#define OPTIX_EXCEPTION_CLASS "io/github/lene/optix/OptiXException"
+
+// Sprint 35 CR-4: every JNIEXPORT ends with a catch(...) so a non-std::exception native throw
+// (a raw OptiX/CUDA error type, or `throw 42`) can never unwind across the JNI frame into the
+// JVM as undefined behaviour. Two variants preserve each entry's existing contract: _LOG for the
+// graceful-degradation setters that log and swallow, _THROW for entries that surface failures.
+// The _RET variants add the graceful default return for non-void entries. __func__ resolves to
+// the JNIEXPORT's own name, so no per-site message string is needed.
+#define JNI_CATCH_UNKNOWN_LOG \
+    catch (...) { std::cerr << "[JNI] Unknown error in " << __func__ << std::endl; }
+#define JNI_CATCH_UNKNOWN_LOG_RET(ret) \
+    catch (...) { std::cerr << "[JNI] Unknown error in " << __func__ << std::endl; return ret; }
+#define JNI_CATCH_UNKNOWN_THROW \
+    catch (...) { throwException(env, OPTIX_EXCEPTION_CLASS, \
+        (std::string("Unknown native error in ") + __func__).c_str()); }
+#define JNI_CATCH_UNKNOWN_THROW_RET(ret) \
+    catch (...) { throwException(env, OPTIX_EXCEPTION_CLASS, \
+        (std::string("Unknown native error in ") + __func__).c_str()); return ret; }
+
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
     try {
         // Check if already initialized (defensive check - Scala layer should prevent this)
@@ -78,9 +102,10 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNat
         }
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in initializeNative: " << e.what() << std::endl;
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
         return JNI_FALSE;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(JNI_FALSE)
 }
 
 JNIEXPORT jlong JNICALL Java_io_github_lene_optix_OptiXRenderer_freeGpuMemoryBytes(
@@ -90,15 +115,16 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_OptiXRenderer_freeGpuMemoryByt
         size_t total_bytes = 0;
         cudaError_t err = cudaMemGetInfo(&free_bytes, &total_bytes);
         if (err != cudaSuccess) {
-            throwException(env, "java/lang/RuntimeException",
+            throwException(env, OPTIX_EXCEPTION_CLASS,
                 (std::string("cudaMemGetInfo failed: ") + cudaGetErrorString(err)).c_str());
             return 0;
         }
         return static_cast<jlong>(free_bytes);
     } catch (const std::exception& e) {
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
         return 0;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(0)
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphere(
@@ -112,6 +138,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphere(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setSphere: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphereColorNative(
@@ -125,6 +152,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphereColorNat
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setSphereColor: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIOR(
@@ -138,6 +166,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIOR(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setIOR: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setScale(
@@ -151,6 +180,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setScale(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setScale: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
@@ -181,6 +211,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setCamera: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_updateImageDimensions(
@@ -193,6 +224,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_updateImageDimens
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in updateImageDimensions: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLight(
@@ -208,6 +240,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLight(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setLight: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
@@ -231,7 +264,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
         // Find Light class and field IDs
         jclass lightClass = env->FindClass("io/github/lene/optix/Light");
         if (lightClass == nullptr) {
-            throwException(env, "java/lang/RuntimeException", "Failed to find Light class");
+            throwException(env, OPTIX_EXCEPTION_CLASS, "Failed to find Light class");
             return;
         }
 
@@ -249,7 +282,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
             colorField == nullptr || intensityField == nullptr ||
             shapeField == nullptr || normalField == nullptr ||
             radiusField == nullptr || samplesField == nullptr) {
-            throwException(env, "java/lang/RuntimeException", "Failed to find Light fields");
+            throwException(env, OPTIX_EXCEPTION_CLASS, "Failed to find Light fields");
             return;
         }
 
@@ -319,8 +352,9 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
     } catch (const std::invalid_argument& e) {
         throwException(env, "java/lang/IllegalArgumentException", e.what());
     } catch (const std::exception& e) {
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
     }
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setShadows(
@@ -333,6 +367,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setShadows(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setShadows: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTransparentShadowsNative(
@@ -345,6 +380,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTransparentSha
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setTransparentShadows: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setBackgroundColorNative(
@@ -357,6 +393,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setBackgroundColo
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setBackgroundColor: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setFogNative(
@@ -370,6 +407,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setFogNative(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setFog: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setEnvironmentMapNative(
@@ -382,6 +420,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setEnvironmentMap
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setEnvironmentMap: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setToneMappingNative(
@@ -394,6 +433,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setToneMappingNat
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setToneMapping: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
@@ -405,6 +445,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setIBL: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFramesNative(
@@ -416,6 +457,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFr
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setAccumulationFrames: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabledNative(
@@ -427,6 +469,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabl
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setDenoisingEnabledNative: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabledNative(
@@ -440,6 +483,7 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEn
         std::cerr << "[JNI] Error in isDenoisingEnabledNative: " << e.what() << std::endl;
         return JNI_FALSE;
     }
+    JNI_CATCH_UNKNOWN_LOG_RET(JNI_FALSE)
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralTextureNative(
@@ -452,6 +496,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralText
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setProceduralTexture: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMapTexturesNative(
@@ -466,6 +511,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMapTexturesNat
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setMapTextures: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setImageTextureNative(
@@ -478,6 +524,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setImageTextureNa
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setImageTexture: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAntialiasing(
@@ -490,6 +537,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAntialiasing(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setAntialiasing: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMaxRayDepth(
@@ -502,6 +550,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMaxRayDepth(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setMaxRayDepth: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCaustics(
@@ -515,6 +564,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCaustics(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setCaustics: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearPlanesNative(
@@ -527,6 +577,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearPlanesNative
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in clearPlanes: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneNative(
@@ -539,6 +590,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneNative(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addPlane: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColorNative(
@@ -552,6 +604,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColo
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addPlaneSolidColor: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerColorsNative(
@@ -565,6 +618,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerCo
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addPlaneCheckerColors: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColorWithMaterialNative(
@@ -582,6 +636,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColo
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addPlaneSolidColorWithMaterial: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerColorsWithMaterialNative(
@@ -600,6 +655,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerCo
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addPlaneCheckerColorsWithMaterial: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 /**
@@ -660,7 +716,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
         if (vertexArr == nullptr || indexArr == nullptr) {
             if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
             if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
-            throwException(env, "java/lang/RuntimeException", "Failed to get array elements");
+            throwException(env, OPTIX_EXCEPTION_CLASS, "Failed to get array elements");
             return;
         }
 
@@ -683,7 +739,12 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
         std::cerr << "[JNI] Error in setTriangleMesh: " << e.what() << std::endl;
         if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
         if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
+    } catch (...) {  // CR-4: same array cleanup for a non-std::exception native throw
+        if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
+        if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
+        throwException(env, OPTIX_EXCEPTION_CLASS,
+            (std::string("Unknown native error in ") + __func__).c_str());
     }
 }
 
@@ -749,7 +810,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshN
         jfloat* quadsArr = env->GetFloatArrayElements(facesData, nullptr);
         if (quadsArr == nullptr) {
             if (uvsArr != nullptr) env->ReleaseFloatArrayElements(uvs, uvsArr, JNI_ABORT);
-            throwException(env, "java/lang/RuntimeException", "Failed to get facesData array elements");
+            throwException(env, OPTIX_EXCEPTION_CLASS, "Failed to get facesData array elements");
             return -1;
         }
 
@@ -770,9 +831,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshN
         return meshIndex;
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setProjectedMesh: " << e.what() << std::endl;
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -799,9 +861,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateMesh4DProje
         );
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in updateMesh4DProjection: " << e.what() << std::endl;
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -834,9 +897,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCpuTriangle
         return static_cast<jint>(rc);
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in updateCpuTriangleMesh: " << e.what() << std::endl;
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -852,6 +916,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshCo
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setTriangleMeshColor: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 /**
@@ -867,6 +932,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshIO
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setTriangleMeshIOR: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 /**
@@ -882,6 +948,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearTriangleMesh
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in clearTriangleMesh: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 /**
@@ -899,6 +966,7 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_hasTriangleMe
         std::cerr << "[JNI] Error in hasTriangleMesh: " << e.what() << std::endl;
         return JNI_FALSE;
     }
+    JNI_CATCH_UNKNOWN_LOG_RET(JNI_FALSE)
 }
 
 JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStats(
@@ -976,9 +1044,10 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
         // Propagate as a Java exception instead of swallowing to a silent null — the swallow
         // here is what made the render-path failures (July MultiObjectCaustics crashes)
         // undiagnosable from the JVM side.
-        throwException(env, "java/lang/RuntimeException", e.what());
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
         return nullptr;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(nullptr)
 }
 
 /**
@@ -1054,6 +1123,7 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsSta
         std::cerr << "[JNI] Error in getCausticsStats: " << e.what() << std::endl;
         return nullptr;
     }
+    JNI_CATCH_UNKNOWN_LOG_RET(nullptr)
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_disposeNative(JNIEnv* env, jobject obj) {
@@ -1067,6 +1137,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_disposeNative(JNI
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in dispose: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 //==============================================================================
@@ -1098,7 +1169,7 @@ static bool readMaterialPayload(JNIEnv* env, jfloatArray material, MaterialPaylo
     }
     jfloat* m = env->GetFloatArrayElements(material, nullptr);
     if (m == nullptr) {
-        env->ThrowNew(env->FindClass("java/lang/RuntimeException"),
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS),
             "Failed to get material array elements");
         return false;
     }
@@ -1134,7 +1205,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstance
 
         jfloat* transformArr = env->GetFloatArrayElements(transform, nullptr);
         if (transformArr == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get transform array elements");
             return -1;
         }
@@ -1151,10 +1222,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstance
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addSphereInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 // Custom-geometry SPI (Task 1.1d): register an external primitive from PTX bytes.
@@ -1170,7 +1242,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_registerCustomGeo
         jsize ptxLen = env->GetArrayLength(ptxBytes);
         jbyte* ptxArr = env->GetByteArrayElements(ptxBytes, nullptr);
         if (ptxArr == nullptr) {
-            env->ThrowNew(env->FindClass("java/lang/RuntimeException"), "Failed to get PTX bytes");
+            env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), "Failed to get PTX bytes");
             return -1;
         }
 
@@ -1194,9 +1266,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_registerCustomGeo
         return typeId;
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in registerCustomGeometry: " << e.what() << std::endl;
-        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 // Custom-geometry SPI (Task 1.1d): add an IAS instance of a registered custom type.
@@ -1230,9 +1303,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCustomGeometry
         return instanceId;
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addCustomGeometryInstance: " << e.what() << std::endl;
-        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceMaterialNative(
@@ -1251,9 +1325,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceMateri
             mat.film_thickness, mat.cauchy_a, mat.cauchy_b);
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setInstanceMaterial: " << e.what() << std::endl;
-        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCustomGeometryInstanceDataNative(
@@ -1275,9 +1350,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCustomGeome
         return rc;
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in updateCustomGeometryInstanceData: " << e.what() << std::endl;
-        env->ThrowNew(env->FindClass("java/lang/RuntimeException"), e.what());
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -1311,7 +1387,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addTriangleMeshIn
 
         jfloat* transformArr = env->GetFloatArrayElements(transform, nullptr);
         if (transformArr == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get transform array elements");
             return -1;
         }
@@ -1328,10 +1404,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addTriangleMeshIn
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addTriangleMeshInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -1367,7 +1444,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addRecursiveIASSp
 
         jfloat* transformArr = env->GetFloatArrayElements(transform, nullptr);
         if (transformArr == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get transform array elements");
             return -1;
         }
@@ -1383,10 +1460,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addRecursiveIASSp
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addRecursiveIASSpongeInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -1432,10 +1510,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCylinderInstan
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addCylinderInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addConeInstanceNative(
@@ -1468,10 +1547,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addConeInstanceNa
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addConeInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCurveInstanceNative(
@@ -1502,7 +1582,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCurveInstanceN
 
         jfloat* pointArr = env->GetFloatArrayElements(points, nullptr);
         if (pointArr == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get curve points array elements");
             return -1;
         }
@@ -1510,7 +1590,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCurveInstanceN
         jfloat* widthArr = env->GetFloatArrayElements(widths, nullptr);
         if (widthArr == nullptr) {
             env->ReleaseFloatArrayElements(points, pointArr, JNI_ABORT);
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get curve widths array elements");
             return -1;
         }
@@ -1538,10 +1618,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCurveInstanceN
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addCurveInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -1580,10 +1661,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneInstanceN
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in addPlaneInstance: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -1599,6 +1681,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_removeInstance(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in removeInstance: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 /**
@@ -1614,6 +1697,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstances
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in clearAllInstances: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 /**
@@ -1631,6 +1715,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanceCount(
         std::cerr << "[JNI] Error in getInstanceCount: " << e.what() << std::endl;
         return 0;
     }
+    JNI_CATCH_UNKNOWN_LOG_RET(0)
 }
 
 /**
@@ -1648,6 +1733,7 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isIASMode(
         std::cerr << "[JNI] Error in isIASMode: " << e.what() << std::endl;
         return JNI_FALSE;
     }
+    JNI_CATCH_UNKNOWN_LOG_RET(JNI_FALSE)
 }
 
 /**
@@ -1663,6 +1749,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIASMode(
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in setIASMode: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 //==============================================================================
@@ -1707,7 +1794,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureNati
         // Get texture name
         const char* name_str = env->GetStringUTFChars(name, nullptr);
         if (name_str == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get texture name");
             return -1;
         }
@@ -1716,7 +1803,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureNati
         jbyte* data = env->GetByteArrayElements(imageData, nullptr);
         if (data == nullptr) {
             env->ReleaseStringUTFChars(name, name_str);
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get image data");
             return -1;
         }
@@ -1735,10 +1822,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureNati
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in uploadTexture: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -1782,7 +1870,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateTextureNati
 
         jbyte* data = env->GetByteArrayElements(imageData, nullptr);
         if (data == nullptr) {
-            jclass exception_class = env->FindClass("java/lang/RuntimeException");
+            jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
             env->ThrowNew(exception_class, "Failed to get image data");
             return -1;
         }
@@ -1800,10 +1888,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateTextureNati
 
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in updateTexture: " << e.what() << std::endl;
-        jclass exception_class = env->FindClass("java/lang/RuntimeException");
+        jclass exception_class = env->FindClass(OPTIX_EXCEPTION_CLASS);
         env->ThrowNew(exception_class, e.what());
         return -1;
     }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -1828,6 +1917,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureFrom
         std::cerr << "[JNI] Error in uploadTextureFromFile: " << e.what() << std::endl;
         return -1;
     }
+    JNI_CATCH_UNKNOWN_LOG_RET(-1)
 }
 
 /**
@@ -1843,6 +1933,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_releaseTexturesNa
     } catch (const std::exception& e) {
         std::cerr << "[JNI] Error in releaseTextures: " << e.what() << std::endl;
     }
+    JNI_CATCH_UNKNOWN_LOG
 }
 
 } // extern "C"

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `OptiXException` (extends `RuntimeException`): the optix-jni-owned type that native runtime
+  failures now surface as, giving the application a single type to translate at its boundary.
+  Argument-precondition violations deliberately stay `IllegalArgumentException`. A source-scanning
+  fitness function (`JniErrorSurfaceSuite`) asserts the split holds. (Sprint 35 Task 3.3 —
+  F11 / CR-9)
 - `OptiXRenderer` now implements `AutoCloseable` (`close()` delegates to `dispose()`), so it can
   be used with `scala.util.Using` or Java try-with-resources. Lifecycle transitions
   (`initialize` / `dispose` / `reinitialize`) are serialized by a per-renderer lock, making
@@ -21,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Native runtime failures now cross into the JVM as `OptiXException` instead of a bare
+  `java.lang.RuntimeException`, and every one of the 63 `JNIEXPORT` bodies now ends with a
+  catch-all (`catch (...)` via `JNI_CATCH_UNKNOWN_*` macros) — previously a non-`std::exception`
+  native throw (a raw OptiX/CUDA error type) could unwind across the JNI frame into the JVM as
+  undefined behaviour. Each catch-all preserves its entry's existing contract (graceful
+  degradation setters still log-and-swallow; failing operations still surface the error).
+  `JniErrorSurfaceSuite` guards both invariants. (Sprint 35 Task 3.3 — F11 / CR-9, CR-4)
 - `OptiXRenderer.nativeHandle` is now `private[optix]` (was public) — JNI still resolves it by
   name via `GetFieldID`, so the handle lookup is unaffected while external code can no longer
   read or overwrite it. (Sprint 35 Task 3.2 — CR-11)
