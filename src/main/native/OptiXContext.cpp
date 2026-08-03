@@ -4,6 +4,7 @@
 #include "include/OptiXErrorChecking.h"
 
 #include <iostream>
+#include "include/OptixLogging.h"
 #include <sstream>
 #include <fstream>
 #include <memory>
@@ -48,11 +49,11 @@ bool OptiXContext::clearCache(const std::string& cache_path) {
     try {
         if (std::filesystem::exists(cache_path)) {
             std::filesystem::remove_all(cache_path);
-            std::cerr << "[OptiXContext] Cleared cache: " << cache_path << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiXContext] Cleared cache: " << cache_path << std::endl;
         }
         return true;
     } catch (const std::filesystem::filesystem_error& e) {
-        std::cerr << "[OptiXContext] Failed to clear cache: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXContext] Failed to clear cache: " << e.what() << std::endl;
         return false;
     }
 }
@@ -63,7 +64,7 @@ bool OptiXContext::clearCache() {
 
 // OptiX log callback - detects cache corruption for auto-recovery
 static void optixLogCallback(unsigned int level, const char* tag, const char* message, void* /*cbdata*/) {
-    std::cerr << "[OptiX][" << level << "]["
+    OPTIX_LOG(ERROR) << "[OptiX][" << level << "]["
               << (tag     ? tag     : "") << "]: "
               << (message ? message : "") << std::endl;
 
@@ -90,7 +91,13 @@ OptiXContext::OptiXContext() : context_(nullptr), initialized_(false) {
 }
 
 OptiXContext::~OptiXContext() {
-    destroy();
+    // destroy() already catches everything internally; this direct wrap is defense-in-depth
+    // so a destructor-throw can never happen even if that changes.
+    try {
+        destroy();
+    } catch (...) {
+        OPTIX_LOG(ERROR) << "[OptiXContext] Unknown error in destructor" << std::endl;
+    }
 }
 
 bool OptiXContext::initialize() {
@@ -105,7 +112,7 @@ bool OptiXContext::initialize() {
         if (cu_result != CUDA_SUCCESS) {
             const char* err_str = nullptr;
             cuGetErrorString(cu_result, &err_str);
-            std::cerr << "[OptiXContext] cuInit failed: "
+            OPTIX_LOG(ERROR) << "[OptiXContext] cuInit failed: "
                       << (err_str ? err_str : "unknown") << std::endl;
             return false;
         }
@@ -113,7 +120,7 @@ bool OptiXContext::initialize() {
         CUdevice cu_device = 0;
         cu_result = cuDeviceGet(&cu_device, 0);
         if (cu_result != CUDA_SUCCESS) {
-            std::cerr << "[OptiXContext] cuDeviceGet failed" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiXContext] cuDeviceGet failed" << std::endl;
             return false;
         }
 
@@ -122,13 +129,13 @@ bool OptiXContext::initialize() {
         CUcontext cu_ctx = nullptr;
         cu_result = cuDevicePrimaryCtxRetain(&cu_ctx, cu_device);
         if (cu_result != CUDA_SUCCESS || cu_ctx == nullptr) {
-            std::cerr << "[OptiXContext] cuDevicePrimaryCtxRetain failed" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiXContext] cuDevicePrimaryCtxRetain failed" << std::endl;
             return false;
         }
 
         cu_result = cuCtxSetCurrent(cu_ctx);
         if (cu_result != CUDA_SUCCESS) {
-            std::cerr << "[OptiXContext] cuCtxSetCurrent failed" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiXContext] cuCtxSetCurrent failed" << std::endl;
             return false;
         }
 
@@ -152,7 +159,7 @@ bool OptiXContext::initialize() {
         // For OptiX 9.0, use MENGER_OPTIX_DEBUG_LEVEL instead.
         const char* validation_env = std::getenv("MENGER_OPTIX_VALIDATION");
         if (validation_env != nullptr && std::string(validation_env) == "1") {
-            std::cout << "[OptiX] Validation mode requested but not available in OptiX 9.0. "
+            OPTIX_LOG(INFO) << "[OptiX] Validation mode requested but not available in OptiX 9.0. "
                       << "Use MENGER_OPTIX_DEBUG_LEVEL=1 instead." << std::endl;
         }
 
@@ -170,19 +177,23 @@ bool OptiXContext::initialize() {
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXContext] Initialization failed: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXContext] Initialization failed: " << e.what() << std::endl;
         return false;
     }
 }
 
 void OptiXContext::destroy() {
     if (initialized_ && context_) {
+        // catch(...) is required, not just defensive: destroy() runs inside ~OptiXContext(),
+        // and a non-std::exception throw escaping a destructor calls std::terminate.
         try {
             optixDeviceContextDestroy(context_);
             context_ = nullptr;
             initialized_ = false;
         } catch (const std::exception& e) {
-            std::cerr << "[OptiXContext] Cleanup error: " << e.what() << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiXContext] Cleanup error: " << e.what() << std::endl;
+        } catch (...) {
+            OPTIX_LOG(ERROR) << "[OptiXContext] Unknown cleanup error" << std::endl;
         }
     }
 }

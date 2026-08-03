@@ -189,6 +189,14 @@ jobs:
       - name: Run doc completeness check
         run: bash scripts/check-doc-completeness.sh
 
+  native-logging:
+    name: Native logging gate (F12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check no raw logging in production native
+        run: bash scripts/check-native-logging.sh
+
   # ── test ───────────────────────────────────────────────────────────────────
 
   scala-tests:

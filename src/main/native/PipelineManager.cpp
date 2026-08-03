@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstring>
 #include <iostream>
+#include "include/OptixLogging.h"
 #include <optix_stubs.h>
 
 // Helper to create default pipeline compile options
@@ -36,7 +37,15 @@ PipelineManager::PipelineManager(OptiXContext& context)
 }
 
 PipelineManager::~PipelineManager() {
-    cleanup(true);
+    // cleanup() has no internal try/catch around its many destroy* calls; guard here so a
+    // throw escaping it cannot also escape this destructor and call std::terminate.
+    try {
+        cleanup(true);
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[PipelineManager] Cleanup error in destructor: " << e.what() << std::endl;
+    } catch (...) {
+        OPTIX_LOG(ERROR) << "[PipelineManager] Unknown cleanup error in destructor" << std::endl;
+    }
 }
 
 OptixModule PipelineManager::loadPTXModules() {
@@ -638,13 +647,13 @@ void PipelineManager::cleanup(bool includeCaustics) {
     // Synchronize CUDA to ensure all operations are complete
     cudaError_t sync_err = cudaDeviceSynchronize();
     if (sync_err != cudaSuccess) {
-        std::cerr << "[PipelineManager::cleanup] CUDA synchronization error: " << cudaGetErrorString(sync_err) << std::endl;
+        OPTIX_LOG(ERROR) << "[PipelineManager::cleanup] CUDA synchronization error: " << cudaGetErrorString(sync_err) << std::endl;
     }
 
     // Clear any pending CUDA errors
     cudaError_t final_err = cudaGetLastError();
     if (final_err != cudaSuccess) {
-        std::cerr << "[PipelineManager::cleanup] CUDA error after synchronization: " << cudaGetErrorString(final_err) << std::endl;
+        OPTIX_LOG(ERROR) << "[PipelineManager::cleanup] CUDA error after synchronization: " << cudaGetErrorString(final_err) << std::endl;
     }
 }
 

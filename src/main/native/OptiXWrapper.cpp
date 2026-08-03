@@ -13,6 +13,7 @@
 #include "include/OptiXErrorChecking.h"
 #include "include/VectorMath.h"
 #include <iostream>
+#include "include/OptixLogging.h"
 #include <cstring>
 #include <algorithm>
 #include <cmath>
@@ -213,7 +214,13 @@ OptiXWrapper::OptiXWrapper() : impl(std::make_unique<Impl>()) {
 }
 
 OptiXWrapper::~OptiXWrapper() {
-    dispose();
+    // dispose()'s per-step isolation already catches everything internally; this direct wrap
+    // is defense-in-depth so a destructor-throw can never happen even if that changes.
+    try {
+        dispose();
+    } catch (...) {
+        OPTIX_LOG(ERROR) << "[OptiXWrapper] Unknown error in destructor" << std::endl;
+    }
 }
 
 bool OptiXWrapper::initialize(unsigned int maxInstances) {
@@ -224,7 +231,7 @@ bool OptiXWrapper::initialize(unsigned int maxInstances) {
 
         bool success = impl->optix_context.initialize();
         if (!success) {
-            std::cerr << "[OptiX] OptiXContext initialization failed" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiX] OptiXContext initialization failed" << std::endl;
             return false;
         }
 
@@ -234,7 +241,7 @@ bool OptiXWrapper::initialize(unsigned int maxInstances) {
             impl->ser_supported = (props.major >= 9) ||
                                   (props.major == 8 && props.minor >= 9);
         } else {
-            std::cerr << "[OptiX] Warning: cudaGetDeviceProperties failed — "
+            OPTIX_LOG(ERROR) << "[OptiX] Warning: cudaGetDeviceProperties failed — "
                       << "SER support cannot be determined, assuming unsupported." << std::endl;
         }
 
@@ -242,7 +249,7 @@ bool OptiXWrapper::initialize(unsigned int maxInstances) {
         return true;
 
     } catch (const std::exception& e) {
-        std::cerr << "[OptiX] Initialization failed: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Initialization failed: " << e.what() << std::endl;
         return false;
     }
 }
@@ -569,13 +576,13 @@ int OptiXWrapper::setProjectedMesh(
     float center_x, float center_y, float center_z
 ) {
     if (num_faces <= 0) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] setProjectedMesh: num_faces must be > 0"
             << std::endl;
         return -1;
     }
     if (verts_per_face < 3) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] setProjectedMesh: verts_per_face must be >= 3"
             << std::endl;
         return -1;
@@ -592,7 +599,7 @@ int OptiXWrapper::setProjectedMesh(
         faces_4d_bytes
     );
     if (err != cudaSuccess) {
-        std::cerr << "[OptiX] cudaMalloc failed for faces_4d: "
+        OPTIX_LOG(ERROR) << "[OptiX] cudaMalloc failed for faces_4d: "
                   << cudaGetErrorString(err) << std::endl;
         return -1;
     }
@@ -601,7 +608,7 @@ int OptiXWrapper::setProjectedMesh(
         faces4d, faces_4d_bytes, cudaMemcpyHostToDevice
     );
     if (err != cudaSuccess) {
-        std::cerr << "[OptiX] cudaMemcpy failed for faces_4d: "
+        OPTIX_LOG(ERROR) << "[OptiX] cudaMemcpy failed for faces_4d: "
                   << cudaGetErrorString(err) << std::endl;
         cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
         return -1;
@@ -616,7 +623,7 @@ int OptiXWrapper::setProjectedMesh(
             uv_bytes
         );
         if (err != cudaSuccess) {
-            std::cerr << "[OptiX] cudaMalloc failed for uvs: "
+            OPTIX_LOG(ERROR) << "[OptiX] cudaMalloc failed for uvs: "
                       << cudaGetErrorString(err) << std::endl;
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
             return -1;
@@ -626,7 +633,7 @@ int OptiXWrapper::setProjectedMesh(
             uvs_or_null, uv_bytes, cudaMemcpyHostToDevice
         );
         if (err != cudaSuccess) {
-            std::cerr << "[OptiX] cudaMemcpy failed for uvs: "
+            OPTIX_LOG(ERROR) << "[OptiX] cudaMemcpy failed for uvs: "
                       << cudaGetErrorString(err) << std::endl;
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
@@ -649,7 +656,7 @@ int OptiXWrapper::setProjectedMesh(
         reinterpret_cast<void**>(&mesh_entry.d_vertices), vertex_bytes
     );
     if (err != cudaSuccess) {
-        std::cerr << "[OptiX] cudaMalloc failed for d_vertices: "
+        OPTIX_LOG(ERROR) << "[OptiX] cudaMalloc failed for d_vertices: "
                   << cudaGetErrorString(err) << std::endl;
         if (mesh_entry.projection4d.d_uvs)
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
@@ -660,7 +667,7 @@ int OptiXWrapper::setProjectedMesh(
         reinterpret_cast<void**>(&mesh_entry.d_indices), index_bytes
     );
     if (err != cudaSuccess) {
-        std::cerr << "[OptiX] cudaMalloc failed for d_indices: "
+        OPTIX_LOG(ERROR) << "[OptiX] cudaMalloc failed for d_indices: "
                   << cudaGetErrorString(err) << std::endl;
         cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
         if (mesh_entry.projection4d.d_uvs)
@@ -695,7 +702,7 @@ int OptiXWrapper::setProjectedMesh(
         /*stream=*/0
     );
     if (err != cudaSuccess) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] project4d kernel launch failed: "
             << cudaGetErrorString(err) << std::endl;
         cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
@@ -706,7 +713,7 @@ int OptiXWrapper::setProjectedMesh(
         return -1;
     }
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
-        std::cerr << "[OptiX] cudaDeviceSynchronize failed after project4d kernel launch: "
+        OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel launch: "
                   << cudaGetErrorString(syncErr) << std::endl;
         cudaGetLastError();  // clear sticky error so later launches are not poisoned
     }
@@ -761,7 +768,7 @@ int OptiXWrapper::updateMesh4DProjection(
 ) {
     if (mesh_index < 0
         || static_cast<size_t>(mesh_index) >= impl->triangle_meshes.size()) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] updateMesh4DProjection: mesh_index "
             << mesh_index << " out of range (have "
             << impl->triangle_meshes.size() << " meshes)" << std::endl;
@@ -769,7 +776,7 @@ int OptiXWrapper::updateMesh4DProjection(
     }
     auto& mesh = impl->triangle_meshes[mesh_index];
     if (mesh.projection4d.face_count == 0) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] updateMesh4DProjection: mesh_index "
             << mesh_index
             << " was not uploaded via setTriangleMesh4DQuads" << std::endl;
@@ -800,13 +807,13 @@ int OptiXWrapper::updateMesh4DProjection(
         /*stream=*/0
     );
     if (err != cudaSuccess) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] project4d kernel relaunch failed: "
             << cudaGetErrorString(err) << std::endl;
         return -3;
     }
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
-        std::cerr << "[OptiX] cudaDeviceSynchronize failed after project4d kernel relaunch: "
+        OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel relaunch: "
                   << cudaGetErrorString(syncErr) << std::endl;
         cudaGetLastError();  // clear sticky error so later launches are not poisoned
     }
@@ -933,7 +940,7 @@ int OptiXWrapper::updateCpuTriangleMesh(
 ) {
     if (mesh_index < 0
         || static_cast<size_t>(mesh_index) >= impl->triangle_meshes.size()) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] updateCpuTriangleMesh: mesh_index "
             << mesh_index << " out of range (have "
             << impl->triangle_meshes.size() << " meshes)" << std::endl;
@@ -941,7 +948,7 @@ int OptiXWrapper::updateCpuTriangleMesh(
     }
     auto& mesh = impl->triangle_meshes[mesh_index];
     if (mesh.projection4d.face_count > 0) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] updateCpuTriangleMesh: mesh_index "
             << mesh_index
             << " is a GPU-projected 4D mesh; use updateMesh4DProjection instead"
@@ -1086,7 +1093,7 @@ void OptiXWrapper::buildGeometryAccelerationStructure() {
 
 void OptiXWrapper::buildTriangleMeshGAS(size_t mesh_index) {
     if (mesh_index >= impl->triangle_meshes.size()) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] buildTriangleMeshGAS: invalid index "
             << mesh_index << " (have "
             << impl->triangle_meshes.size() << " meshes)"
@@ -1418,7 +1425,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                     true
                 );
             } catch (const std::exception& guided_error) {
-                std::cerr << "[OptiX] Guided denoiser unavailable: "
+                OPTIX_LOG(ERROR) << "[OptiX] Guided denoiser unavailable: "
                           << guided_error.what() << std::endl;
                 try {
                     impl->denoiser_manager = std::make_unique<DenoiserManager>(
@@ -1427,7 +1434,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                         false
                     );
                 } catch (const std::exception& color_error) {
-                    std::cerr << "[OptiX] Color-only denoiser unavailable: "
+                    OPTIX_LOG(ERROR) << "[OptiX] Color-only denoiser unavailable: "
                               << color_error.what() << std::endl;
                 }
             }
@@ -1824,7 +1831,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         if (const char* rEnv = std::getenv("MENGER_CAUSTICS_RADIUS")) {
             const float rOverride = static_cast<float>(std::atof(rEnv));
             if (rOverride > 0.0f) params.caustics.initial_radius = rOverride;
-            std::cerr << "[caustics-calib] target_radius="
+            OPTIX_LOG(ERROR) << "[caustics-calib] target_radius="
                       << params.caustics.caustic_target_radius
                       << " initial_radius=" << params.caustics.initial_radius << std::endl;
         }
@@ -1990,7 +1997,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         // red frame with (previously uninitialized) stats — that is what made the July
         // MultiObjectCaustics crashes look like success. render() already throws on the
         // not-initialized path, so callers already handle a throw here.
-        std::cerr << "[OptiX] Render failed: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Render failed: " << e.what() << std::endl;
         throw;
     }
 }
@@ -2018,7 +2025,7 @@ int OptiXWrapper::addSphereInstance(
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Sphere] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiX][Sphere] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
             impl->max_instances_warning_shown = true;
         }
         return -1;
@@ -2226,7 +2233,7 @@ int OptiXWrapper::addTriangleMeshInstance(
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
-            std::cerr
+            OPTIX_LOG(ERROR)
                 << "[OptiX][TriangleMesh] Maximum instances ("
                 << impl->max_instances << ") reached"
                 << std::endl;
@@ -2236,7 +2243,7 @@ int OptiXWrapper::addTriangleMeshInstance(
     }
 
     if (impl->triangle_meshes.empty()) {
-        std::cerr
+        OPTIX_LOG(ERROR)
             << "[OptiX] Cannot add triangle mesh instance:"
             << " no mesh set"
             << " (call setTriangleMesh first)" << std::endl;
@@ -2340,7 +2347,7 @@ OptixTraversableHandle OptiXWrapper::buildSubIAS(
     unsigned int inherited_instance_id) {
 
     if (child_handle == 0 || num_transforms == 0) {
-        std::cerr << "[OptiX] buildSubIAS: invalid input (child=" << child_handle
+        OPTIX_LOG(ERROR) << "[OptiX] buildSubIAS: invalid input (child=" << child_handle
                   << ", num=" << num_transforms << ")" << std::endl;
         return 0;
     }
@@ -2411,22 +2418,22 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     int textureIndex, float film_thickness, float cauchy_a, float cauchy_b) {
 
     if (level < 1) {
-        std::cerr << "[OptiX][RecSponge] level must be >= 1 (got " << level << ")" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX][RecSponge] level must be >= 1 (got " << level << ")" << std::endl;
         return -1;
     }
     if (level > MAX_RECURSIVE_IAS_LEVEL) {
-        std::cerr << "[OptiX][RecSponge] level " << level << " exceeds max "
+        OPTIX_LOG(ERROR) << "[OptiX][RecSponge] level " << level << " exceeds max "
                   << MAX_RECURSIVE_IAS_LEVEL << " (constrained by MAX_TRAVERSABLE_GRAPH_DEPTH)"
                   << std::endl;
         return -1;
     }
     if (impl->instances.size() >= impl->max_instances) {
-        std::cerr << "[OptiX][RecSponge] Maximum instances ("
+        OPTIX_LOG(ERROR) << "[OptiX][RecSponge] Maximum instances ("
                   << impl->max_instances << ") reached" << std::endl;
         return -1;
     }
     if (impl->triangle_meshes.empty()) {
-        std::cerr << "[OptiX][RecSponge] No leaf mesh — call setTriangleMesh(unit cube) first"
+        OPTIX_LOG(ERROR) << "[OptiX][RecSponge] No leaf mesh — call setTriangleMesh(unit cube) first"
                   << std::endl;
         return -1;
     }
@@ -2448,7 +2455,7 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
         buildTriangleMeshGAS(mesh_index);
     }
     if (mesh.gas_handle == 0) {
-        std::cerr << "[OptiX][RecSponge] Leaf mesh GAS build failed" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX][RecSponge] Leaf mesh GAS build failed" << std::endl;
         return -1;
     }
 
@@ -2458,7 +2465,7 @@ int OptiXWrapper::addRecursiveIASSpongeInstance(
     for (int i = 0; i < level; ++i) {
         handle = buildSubIAS(handle, generators, MENGER_GENERATOR_COUNT, predicted_instance_id);
         if (handle == 0) {
-            std::cerr << "[OptiX][RecSponge] buildSubIAS failed at recursion " << (i + 1)
+            OPTIX_LOG(ERROR) << "[OptiX][RecSponge] buildSubIAS failed at recursion " << (i + 1)
                       << std::endl;
             return -1;
         }
@@ -2511,7 +2518,7 @@ int OptiXWrapper::addCylinderInstance(
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Cylinder] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiX][Cylinder] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
             impl->max_instances_warning_shown = true;
         }
         return -1;
@@ -2538,7 +2545,7 @@ int OptiXWrapper::addCylinderInstance(
     if (!std::isfinite(aabb.minX) || !std::isfinite(aabb.minY) || !std::isfinite(aabb.minZ) ||
         !std::isfinite(aabb.maxX) || !std::isfinite(aabb.maxY) || !std::isfinite(aabb.maxZ) ||
         aabb.minX > aabb.maxX || aabb.minY > aabb.maxY || aabb.minZ > aabb.maxZ) {
-        std::cerr << "[OptiX][Cylinder] Invalid AABB: "
+        OPTIX_LOG(ERROR) << "[OptiX][Cylinder] Invalid AABB: "
                   << "min=(" << aabb.minX << "," << aabb.minY << "," << aabb.minZ << "), "
                   << "max=(" << aabb.maxX << "," << aabb.maxY << "," << aabb.maxZ << ")" << std::endl;
         return -1;
@@ -2557,7 +2564,7 @@ int OptiXWrapper::addCylinderInstance(
     if (!std::isfinite(p0_x) || !std::isfinite(p0_y) || !std::isfinite(p0_z) ||
         !std::isfinite(p1_x) || !std::isfinite(p1_y) || !std::isfinite(p1_z) ||
         !std::isfinite(radius) || radius <= 0.0f) {
-        std::cerr << "[OptiX][Cylinder] Invalid cylinder parameters: "
+        OPTIX_LOG(ERROR) << "[OptiX][Cylinder] Invalid cylinder parameters: "
                   << "p0=(" << p0_x << "," << p0_y << "," << p0_z << "), "
                   << "p1=(" << p1_x << "," << p1_y << "," << p1_z << "), "
                   << "radius=" << radius << std::endl;
@@ -2641,7 +2648,7 @@ int OptiXWrapper::addCylinderInstance(
 
 void OptiXWrapper::removeInstance(int instanceId) {
     if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) {
-        std::cerr << "[OptiX] Invalid instance ID: " << instanceId << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Invalid instance ID: " << instanceId << std::endl;
         return;
     }
 
@@ -2659,7 +2666,7 @@ int OptiXWrapper::addConeInstance(
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Cone] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiX][Cone] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
             impl->max_instances_warning_shown = true;
         }
         return -1;
@@ -2669,7 +2676,7 @@ int OptiXWrapper::addConeInstance(
     if (!std::isfinite(apex_x) || !std::isfinite(apex_y) || !std::isfinite(apex_z) ||
         !std::isfinite(base_x) || !std::isfinite(base_y) || !std::isfinite(base_z) ||
         !std::isfinite(radius) || radius <= 0.0f) {
-        std::cerr << "[OptiX][Cone] Invalid cone parameters: "
+        OPTIX_LOG(ERROR) << "[OptiX][Cone] Invalid cone parameters: "
                   << "apex=(" << apex_x << "," << apex_y << "," << apex_z << "), "
                   << "base=(" << base_x << "," << base_y << "," << base_z << "), "
                   << "radius=" << radius << std::endl;
@@ -2687,7 +2694,7 @@ int OptiXWrapper::addConeInstance(
 
     if (!std::isfinite(aabb.minX) || !std::isfinite(aabb.maxX) ||
         aabb.minX > aabb.maxX || aabb.minY > aabb.maxY || aabb.minZ > aabb.maxZ) {
-        std::cerr << "[OptiX][Cone] Invalid AABB" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX][Cone] Invalid AABB" << std::endl;
         return -1;
     }
 
@@ -2776,7 +2783,7 @@ int OptiXWrapper::addCurveInstance(
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Curve] Maximum instances (" << impl->max_instances
+            OPTIX_LOG(ERROR) << "[OptiX][Curve] Maximum instances (" << impl->max_instances
                       << ") reached" << std::endl;
             impl->max_instances_warning_shown = true;
         }
@@ -2784,7 +2791,7 @@ int OptiXWrapper::addCurveInstance(
     }
 
     if (points == nullptr || widths == nullptr || num_points < 4) {
-        std::cerr << "[OptiX][Curve] Invalid curve buffers or point count" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX][Curve] Invalid curve buffers or point count" << std::endl;
         return -1;
     }
 
@@ -2795,7 +2802,7 @@ int OptiXWrapper::addCurveInstance(
         const float width = widths[i];
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)
                 || !std::isfinite(width) || width <= 0.0f) {
-            std::cerr << "[OptiX][Curve] Non-finite point or non-positive width at index "
+            OPTIX_LOG(ERROR) << "[OptiX][Curve] Non-finite point or non-positive width at index "
                       << i << std::endl;
             return -1;
         }
@@ -2951,7 +2958,7 @@ int OptiXWrapper::addPlaneInstance(
 ) {
     if (impl->instances.size() >= impl->max_instances) {
         if (!impl->max_instances_warning_shown) {
-            std::cerr << "[OptiX][Plane] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiX][Plane] Maximum instances (" << impl->max_instances << ") reached" << std::endl;
             impl->max_instances_warning_shown = true;
         }
         return -1;
@@ -2959,7 +2966,7 @@ int OptiXWrapper::addPlaneInstance(
 
     if (!std::isfinite(normal_x) || !std::isfinite(normal_y) || !std::isfinite(normal_z) ||
         !std::isfinite(distance)) {
-        std::cerr << "[OptiX][Plane] Invalid plane parameters: "
+        OPTIX_LOG(ERROR) << "[OptiX][Plane] Invalid plane parameters: "
                   << "normal=(" << normal_x << "," << normal_y << "," << normal_z << "), "
                   << "distance=" << distance << std::endl;
         return -1;
@@ -2968,7 +2975,7 @@ int OptiXWrapper::addPlaneInstance(
     // Normalize the normal
     float len = sqrtf(normal_x * normal_x + normal_y * normal_y + normal_z * normal_z);
     if (len < 1e-8f) {
-        std::cerr << "[OptiX][Plane] Zero-length normal vector" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX][Plane] Zero-length normal vector" << std::endl;
         return -1;
     }
     float nx = normal_x / len;
@@ -3136,7 +3143,7 @@ void OptiXWrapper::clearAllInstances() {
     // The IAS may still have pending GPU operations referencing these buffers
     cudaError_t sync_err = cudaDeviceSynchronize();
     if (sync_err != cudaSuccess) {
-        std::cerr << "[OptiXWrapper::clearAllInstances] CUDA sync error before GAS cleanup: " << cudaGetErrorString(sync_err) << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXWrapper::clearAllInstances] CUDA sync error before GAS cleanup: " << cudaGetErrorString(sync_err) << std::endl;
     }
 
     // Free cylinder GAS buffers
@@ -3244,7 +3251,7 @@ void OptiXWrapper::clearAllInstances() {
     // Check CUDA error state after freeing
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
-        std::cerr << "[OptiXWrapper::clearAllInstances] CUDA error after cleanup: " << cudaGetErrorString(err) << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXWrapper::clearAllInstances] CUDA error after cleanup: " << cudaGetErrorString(err) << std::endl;
     }
 }
 
@@ -3281,7 +3288,7 @@ int OptiXWrapper::uploadTexture(
     }
 
     if (impl->textures.size() >= MAX_TEXTURES) {
-        std::cerr << "[OptiX] Maximum textures (" << MAX_TEXTURES << ") reached" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Maximum textures (" << MAX_TEXTURES << ") reached" << std::endl;
         return -1;
     }
 
@@ -3325,7 +3332,7 @@ int OptiXWrapper::uploadTexture(
         return index;
 
     } catch (const std::exception& e) {
-        std::cerr << "[OptiX] Texture upload failed: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Texture upload failed: " << e.what() << std::endl;
         return -1;
     }
 }
@@ -3342,7 +3349,7 @@ int OptiXWrapper::uploadTextureFloat(
     }
 
     if (impl->textures.size() >= MAX_TEXTURES) {
-        std::cerr << "[OptiX] Maximum textures (" << MAX_TEXTURES << ") reached" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Maximum textures (" << MAX_TEXTURES << ") reached" << std::endl;
         return -1;
     }
 
@@ -3384,7 +3391,7 @@ int OptiXWrapper::uploadTextureFloat(
         return index;
 
     } catch (const std::exception& e) {
-        std::cerr << "[OptiX] HDR texture upload failed: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] HDR texture upload failed: " << e.what() << std::endl;
         return -1;
     }
 }
@@ -3396,7 +3403,7 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
     if (ext && strcasecmp(ext, ".hdr") == 0) {
         float* data = stbi_loadf(path, &w, &h, &c, 4);
         if (!data) {
-            std::cerr << "[OptiX] Failed to load HDR texture '" << path
+            OPTIX_LOG(ERROR) << "[OptiX] Failed to load HDR texture '" << path
                       << "': " << stbi_failure_reason() << std::endl;
             return -1;
         }
@@ -3408,7 +3415,7 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
 
     unsigned char* data = stbi_load(path, &w, &h, &c, 4);
     if (!data) {
-        std::cerr << "[OptiX] Failed to load texture '" << path
+        OPTIX_LOG(ERROR) << "[OptiX] Failed to load texture '" << path
                   << "': " << stbi_failure_reason() << std::endl;
         return -1;
     }
@@ -3424,25 +3431,25 @@ int OptiXWrapper::updateTexture(
     unsigned int height
 ) {
     if (textureIndex < 0 || textureIndex >= static_cast<int>(impl->textures.size())) {
-        std::cerr << "[OptiX] Invalid texture index for update: "
+        OPTIX_LOG(ERROR) << "[OptiX] Invalid texture index for update: "
                   << textureIndex << std::endl;
         return -1;
     }
 
     if (image_data == nullptr) {
-        std::cerr << "[OptiX] Texture update image data must not be null" << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Texture update image data must not be null" << std::endl;
         return -1;
     }
 
     TextureData& texture = impl->textures[textureIndex];
     if (texture.cuda_array == nullptr || texture.texture_obj == 0) {
-        std::cerr << "[OptiX] Texture slot " << textureIndex
+        OPTIX_LOG(ERROR) << "[OptiX] Texture slot " << textureIndex
                   << " is not initialized" << std::endl;
         return -1;
     }
 
     if (texture.width != width || texture.height != height) {
-        std::cerr << "[OptiX] Texture update dimensions mismatch for slot "
+        OPTIX_LOG(ERROR) << "[OptiX] Texture update dimensions mismatch for slot "
                   << textureIndex << ": expected " << texture.width << "x"
                   << texture.height << ", got " << width << "x" << height
                   << std::endl;
@@ -3450,7 +3457,7 @@ int OptiXWrapper::updateTexture(
     }
 
     if (texture.bytes_per_pixel != RGBA8_BYTES_PER_PIXEL) {
-        std::cerr << "[OptiX] Texture update only supports RGBA8 slots; slot "
+        OPTIX_LOG(ERROR) << "[OptiX] Texture update only supports RGBA8 slots; slot "
                   << textureIndex << " has " << texture.bytes_per_pixel
                   << " bytes per pixel" << std::endl;
         return -1;
@@ -3468,7 +3475,7 @@ int OptiXWrapper::updateTexture(
         return 0;
 
     } catch (const std::exception& e) {
-        std::cerr << "[OptiX] Texture update failed: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Texture update failed: " << e.what() << std::endl;
         return -1;
     }
 }
@@ -3590,13 +3597,17 @@ void OptiXWrapper::dispose() {
     }
 
     // Isolate each cleanup step in its own try-catch so a failure in one step
-    // does not skip the remaining steps (which would leak GPU resources).
+    // does not skip the remaining steps (which would leak GPU resources). The catch-all is
+    // required, not just defensive: dispose() runs inside ~OptiXWrapper() (via disposeNative),
+    // and a non-std::exception throw escaping a destructor calls std::terminate.
     auto step = [](const char* what, const std::function<void()>& fn) {
         try {
             fn();
         } catch (const std::exception& e) {
-            std::cerr << "[OptiX] Cleanup error during " << what << ": "
+            OPTIX_LOG(ERROR) << "[OptiX] Cleanup error during " << what << ": "
                       << e.what() << std::endl;
+        } catch (...) {
+            OPTIX_LOG(ERROR) << "[OptiX] Unknown cleanup error during " << what << std::endl;
         }
     };
 
@@ -3625,7 +3636,7 @@ void OptiXWrapper::dispose() {
         // Synchronize CUDA device to clear any pending errors
         cudaError_t err = cudaDeviceSynchronize();
         if (err != cudaSuccess) {
-            std::cerr << "[OptiX] CUDA synchronization warning during dispose: "
+            OPTIX_LOG(ERROR) << "[OptiX] CUDA synchronization warning during dispose: "
                       << cudaGetErrorString(err) << std::endl;
             cudaGetLastError();  // Clear the error
         }

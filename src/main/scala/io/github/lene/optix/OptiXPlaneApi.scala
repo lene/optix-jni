@@ -84,14 +84,10 @@ private[optix] trait OptiXPlaneApi:
     val (r2, g2, b2, solidColor) =
       if checkerColor != null then (checkerColor.r, checkerColor.g, checkerColor.b, 0) // scalafix:ok DisableSyntax.null
       else (0f, 0f, 0f, 1)
-    val (cauchy_a, cauchy_b) = Material.cauchyCoefficients(material.ior, material.dispersion)
     addPlaneInstanceNative(
       normal.x, normal.y, normal.z,
       distance,
-      material.color.r, material.color.g, material.color.b, material.color.a,
-      material.ior, material.roughness, material.metallic, material.specular, material.emission,
-      material.filmThickness,
-      cauchy_a, cauchy_b,
+      MaterialPayload.pack(material),
       r2, g2, b2, solidColor, checkerSize
     )
 

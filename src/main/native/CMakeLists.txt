@@ -309,6 +309,7 @@ if(BUILD_OPTIX_TESTS)
         tests/OptiXContextTest.cpp
         tests/EnvMapCDFTest.cpp
         tests/CustomGeometryRegistryTest.cpp  # SPI (Task 1.1a) runtime type-id allocator
+        tests/MaterialPayloadTest.cpp  # F2 packed-material layout fitness (Sprint 35 Task 3.1)
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
     )

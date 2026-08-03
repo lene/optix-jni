@@ -28,6 +28,15 @@ class CausticsSanitizerGateSuite extends AnyFlatSpec with Matchers with Renderer
   private val imageSize: ImageSize = ImageSize(1920, 1080)
   private val glassColor: Color = Color(0.95f, 0.95f, 1.0f, 0.05f)
 
+  // The CR-1 OOB is driven purely by hit-point COUNT (resolution): grid_count, grid_scatter,
+  // update_radii and caustics_radiance all launch at num_hit_points width and are the guarded
+  // kernels. The photon budget only drives Phase-2 tracing (not a guarded kernel), so under
+  // compute-sanitizer — where memory-access instrumentation makes photon scatter dominate — it can
+  // be dialled right down via GATE_PHOTONS/GATE_ITERS while still exercising every CR-1 fix. The
+  // defaults keep a realistic caustic for the normal (non-sanitizer) regression run.
+  private val photonsPerIter: Int = sys.env.get("GATE_PHOTONS").map(_.toInt).getOrElse(60000)
+  private val causticIterations: Int = sys.env.get("GATE_ITERS").map(_.toInt).getOrElse(2)
+
   // Uniform-scale-r, translate-(cx,cy,cz) 4x3 row-major transform (as in MultiObjectCausticsSuite).
   private def sphereTransform(cx: Float, cy: Float, cz: Float, r: Float): Array[Float] =
     Array(r, 0f, 0f, cx, 0f, r, 0f, cy, 0f, 0f, r, cz)
@@ -48,7 +57,7 @@ class CausticsSanitizerGateSuite extends AnyFlatSpec with Matchers with Renderer
       45.0f
     )
     renderer.setLights(Array(Light.Point(Vector[3](0.0f, 4.0f, 0.0f), intensity = 1.0f)))
-    renderer.enableCaustics(60000, 2)
+    renderer.enableCaustics(photonsPerIter, causticIterations)
 
     val result = renderer.renderWithStats(imageSize)
     withClue("full-HD caustics render returned no frame (native failure): ") {

@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-03
+
+Sprint 35 Native Seam Remediation, Phase 3 (Release B). All remaining public-API changes at the
+JVM↔native seam, batched into one break: the material payload is packed (F2), the renderer
+lifecycle is `AutoCloseable` with an atomic handle swap and a package-private handle (CR-6/CR-11),
+the error surface is a typed `OptiXException` with a catch-all on every `JNIEXPORT` (F11/CR-9,
+CR-4), and native logging is env-gated (F12). Breaking: the private `@native` material signatures,
+`nativeHandle` visibility, and the native exception type all changed — consumers take one pin-bump.
+
+### Added
+
+- `OptiXException` (extends `RuntimeException`): the optix-jni-owned type that native runtime
+  failures now surface as, giving the application a single type to translate at its boundary.
+  Argument-precondition violations deliberately stay `IllegalArgumentException`. A source-scanning
+  fitness function (`JniErrorSurfaceSuite`) asserts the split holds. (Sprint 35 Task 3.3 —
+  F11 / CR-9)
+- `OptiXRenderer` now implements `AutoCloseable` (`close()` delegates to `dispose()`), so it can
+  be used with `scala.util.Using` or Java try-with-resources. Lifecycle transitions
+  (`initialize` / `dispose` / `reinitialize`) are serialized by a per-renderer lock, making
+  `reinitialize`'s dispose-then-create an atomic handle swap with no window where another
+  lifecycle caller sees a half-swapped handle. Renderers remain thread-confined for rendering
+  (one renderer per thread; OptiX contexts are not safe for concurrent launches on a shared
+  handle). New `ThreadedLifecycleStressSuite` drives concurrent create/render/reinitialize/close
+  across threads to catch handle races under compute-sanitizer. (Sprint 35 Tasks 3.2 / 3.5 —
+  CR-6, CR-13)
+
+### Changed
+
+- Production native code now logs through an env-gated `OPTIX_LOG(level)` macro
+  (`src/main/native/include/OptixLogging.h`) instead of raw `std::cerr` / `std::cout` — all 164
+  `std::cerr` (→ `ERROR`) and 17 `std::cout` (→ `INFO`) writes across the native seam were
+  migrated. Verbosity is read once from `OPTIX_LOG_LEVEL` (`NONE|ERROR|WARN|INFO|DEBUG`, default
+  `ERROR`): error diagnostics stay visible, but the caustics/context progress chatter that
+  previously spammed a host application's console is now silent unless opted in. A no-raw-writes
+  fitness gate (`scripts/check-native-logging.sh`, wired into the pre-push hook and CI) fails if
+  `std::cerr` / `std::cout` / `printf` reappears in production native. (Sprint 35 Task 3.4 — F12)
+- Native runtime failures now cross into the JVM as `OptiXException` instead of a bare
+  `java.lang.RuntimeException`, and every one of the 63 `JNIEXPORT` bodies now ends with a
+  catch-all (`catch (...)` via `JNI_CATCH_UNKNOWN_*` macros) — previously a non-`std::exception`
+  native throw (a raw OptiX/CUDA error type) could unwind across the JNI frame into the JVM as
+  undefined behaviour. Each catch-all preserves its entry's existing contract (graceful
+  degradation setters still log-and-swallow; failing operations still surface the error).
+  `JniErrorSurfaceSuite` guards both invariants. (Sprint 35 Task 3.3 — F11 / CR-9, CR-4)
+- `OptiXRenderer.nativeHandle` is now `private[optix]` (was public) — JNI still resolves it by
+  name via `GetFieldID`, so the handle lookup is unaffected while external code can no longer
+  read or overwrite it. (Sprint 35 Task 3.2 — CR-11)
+- Material now crosses the JNI boundary as a single packed `float[]` (see `MaterialPayload`),
+  unpacked once natively by `readMaterialPayload`, instead of ~12 positional `jfloat` arguments
+  repeated across eight `add*Instance` / `setInstanceMaterial` entries. This removes the
+  positional-mismatch hazard at the untyped JVM↔native seam and gives the Cauchy-coefficient
+  derivation one home. Public Scala API (`addSphereInstance(transform, Material)` etc.) is
+  unchanged; only the private `@native` decls and their native counterparts changed. Guarded by
+  a native sizeof/field-count test (`MaterialPayloadTest`) and a Scala layout test
+  (`MaterialPayloadSuite`). (Sprint 35 Task 3.1 / F2)
+
 ## [0.2.0] - 2026-08-01
 
 First strictly-generic release (Sprint 35 Native Seam Remediation, Phases 1-2). The
@@ -351,6 +406,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.3.0]: https://github.com/lene/optix-jni/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/lene/optix-jni/compare/0.1.19...0.2.0
 [0.1.19]: https://github.com/lene/optix-jni/compare/0.1.18...0.1.19
 [0.1.18]: https://github.com/lene/optix-jni/compare/0.1.17...0.1.18

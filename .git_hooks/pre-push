@@ -115,6 +115,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# native logging gate (F12): no raw std::cerr/std::cout/printf in production native
+# ---------------------------------------------------------------------------
+if [ "$HAS_NATIVE" -gt 0 ]; then
+  echo "=== native logging ==="
+  if bash scripts/check-native-logging.sh; then
+    echo "native logging: ${GREEN_TEXT}OK${RESET_TEXT}"
+  else
+    STATUS=1
+    echo "native logging: ${RED_TEXT}FAILED${RESET_TEXT}"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # cppcheck (native changes only, requires cppcheck installed)
 # ---------------------------------------------------------------------------
 if [ "$HAS_NATIVE" -gt 0 ] && command -v cppcheck > /dev/null 2>&1; then
