@@ -7,6 +7,7 @@
 #include "include/OptiXErrorChecking.h"
 #include <cstdint>
 #include <iostream>
+#include "include/OptixLogging.h"
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -70,12 +71,12 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createConte
         auto* ctx = new OptiXContext();
         if (!ctx->initialize()) {
             delete ctx;
-            std::cerr << "[OptiXApi] Context initialization failed" << std::endl;
+            OPTIX_LOG(ERROR) << "[OptiXApi] Context initialization failed" << std::endl;
             return 0L;
         }
         return reinterpret_cast<jlong>(ctx);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createContext: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createContext: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -107,7 +108,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createModul
         OptixModule mod = ctx->createModuleFromPTX(ptx, mco, pco);
         return reinterpret_cast<jlong>(mod);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createModuleFromPTX: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createModuleFromPTX: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -137,7 +138,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createRayge
         env->ReleaseStringUTFChars(entryPoint, entry);
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createRaygenGroup: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createRaygenGroup: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -156,7 +157,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createMissG
         env->ReleaseStringUTFChars(entryPoint, entry);
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createMissGroup: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createMissGroup: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -184,7 +185,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createHitGr
         env->ReleaseStringUTFChars(isEntry, is);
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createHitGroup: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createHitGroup: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -204,7 +205,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createTrian
         env->ReleaseStringUTFChars(chEntry, ch);
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createTriangleHitGroup: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createTriangleHitGroup: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -235,7 +236,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createCurve
         }
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createCurveHitGroup: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createCurveHitGroup: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -273,7 +274,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createPipel
             groups[static_cast<size_t>(i)] = reinterpret_cast<OptixProgramGroup>(raw[i]);
             if (!groups[static_cast<size_t>(i)]) {
                 env->ReleaseLongArrayElements(groupHandles, raw, JNI_ABORT);
-                std::cerr << "[OptiXApi] createPipeline: null group handle at index " << i << std::endl;
+                OPTIX_LOG(ERROR) << "[OptiXApi] createPipeline: null group handle at index " << i << std::endl;
                 return 0L;
             }
         }
@@ -284,7 +285,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createPipel
         OptixPipeline pipeline = ctx->createPipeline(pco, plo, groups.data(), static_cast<unsigned int>(count));
         return reinterpret_cast<jlong>(pipeline);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createPipeline: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createPipeline: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -312,7 +313,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createDenoi
         );
         return reinterpret_cast<jlong>(denoiser);
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] createDenoiser: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] createDenoiser: " << e.what() << std::endl;
         return 0L;
     }
 }
@@ -404,7 +405,7 @@ JNIEXPORT jfloatArray JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_denoi
         env->SetFloatArrayRegion(result, 0, expected_length, host_output.data());
         return result;
     } catch (const std::exception& e) {
-        std::cerr << "[OptiXApi] denoiseFloat4: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiXApi] denoiseFloat4: " << e.what() << std::endl;
         return emptyFloatArray(env);
     }
 }

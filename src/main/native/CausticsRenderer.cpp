@@ -3,6 +3,7 @@
 #include "include/OptiXErrorChecking.h"
 #include "include/OptiXData.h"
 #include <iostream>
+#include "include/OptixLogging.h"
 #include <algorithm>
 #include <vector>
 
@@ -87,7 +88,7 @@ void CausticsRenderer::renderWithCaustics(
         sizeof(unsigned int),
         cudaMemcpyDeviceToHost
     ));
-    std::cout << "[Caustics] Phase 1: Collected " << num_hit_points << " hit points" << std::endl;
+    OPTIX_LOG(INFO) << "[Caustics] Phase 1: Collected " << num_hit_points << " hit points" << std::endl;
 
     // CR-1: the device counter is atomically bumped once per diffuse hit *before* the
     // per-thread capacity check, so on a scene that overflows the cap it reports more hit
@@ -95,7 +96,7 @@ void CausticsRenderer::renderWithCaustics(
     // uses this value as a launch width and indexes hit_points[idx]; clamp it to the buffer
     // cap here so no pass reads past MAX_HIT_POINTS. The kernels clamp defensively too.
     if (num_hit_points > RayTracingConstants::MAX_HIT_POINTS) {
-        std::cerr << "[Caustics] hit-point count " << num_hit_points
+        OPTIX_LOG(ERROR) << "[Caustics] hit-point count " << num_hit_points
                   << " exceeds MAX_HIT_POINTS (" << RayTracingConstants::MAX_HIT_POINTS
                   << "); clamping to cap." << std::endl;
         num_hit_points = RayTracingConstants::MAX_HIT_POINTS;
@@ -114,7 +115,7 @@ void CausticsRenderer::renderWithCaustics(
     const int photons_per_iter = config.getCausticsPhotonsPerIter();
     const int iterations = config.getCausticsIterations();
 
-    std::cout << "[Caustics] Phase 2: Tracing " << photons_per_iter
+    OPTIX_LOG(INFO) << "[Caustics] Phase 2: Tracing " << photons_per_iter
               << " photons x " << iterations << " iterations" << std::endl;
 
     for (int iter = 0; iter < iterations; ++iter) {
@@ -149,7 +150,7 @@ void CausticsRenderer::renderWithCaustics(
             CUDA_CHECK(cudaDeviceSynchronize());
         }
 
-        std::cout << "[Caustics]   Iteration " << (iter + 1) << "/" << iterations
+        OPTIX_LOG(INFO) << "[Caustics]   Iteration " << (iter + 1) << "/" << iterations
                   << " complete" << std::endl;
     }
 
@@ -162,7 +163,7 @@ void CausticsRenderer::renderWithCaustics(
         static_cast<unsigned long long>(iterations);
     buffer_manager.uploadParams(params);
 
-    std::cout << "[Caustics] Phase 3: Rendering scene" << std::endl;
+    OPTIX_LOG(INFO) << "[Caustics] Phase 3: Rendering scene" << std::endl;
 
     // Launch standard render (uses accumulated caustics data)
     optix_context.launch(
@@ -178,7 +179,7 @@ void CausticsRenderer::renderWithCaustics(
     // Post-Processing: Apply Caustics Radiance to Image
     // =====================================
     if (num_hit_points > 0) {
-        std::cout << "[Caustics] Phase 4: Computing radiance for " << num_hit_points << " hit points" << std::endl;
+        OPTIX_LOG(INFO) << "[Caustics] Phase 4: Computing radiance for " << num_hit_points << " hit points" << std::endl;
 
         // Launch caustics radiance computation (one thread per hit point)
         launchCausticsPass(
@@ -192,7 +193,7 @@ void CausticsRenderer::renderWithCaustics(
         CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    std::cout << "[Caustics] Complete: " << params.caustics.total_photons_traced << " total photons traced" << std::endl;
+    OPTIX_LOG(INFO) << "[Caustics] Complete: " << params.caustics.total_photons_traced << " total photons traced" << std::endl;
 
     // Download caustics stats for validation
     buffer_manager.downloadCausticsStats(&last_caustics_stats);
@@ -263,6 +264,6 @@ void CausticsRenderer::buildGrid(
     // does exactly one atomicAdd on its cell). grid_offsets + grid_counts define
     // the range of hit point indices per cell in the grid[] array.
 
-    std::cout << "[Caustics] Grid built: " << grid_res << "^3 cells, "
+    OPTIX_LOG(INFO) << "[Caustics] Grid built: " << grid_res << "^3 cells, "
               << num_hit_points << " entries" << std::endl;
 }

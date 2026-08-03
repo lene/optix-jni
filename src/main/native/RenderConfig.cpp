@@ -1,5 +1,6 @@
 #include "include/RenderConfig.h"
 #include <iostream>
+#include "include/OptixLogging.h"
 
 RenderConfig::RenderConfig() {
     // All members initialized via in-class initializers
@@ -78,7 +79,7 @@ void RenderConfig::addPlaneSolidColorWithMaterial(
     int imageTextureIndex
 ) {
     if (num_planes >= RayTracingConstants::MAX_PLANES) {
-        std::cerr << "[RenderConfig] Maximum planes (" << RayTracingConstants::MAX_PLANES << ") reached; plane ignored" << std::endl;
+        OPTIX_LOG(ERROR) << "[RenderConfig] Maximum planes (" << RayTracingConstants::MAX_PLANES << ") reached; plane ignored" << std::endl;
         return;
     }
     PlaneParams& p = planes[num_planes++];
@@ -100,7 +101,7 @@ void RenderConfig::addPlaneCheckerColorsWithMaterial(
     int imageTextureIndex
 ) {
     if (num_planes >= RayTracingConstants::MAX_PLANES) {
-        std::cerr << "[RenderConfig] Maximum planes (" << RayTracingConstants::MAX_PLANES << ") reached; plane ignored" << std::endl;
+        OPTIX_LOG(ERROR) << "[RenderConfig] Maximum planes (" << RayTracingConstants::MAX_PLANES << ") reached; plane ignored" << std::endl;
         return;
     }
     PlaneParams& p = planes[num_planes++];

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include "include/OptixLogging.h"
 #include <optix_stubs.h>
 
 namespace {
@@ -105,7 +106,7 @@ bool DenoiserManager::denoiseFloat4(
         CUDA_CHECK(cudaDeviceSynchronize());
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "[OptiX] Denoise failed: " << e.what() << std::endl;
+        OPTIX_LOG(ERROR) << "[OptiX] Denoise failed: " << e.what() << std::endl;
         return false;
     }
 }

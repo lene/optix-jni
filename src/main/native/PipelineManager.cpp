@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstring>
 #include <iostream>
+#include "include/OptixLogging.h"
 #include <optix_stubs.h>
 
 // Helper to create default pipeline compile options
@@ -638,13 +639,13 @@ void PipelineManager::cleanup(bool includeCaustics) {
     // Synchronize CUDA to ensure all operations are complete
     cudaError_t sync_err = cudaDeviceSynchronize();
     if (sync_err != cudaSuccess) {
-        std::cerr << "[PipelineManager::cleanup] CUDA synchronization error: " << cudaGetErrorString(sync_err) << std::endl;
+        OPTIX_LOG(ERROR) << "[PipelineManager::cleanup] CUDA synchronization error: " << cudaGetErrorString(sync_err) << std::endl;
     }
 
     // Clear any pending CUDA errors
     cudaError_t final_err = cudaGetLastError();
     if (final_err != cudaSuccess) {
-        std::cerr << "[PipelineManager::cleanup] CUDA error after synchronization: " << cudaGetErrorString(final_err) << std::endl;
+        OPTIX_LOG(ERROR) << "[PipelineManager::cleanup] CUDA error after synchronization: " << cudaGetErrorString(final_err) << std::endl;
     }
 }
 

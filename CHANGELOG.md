@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Production native code now logs through an env-gated `OPTIX_LOG(level)` macro
+  (`src/main/native/include/OptixLogging.h`) instead of raw `std::cerr` / `std::cout` — all 164
+  `std::cerr` (→ `ERROR`) and 17 `std::cout` (→ `INFO`) writes across the native seam were
+  migrated. Verbosity is read once from `OPTIX_LOG_LEVEL` (`NONE|ERROR|WARN|INFO|DEBUG`, default
+  `ERROR`): error diagnostics stay visible, but the caustics/context progress chatter that
+  previously spammed a host application's console is now silent unless opted in. A no-raw-writes
+  fitness gate (`scripts/check-native-logging.sh`, wired into the pre-push hook and CI) fails if
+  `std::cerr` / `std::cout` / `printf` reappears in production native. (Sprint 35 Task 3.4 — F12)
 - Native runtime failures now cross into the JVM as `OptiXException` instead of a bare
   `java.lang.RuntimeException`, and every one of the 63 `JNIEXPORT` bodies now ends with a
   catch-all (`catch (...)` via `JNI_CATCH_UNKNOWN_*` macros) — previously a non-`std::exception`
