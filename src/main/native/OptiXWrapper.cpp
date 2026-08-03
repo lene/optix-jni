@@ -214,7 +214,13 @@ OptiXWrapper::OptiXWrapper() : impl(std::make_unique<Impl>()) {
 }
 
 OptiXWrapper::~OptiXWrapper() {
-    dispose();
+    // dispose()'s per-step isolation already catches everything internally; this direct wrap
+    // is defense-in-depth so a destructor-throw can never happen even if that changes.
+    try {
+        dispose();
+    } catch (...) {
+        OPTIX_LOG(ERROR) << "[OptiXWrapper] Unknown error in destructor" << std::endl;
+    }
 }
 
 bool OptiXWrapper::initialize(unsigned int maxInstances) {

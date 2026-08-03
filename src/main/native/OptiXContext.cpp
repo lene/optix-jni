@@ -91,7 +91,13 @@ OptiXContext::OptiXContext() : context_(nullptr), initialized_(false) {
 }
 
 OptiXContext::~OptiXContext() {
-    destroy();
+    // destroy() already catches everything internally; this direct wrap is defense-in-depth
+    // so a destructor-throw can never happen even if that changes.
+    try {
+        destroy();
+    } catch (...) {
+        OPTIX_LOG(ERROR) << "[OptiXContext] Unknown error in destructor" << std::endl;
+    }
 }
 
 bool OptiXContext::initialize() {
