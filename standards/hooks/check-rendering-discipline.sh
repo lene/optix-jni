@@ -31,7 +31,7 @@ for range in "$@"; do
     offenders=""
     for commit in $(commits_in_range "$range"); do
         # Skip commits already on origin/main (absorbed during rebase)
-        git merge-base --is-ancestor "$commit" origin/main 2>/dev/null && continue
+        git merge-base --is-ancestor "$commit" "$(main_ref)" 2>/dev/null && continue
         files=$(commit_files "$commit")
         if echo "$files" | grep -qE "$REFERENCE_PATTERN"; then
             range_touches_refs=1

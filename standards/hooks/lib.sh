@@ -1,5 +1,18 @@
 # Shared helpers for hook policy checks (Sprint 28.2). POSIX sh; source me.
 
+# The source-of-truth main ref. Post GitHub migration (Sprint 35) `origin` still
+# points at the stale GitLab mirror in long-lived clones, and merge-base against a
+# months-old origin/main counts the entire sprint's diff as "changed" — firing the
+# native gates on branches that touch no native code. Prefer github/main when the
+# clone has it; fall back to origin/main, then local main.
+main_ref() {
+    for _r in github/main origin/main main; do
+        git rev-parse --verify --quiet "refs/remotes/$_r" >/dev/null 2>&1 && { printf '%s' "$_r"; return 0; }
+        git rev-parse --verify --quiet "refs/heads/$_r" >/dev/null 2>&1 && { printf '%s' "$_r"; return 0; }
+    done
+    printf 'origin/main'
+}
+
 commits_in_range() {
     # rev-list may fail for unknown remote SHAs (e.g. force pushes); treat as empty
     git rev-list --no-merges "$1" 2>/dev/null || true
@@ -72,7 +85,7 @@ push_ranges() {
             case "$_remote_sha" in
                 ''|0000000000000000000000000000000000000000)
                     # New branch on the remote: diff from where it left main.
-                    _base=$(git merge-base origin/main "$_local_sha" 2>/dev/null \
+                    _base=$(git merge-base "$(main_ref)" "$_local_sha" 2>/dev/null \
                             || git rev-list --max-parents=0 "$_local_sha" | tail -n 1) ;;
                 *)  _base="$_remote_sha" ;;
             esac
@@ -83,8 +96,7 @@ push_ranges() {
 
     if [ -z "$_ranges" ]; then
         [ "$_deleting" = "1" ] && return 2
-        _base=$(git merge-base origin/main HEAD 2>/dev/null \
-                || git merge-base main HEAD 2>/dev/null)
+        _base=$(git merge-base "$(main_ref)" HEAD 2>/dev/null)
         [ -n "$_base" ] && _ranges="${_base}..HEAD
 "
     fi
@@ -104,8 +116,8 @@ changed_files() {
 # whole helper exists to prevent, so refuse to continue.
 assert_detection() {
     [ -n "$1" ] && return 0
-    if [ -n "$(git rev-list origin/main..HEAD 2>/dev/null | head -n 1)" ]; then
-        echo "pre-push: detected no changed files, but HEAD is ahead of origin/main." >&2
+    if [ -n "$(git rev-list "$(main_ref)..HEAD" 2>/dev/null | head -n 1)" ]; then
+        echo "pre-push: detected no changed files, but HEAD is ahead of $(main_ref)." >&2
         echo "          Change detection is broken — refusing to report a clean run." >&2
         echo "          (If this push genuinely changes no files, say so explicitly.)" >&2
         return 1
