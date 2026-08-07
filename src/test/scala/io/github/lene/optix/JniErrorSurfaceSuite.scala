@@ -54,3 +54,18 @@ class JniErrorSurfaceSuite extends AnyFlatSpec with Matchers:
   they should "route runtime failures through the optix-jni-owned OptiXException class" in:
     source should include ("OPTIX_EXCEPTION_CLASS")
     source should include ("\"io/github/lene/optix/OptiXException\"")
+
+  "OptiXException" should "expose the (String) constructor JNI ThrowNew binds to" in:
+    // The two source-scans above cannot catch a missing constructor — the class name is present
+    // either way. Only the compiled signature proves ThrowNew can actually construct the type.
+    // 0.3.0 shipped with a `cause: Throwable = null` default parameter, which emits no
+    // single-argument overload, so every native throw died with NoSuchMethodError and masked the
+    // real error. Reflection here mirrors exactly what ThrowNew does at runtime.
+    val ctor = classOf[OptiXException].getConstructor(classOf[String])
+    ctor.newInstance("boom").getMessage shouldBe "boom"
+
+  they should "still carry a cause through the two-argument constructor" in:
+    val cause = new IllegalStateException("root")
+    val ex = OptiXException("wrapped", cause)
+    ex.getMessage shouldBe "wrapped"
+    ex.getCause shouldBe cause

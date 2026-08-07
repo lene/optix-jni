@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `OptiXException` now declares an explicit `(String)` constructor. JNI `ThrowNew`
+  (`throwException` in `JNIBindings.cpp`) resolves `<init>(Ljava/lang/String;)V` by exact
+  signature, but the previous `class OptiXException(message: String, cause: Throwable = null)`
+  emitted only `<init>(String, Throwable)` plus a default getter — Scala default parameters
+  produce no single-argument overload. Every native failure therefore died with
+  `NoSuchMethodError: OptiXException: method 'void <init>(java.lang.String)' not found`,
+  masking the real error at exactly the moment it was needed. Surfaced by a menger integration
+  run where a GPU out-of-memory condition was reported as the `NoSuchMethodError` instead.
+  `JniErrorSurfaceSuite` gains a reflection check on the compiled signature; the existing
+  source-scans could not catch this, since the class name is present either way.
+
 ## [0.3.0] - 2026-08-03
+
+**Note:** 0.3.0 is defective — the native error path cannot construct `OptiXException` and
+throws `NoSuchMethodError` instead of the real failure. Fixed in the next release; see
+[Unreleased]. Maven Central artifacts are permanent, so 0.3.0 stays published.
+
 
 Sprint 35 Native Seam Remediation, Phase 3 (Release B). All remaining public-API changes at the
 JVM↔native seam, batched into one break: the material payload is packed (F2), the renderer
