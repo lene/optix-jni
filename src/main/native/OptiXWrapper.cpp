@@ -3068,6 +3068,22 @@ int OptiXWrapper::addPlaneInstance(
     return instanceId;
 }
 
+namespace {
+// Sprint 36 A5: names which buffer failed to free, instead of clearAllInstances's former
+// end-of-function cudaGetLastError() check — that could only report that *something* among
+// ~30 frees failed, not which, which is exactly the ambiguity that let the CR-5 double-free
+// (2026-08-01) surface as a single generic "invalid argument" instead of naming the aliased
+// buffer.
+void freeChecked(void* ptr, const char* label) {
+    if (!ptr) return;
+    cudaError_t err = cudaFree(ptr);
+    if (err != cudaSuccess) {
+        OPTIX_LOG(ERROR) << "[OptiXWrapper::clearAllInstances] cudaFree(" << label << ") failed: "
+                          << cudaGetErrorString(err) << std::endl;
+    }
+}
+}  // namespace
+
 void OptiXWrapper::clearAllInstances() {
     impl->instances.clear();
     impl->custom_geometry_blobs.clear();  // Task 1.1c
@@ -3076,22 +3092,14 @@ void OptiXWrapper::clearAllInstances() {
     impl->max_instances_warning_shown = false;
 
     // Free IAS buffers
-    if (impl->d_ias_output_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
-        impl->d_ias_output_buffer = 0;
-    }
-    if (impl->d_instances_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instances_buffer));
-        impl->d_instances_buffer = 0;
-    }
-    if (impl->d_instance_materials) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
-        impl->d_instance_materials = 0;
-    }
-    if (impl->d_custom_geometry_data) {  // Task 1.1c
-        cudaFree(reinterpret_cast<void*>(impl->d_custom_geometry_data));
-        impl->d_custom_geometry_data = 0;
-    }
+    freeChecked(reinterpret_cast<void*>(impl->d_ias_output_buffer), "d_ias_output_buffer");
+    impl->d_ias_output_buffer = 0;
+    freeChecked(reinterpret_cast<void*>(impl->d_instances_buffer), "d_instances_buffer");
+    impl->d_instances_buffer = 0;
+    freeChecked(reinterpret_cast<void*>(impl->d_instance_materials), "d_instance_materials");
+    impl->d_instance_materials = 0;
+    freeChecked(reinterpret_cast<void*>(impl->d_custom_geometry_data), "d_custom_geometry_data");  // Task 1.1c
+    impl->d_custom_geometry_data = 0;
     impl->custom_geometry_stride = 0;
     impl->ias_handle = 0;
 
@@ -3099,34 +3107,26 @@ void OptiXWrapper::clearAllInstances() {
     // clear → re-add of the same count skips the re-upload branch in render() and leaves
     // params.*_data == nullptr with a non-zero count → illegal address in the intersection shader.
     impl->cylinder_data.clear();
-    if (impl->d_cylinder_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_cylinder_data));
-        impl->d_cylinder_data = 0;
-    }
+    freeChecked(reinterpret_cast<void*>(impl->d_cylinder_data), "d_cylinder_data");
+    impl->d_cylinder_data = 0;
     impl->last_cylinder_count = 0;
 
     // Clear cone data
     impl->cone_data.clear();
-    if (impl->d_cone_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_cone_data));
-        impl->d_cone_data = 0;
-    }
+    freeChecked(reinterpret_cast<void*>(impl->d_cone_data), "d_cone_data");
+    impl->d_cone_data = 0;
     impl->last_cone_count = 0;
 
     // Clear plane data
     impl->plane_data.clear();
-    if (impl->d_plane_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_plane_data));
-        impl->d_plane_data = 0;
-    }
+    freeChecked(reinterpret_cast<void*>(impl->d_plane_data), "d_plane_data");
+    impl->d_plane_data = 0;
     impl->last_plane_count = 0;
 
     // Clear curve data
     impl->curve_data.clear();
-    if (impl->d_curve_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_curve_data));
-        impl->d_curve_data = 0;
-    }
+    freeChecked(reinterpret_cast<void*>(impl->d_curve_data), "d_curve_data");
+    impl->d_curve_data = 0;
     impl->last_curve_count = 0;
 
 
@@ -3139,88 +3139,48 @@ void OptiXWrapper::clearAllInstances() {
 
     // Free cylinder GAS buffers
     for (const auto& gas : impl->cylinder_gas_buffers) {
-        if (gas.gas_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
-        }
-        if (gas.aabb_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
-        }
+        freeChecked(reinterpret_cast<void*>(gas.gas_buffer), "cylinder_gas_buffers[].gas_buffer");
+        freeChecked(reinterpret_cast<void*>(gas.aabb_buffer), "cylinder_gas_buffers[].aabb_buffer");
     }
     impl->cylinder_gas_buffers.clear();
 
     // Free cone GAS buffers
     for (const auto& gas : impl->cone_gas_buffers) {
-        if (gas.gas_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
-        }
-        if (gas.aabb_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
-        }
+        freeChecked(reinterpret_cast<void*>(gas.gas_buffer), "cone_gas_buffers[].gas_buffer");
+        freeChecked(reinterpret_cast<void*>(gas.aabb_buffer), "cone_gas_buffers[].aabb_buffer");
     }
     impl->cone_gas_buffers.clear();
 
     // Free plane GAS buffers
     for (const auto& gas : impl->plane_gas_buffers) {
-        if (gas.gas_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.gas_buffer));
-        }
-        if (gas.aabb_buffer) {
-            cudaFree(reinterpret_cast<void*>(gas.aabb_buffer));
-        }
+        freeChecked(reinterpret_cast<void*>(gas.gas_buffer), "plane_gas_buffers[].gas_buffer");
+        freeChecked(reinterpret_cast<void*>(gas.aabb_buffer), "plane_gas_buffers[].aabb_buffer");
     }
     impl->plane_gas_buffers.clear();
 
     // Free curve device buffers and GAS buffers
     for (const auto& curve : impl->curve_gpu_buffers) {
-        if (curve.gas.gas_buffer) {
-            cudaFree(reinterpret_cast<void*>(curve.gas.gas_buffer));
-        }
-        if (curve.gas.aabb_buffer) {
-            cudaFree(reinterpret_cast<void*>(curve.gas.aabb_buffer));
-        }
-        if (curve.d_points) {
-            cudaFree(reinterpret_cast<void*>(curve.d_points));
-        }
-        if (curve.d_widths) {
-            cudaFree(reinterpret_cast<void*>(curve.d_widths));
-        }
-        if (curve.d_segment_indices) {
-            cudaFree(reinterpret_cast<void*>(curve.d_segment_indices));
-        }
+        freeChecked(reinterpret_cast<void*>(curve.gas.gas_buffer), "curve_gpu_buffers[].gas.gas_buffer");
+        freeChecked(reinterpret_cast<void*>(curve.gas.aabb_buffer), "curve_gpu_buffers[].gas.aabb_buffer");
+        freeChecked(reinterpret_cast<void*>(curve.d_points), "curve_gpu_buffers[].d_points");
+        freeChecked(reinterpret_cast<void*>(curve.d_widths), "curve_gpu_buffers[].d_widths");
+        freeChecked(reinterpret_cast<void*>(curve.d_segment_indices), "curve_gpu_buffers[].d_segment_indices");
     }
     impl->curve_gpu_buffers.clear();
 
 
     // Free recursive-IAS sponge sub-IAS buffers (Sprint 18.4)
     for (const auto& sub : impl->sub_ias_buffers) {
-        if (sub.d_output_buffer) {
-            cudaFree(reinterpret_cast<void*>(sub.d_output_buffer));
-        }
-        if (sub.d_instances_buffer) {
-            cudaFree(reinterpret_cast<void*>(sub.d_instances_buffer));
-        }
+        freeChecked(reinterpret_cast<void*>(sub.d_output_buffer), "sub_ias_buffers[].d_output_buffer");
+        freeChecked(reinterpret_cast<void*>(sub.d_instances_buffer), "sub_ias_buffers[].d_instances_buffer");
     }
     impl->sub_ias_buffers.clear();
 
     // Free triangle mesh GPU resources
     for (auto& mesh : impl->triangle_meshes) {
-        if (mesh.d_vertices) {
-            cudaFree(
-                reinterpret_cast<void*>(mesh.d_vertices)
-            );
-        }
-        if (mesh.d_indices) {
-            cudaFree(
-                reinterpret_cast<void*>(mesh.d_indices)
-            );
-        }
-        if (mesh.d_gas_output_buffer) {
-            cudaFree(
-                reinterpret_cast<void*>(
-                    mesh.d_gas_output_buffer
-                )
-            );
-        }
+        freeChecked(reinterpret_cast<void*>(mesh.d_vertices), "triangle_meshes[].d_vertices");
+        freeChecked(reinterpret_cast<void*>(mesh.d_indices), "triangle_meshes[].d_indices");
+        freeChecked(reinterpret_cast<void*>(mesh.d_gas_output_buffer), "triangle_meshes[].d_gas_output_buffer");
     }
     impl->triangle_meshes.clear();
 
@@ -3237,20 +3197,10 @@ void OptiXWrapper::clearAllInstances() {
     // were write-only (never read back) and are gone; do not reintroduce a per-instance key
     // here. One owner per buffer — GpuLeakSuite covers all five kinds.
     for (auto& entry : impl->gas_registry) {
-        if (entry.second.gas_buffer) {
-            cudaFree(reinterpret_cast<void*>(entry.second.gas_buffer));
-        }
-        if (entry.second.aabb_buffer) {
-            cudaFree(reinterpret_cast<void*>(entry.second.aabb_buffer));
-        }
+        freeChecked(reinterpret_cast<void*>(entry.second.gas_buffer), "gas_registry[].gas_buffer");
+        freeChecked(reinterpret_cast<void*>(entry.second.aabb_buffer), "gas_registry[].aabb_buffer");
     }
     impl->gas_registry.clear();
-
-    // Check CUDA error state after freeing
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        OPTIX_LOG(ERROR) << "[OptiXWrapper::clearAllInstances] CUDA error after cleanup: " << cudaGetErrorString(err) << std::endl;
-    }
 }
 
 int OptiXWrapper::getInstanceCount() const {

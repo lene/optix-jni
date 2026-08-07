@@ -80,6 +80,15 @@ All jobs requiring native compilation must run on the nvidia self-hosted runner 
 
 ---
 
+## Pointers
+
+| Where | What |
+|---|---|
+| `docs/ENFORCEMENT.md` | Policy → mechanism map; open enforcement gaps |
+| `../docs/QA_INCIDENTS.md` | Cross-repo QA incident log (workspace repo) |
+
+---
+
 ## Maven Central incident protocol
 
 Artifacts on Maven Central are **permanent — cannot be deleted**. If a defective artifact is published:
