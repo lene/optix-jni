@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run where a GPU out-of-memory condition was reported as the `NoSuchMethodError` instead.
   `JniErrorSurfaceSuite` gains a reflection check on the compiled signature; the existing
   source-scans could not catch this, since the class name is present either way.
+- `clearAllInstances` no longer double-frees cylinder, cone, plane and curve GAS buffers.
+  Each of those four geometry kinds stored the same `GASData` — the same `gas_buffer` and
+  `aabb_buffer` device pointers — in both its per-type vector and, under a negative
+  per-instance key, in `gas_registry`. CR-5 (0.3.0) started freeing the registry to close a
+  real leak in the registry-owned sphere/`gtype` GAS, which made every one of those aliased
+  buffers get `cudaFree`d twice; the second call returned `cudaErrorInvalidValue`, logged as
+  `CUDA error after cleanup: invalid argument` on every scene teardown. The aliases were
+  write-only (never read back) and are removed, leaving one owner per buffer. No memory was
+  corrupted — nothing is allocated between the two frees, so the address could not have been
+  recycled — but the blanket `cudaGetLastError()` that reported it also *cleared* the error
+  state, so a genuine unrelated CUDA error could be swallowed and misattributed to cleanup.
+  `GpuLeakSuite` now exercises all five GAS-owning geometry kinds instead of spheres only
+  (spheres are the one kind that was never aliased, which is why the suite written for CR-5
+  missed this), plus a source-level guard against reintroducing the alias.
 
 ## [0.3.0] - 2026-08-03
 

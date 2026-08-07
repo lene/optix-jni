@@ -2632,9 +2632,6 @@ int OptiXWrapper::addCylinderInstance(
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
 
-    // Store GAS data with unique key (use negative instance ID to distinguish from shared GAS)
-    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
-
     impl->ias_dirty = true;
 
     // Force pipeline rebuild when entering IAS mode for first time
@@ -2760,8 +2757,6 @@ int OptiXWrapper::addConeInstance(
 
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
-
-    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
 
     impl->ias_dirty = true;
 
@@ -2935,8 +2930,6 @@ int OptiXWrapper::addCurveInstance(
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
 
-    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = curve_gpu.gas;
-
     impl->ias_dirty = true;
 
     if (!impl->use_ias) {
@@ -3064,8 +3057,6 @@ int OptiXWrapper::addPlaneInstance(
 
     int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
-
-    impl->gas_registry[static_cast<GeometryType>(-(instanceId + 1))] = gas_data;
 
     impl->ias_dirty = true;
 
@@ -3236,8 +3227,15 @@ void OptiXWrapper::clearAllInstances() {
     // CR-5(a)/(b): free the GAS buffers the registry OWNS (the cached unit-sphere GAS + any
     // custom-geometry GAS) before clearing it. Previously the map was cleared without freeing,
     // and dispose()'s freeGASBuffers ran AFTER this on the already-empty map — so these buffers
-    // leaked on every scene reload and on dispose (freed on no path). cylinder/cone/plane/curve
-    // GAS live in their own vectors (freed above); only registry-keyed GAS is handled here.
+    // leaked on every scene reload and on dispose (freed on no path).
+    //
+    // The registry must contain ONLY shared/cached GAS keyed by a real GeometryType. Cylinder,
+    // cone, plane and curve GAS are owned by their per-type vectors (freed above). CR-5 shipped
+    // while those four ALSO wrote an alias here under a negative per-instance key, so each of
+    // their buffers was freed twice — the second cudaFree returned cudaErrorInvalidValue and
+    // surfaced as "CUDA error after cleanup: invalid argument" on every teardown. Those aliases
+    // were write-only (never read back) and are gone; do not reintroduce a per-instance key
+    // here. One owner per buffer — GpuLeakSuite covers all five kinds.
     for (auto& entry : impl->gas_registry) {
         if (entry.second.gas_buffer) {
             cudaFree(reinterpret_cast<void*>(entry.second.gas_buffer));
