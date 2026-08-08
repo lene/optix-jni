@@ -124,3 +124,23 @@ assert_detection() {
     fi
     return 0
 }
+
+# --- suite-script result helpers (Sprint 36 B1) ---
+#
+# Every scripts/suites/<name>.sh must emit exactly one SUITE line as the last thing it
+# prints; qa-runner.sh (shared/standards/scripts/qa-runner.sh) parses it. Semicolons in
+# failed-item names are not expected (test/check names don't contain them); do not pass
+# names containing '"' through these helpers unescaped.
+suite_pass() {
+    echo "SUITE $1 PASS n_failed=0 failed=\"\" reason=\"\""
+}
+
+# $1 = suite name, $2 = human reason (no quote or semicolon characters)
+suite_skip() {
+    echo "SUITE $1 SKIP n_failed=0 failed=\"\" reason=\"$2\""
+}
+
+# $1 = suite name, $2 = failure count, $3 = ';'-joined failed item names
+suite_fail() {
+    echo "SUITE $1 FAIL n_failed=$2 failed=\"$3\" reason=\"\""
+}

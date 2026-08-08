@@ -3177,7 +3177,7 @@ void OptiXWrapper::clearAllInstances() {
     impl->sub_ias_buffers.clear();
 
     // Free triangle mesh GPU resources
-    for (auto& mesh : impl->triangle_meshes) {
+    for (const auto& mesh : impl->triangle_meshes) {
         freeChecked(reinterpret_cast<void*>(mesh.d_vertices), "triangle_meshes[].d_vertices");
         freeChecked(reinterpret_cast<void*>(mesh.d_indices), "triangle_meshes[].d_indices");
         freeChecked(reinterpret_cast<void*>(mesh.d_gas_output_buffer), "triangle_meshes[].d_gas_output_buffer");
@@ -3196,7 +3196,7 @@ void OptiXWrapper::clearAllInstances() {
     // surfaced as "CUDA error after cleanup: invalid argument" on every teardown. Those aliases
     // were write-only (never read back) and are gone; do not reintroduce a per-instance key
     // here. One owner per buffer — GpuLeakSuite covers all five kinds.
-    for (auto& entry : impl->gas_registry) {
+    for (const auto& entry : impl->gas_registry) {
         freeChecked(reinterpret_cast<void*>(entry.second.gas_buffer), "gas_registry[].gas_buffer");
         freeChecked(reinterpret_cast<void*>(entry.second.aabb_buffer), "gas_registry[].aabb_buffer");
     }

@@ -124,7 +124,7 @@ jobs:
           distribution: 'temurin'
           cache: 'sbt'
       - uses: sbt/setup-sbt@v1
-      - run: sbt "scalafix --check"
+      - run: ./scripts/suites/lint.sh
 
   archunit:
     name: ArchUnit
@@ -138,6 +138,15 @@ jobs:
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
       - run: sbt "testOnly *ArchUnit*"
 
+  # Both jobs below call the same scripts/suites/native-checks.sh (Sprint 36 B1/B4) —
+  # one source of truth for cppcheck + clang-tidy, shared with the local pre-push hook.
+  # Kept as two CI jobs, not folded into one, because clang-tidy needs the scarce shared
+  # self-hosted GPU runner (CMake configure needs nvcc) and cppcheck does not; folding
+  # would move cppcheck off the free ubuntu-latest runner for no benefit. The cppcheck
+  # job's invocation of native-checks.sh finds no compile_commands.json yet, so
+  # clang-tidy self-skips there; the clang-tidy job's invocation re-runs cppcheck too
+  # (a few seconds, not the GPU-runner cost clang-tidy itself has) — a small accepted
+  # redundancy in exchange for one canonical script.
   cppcheck:
     name: cppcheck
     runs-on: ubuntu-latest
@@ -145,12 +154,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install cppcheck
         run: sudo apt-get install -y cppcheck
-      - name: Run cppcheck
-        run: |
-          find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
-            xargs cppcheck --error-exitcode=1 --enable=warning,style \
-            --language=c++ \
-            --suppressions-list=.cppcheck-suppress
+      - run: ./scripts/suites/native-checks.sh
+        env:
+          HAS_NATIVE: "1"
 
   clang-tidy:
     name: clang-tidy
@@ -172,14 +178,11 @@ jobs:
             -DJAVAH_INCLUDE_DIR="$PWD/target/native/include" \
             -Wno-dev --log-level=WARNING \
             src/main/native
-      - name: Run clang-tidy
-        run: |
-          mapfile -t cpp_files < <(find src/main/native -name "*.cpp")
-          gcc_install_dir="$(dirname "$(g++ -print-file-name=include)")"
-          clang-tidy -p target/cmake-clang-check \
-            --config-file=.clang-tidy \
-            --extra-arg-before=--gcc-install-dir="${gcc_install_dir}" \
-            "${cpp_files[@]}"
+      - name: Install cppcheck
+        run: sudo apt-get install -y cppcheck
+      - run: ./scripts/suites/native-checks.sh
+        env:
+          HAS_NATIVE: "1"
 
   doc-completeness:
     name: JNI API Doc Completeness
