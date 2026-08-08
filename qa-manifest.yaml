@@ -1,0 +1,29 @@
+# qa-manifest.yaml (Sprint 36 C1) — path patterns -> change classes -> suite relevance,
+# and per-suite tier (commit|push|pr|main|release). Single source of truth for "what runs
+# on this push", read by standards/scripts/qa-runner.sh and cross-checked against
+# .git_hooks/pre-push and .github/workflows/ci.yml by scripts/check-suite-parity.sh (C7).
+# Extends the coverage-manifest.yaml pattern (Sprint 35 F14, menger). Not vendored —
+# inherently per-repo.
+#
+# `requires: []` = always relevant regardless of changed paths (structural checks).
+# `requires: [a, b]` = relevant if any of a, b matched (OR semantics).
+# `automated: false` = no scripts/suites/<name>.sh exists; always reported SKIP, never
+# invoked — a first-class pointer to a still-manual, release-tier-only check.
+
+change_classes:
+  scala:
+    - '\.(scala|sbt)$'
+    - '^project/'
+  native:
+    - 'src/main/native/.*\.(cpp|cu|cuh|h)$'
+    - 'CMakeLists\.txt'
+
+suites:
+  parity:         { tier: push,    requires: [] }
+  policy:         { tier: push,    requires: [] }
+  preflight:      { tier: push,    requires: [] }
+  lint:           { tier: push,    requires: [] }
+  unit:           { tier: push,    requires: [scala, native] }
+  native-logging: { tier: push,    requires: [native] }
+  native-checks:  { tier: push,    requires: [native] }
+  perf:           { tier: release, requires: [], automated: false, note: "PerformanceSuite.scala, sbt-invoked; not wired to any suite script or CI job yet" }

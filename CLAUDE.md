@@ -113,4 +113,5 @@ Pipeline monitoring:
 ```bash
 gh run list --limit 5
 gh run view <run-id>
+gh run rerun <run-id> --failed   # re-run only the failed jobs — the standard retry, not a full re-push
 ```

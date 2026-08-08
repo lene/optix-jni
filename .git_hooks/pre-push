@@ -1,10 +1,11 @@
 #!/bin/sh
-# Pre-push hook (Sprint 36 B3): thin wrapper. Change detection is unchanged
-# (standards/hooks/lib.sh); this hook's only job is to compute HAS_*/QA_RANGES and hand
-# the repo's fixed suite list to standards/scripts/qa-runner.sh, which runs each suite
-# script (scripts/suites/*.sh) and decides its own PASS/FAIL/SKIP — replacing the old
-# "No code changes — skipping pre-push checks" single-line skip with an honest per-suite
-# summary (every suite always runs and self-reports).
+# Pre-push hook (Sprint 36 C1): thin wrapper. Change detection is unchanged
+# (standards/hooks/lib.sh); this hook's only job is to compute CHANGED_FILES/QA_RANGES and
+# hand them to standards/scripts/qa-runner.sh, which reads ./qa-manifest.yaml to decide
+# which suites are relevant at push tier (replacing the old hardcoded HAS_SCALA/HAS_NATIVE
+# grep block) and runs each one (scripts/suites/*.sh), which decides its own PASS/FAIL/SKIP
+# — an honest per-suite summary (every relevant suite runs and self-reports; an irrelevant
+# one is labeled SKIP without its script ever starting).
 #
 # Detect changed files. The inline loop this replaces read only git's pre-push
 # protocol from stdin, so running the hook by hand — no stdin — produced an empty file
@@ -27,8 +28,7 @@ else
   RANGES="${BASE:-HEAD}..HEAD"
 fi
 
-export HAS_SCALA=$(echo "$CHANGED_FILES" | grep -cE '\.(scala|sbt)$|^project/')
-export HAS_NATIVE=$(echo "$CHANGED_FILES" | grep -cE 'src/main/native/.*\.(cpp|cu|cuh|h)$|CMakeLists\.txt')
+export CHANGED_FILES
 export QA_RANGES="$RANGES"
 
-./standards/scripts/qa-runner.sh parity policy preflight lint unit native-logging native-checks
+./standards/scripts/qa-runner.sh --tier push
