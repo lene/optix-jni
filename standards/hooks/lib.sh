@@ -144,3 +144,49 @@ suite_skip() {
 suite_fail() {
     echo "SUITE $1 FAIL n_failed=$2 failed=\"$3\" reason=\"\""
 }
+
+# --- GPU environment gate (Sprint 36 D1) ---
+#
+# $1 = suite name. Call before any suite does real GPU work. Locally, a busy GPU is a
+# quiet SKIP (a human is right there and can just retry once the desktop app clears —
+# low friction). In CI ($CI is GitHub Actions' own standard env var) an unattended job
+# silently skipping GPU tests would be dangerous — it could mask a real regression going
+# unnoticed for a week — so it reports FAIL with an unmistakably-labeled reason instead,
+# forcing a human to look and rerun (`gh run rerun --failed`, already documented, C6).
+# Returns 1 (caller must stop and exit) when the GPU is unsuitable; 0 to proceed.
+gpu_preflight_or_skip() {
+    _suite="$1"
+    command -v nvidia-smi >/dev/null 2>&1 || return 0
+    _detail=$(./standards/scripts/gpu-preflight.sh) && return 0
+    if [ -n "${CI:-}" ]; then
+        suite_fail "$_suite" 0 "ENV-UNSUITABLE(GPU busy: $_detail)"
+    else
+        suite_skip "$_suite" "env: GPU busy — $_detail"
+    fi
+    return 1
+}
+
+# --- network retry (Sprint 36 D4) ---
+#
+# $1 = human label for logging, remaining args = the command to run. Retries up to
+# RETRY_ATTEMPTS times (default 3) with exponential backoff (RETRY_BASE_DELAY seconds,
+# default 5, doubling each attempt). Mirrors the shape already used ad hoc in
+# menger-common's CI publish/sync steps (`for attempt in 1 2 3; do ...; sleep 30; done`)
+# as a reusable POSIX function instead of a copy-pasted loop per call site.
+retry_with_backoff() {
+    _label="$1"; shift
+    _attempts="${RETRY_ATTEMPTS:-3}"
+    _delay="${RETRY_BASE_DELAY:-5}"
+    _n=1
+    while [ "$_n" -le "$_attempts" ]; do
+        "$@" && return 0
+        if [ "$_n" -lt "$_attempts" ]; then
+            echo "retry_with_backoff: $_label failed (attempt $_n/$_attempts), retrying in ${_delay}s..." >&2
+            sleep "$_delay"
+            _delay=$((_delay * 2))
+        fi
+        _n=$((_n + 1))
+    done
+    echo "retry_with_backoff: $_label failed after $_attempts attempts" >&2
+    return 1
+}
