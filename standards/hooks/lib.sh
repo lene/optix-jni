@@ -190,3 +190,38 @@ retry_with_backoff() {
     echo "retry_with_backoff: $_label failed after $_attempts attempts" >&2
     return 1
 }
+
+# --- generic ratchet comparison (Sprint 36 F, O7) ---
+#
+# Quality signals (coverage, Sonar rating, sanitizer warning count, perf ratio) ratchet:
+# the current value is the floor, regression fails the gate, improvement may move the
+# floor. This is the one comparison all of them share; callers own reading/writing their
+# own baseline file so each ratchet's own bump policy (unconditional on pass, vs.
+# noise-gated) stays with the caller instead of being baked in here.
+#
+# $1 = label (for messages), $2 = current numeric value, $3 = baseline numeric value,
+# $4 = direction ("up" = higher is better, e.g. coverage; "down" = lower is better,
+# e.g. sanitizer warning count, perf ratio, Sonar rating-as-number), $5 = tolerance
+# (absolute slack before FAIL; default 0 = strict).
+#
+# Echoes "PASS unchanged" | "PASS improved" | "FAIL regressed" to stdout; caller decides
+# whether "PASS improved" warrants rewriting its baseline file.
+ratchet_check() {
+    _label="$1"; _current="$2"; _baseline="$3"; _direction="$4"; _tolerance="${5:-0}"
+    if [ "$_direction" = "up" ]; then
+        _delta=$(echo "$_baseline - $_current" | bc)   # positive = regression
+    else
+        _delta=$(echo "$_current - $_baseline" | bc)   # positive = regression
+    fi
+    if [ "$(echo "$_delta > $_tolerance" | bc)" -eq 1 ]; then
+        echo "FAIL regressed"
+        echo "ratchet($_label): $_current vs baseline $_baseline — regression (delta $_delta > tolerance $_tolerance)" >&2
+        return 1
+    fi
+    if [ "$(echo "$_delta < 0" | bc)" -eq 1 ]; then
+        echo "PASS improved"
+    else
+        echo "PASS unchanged"
+    fi
+    return 0
+}
