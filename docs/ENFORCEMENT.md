@@ -33,6 +33,10 @@ format established in `menger/docs/ENFORCEMENT.md` (Sprint 36 A4).
 | Modified/deleted test files require `Test-Change:` trailer | CLAUDE.md §Critical rules (shared) | `standards/hooks/check-test-justification.sh` (pre-push) | ✅ |
 | ArchUnit architecture rules | — | CI `archunit` job: `sbt "testOnly *ArchUnit*"` (self-hosted GPU runner) | ✅ |
 | Coverage floor / ratchet | — | Not implemented — no `.coverage_baseline` or CI coverage gate exists in this repo | ❌ |
+| Escaped-defect fix carries a regression test + `docs/QA_INCIDENTS.md` entry | `../docs/QA_STRATEGY.md` §O5 (workspace); `../docs/QA_INCIDENTS.md` | 🤖 AI policy | 🤖 |
+
+Mechanized `QA-Incident:` trailer check deferred per Sprint 36 SPRINT36.md E3 ("later if
+leaky") — add only if the 🤖 row proves insufficient in practice.
 
 ---
 
