@@ -208,6 +208,21 @@ retry_with_backoff() {
 # whether "PASS improved" warrants rewriting its baseline file.
 ratchet_check() {
     _label="$1"; _current="$2"; _baseline="$3"; _direction="$4"; _tolerance="${5:-0}"
+
+    # Fail closed on malformed input (security review finding): bc silently returns an
+    # empty/garbage result for a non-numeric operand, and `[ "" -eq 1 ]` is a harmless
+    # no-op rather than an error under `set -u` alone — a corrupted baseline file or a
+    # bad API response would silently fall through to "PASS unchanged" instead of
+    # failing the gate. Validating strictly-numeric input before it ever reaches bc also
+    # closes the underlying "unsanitized value piped into an interpreter" shape.
+    for _val in "$_current" "$_baseline" "$_tolerance"; do
+        echo "$_val" | grep -qE '^-?[0-9]+(\.[0-9]+)?$' || {
+            echo "FAIL regressed"
+            echo "ratchet($_label): non-numeric input (current='$_current' baseline='$_baseline' tolerance='$_tolerance') — failing closed" >&2
+            return 1
+        }
+    done
+
     if [ "$_direction" = "up" ]; then
         _delta=$(echo "$_baseline - $_current" | bc)   # positive = regression
     else
