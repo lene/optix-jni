@@ -8,6 +8,12 @@
 set -u
 . ./standards/hooks/lib.sh
 
+# `sbt test` also exercises GpuLeakSuite and PerformanceSuite (real CUDA calls) in the
+# same JVM run as the plain unit tests — no Slow-tag filter exists to split them out
+# (Sprint 36 D1). Previously unguarded here; menger's unit.sh gates the same way for the
+# same reason.
+gpu_preflight_or_skip unit || exit 1
+
 echo "=== Compile ==="
 if ! sbt compile; then
   suite_fail unit 1 "compile"

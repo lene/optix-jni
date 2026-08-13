@@ -213,8 +213,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
-      - name: Run Scala tests
-        run: sbt test
+      - name: Run Scala tests (scripts/suites/unit.sh)
+        run: ./scripts/suites/unit.sh
 
   # ── build ──────────────────────────────────────────────────────────────────
 
