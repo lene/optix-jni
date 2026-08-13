@@ -26,4 +26,4 @@ suites:
   unit:           { tier: push,    requires: [scala, native] }
   native-logging: { tier: push,    requires: [native] }
   native-checks:  { tier: push,    requires: [native] }
-  perf:           { tier: release, requires: [], automated: false, note: "PerformanceSuite.scala, sbt-invoked; not wired to any suite script or CI job yet" }
+  perf:           { tier: release, requires: [], note: "scripts/suites/perf.sh runs PerformanceSuite.scala's ratio-based FPS gates (Sprint 36 D2) in isolation. Note: PerformanceSuite is Slow-tagged but no Slow filter exists anywhere (build.sbt/CI), so it already runs on every push too via unit.sh's plain `sbt test` — this suite is the release-tier, addressable-on-its-own entry point, not the suite's only invocation." }
