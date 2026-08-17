@@ -208,7 +208,14 @@ extern "C" __global__ void __closesthit__cone() {
             ? normal
             : make_float3(-normal.x, -normal.y, -normal.z);
 
-        if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
+        // Already the result of a bailout bounce — terminate here, do not trace again
+        // (Sprint 36 H3.2; see helpers.cu handleMetallicOpaque for the full rationale).
+        if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
+            handleFullyOpaque(hit_point, refr_normal, material_color, emission);
+            return;
+        }
+
+        if (depth == static_cast<unsigned int>(params.max_ray_depth)) {
             traceFinalNonRecursiveRay(hit_point, ray_direction, refr_normal);
             return;
         }

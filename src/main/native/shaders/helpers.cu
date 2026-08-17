@@ -1006,15 +1006,19 @@ __device__ void traceFinalNonRecursiveRay(
     const float3& ray_direction,
     const float3& normal
 ) {
-    const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float3 reflect_dir = make_float3(
-        ray_direction.x - RenderingConstants::REFLECTION_SCALE * cos_theta * normal.x,
-        ray_direction.y - RenderingConstants::REFLECTION_SCALE * cos_theta * normal.y,
-        ray_direction.z - RenderingConstants::REFLECTION_SCALE * cos_theta * normal.z
-    );
+    // Shares the reflect() helper (VectorMath.h) with traceReflectedRay. A previous
+    // independent, fabsf()-based reimplementation here flipped the sign for front-facing
+    // hits, producing near-identity "reflect" directions instead of a real reflection
+    // (Sprint 36 H3.2) — the duplication itself was the hazard, not just the typo.
+    const float3 reflect_dir = reflect(ray_direction, normal);
 
     unsigned int final_r = 0, final_g = 0, final_b = 0;
-    unsigned int final_depth = static_cast<unsigned int>(params.max_ray_depth);  // Keep at max depth to prevent recursion
+    // One past max_ray_depth: marks this ray's result as the single allowed bailout bounce
+    // already spent. Every closest-hit shader's depth-cutoff check must treat depth >
+    // max_ray_depth as terminal (no further optixTrace) rather than re-entering this bailout
+    // — otherwise a bailout ray landing on another reflective/refractive surface re-triggers
+    // it, chaining nested optixTrace calls past OptiX's compiled recursion limit (Sprint 36 H3.2).
+    unsigned int final_depth = static_cast<unsigned int>(params.max_ray_depth) + 1;
     const float3 final_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
 
     optixTrace(
@@ -1256,14 +1260,7 @@ __device__ void traceReflectedRay(
     unsigned int& reflect_g,
     unsigned int& reflect_b
 ) {
-    // Reflection formula: R = I - 2 * dot(I, N) * N
-    // Note: dot(I, N) is typically negative for front-facing hits, which is correct
-    const float dot_in = dot(ray_direction, normal);
-    const float3 reflect_dir = make_float3(
-        ray_direction.x - 2.0f * dot_in * normal.x,
-        ray_direction.y - 2.0f * dot_in * normal.y,
-        ray_direction.z - 2.0f * dot_in * normal.z
-    );
+    const float3 reflect_dir = reflect(ray_direction, normal);
 
     if (params.stats) {
         atomicAdd(&params.stats->reflected_rays, 1ULL);
@@ -1417,8 +1414,16 @@ __device__ void handleMetallicOpaque(
     unsigned int depth,
     float emission = 0.0f
 ) {
-    // If at max depth, trace final non-recursive ray
-    if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
+    // Already the result of a bailout bounce (traceFinalNonRecursiveRay) — terminate here with
+    // plain diffuse shading rather than tracing again, or a metal-on-metal cavity chains nested
+    // optixTrace calls past OptiX's compiled recursion limit (Sprint 36 H3.2).
+    if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
+        handleFullyOpaque(hit_point, normal, material_color, emission);
+        return;
+    }
+
+    // At max depth: trace the one allowed final non-recursive ray
+    if (depth == static_cast<unsigned int>(params.max_ray_depth)) {
         traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
         return;
     }

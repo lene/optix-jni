@@ -10,8 +10,20 @@
 #endif
 
 // Ray tracing configuration
+// MAX_TRACE_DEPTH is the app-level reflection/refraction bounce budget: the default and
+// ceiling for the user-facing --max-ray-depth dial (RenderConfig.h, params.max_ray_depth).
 // This constant is used by both the C++ pipeline setup and CUDA shaders
 constexpr unsigned int MAX_TRACE_DEPTH = 5;  // Allow internal reflections in glass (entry + exit + reflections)
+
+// OptiX's own hard, compile-time recursion ceiling (OptixPipelineLinkOptions::maxTraceDepth).
+// Deliberately larger than MAX_TRACE_DEPTH: reaching a bounce at payload depth D requires D+1
+// native optixTrace calls (the raygen's own call counts as the first), and the depth-cutoff
+// bailout (traceFinalNonRecursiveRay, helpers.cu) issues one further terminal call beyond that.
+// Sizing this the same as MAX_TRACE_DEPTH let that terminal call exceed OptiX's own compiled
+// limit — undefined behavior, observed as an illegal-memory-access crash (Sprint 36 H3.2).
+// Headroom here also allows MAX_TRACE_DEPTH itself to grow later without another pipeline
+// rebuild.
+constexpr unsigned int PIPELINE_MAX_TRACE_DEPTH = 10;
 
 // Ray tracing constants (shared between C++ and CUDA shaders)
 namespace RayTracingConstants {
@@ -132,7 +144,6 @@ namespace RenderingConstants {
     constexpr float NDC_OFFSET = 1.0f;                   // Offset for NDC calculation
     
     // Physics and ray tracing
-    constexpr float REFLECTION_SCALE = 2.0f;                 // Scale factor for reflection calculation
     constexpr float DIFFUSE_BLEND_FACTOR = 1.0f - RayTracingConstants::AMBIENT_LIGHT_FACTOR;  // Diffuse contribution (energy conservation: ambient + diffuse = 1.0)
 }
 

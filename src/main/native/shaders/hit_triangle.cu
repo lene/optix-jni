@@ -459,8 +459,15 @@ extern "C" __global__ void __closesthit__triangle() {
         return;
     }
 
-    // If max depth reached, trace final non-recursive ray
-    if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
+    // Already the result of a bailout bounce — terminate here, do not trace again
+    // (Sprint 36 H3.2; see helpers.cu handleMetallicOpaque for the full rationale).
+    if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
+        handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, mesh_emission);
+        return;
+    }
+
+    // If max depth reached, trace the one allowed final non-recursive ray
+    if (depth == static_cast<unsigned int>(params.max_ray_depth)) {
         traceFinalNonRecursiveRay(geom.hit_point, ray_direction, geom.normal);
         return;
     }
