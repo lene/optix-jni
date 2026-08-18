@@ -156,7 +156,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install cppcheck
-        run: sudo apt-get install -y cppcheck
+        # Self-hosted runner: cppcheck is normally already present from a prior run/provisioning.
+        # Only escalate when it's actually missing -- unconditional sudo fails non-interactively
+        # the moment the runner's cached sudo credential lapses, even though nothing needs
+        # installing.
+        run: command -v cppcheck >/dev/null || sudo apt-get install -y cppcheck
       - run: ./scripts/suites/native-checks.sh
         env:
           HAS_NATIVE: "1"
@@ -182,7 +186,11 @@ jobs:
             -Wno-dev --log-level=WARNING \
             src/main/native
       - name: Install cppcheck
-        run: sudo apt-get install -y cppcheck
+        # Self-hosted runner: cppcheck is normally already present from a prior run/provisioning.
+        # Only escalate when it's actually missing -- unconditional sudo fails non-interactively
+        # the moment the runner's cached sudo credential lapses, even though nothing needs
+        # installing.
+        run: command -v cppcheck >/dev/null || sudo apt-get install -y cppcheck
       - run: ./scripts/suites/native-checks.sh
         env:
           HAS_NATIVE: "1"

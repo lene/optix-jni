@@ -24,7 +24,12 @@ LOG=$(mktemp)
 echo "=== Tests ==="
 { sbt test 2>&1; echo "SBT_TEST_RC=$?"; } | tee "$LOG"
 
-if grep -q '^SBT_TEST_RC=0$' "$LOG"; then
+# sbt's last write before exiting is often a bare ANSI erase-to-end-of-line sequence with no
+# trailing newline (e.g. \x1b[0J), which then glues onto the front of the marker echo on the
+# same captured line -- the anchored grep below sees "\x1b[0JSBT_TEST_RC=0", not
+# "SBT_TEST_RC=0" at start-of-line, and misreports a passing run as failed. Strip ANSI CSI
+# sequences (colors, cursor/erase codes) before matching.
+if sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$LOG" | grep -q '^SBT_TEST_RC=0$'; then
   echo "Tests: OK"
   suite_pass unit
   rm -f "$LOG"
