@@ -60,7 +60,9 @@ __device__ TriangleGeometry getTriangleGeometry(const TriangleHitGroupData* hit_
         w * v0[4] + u * v1[4] + v * v2[4],
         w * v0[5] + u * v1[5] + v * v2[5]
     );
-    normal = normalize(normal);
+    // Object space -> world space; see the note in the IAS variant below. Without this an
+    // instance rotation moves the geometry but not its normals (Sprint 36 H3.2 round 5).
+    normal = normalize(optixTransformNormalFromObjectToWorldSpace(normal));
 
     // Interpolate UV coordinates if available (stride >= 8)
     geom.uv_coords = make_float2(0.0f, 0.0f);
@@ -136,7 +138,11 @@ __device__ TriangleGeometry getTriangleGeometry(
         w * v0[4] + u * v1[4] + v * v2[4],
         w * v0[5] + u * v1[5] + v * v2[5]
     );
-    normal = normalize(normal);
+    // Vertex normals live in OBJECT space. An instance transform (position/rotation/scale, set
+    // by TriangleMeshSceneBuilder) is applied to the geometry by OptiX traversal but never to
+    // these normals, so they must be carried to world space explicitly — otherwise a rotated
+    // object shades and reflects exactly as though it were unrotated (Sprint 36 H3.2 round 5).
+    normal = normalize(optixTransformNormalFromObjectToWorldSpace(normal));
 
     geom.uv_coords = make_float2(0.0f, 0.0f);
     if (stride >= VERTEX_STRIDE_WITH_UV) {
