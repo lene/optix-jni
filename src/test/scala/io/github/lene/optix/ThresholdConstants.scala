@@ -6,25 +6,28 @@ object ThresholdConstants:
 
   // ========== Performance Thresholds ==========
 
-  // Lenient threshold for CI runners with varying GPU capabilities
-  val MIN_FPS = 10.0
-
-  // Antialiasing (maxDepth=2) does ~2x the ray work of the other perf cases, so it
-  // runs near the runner's floor: observed 8.89-9.3 fps on a cold GPU, where the light
-  // cases hit 100-1000+. It shares nothing but the name with MIN_FPS on purpose — a
-  // separate constant keeps the light-case guard at 10 while giving the AA case
-  // realistic headroom.
+  // Sprint 36 D2: fps floors are expressed as a fraction of a same-run calibration
+  // probe (PerformanceSuite.calibrationFps) instead of an absolute fps number — this is
+  // the "proper long-term fix" the old MIN_FPS_ANTIALIASING comment (below, historically)
+  // deferred to. A hot/cold/throttled GPU moves the probe and the tested scenario's fps
+  // by roughly the same factor, so the ratio holds steady where an absolute floor didn't
+  // (2026-08-03, Sprint 35 Release B: 8.89-9.3 fps cold vs. ~1.6-1.7 fps hot on the same
+  // unmodified code, on the self-hosted nvidia CI runner, reproduced 3x back-to-back).
   //
-  // 2026-08-03 (Sprint 35 Release B): the self-hosted nvidia CI runner reproducibly
-  // throttles to ~1.6-1.7 fps when this test runs right after a prior full-suite CI
-  // run heated the same physical GPU (reproduced 3x back-to-back, including on CI, not
-  // just a laptop) — a cold run hits ~9.2 fps, a hot one ~1.6 fps, no code change
-  // involved either time. 8.0 was tuned for the cold case only and false-positives on
-  // every back-to-back run. Lowered with margin below the observed hot floor so it
-  // still catches a real regression (rendering broken/hung/near-zero output) without
-  // false-failing on runner thermal state. See Sprint 35 Ph4 Task 4.5 (absolute P1/P2
-  // ceilings + root-cause-required policy) for the proper long-term fix.
-  val MIN_FPS_ANTIALIASING = 1.0
+  // MIN_FPS_RATIO covers the four "light" scenarios (opaque/transparent/diamond/large
+  // sphere); MIN_FPS_RATIO_ANTIALIASING is separate because antialiasing (maxDepth=2)
+  // does ~2x the ray work and runs near the floor even relative to the probe.
+  //
+  // Measured on an idle RTX 4060 Laptop, one real run (2026-08-09): opaque 0.84,
+  // transparent 0.68, diamond 0.76, large sphere 0.21x (the binding case for
+  // MIN_FPS_RATIO), buffer reuse 1.10x, antialiasing 0.019x. Floors set at roughly half
+  // the observed worst case per group — enough margin to absorb normal run-to-run
+  // variance while still catching a real regression (e.g. a silent fallback to a much
+  // slower path). Not yet validated against a hot/throttled run; revisit if it proves
+  // too tight or too loose in practice.
+  val MIN_FPS_RATIO = 0.10
+  val MIN_FPS_RATIO_ANTIALIASING = 0.01
+  val MIN_FPS_RATIO_BUFFER_REUSE = 0.5
 
   // Images with lighting/shading should have stddev > 10; solid colors are near 0
   val MIN_BRIGHTNESS_VARIATION = 10.0

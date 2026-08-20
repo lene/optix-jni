@@ -1,18 +1,20 @@
 #!/bin/sh
-
-RED_TEXT='\e[38;5;196m'
-GREEN_TEXT='\e[38;5;46m'
-YELLOW_TEXT='\e[38;5;226m'
-RESET_TEXT='\e[0m'
-
+# Pre-push hook (Sprint 36 C1): thin wrapper. Change detection is unchanged
+# (standards/hooks/lib.sh); this hook's only job is to compute CHANGED_FILES/QA_RANGES and
+# hand them to standards/scripts/qa-runner.sh, which reads ./qa-manifest.yaml to decide
+# which suites are relevant at push tier (replacing the old hardcoded HAS_SCALA/HAS_NATIVE
+# grep block) and runs each one (scripts/suites/*.sh), which decides its own PASS/FAIL/SKIP
+# — an honest per-suite summary (every relevant suite runs and self-reports; an irrelevant
+# one is labeled SKIP without its script ever starting).
+#
 # Detect changed files. The inline loop this replaces read only git's pre-push
-# protocol from stdin, so running the hook by hand — no stdin — produced an empty
-# file set, skipped every check below and exited 0 regardless of the diff. See
-# standards/hooks/lib.sh for the three invocation contexts and why a TTY test
-# alone does not cover them.
-git fetch origin --quiet 2>/dev/null || true
+# protocol from stdin, so running the hook by hand — no stdin — produced an empty file
+# set, skipped every check below and exited 0 regardless of the diff. See
+# standards/hooks/lib.sh for the three invocation contexts and why a TTY test alone
+# does not cover them.
 if [ -r ./standards/hooks/lib.sh ]; then
   . ./standards/hooks/lib.sh
+  retry_with_backoff "git fetch origin" git fetch origin --quiet || true
   RANGES=$(push_ranges); _rc=$?
   [ "$_rc" -eq 2 ] && exit 0   # push only deletes a branch
   # unquoted on purpose: split the newline-separated ranges into arguments
@@ -23,128 +25,10 @@ else
   # comparison rather than silently skipping.
   BASE=$(git merge-base origin/main HEAD 2>/dev/null)
   CHANGED_FILES=$(git diff --name-only "${BASE:-HEAD}" HEAD)
+  RANGES="${BASE:-HEAD}..HEAD"
 fi
 
-HAS_SCALA=$(echo "$CHANGED_FILES" | grep -cE '\.(scala|sbt)$|^project/')
-HAS_NATIVE=$(echo "$CHANGED_FILES" | grep -cE 'src/main/native/.*\.(cpp|cu|cuh|h)$|CMakeLists\.txt')
+export CHANGED_FILES
+export QA_RANGES="$RANGES"
 
-if [ "$HAS_SCALA" -eq 0 ] && [ "$HAS_NATIVE" -eq 0 ]; then
-  echo "No code changes — skipping pre-push checks."
-  exit 0
-fi
-
-STATUS=0
-
-# ---------------------------------------------------------------------------
-# CUDA/OptiX environment (warn only — stub guard in build.sbt prevents publish)
-# ---------------------------------------------------------------------------
-echo "=== Environment ==="
-if [ -n "$CUDA_HOME" ] && [ -x "$CUDA_HOME/bin/nvcc" ]; then
-  echo "CUDA_HOME: ${GREEN_TEXT}$CUDA_HOME${RESET_TEXT}"
-  if [ -n "$OPTIX_ROOT" ] && [ -f "$OPTIX_ROOT/include/optix.h" ]; then
-    echo "OPTIX_ROOT: ${GREEN_TEXT}$OPTIX_ROOT${RESET_TEXT}"
-  else
-    echo "${YELLOW_TEXT}OPTIX_ROOT: not set or incomplete${RESET_TEXT}"
-  fi
-else
-  echo "${YELLOW_TEXT}CUDA not available — native build will produce stub. Publishing is blocked by build.sbt.${RESET_TEXT}"
-fi
-
-# ---------------------------------------------------------------------------
-# Changelog & version
-# ---------------------------------------------------------------------------
-echo "=== Changelog & Version ==="
-VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
-if [ -z "$VERSION" ]; then
-  echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (cannot read version from build.sbt)"
-  STATUS=1
-else
-  MAIN_VERSION=$(git show origin/main:build.sbt 2>/dev/null | grep 'version :=' | cut -d'"' -f2)
-  VERSION_BUMPED=0
-  [ "$VERSION" != "$MAIN_VERSION" ] && VERSION_BUMPED=1
-  if ! grep -qF "## [$VERSION]" CHANGELOG.md; then
-    echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (missing '## [$VERSION]' entry)"
-    STATUS=1
-  elif ! grep -qF "[$VERSION]:" CHANGELOG.md; then
-    echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (missing link '[$VERSION]:' at bottom)"
-    STATUS=1
-  elif [ "$VERSION_BUMPED" -eq 1 ] && ! grep -qF "## [$VERSION] - $(date +%Y-%m-%d)" CHANGELOG.md; then
-    echo "Changelog: ${RED_TEXT}FAILED${RESET_TEXT} (new version $VERSION needs today's date $(date +%Y-%m-%d))"
-    STATUS=1
-  elif [ "$VERSION_BUMPED" -eq 1 ] && git tag | grep -q "^${VERSION}$"; then
-    echo "Version: ${RED_TEXT}FAILED${RESET_TEXT} (tag $VERSION already exists — bump version)"
-    STATUS=1
-  else
-    echo "Changelog & Version: ${GREEN_TEXT}OK${RESET_TEXT}"
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# Compile
-# ---------------------------------------------------------------------------
-echo "=== Compile ==="
-sbt compile || STATUS=1
-
-# ---------------------------------------------------------------------------
-# Tests (GPU tests auto-skip via assume() when GPU unavailable)
-# ---------------------------------------------------------------------------
-echo "=== Tests ==="
-# NB: `sbt test | tee` returns tee's exit code (0), not sbt's — a pipe here would
-# silently pass on failing tests. /bin/sh (dash) has no pipefail/PIPESTATUS, so
-# capture sbt's real exit via a marker line that survives the tee.
-{ sbt test 2>&1; echo "SBT_TEST_RC=$?"; } | tee /tmp/optix-jni-pre-push-test.log
-if grep -q '^SBT_TEST_RC=0$' /tmp/optix-jni-pre-push-test.log; then
-  echo "Tests: ${GREEN_TEXT}OK${RESET_TEXT}"
-else
-  STATUS=1
-  echo "Tests: ${RED_TEXT}FAILED${RESET_TEXT} (see /tmp/optix-jni-pre-push-test.log)"
-fi
-
-# ---------------------------------------------------------------------------
-# Scalafix
-# ---------------------------------------------------------------------------
-echo "=== Scalafix ==="
-# Report scalafix's own result, not the accumulated $STATUS. Testing the shared
-# flag makes every later step inherit an earlier failure and claim it as its
-# own, which sends you debugging the wrong check.
-if sbt "scalafix --check"; then
-  echo "Scalafix: ${GREEN_TEXT}OK${RESET_TEXT}"
-else
-  STATUS=1
-  echo "Scalafix: ${RED_TEXT}FAILED${RESET_TEXT}"
-fi
-
-# ---------------------------------------------------------------------------
-# native logging gate (F12): no raw std::cerr/std::cout/printf in production native
-# ---------------------------------------------------------------------------
-if [ "$HAS_NATIVE" -gt 0 ]; then
-  echo "=== native logging ==="
-  if bash scripts/check-native-logging.sh; then
-    echo "native logging: ${GREEN_TEXT}OK${RESET_TEXT}"
-  else
-    STATUS=1
-    echo "native logging: ${RED_TEXT}FAILED${RESET_TEXT}"
-  fi
-fi
-
-# ---------------------------------------------------------------------------
-# cppcheck (native changes only, requires cppcheck installed)
-# ---------------------------------------------------------------------------
-if [ "$HAS_NATIVE" -gt 0 ] && command -v cppcheck > /dev/null 2>&1; then
-  echo "=== cppcheck ==="
-  # Same reasoning as the scalafix step: report cppcheck's own result rather
-  # than the accumulated $STATUS, which would attribute an earlier failure here.
-  if find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
-      xargs cppcheck --error-exitcode=1 --enable=warning,style \
-      --language=c++ \
-      --suppressions-list=.cppcheck-suppress 2>&1; then
-    echo "cppcheck: ${GREEN_TEXT}OK${RESET_TEXT}"
-  else
-    STATUS=1
-    echo "cppcheck: ${RED_TEXT}FAILED${RESET_TEXT}"
-  fi
-elif [ "$HAS_NATIVE" -gt 0 ]; then
-  echo "${YELLOW_TEXT}cppcheck not installed — skipping (runs in CI)${RESET_TEXT}"
-fi
-
-exit $STATUS
+./standards/scripts/qa-runner.sh --tier push

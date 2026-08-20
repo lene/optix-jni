@@ -4,8 +4,9 @@ import com.typesafe.scalalogging.LazyLogging
 import io.github.lene.optix.ColorConstants.HIGHLY_TRANSPARENT_WHITE
 import io.github.lene.optix.ColorConstants.PERFORMANCE_TEST_GREEN_CYAN
 import io.github.lene.optix.Slow
-import io.github.lene.optix.ThresholdConstants.MIN_FPS
-import io.github.lene.optix.ThresholdConstants.MIN_FPS_ANTIALIASING
+import io.github.lene.optix.ThresholdConstants.MIN_FPS_RATIO
+import io.github.lene.optix.ThresholdConstants.MIN_FPS_RATIO_ANTIALIASING
+import io.github.lene.optix.ThresholdConstants.MIN_FPS_RATIO_BUFFER_REUSE
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import menger.common.Const
 import menger.common.Vector
@@ -46,33 +47,44 @@ class PerformanceSuite extends AnyFlatSpec
 
     fps
 
-  "Performance" should "achieve >10 FPS for opaque spheres" taggedAs (Slow) in:
+  // Same-run calibration probe (Sprint 36 D2): a minimal, fixed scene distinct from all
+  // 5 tested scenarios below, measured once via the same measureAndLog path. `lazy`
+  // because `renderer` only exists inside a running test's beforeEach — this evaluates
+  // on whichever test first touches it and is cached for the rest of the suite, so every
+  // fps assertion below judges its scenario as a fraction of THIS run's own probe rather
+  // than an absolute floor. Hot/cold GPU state (thermal throttling, prior-test warmup)
+  // then cancels out, superseding the hand-tuned MIN_FPS_ANTIALIASING workaround whose
+  // own comment already flagged this as the "proper long-term fix."
+  private lazy val calibrationFps: Double = measureAndLog("Calibration probe (same-run baseline)"):
+    TestScenario.default().applyTo(renderer)
+
+  "Performance" should "achieve the FPS ratio floor for opaque spheres" taggedAs (Slow) in:
     val fps = measureAndLog("Opaque sphere"):
       TestScenario.performanceBaseline()
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
 
-    fps should be > MIN_FPS
+    fps / calibrationFps should be > MIN_FPS_RATIO
 
-  it should "achieve >10 FPS for transparent spheres" taggedAs (Slow) in:
+  it should "achieve the FPS ratio floor for transparent spheres" taggedAs (Slow) in:
     val fps = measureAndLog("Transparent sphere"):
       TestScenario.performanceTransparent()
         .withIOR(Const.iorGlass)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
 
-    fps should be > MIN_FPS
+    fps / calibrationFps should be > MIN_FPS_RATIO
 
-  it should "achieve >10 FPS for high-IOR materials" taggedAs (Slow) in:
+  it should "achieve the FPS ratio floor for high-IOR materials" taggedAs (Slow) in:
     val fps = measureAndLog("Diamond material"):
       TestScenario.diamondSphere()
         .withSphereColor(HIGHLY_TRANSPARENT_WHITE)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
 
-    fps should be > MIN_FPS
+    fps / calibrationFps should be > MIN_FPS_RATIO
 
-  it should "achieve >10 FPS for large spheres" taggedAs (Slow) in:
+  it should "achieve the FPS ratio floor for large spheres" taggedAs (Slow) in:
     val fps = measureAndLog("Large sphere"):
       TestScenario.largeSphere()
         .withSphereColor(PERFORMANCE_TEST_GREEN_CYAN)
@@ -81,9 +93,9 @@ class PerformanceSuite extends AnyFlatSpec
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
 
-    fps should be > MIN_FPS
+    fps / calibrationFps should be > MIN_FPS_RATIO
 
-  it should "achieve >50 FPS with buffer reuse" in:
+  it should "achieve the FPS ratio floor with buffer reuse" in:
     val fps = measureAndLog("Buffer reuse"):
       renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
       renderer.setCamera(
@@ -93,9 +105,9 @@ class PerformanceSuite extends AnyFlatSpec
         60f
       )
 
-    fps should be > 50.0
+    fps / calibrationFps should be > MIN_FPS_RATIO_BUFFER_REUSE
 
-  it should "stay above the antialiasing FPS floor" taggedAs (Slow) in:
+  it should "stay above the antialiasing FPS ratio floor" taggedAs (Slow) in:
     val fps = measureAndLog("Antialiasing"):
       TestScenario.default()
         .withSphereRadius(0.5f)
@@ -103,4 +115,4 @@ class PerformanceSuite extends AnyFlatSpec
         .applyTo(renderer)
       renderer.setAntialiasing(enabled = true, maxDepth = 2, threshold = 0.1f)
 
-    fps should be > MIN_FPS_ANTIALIASING
+    fps / calibrationFps should be > MIN_FPS_RATIO_ANTIALIASING

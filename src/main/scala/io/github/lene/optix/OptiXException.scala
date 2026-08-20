@@ -12,5 +12,17 @@ package io.github.lene.optix
   * `IllegalArgumentException` (Scala `require`, and the native arg-validation throws for array
   * length / texture dimensions / light count). That split is asserted by `JniErrorSurfaceSuite`.
   */
-class OptiXException(message: String, cause: Throwable = null) // scalafix:ok DisableSyntax.null
-    extends RuntimeException(message, cause)
+class OptiXException(message: String, cause: Throwable)
+    extends RuntimeException(message, cause):
+
+  /** The constructor JNI actually binds to.
+    *
+    * `throwException` (JNIBindings.cpp) calls `env->ThrowNew(cls, msg)`, and `ThrowNew` looks up
+    * `<init>(Ljava/lang/String;)V` by exact signature. A Scala default parameter does NOT emit a
+    * single-argument overload — `(message: String, cause: Throwable = null)` compiles to one
+    * `<init>(String, Throwable)` plus a `$lessinit$greater$default$2` getter applied at the call
+    * site. So every native failure died with `NoSuchMethodError: OptiXException: method
+    * 'void <init>(java.lang.String)' not found`, masking the real error instead of surfacing it.
+    * Declaring the overload explicitly is what makes the native error path work at all.
+    */
+  def this(message: String) = this(message, null) // scalafix:ok DisableSyntax.null

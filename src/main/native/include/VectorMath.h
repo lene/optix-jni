@@ -69,6 +69,15 @@ __host__ __device__ inline float3 cross(float3 a, float3 b) {
     );
 }
 
+// Mirror reflection: R = I - 2*(I.N)*N. `normal` should point back toward the incoming
+// ray's origin (the front-facing surface normal); dot(incident, normal) is then negative
+// for a genuine front-facing hit, which is what flips the sign of the normal component
+// correctly. Passing fabsf(dot(...)) here instead of the signed value was the Sprint 36
+// H3.2 bug: it silently turned this into a near-identity transform for head-on hits.
+__host__ __device__ inline float3 reflect(float3 incident, float3 normal) {
+    return incident - 2.0f * dot(incident, normal) * normal;
+}
+
 // Legacy array-based functions for host code compatibility
 namespace VectorMath {
     // Normalize a 3D vector in place (array version)

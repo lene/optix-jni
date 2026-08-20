@@ -124,3 +124,119 @@ assert_detection() {
     fi
     return 0
 }
+
+# --- suite-script result helpers (Sprint 36 B1) ---
+#
+# Every scripts/suites/<name>.sh must emit exactly one SUITE line as the last thing it
+# prints; qa-runner.sh (shared/standards/scripts/qa-runner.sh) parses it. Semicolons in
+# failed-item names are not expected (test/check names don't contain them); do not pass
+# names containing '"' through these helpers unescaped.
+suite_pass() {
+    echo "SUITE $1 PASS n_failed=0 failed=\"\" reason=\"\""
+}
+
+# $1 = suite name, $2 = human reason (no quote or semicolon characters)
+suite_skip() {
+    echo "SUITE $1 SKIP n_failed=0 failed=\"\" reason=\"$2\""
+}
+
+# $1 = suite name, $2 = failure count, $3 = ';'-joined failed item names
+suite_fail() {
+    echo "SUITE $1 FAIL n_failed=$2 failed=\"$3\" reason=\"\""
+}
+
+# --- GPU environment gate (Sprint 36 D1) ---
+#
+# $1 = suite name. Call before any suite does real GPU work. Locally, a busy GPU is a
+# quiet SKIP (a human is right there and can just retry once the desktop app clears —
+# low friction). In CI ($CI is GitHub Actions' own standard env var) an unattended job
+# silently skipping GPU tests would be dangerous — it could mask a real regression going
+# unnoticed for a week — so it reports FAIL with an unmistakably-labeled reason instead,
+# forcing a human to look and rerun (`gh run rerun --failed`, already documented, C6).
+# Returns 1 (caller must stop and exit) when the GPU is unsuitable; 0 to proceed.
+gpu_preflight_or_skip() {
+    _suite="$1"
+    command -v nvidia-smi >/dev/null 2>&1 || return 0
+    _detail=$(./standards/scripts/gpu-preflight.sh) && return 0
+    if [ -n "${CI:-}" ]; then
+        suite_fail "$_suite" 0 "ENV-UNSUITABLE(GPU busy: $_detail)"
+    else
+        suite_skip "$_suite" "env: GPU busy — $_detail"
+    fi
+    return 1
+}
+
+# --- network retry (Sprint 36 D4) ---
+#
+# $1 = human label for logging, remaining args = the command to run. Retries up to
+# RETRY_ATTEMPTS times (default 3) with exponential backoff (RETRY_BASE_DELAY seconds,
+# default 5, doubling each attempt). Mirrors the shape already used ad hoc in
+# menger-common's CI publish/sync steps (`for attempt in 1 2 3; do ...; sleep 30; done`)
+# as a reusable POSIX function instead of a copy-pasted loop per call site.
+retry_with_backoff() {
+    _label="$1"; shift
+    _attempts="${RETRY_ATTEMPTS:-3}"
+    _delay="${RETRY_BASE_DELAY:-5}"
+    _n=1
+    while [ "$_n" -le "$_attempts" ]; do
+        "$@" && return 0
+        if [ "$_n" -lt "$_attempts" ]; then
+            echo "retry_with_backoff: $_label failed (attempt $_n/$_attempts), retrying in ${_delay}s..." >&2
+            sleep "$_delay"
+            _delay=$((_delay * 2))
+        fi
+        _n=$((_n + 1))
+    done
+    echo "retry_with_backoff: $_label failed after $_attempts attempts" >&2
+    return 1
+}
+
+# --- generic ratchet comparison (Sprint 36 F, O7) ---
+#
+# Quality signals (coverage, Sonar rating, sanitizer warning count, perf ratio) ratchet:
+# the current value is the floor, regression fails the gate, improvement may move the
+# floor. This is the one comparison all of them share; callers own reading/writing their
+# own baseline file so each ratchet's own bump policy (unconditional on pass, vs.
+# noise-gated) stays with the caller instead of being baked in here.
+#
+# $1 = label (for messages), $2 = current numeric value, $3 = baseline numeric value,
+# $4 = direction ("up" = higher is better, e.g. coverage; "down" = lower is better,
+# e.g. sanitizer warning count, perf ratio, Sonar rating-as-number), $5 = tolerance
+# (absolute slack before FAIL; default 0 = strict).
+#
+# Echoes "PASS unchanged" | "PASS improved" | "FAIL regressed" to stdout; caller decides
+# whether "PASS improved" warrants rewriting its baseline file.
+ratchet_check() {
+    _label="$1"; _current="$2"; _baseline="$3"; _direction="$4"; _tolerance="${5:-0}"
+
+    # Fail closed on malformed input (security review finding): bc silently returns an
+    # empty/garbage result for a non-numeric operand, and `[ "" -eq 1 ]` is a harmless
+    # no-op rather than an error under `set -u` alone — a corrupted baseline file or a
+    # bad API response would silently fall through to "PASS unchanged" instead of
+    # failing the gate. Validating strictly-numeric input before it ever reaches bc also
+    # closes the underlying "unsanitized value piped into an interpreter" shape.
+    for _val in "$_current" "$_baseline" "$_tolerance"; do
+        echo "$_val" | grep -qE '^-?[0-9]+(\.[0-9]+)?$' || {
+            echo "FAIL regressed"
+            echo "ratchet($_label): non-numeric input (current='$_current' baseline='$_baseline' tolerance='$_tolerance') — failing closed" >&2
+            return 1
+        }
+    done
+
+    if [ "$_direction" = "up" ]; then
+        _delta=$(echo "$_baseline - $_current" | bc)   # positive = regression
+    else
+        _delta=$(echo "$_current - $_baseline" | bc)   # positive = regression
+    fi
+    if [ "$(echo "$_delta > $_tolerance" | bc)" -eq 1 ]; then
+        echo "FAIL regressed"
+        echo "ratchet($_label): $_current vs baseline $_baseline — regression (delta $_delta > tolerance $_tolerance)" >&2
+        return 1
+    fi
+    if [ "$(echo "$_delta < 0" | bc)" -eq 1 ]; then
+        echo "PASS improved"
+    else
+        echo "PASS unchanged"
+    fi
+    return 0
+}

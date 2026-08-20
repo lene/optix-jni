@@ -5,7 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-18
+
+### Fixed
+
+- `OptiXException` now declares an explicit `(String)` constructor. JNI `ThrowNew`
+  (`throwException` in `JNIBindings.cpp`) resolves `<init>(Ljava/lang/String;)V` by exact
+  signature, but the previous `class OptiXException(message: String, cause: Throwable = null)`
+  emitted only `<init>(String, Throwable)` plus a default getter — Scala default parameters
+  produce no single-argument overload. Every native failure therefore died with
+  `NoSuchMethodError: OptiXException: method 'void <init>(java.lang.String)' not found`,
+  masking the real error at exactly the moment it was needed. Surfaced by a menger integration
+  run where a GPU out-of-memory condition was reported as the `NoSuchMethodError` instead.
+  `JniErrorSurfaceSuite` gains a reflection check on the compiled signature; the existing
+  source-scans could not catch this, since the class name is present either way.
+- `clearAllInstances` no longer double-frees cylinder, cone, plane and curve GAS buffers.
+  Each of those four geometry kinds stored the same `GASData` — the same `gas_buffer` and
+  `aabb_buffer` device pointers — in both its per-type vector and, under a negative
+  per-instance key, in `gas_registry`. CR-5 (0.3.0) started freeing the registry to close a
+  real leak in the registry-owned sphere/`gtype` GAS, which made every one of those aliased
+  buffers get `cudaFree`d twice; the second call returned `cudaErrorInvalidValue`, logged as
+  `CUDA error after cleanup: invalid argument` on every scene teardown. The aliases were
+  write-only (never read back) and are removed, leaving one owner per buffer. No memory was
+  corrupted — nothing is allocated between the two frees, so the address could not have been
+  recycled — but the blanket `cudaGetLastError()` that reported it also *cleared* the error
+  state, so a genuine unrelated CUDA error could be swallowed and misattributed to cleanup.
+  `GpuLeakSuite` now exercises all five GAS-owning geometry kinds instead of spheres only
+  (spheres are the one kind that was never aliased, which is why the suite written for CR-5
+  missed this), plus a source-level guard against reintroducing the alias.
+- `hit_cone.cu`'s closest-hit had no alpha test, no `handleFullyTransparent`, and no
+  `traceRefractedRay` anywhere in it, so every non-metallic cone — including
+  `material=glass` (alpha 0.02) — fell straight through to flat diffuse shading regardless
+  of transparency. Mirrors the branch structure already used by `hit_sphere.cu` /
+  `hit_curve.cu`; the opaque path is unchanged. Two new `ConeSuite` tests pin the fix.
+- The depth-cutoff bailout (`traceFinalNonRecursiveRay`) computed its reflection direction
+  with `fabsf(dot(ray_direction, normal))` instead of the signed dot product used
+  everywhere else. For a near head-on hit this flips the sign of the normal-correction term,
+  degenerating the "reflection" into a near-identity transform — the ray continues forward
+  almost unchanged instead of bouncing back, which reads as the metallic/glass surface being
+  transparent. Fixed by extracting a single shared `reflect()` helper (`VectorMath.h`,
+  host+device testable, covered by new `VectorMathTest.cpp`) used by both
+  `traceReflectedRay` and `traceFinalNonRecursiveRay`.
+  Fixing the sign bug alone exposed a second, previously-masked bug: the bailout ray was not
+  actually non-recursive — its result carried the same depth as the original cutoff, so
+  landing on another reflective/refractive surface re-entered the same bailout and traced
+  again, unbounded, chaining past OptiX's compiled pipeline recursion limit and crashing
+  (illegal memory access). Fixed by tagging the bailout ray's depth as `max_ray_depth + 1`
+  and terminating with plain diffuse shading at every call site that used the same cutoff.
+  Also decoupled `MAX_TRACE_DEPTH` (the user-facing `--max-ray-depth` bounce budget) from
+  OptiX's own compile-time `maxTraceDepth`, which had been reusing the same constant; a new
+  `PIPELINE_MAX_TRACE_DEPTH = 10` sizes the pipeline/stack with headroom for the bailout
+  bounce and for raising the bounce budget later without another pipeline rebuild.
+- Triangle-mesh vertex normals are stored in object space, but OptiX applies an instance
+  transform (position/rotation/scale) to the geometry during traversal without ever
+  transforming the normals, so a rotated triangle-mesh instance shaded and reflected exactly
+  as though it were unrotated. Both `getTriangleGeometry` overloads now apply
+  `optixTransformNormalFromObjectToWorldSpace` before the front-face flip test.
+- Same defect, spheres: `__intersection__sphere` derives its normal attributes from the
+  object-space ray whenever IAS is active, but the closest-hit program consumed them as
+  world-space, so a rotated sphere carried its lighting and reflections around with it (a
+  spinning mirror ball showed a spinning reflection of a fixed room). Fixed by transforming
+  the normal used for shading/reflection to world space while deliberately leaving the
+  normal used for `sphereUV()` texture lookup in object space, so a texture still rotates
+  with the ball. `hit_cone.cu` and `hit_cylinder.cu` need no equivalent change — both are
+  world-space primitives placed by explicit world-space endpoints, with no instance
+  transform involved.
+
 ## [0.3.0] - 2026-08-03
+
+**Note:** 0.3.0 is defective — the native error path cannot construct `OptiXException` and
+throws `NoSuchMethodError` instead of the real failure. Fixed in [0.3.1]. Maven Central
+artifacts are permanent, so 0.3.0 stays published.
+
 
 Sprint 35 Native Seam Remediation, Phase 3 (Release B). All remaining public-API changes at the
 JVM↔native seam, batched into one break: the material payload is packed (F2), the renderer
@@ -406,6 +477,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.3.1]: https://github.com/lene/optix-jni/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/lene/optix-jni/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/lene/optix-jni/compare/0.1.19...0.2.0
 [0.1.19]: https://github.com/lene/optix-jni/compare/0.1.18...0.1.19

@@ -20,15 +20,33 @@ extern "C" __global__ void __closesthit__ch() {
     const unsigned int hit_kind = optixGetHitKind();
     const bool entering = (hit_kind == 0);  // 0=entry, 1=exit
 
-    // Get surface normal from intersection attributes
+    // Get surface normal from intersection attributes. __intersection__sphere derives these from
+    // the OBJECT-space ray whenever IAS is active (helpers.cu: `params.use_ias ?
+    // optixGetObjectRayOrigin() : optixGetWorldRayOrigin()`), so they are object-space there and
+    // already world-space otherwise.
     const float3 outward_normal = make_float3(
         __uint_as_float(optixGetAttribute_0()),
         __uint_as_float(optixGetAttribute_1()),
         __uint_as_float(optixGetAttribute_2())
     );
 
+    // Shading and reflection need the WORLD-space normal. A sphere's instance transform
+    // (rotation, set by SphereSceneBuilder) moves the surface but not these attributes; a sphere
+    // is rotationally symmetric in shape, but its normal field is not invariant — the world
+    // normal is R * n_object. Without this a rotated sphere carries its lighting and reflections
+    // around with it, so a spinning mirror ball shows a spinning reflection instead of a
+    // stationary one (Sprint 36 H3.2).
+    //
+    // Deliberately NOT applied to sphereUV() below: texture lookup must stay in object space so
+    // that a texture rotates *with* the ball, which is the correct behaviour there.
+    const float3 outward_normal_world = params.use_ias
+        ? normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal))
+        : outward_normal;
+
     // Surface normal (points toward incoming ray)
-    float3 normal = entering ? outward_normal : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
+    float3 normal = entering
+        ? outward_normal_world
+        : make_float3(-outward_normal_world.x, -outward_normal_world.y, -outward_normal_world.z);
 
     // Get current depth from payload
     const unsigned int depth = optixGetPayload_3();
@@ -50,7 +68,8 @@ extern "C" __global__ void __closesthit__ch() {
     if (proc_type != 0)
         material_color = applyProceduralTexture(material_color, hit_point, normal, proc_type, proc_scale);
 
-    // Apply image texture via spherical UV (no-op when no texture is set)
+    // Apply image texture via spherical UV (no-op when no texture is set).
+    // Object-space normal on purpose — see the note above; the texture must rotate with the ball.
     const float2 sphere_uv = sphereUV(outward_normal);
     material_color = sampleInstanceTexture(material_color, sphere_uv);
 
@@ -83,8 +102,15 @@ extern "C" __global__ void __closesthit__ch() {
         }
     }
 
-    // If max depth reached, trace final non-recursive ray
-    if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
+    // Already the result of a bailout bounce — terminate here, do not trace again
+    // (Sprint 36 H3.2; see helpers.cu handleMetallicOpaque for the full rationale).
+    if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
+        handleFullyOpaque(hit_point, normal, material_color, emission);
+        return;
+    }
+
+    // If max depth reached, trace the one allowed final non-recursive ray
+    if (depth == static_cast<unsigned int>(params.max_ray_depth)) {
         traceFinalNonRecursiveRay(hit_point, ray_direction, normal);
         return;
     }

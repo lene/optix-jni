@@ -188,6 +188,80 @@ extern "C" __global__ void __closesthit__cone() {
 
     writeDenoiseGuides(material_color, normal);
 
+    // This shader had no alpha handling at all, so every non-metallic cone — including
+    // material=glass (alpha 0.02) — fell through to the flat diffuse path below and rendered
+    // as opaque gray. Mirrors the branch structure in hit_curve.cu / hit_sphere.cu. The
+    // opaque path is deliberately left untouched, so opaque cone renders are unchanged.
+    const float cone_alpha = material_color.w;
+
+    if (cone_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
+        handleFullyTransparent(hit_point, ray_direction, depth);
+        return;
+    }
+
+    if (cone_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) {
+        // __intersection__cone reports the outward geometric normal without flipping it.
+        // Refraction needs one facing the incoming ray, plus the entering/exiting flag that
+        // drives Beer-Lambert absorption and the Fresnel term.
+        const bool entering = dot(ray_direction, normal) < 0.0f;
+        const float3 refr_normal = entering
+            ? normal
+            : make_float3(-normal.x, -normal.y, -normal.z);
+
+        // Already the result of a bailout bounce — terminate here, do not trace again
+        // (Sprint 36 H3.2; see helpers.cu handleMetallicOpaque for the full rationale).
+        if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
+            handleFullyOpaque(hit_point, refr_normal, material_color, emission);
+            return;
+        }
+
+        if (depth == static_cast<unsigned int>(params.max_ray_depth)) {
+            traceFinalNonRecursiveRay(hit_point, ray_direction, refr_normal);
+            return;
+        }
+
+        unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+        traceReflectedRay(hit_point, ray_direction, refr_normal, depth,
+                          reflect_r, reflect_g, reflect_b);
+
+        unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
+        const bool refraction_occurred = traceRefractedRay(
+            hit_point, ray_direction, refr_normal, entering, depth, material_ior,
+            cauchy_a, cauchy_b,
+            refract_r, refract_g, refract_b
+        );
+
+        // Total internal reflection: fall back to the reflected colour.
+        if (!refraction_occurred) {
+            refract_r = reflect_r;
+            refract_g = reflect_g;
+            refract_b = reflect_b;
+        }
+
+        float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
+        refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color);
+
+        if (film_thickness > 0.0f) {
+            const float cos_theta = fabsf(dot(ray_direction, refr_normal));
+            const float3 fresnel_rgb = computeThinFilmReflectance(
+                cos_theta, material_ior, film_thickness
+            );
+            blendFresnelColorsRGBAndSetPayload(
+                fresnel_rgb, reflect_r, reflect_g, reflect_b,
+                refract_color, material_color, emission
+            );
+        } else {
+            const float fresnel = computeFresnelReflectance(
+                ray_direction, refr_normal, entering, material_ior
+            );
+            blendFresnelColorsAndSetPayload(
+                fresnel, reflect_r, reflect_g, reflect_b,
+                refract_color, material_color, emission
+            );
+        }
+        return;
+    }
+
     if (depth == 0 && metallic > 0.0f) {
         handleMetallicOpaque(hit_point, ray_direction, normal,
                              material_color, metallic, depth, emission);

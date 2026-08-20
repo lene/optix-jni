@@ -25,6 +25,7 @@ jobs:
           fetch-depth: 0
       - name: Check changelog entry exists and is dated
         run: |
+          . ./standards/hooks/lib.sh
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           test -n "$VERSION"
           grep -F "## [$VERSION]" CHANGELOG.md
@@ -35,7 +36,7 @@ jobs:
           # back: $VERSION is then the most recent tag reachable from HEAD, the
           # release happened on its own date, and demanding today's date would
           # mean falsifying the changelog to get the merge through.
-          git fetch --tags --quiet 2>/dev/null || true
+          retry_with_backoff "git fetch --tags" git fetch --tags --quiet || true
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ "$VERSION" != "$MAIN_VERSION" ] && \
              [ "${LATEST_TAG#v}" != "$VERSION" ] && \
@@ -53,9 +54,10 @@ jobs:
           fetch-depth: 0
       - name: Check tag does not already exist for new versions
         run: |
+          . ./standards/hooks/lib.sh
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           test -n "$VERSION"
-          git fetch --tags
+          retry_with_backoff "git fetch --tags" git fetch --tags
           MAIN_VERSION=$(git show origin/main:build.sbt 2>/dev/null | grep 'version :=' | cut -d'"' -f2)
           # Only fail if this branch bumps the version and the tag already exists
           if [ "$VERSION" != "$MAIN_VERSION" ] && git tag | grep -q "^${VERSION}$"; then
@@ -98,6 +100,7 @@ jobs:
           fetch-depth: 0
       - name: Create and push tag if version changed
         run: |
+          . ./standards/hooks/lib.sh
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
           echo "Version in build.sbt: $VERSION"
           if git rev-parse "refs/tags/$VERSION" >/dev/null 2>&1; then
@@ -107,7 +110,7 @@ jobs:
             git config user.name "CI Bot"
             git remote set-url origin "https://x-access-token:${{ secrets.RELEASE_TOKEN }}@github.com/${{ github.repository }}"
             git tag -a "$VERSION" -m "Release $VERSION"
-            git push origin "refs/tags/$VERSION"
+            retry_with_backoff "git push tag" git push origin "refs/tags/$VERSION"
             echo "Created and pushed tag $VERSION"
           fi
 
@@ -124,7 +127,7 @@ jobs:
           distribution: 'temurin'
           cache: 'sbt'
       - uses: sbt/setup-sbt@v1
-      - run: sbt "scalafix --check"
+      - run: ./scripts/suites/lint.sh
 
   archunit:
     name: ArchUnit
@@ -138,19 +141,29 @@ jobs:
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
       - run: sbt "testOnly *ArchUnit*"
 
+  # Both jobs below call the same scripts/suites/native-checks.sh (Sprint 36 B1/B4) —
+  # one source of truth for cppcheck + clang-tidy, shared with the local pre-push hook.
+  # Kept as two CI jobs, not folded into one, because clang-tidy needs the scarce shared
+  # self-hosted GPU runner (CMake configure needs nvcc) and cppcheck does not; folding
+  # would move cppcheck off the free ubuntu-latest runner for no benefit. The cppcheck
+  # job's invocation of native-checks.sh finds no compile_commands.json yet, so
+  # clang-tidy self-skips there; the clang-tidy job's invocation re-runs cppcheck too
+  # (a few seconds, not the GPU-runner cost clang-tidy itself has) — a small accepted
+  # redundancy in exchange for one canonical script.
   cppcheck:
     name: cppcheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install cppcheck
-        run: sudo apt-get install -y cppcheck
-      - name: Run cppcheck
-        run: |
-          find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
-            xargs cppcheck --error-exitcode=1 --enable=warning,style \
-            --language=c++ \
-            --suppressions-list=.cppcheck-suppress
+        # Self-hosted runner: cppcheck is normally already present from a prior run/provisioning.
+        # Only escalate when it's actually missing -- unconditional sudo fails non-interactively
+        # the moment the runner's cached sudo credential lapses, even though nothing needs
+        # installing.
+        run: command -v cppcheck >/dev/null || sudo apt-get install -y cppcheck
+      - run: ./scripts/suites/native-checks.sh
+        env:
+          HAS_NATIVE: "1"
 
   clang-tidy:
     name: clang-tidy
@@ -172,14 +185,15 @@ jobs:
             -DJAVAH_INCLUDE_DIR="$PWD/target/native/include" \
             -Wno-dev --log-level=WARNING \
             src/main/native
-      - name: Run clang-tidy
-        run: |
-          mapfile -t cpp_files < <(find src/main/native -name "*.cpp")
-          gcc_install_dir="$(dirname "$(g++ -print-file-name=include)")"
-          clang-tidy -p target/cmake-clang-check \
-            --config-file=.clang-tidy \
-            --extra-arg-before=--gcc-install-dir="${gcc_install_dir}" \
-            "${cpp_files[@]}"
+      - name: Install cppcheck
+        # Self-hosted runner: cppcheck is normally already present from a prior run/provisioning.
+        # Only escalate when it's actually missing -- unconditional sudo fails non-interactively
+        # the moment the runner's cached sudo credential lapses, even though nothing needs
+        # installing.
+        run: command -v cppcheck >/dev/null || sudo apt-get install -y cppcheck
+      - run: ./scripts/suites/native-checks.sh
+        env:
+          HAS_NATIVE: "1"
 
   doc-completeness:
     name: JNI API Doc Completeness
@@ -207,8 +221,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
-      - name: Run Scala tests
-        run: sbt test
+      - name: Run Scala tests (scripts/suites/unit.sh)
+        run: ./scripts/suites/unit.sh
 
   # ── build ──────────────────────────────────────────────────────────────────
 
