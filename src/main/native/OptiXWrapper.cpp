@@ -3219,9 +3219,12 @@ void OptiXWrapper::clearAllInstances() {
     // custom_geometry_gas_registry's declaration comment) -- a separate map from
     // gas_registry above, so free it separately. Same one-owner-per-buffer rule applies.
     for (const auto& [instanceIdKey, gasData] : impl->custom_geometry_gas_registry) {
-        freeChecked(reinterpret_cast<void*>(gasData.gas_buffer),
+        // CUdeviceptr is an integer handle; cudaFree needs void* -- reinterpret_cast is
+        // the only conversion that applies, and is this file's established idiom for every
+        // other GAS/device-buffer free site (e.g. the gas_registry loop just above).
+        freeChecked(reinterpret_cast<void*>(gasData.gas_buffer),  // NOSONAR
             "custom_geometry_gas_registry[].gas_buffer");
-        freeChecked(reinterpret_cast<void*>(gasData.aabb_buffer),
+        freeChecked(reinterpret_cast<void*>(gasData.aabb_buffer),  // NOSONAR
             "custom_geometry_gas_registry[].aabb_buffer");
     }
     impl->custom_geometry_gas_registry.clear();
