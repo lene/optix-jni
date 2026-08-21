@@ -2142,7 +2142,7 @@ int OptiXWrapper::addCustomGeometryInstance(
     // enum (int-backed); runtime custom ids (>= GEOMETRY_TYPE_COUNT) are stored
     // by casting. Safe for the small id counts in use.
     const GeometryType gtype = static_cast<GeometryType>(typeId);
-    const int instanceId = static_cast<int>(impl->instances.size());
+    const auto instanceId = static_cast<int>(impl->instances.size());
 
     // Build a fresh GAS for THIS instance from its own AABB -- do not share/cache by
     // gtype (unlike sphere/etc., see custom_geometry_gas_registry's declaration comment).
@@ -3218,10 +3218,10 @@ void OptiXWrapper::clearAllInstances() {
     // Custom-geometry instances each own a per-instance GAS (see
     // custom_geometry_gas_registry's declaration comment) -- a separate map from
     // gas_registry above, so free it separately. Same one-owner-per-buffer rule applies.
-    for (const auto& entry : impl->custom_geometry_gas_registry) {
-        freeChecked(reinterpret_cast<void*>(entry.second.gas_buffer),
+    for (const auto& [instanceIdKey, gasData] : impl->custom_geometry_gas_registry) {
+        freeChecked(reinterpret_cast<void*>(gasData.gas_buffer),
             "custom_geometry_gas_registry[].gas_buffer");
-        freeChecked(reinterpret_cast<void*>(entry.second.aabb_buffer),
+        freeChecked(reinterpret_cast<void*>(gasData.aabb_buffer),
             "custom_geometry_gas_registry[].aabb_buffer");
     }
     impl->custom_geometry_gas_registry.clear();
