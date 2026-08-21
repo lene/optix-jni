@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `addCustomGeometryInstance` shared one GAS (acceleration structure) per geometry *type*,
+  built from whichever instance's AABB happened to arrive first, and silently reused it for
+  every later instance of the same type -- even though each instance's actual world-space
+  position lives only in its per-instance blob (the IAS transform this SPI passes is
+  identity, unlike sphere/cone/etc., which position a shared canonical GAS via a real
+  per-instance transform). A second instance of a custom-geometry type therefore got a
+  correctly-recorded position in its blob but an acceleration-structure bounding box still
+  centred on the *first* instance's position -- the BVH's broad-phase culling rejected rays
+  aimed at where the second instance actually was, so it never rendered. No error, no crash,
+  just silently invisible; affects every consumer of the generic custom-geometry SPI (menger's
+  menger4d/sierpinski4d/hexadecachoron4d GPU-projected 4D types, and any future custom
+  primitive). Fixed by building a separate GAS per instance, keyed by instance id
+  (`custom_geometry_gas_registry`), freed alongside the existing shared registry in
+  `clearAllInstances()` -- same one-owner-per-buffer discipline as the CR-5 double-free fix.
+
 ## [0.3.1] - 2026-08-18
 
 ### Fixed

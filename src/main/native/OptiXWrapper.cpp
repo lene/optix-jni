@@ -136,6 +136,15 @@ struct OptiXWrapper::Impl {
     };
     std::map<GeometryType, GASData> gas_registry;
 
+    // Custom-geometry instances (Task 1.1d's generic SPI) each get their own GAS, keyed by
+    // instanceId rather than shared by GeometryType. Unlike sphere/cone/etc. (one canonical
+    // unit-shape GAS at the origin, positioned per-instance via a real IAS transform), this
+    // SPI's callers bake each instance's actual world-space position into its blob and pass
+    // an identity transform -- the intersection shader works entirely in world space, so the
+    // GAS's AABB must match THIS instance's real position, not whichever instance of the
+    // type happened to be added first. See addCustomGeometryInstance.
+    std::map<int, GASData> custom_geometry_gas_registry;
+
     // Texture management
     std::vector<TextureData> textures;
     std::map<std::string, int> texture_name_to_index;
@@ -2133,26 +2142,31 @@ int OptiXWrapper::addCustomGeometryInstance(
     // enum (int-backed); runtime custom ids (>= GEOMETRY_TYPE_COUNT) are stored
     // by casting. Safe for the small id counts in use.
     const GeometryType gtype = static_cast<GeometryType>(typeId);
+    const int instanceId = static_cast<int>(impl->instances.size());
 
-    if (impl->gas_registry.find(gtype) == impl->gas_registry.end()) {
-        OptixAabb aabb;
-        aabb.minX = aabbMin[0]; aabb.minY = aabbMin[1]; aabb.minZ = aabbMin[2];
-        aabb.maxX = aabbMax[0]; aabb.maxY = aabbMax[1]; aabb.maxZ = aabbMax[2];
-        OptixAccelBuildOptions accel_options = {};
-        accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-        accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
-        OptiXContext::GASBuildResult result =
-            impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
-        Impl::GASData gas_data;
-        gas_data.handle = result.handle;
-        gas_data.gas_buffer = result.gas_buffer;
-        gas_data.aabb_buffer = result.aabb_buffer;
-        impl->gas_registry[gtype] = gas_data;
-    }
+    // Build a fresh GAS for THIS instance from its own AABB -- do not share/cache by
+    // gtype (unlike sphere/etc., see custom_geometry_gas_registry's declaration comment).
+    // Sharing one GAS per type here previously reused whichever instance's AABB was built
+    // first for every later instance of the same type, so the BVH's broad-phase culling
+    // rejected rays aimed at any subsequent instance's real (different) position -- it
+    // silently never rendered, no error, no crash.
+    OptixAabb aabb;
+    aabb.minX = aabbMin[0]; aabb.minY = aabbMin[1]; aabb.minZ = aabbMin[2];
+    aabb.maxX = aabbMax[0]; aabb.maxY = aabbMax[1]; aabb.maxZ = aabbMax[2];
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+    OptiXContext::GASBuildResult result =
+        impl->optix_context.buildCustomPrimitiveGAS(aabb, accel_options);
+    Impl::GASData gas_data;
+    gas_data.handle = result.handle;
+    gas_data.gas_buffer = result.gas_buffer;
+    gas_data.aabb_buffer = result.aabb_buffer;
+    impl->custom_geometry_gas_registry[instanceId] = gas_data;
 
     Impl::ObjectInstance inst;
     inst.geometry_type = gtype;
-    inst.gas_handle = impl->gas_registry[gtype].handle;
+    inst.gas_handle = gas_data.handle;
     std::memcpy(inst.transform, transform, 12 * sizeof(float));
     inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f; inst.color[3] = 1.0f;
     inst.ior = 1.0f; inst.roughness = 0.5f; inst.metallic = 0.0f; inst.specular = 0.5f;
@@ -2173,7 +2187,6 @@ int OptiXWrapper::addCustomGeometryInstance(
     inst.active = true;
     inst.mesh_index = SIZE_MAX;
 
-    int instanceId = static_cast<int>(impl->instances.size());
     impl->instances.push_back(inst);
     impl->ias_dirty = true;
     if (!impl->use_ias) impl->pipeline_built = false;
@@ -3184,10 +3197,10 @@ void OptiXWrapper::clearAllInstances() {
     }
     impl->triangle_meshes.clear();
 
-    // CR-5(a)/(b): free the GAS buffers the registry OWNS (the cached unit-sphere GAS + any
-    // custom-geometry GAS) before clearing it. Previously the map was cleared without freeing,
-    // and dispose()'s freeGASBuffers ran AFTER this on the already-empty map — so these buffers
-    // leaked on every scene reload and on dispose (freed on no path).
+    // CR-5(a)/(b): free the GAS buffers the registry OWNS (the cached unit-sphere GAS) before
+    // clearing it. Previously the map was cleared without freeing, and dispose()'s
+    // freeGASBuffers ran AFTER this on the already-empty map — so these buffers leaked on
+    // every scene reload and on dispose (freed on no path).
     //
     // The registry must contain ONLY shared/cached GAS keyed by a real GeometryType. Cylinder,
     // cone, plane and curve GAS are owned by their per-type vectors (freed above). CR-5 shipped
@@ -3201,6 +3214,17 @@ void OptiXWrapper::clearAllInstances() {
         freeChecked(reinterpret_cast<void*>(entry.second.aabb_buffer), "gas_registry[].aabb_buffer");
     }
     impl->gas_registry.clear();
+
+    // Custom-geometry instances each own a per-instance GAS (see
+    // custom_geometry_gas_registry's declaration comment) -- a separate map from
+    // gas_registry above, so free it separately. Same one-owner-per-buffer rule applies.
+    for (const auto& entry : impl->custom_geometry_gas_registry) {
+        freeChecked(reinterpret_cast<void*>(entry.second.gas_buffer),
+            "custom_geometry_gas_registry[].gas_buffer");
+        freeChecked(reinterpret_cast<void*>(entry.second.aabb_buffer),
+            "custom_geometry_gas_registry[].aabb_buffer");
+    }
+    impl->custom_geometry_gas_registry.clear();
 }
 
 int OptiXWrapper::getInstanceCount() const {
