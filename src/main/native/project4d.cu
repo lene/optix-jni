@@ -66,7 +66,16 @@ extern "C" __global__ void project4d_faces_kernel(
         nz += (v3[c].x - v3[nxt].x) * (v3[c].y + v3[nxt].y);
     }
     float n_len2 = nx * nx + ny * ny + nz * nz;
-    if (n_len2 < 0.0001f) {
+    // Newell's-method magnitude scales with face area, i.e. edge^2, so
+    // n_len2 scales with edge^4. A fixed absolute epsilon here misclassifies
+    // small-but-valid faces as degenerate (e.g. deep fractal recursion,
+    // where faces shrink by 3x per level) -- scale the threshold by the
+    // face's own edge length instead.
+    float ex = v3[1].x - v3[0].x;
+    float ey = v3[1].y - v3[0].y;
+    float ez = v3[1].z - v3[0].z;
+    float edge_len2 = ex * ex + ey * ey + ez * ez;
+    if (edge_len2 < 1e-12f || n_len2 < 1e-6f * edge_len2 * edge_len2) {
         nx = 0.0f; ny = 1.0f; nz = 0.0f;
     } else {
         float inv = rsqrtf(n_len2);
