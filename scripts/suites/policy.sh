@@ -23,6 +23,10 @@ if ! ./standards/hooks/check-rendering-discipline.sh $QA_RANGES; then
   STATUS=1
   FAILED="${FAILED:+$FAILED;}rendering-discipline"
 fi
+if ! ./standards/hooks/check-log-verbosity.sh $QA_RANGES; then
+  STATUS=1
+  FAILED="${FAILED:+$FAILED;}log-verbosity"
+fi
 
 if [ "$STATUS" -eq 0 ]; then
   suite_pass policy
