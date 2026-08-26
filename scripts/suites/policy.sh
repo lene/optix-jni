@@ -27,6 +27,10 @@ if ! ./standards/hooks/check-log-verbosity.sh $QA_RANGES; then
   STATUS=1
   FAILED="${FAILED:+$FAILED;}log-verbosity"
 fi
+if ! ./standards/hooks/check-issue-link.sh $QA_RANGES; then
+  STATUS=1
+  FAILED="${FAILED:+$FAILED;}issue-link"
+fi
 
 if [ "$STATUS" -eq 0 ]; then
   suite_pass policy
