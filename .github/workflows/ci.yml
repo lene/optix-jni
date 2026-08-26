@@ -44,6 +44,22 @@ jobs:
             grep -F "## [$VERSION] - $(TZ=UTC date +%Y-%m-%d)" CHANGELOG.md
           fi
 
+  policy:
+    name: Policy (test-justification, rendering-discipline, log-verbosity, issue-link)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compute QA_RANGES and run policy suite
+        run: |
+          set -euo pipefail
+          . ./standards/hooks/lib.sh
+          RANGES=$(push_ranges < /dev/null)
+          export QA_RANGES="$RANGES"
+          ./scripts/suites/policy.sh
+
   version-not-tagged:
     name: Version Not Yet Tagged
     runs-on: ubuntu-latest
