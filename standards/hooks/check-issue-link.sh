@@ -11,7 +11,7 @@ set -u
 HOOKS_DIR=$(dirname "$0")
 . "$HOOKS_DIR/lib.sh"
 
-BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+BRANCH=${GITHUB_HEAD_REF:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)}
 case "$BRANCH" in
     feat/sprint-*) ;;
     *)
@@ -20,12 +20,13 @@ case "$BRANCH" in
         ;;
 esac
 
-REFS_RE='Refs: [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+'
+REFS_RE='^Refs: [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+'
 STATUS=0
+MAIN_REF=$(main_ref)
 
 for range in "$@"; do
     for commit in $(commits_in_range "$range"); do
-        git merge-base --is-ancestor "$commit" "$(main_ref)" 2>/dev/null && continue
+        git merge-base --is-ancestor "$commit" "$MAIN_REF" 2>/dev/null && continue
         commit_is_wip "$commit" && continue
         commit_has_trailer "$commit" "No-Issue" && continue
         if ! git log -1 --format=%B "$commit" | grep -qE "$REFS_RE"; then

@@ -1,7 +1,7 @@
 #!/bin/sh
-# Suite: policy (Sprint 36 B1). Test-Change trailer gate + rendering-discipline gate.
-# Both hooks were already vendored into this repo (shared/standards/manifest.txt) but
-# never invoked here before this suite existed — see docs/QA_INCIDENTS.md.
+# Suite: policy (Sprint 36 B1). Runs four vendored policy gates against $QA_RANGES:
+# test-justification, rendering-discipline, log-verbosity, and issue-link. See
+# menger-toplevel/docs/QA_INCIDENTS.md for the incident history behind these gates.
 #
 # Reads $QA_RANGES: newline-separated rev-ranges, set by the caller (pre-push hook or
 # CI wrapper) from standards/hooks/lib.sh's push_ranges.
