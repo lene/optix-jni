@@ -727,10 +727,12 @@ int OptiXWrapper::setProjectedMesh(
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
         return -1;
     }
+    bool sync_ok = true;
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
         OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel launch: "
                   << cudaGetErrorString(syncErr) << std::endl;
         cudaGetLastError();  // clear sticky error so later launches are not poisoned
+        sync_ok = false;
     }
 
     mesh_entry.num_vertices = num_vertices;
@@ -738,16 +740,30 @@ int OptiXWrapper::setProjectedMesh(
     mesh_entry.vertex_stride = vertex_stride;
     mesh_entry.gas_built = false;
 
-    // Compute mesh AABB by reading back projected vertices
+    // Compute mesh AABB by reading back projected vertices. If the sync above already failed,
+    // the device buffer's contents are not trustworthy — don't read back and silently compute
+    // an AABB from garbage; keep soft-continuing (S2 #7) but skip this specific step and say so.
     std::vector<float> projected(num_vertices * vertex_stride);
-    cudaMemcpy(
-        projected.data(),
-        reinterpret_cast<void*>(mesh_entry.d_vertices),
-        vertex_bytes, cudaMemcpyDeviceToHost
-    );
+    bool memcpy_ok = sync_ok;
+    if (sync_ok) {
+        cudaError_t copyErr = cudaMemcpy(
+            projected.data(),
+            reinterpret_cast<void*>(mesh_entry.d_vertices),
+            vertex_bytes, cudaMemcpyDeviceToHost
+        );
+        if (copyErr != cudaSuccess) {
+            OPTIX_LOG(ERROR) << "[OptiX] readback cudaMemcpy failed after project4d kernel launch: "
+                      << cudaGetErrorString(copyErr) << std::endl;
+            memcpy_ok = false;
+        }
+    }
+    if (!memcpy_ok) {
+        OPTIX_LOG(ERROR) << "[OptiX] skipping mesh AABB update — projected vertex readback unavailable"
+                  << std::endl;
+    }
     impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
     impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-    for (unsigned int i = 0; i < num_vertices; ++i) {
+    for (unsigned int i = 0; memcpy_ok && i < num_vertices; ++i) {
         const float* v = projected.data() + i * vertex_stride;
         impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
         impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
