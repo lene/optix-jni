@@ -758,19 +758,29 @@ int OptiXWrapper::setProjectedMesh(
         }
     }
     if (!memcpy_ok) {
+        // Genuinely skip the update — do NOT touch impl->mesh_aabb_min/max here. The
+        // sentinel reset below is only safe when the loop that follows is guaranteed to
+        // run and replace it; on the failure path it previously replaced a valid (or
+        // zero-initialized) AABB with an inverted {FLT_MAX}/{-FLT_MAX} box that nothing
+        // downstream re-validates — render()'s triangle-mesh caustics-target computation
+        // reads mesh_aabb_min/max unconditionally and transforms it, turning the sentinel
+        // into Inf/NaN in the GPU caustics buffer. Leaving the field untouched keeps
+        // whatever finite value it already held (a prior successful registration, or the
+        // {0,0,0}/{0,0,0} Impl default) — degenerate at worst, never non-finite.
         OPTIX_LOG(ERROR) << "[OptiX] skipping mesh AABB update — projected vertex readback unavailable"
                   << std::endl;
-    }
-    impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
-    impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-    for (unsigned int i = 0; memcpy_ok && i < num_vertices; ++i) {
-        const float* v = projected.data() + i * vertex_stride;
-        impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
-        impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
-        impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
-        impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
-        impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
-        impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
+    } else {
+        impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
+        impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+        for (unsigned int i = 0; i < num_vertices; ++i) {
+            const float* v = projected.data() + i * vertex_stride;
+            impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
+            impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
+            impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
+            impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
+            impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
+            impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
+        }
     }
 
     int mesh_index = static_cast<int>(impl->triangle_meshes.size());
