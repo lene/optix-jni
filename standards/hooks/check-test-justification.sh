@@ -17,6 +17,7 @@ for range in "$@"; do
     for commit in $(commits_in_range "$range"); do
         # Skip commits already on origin/main (absorbed during rebase)
         git merge-base --is-ancestor "$commit" "$(main_ref)" 2>/dev/null && continue
+        is_bootstrapped_commit "$commit" && continue
         commit_is_wip "$commit" && continue
         touched=$(commit_modified_files "$commit" | grep -E "$TEST_PATTERN" || true)
         [ -z "$touched" ] && continue

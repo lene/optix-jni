@@ -27,6 +27,7 @@ MAIN_REF=$(main_ref)
 for range in "$@"; do
     for commit in $(commits_in_range "$range"); do
         git merge-base --is-ancestor "$commit" "$MAIN_REF" 2>/dev/null && continue
+        is_bootstrapped_commit "$commit" && continue
         commit_is_wip "$commit" && continue
         commit_has_trailer "$commit" "No-Issue" && continue
         if ! git log -1 --format=%B "$commit" | grep -qE "$REFS_RE"; then

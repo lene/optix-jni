@@ -47,6 +47,21 @@ short_ref() {
     git log -1 --format='%h %s' "$1"
 }
 
+# --- policy bootstrap exemption ---
+#
+# A commit-range policy check (issue-link, test-justification, ...) can only enforce
+# history written after it went live. standards/hooks/bootstrap-sha.txt is repo-local
+# and NOT vendored (every repo's policy history starts at a different commit): it holds
+# the SHA the check was live as of. Commits at or before it are grandfathered; commits
+# after must comply. Absent file or empty value = no exemption, all history enforced.
+is_bootstrapped_commit() {
+    _bsha_file="$HOOKS_DIR/bootstrap-sha.txt"
+    [ -f "$_bsha_file" ] || return 1
+    _bsha=$(cat "$_bsha_file")
+    [ -n "$_bsha" ] || return 1
+    git merge-base --is-ancestor "$1" "$_bsha" 2>/dev/null
+}
+
 # --- pre-push change detection ----------------------------------------------
 #
 # git runs pre-push with "<local_ref> <local_sha> <remote_ref> <remote_sha>" lines
