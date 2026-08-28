@@ -86,3 +86,8 @@ trait RendererFixture extends BeforeAndAfterEach:
     val img = renderer.render(size)
     if img == null then fail(s"Rendering failed - returned null for ${size.width}x${size.height}") // scalafix:ok DisableSyntax.null
     img
+
+
+  // Sphere transform: 4x3 row-major matrix — uniform scale r and translate (cx, cy, cz).
+  protected def sphereTransform(cx: Float, cy: Float, cz: Float, r: Float): Array[Float] =
+    Array(r, 0f, 0f, cx, 0f, r, 0f, cy, 0f, 0f, r, cz)

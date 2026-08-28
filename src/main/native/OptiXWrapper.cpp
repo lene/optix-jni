@@ -455,9 +455,10 @@ void OptiXWrapper::setTriangleMesh(
 ) {
     Impl::TriangleMeshGPU mesh_entry;
 
-    // CR-5(f): check every allocation/copy and free what was already allocated on failure —
+    // CR-5(f): guard every allocation so a later failure frees what was already allocated —
     // otherwise a failed cudaMalloc/cudaMemcpy left the mesh registered (push_back below) with
     // garbage/leaked device pointers. Throwing surfaces as a Java exception via JNIBindings.
+    // Guards released only once mesh_entry is fully valid and committed below.
     cudaError_t cuda_err;
 
     // Allocate and copy vertex buffer
@@ -468,10 +469,11 @@ void OptiXWrapper::setTriangleMesh(
         throw std::runtime_error(
             std::string("setTriangleMesh: vertex cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
     }
+    auto d_vertices_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(mesh_entry.d_vertices), cudaFree);
     if ((cuda_err = cudaMemcpy(
             reinterpret_cast<void*>(mesh_entry.d_vertices),
             vertices, vertex_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
         throw std::runtime_error(
             std::string("setTriangleMesh: vertex cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
     }
@@ -481,15 +483,14 @@ void OptiXWrapper::setTriangleMesh(
         num_triangles * 3 * sizeof(unsigned int);
     if ((cuda_err = cudaMalloc(
             reinterpret_cast<void**>(&mesh_entry.d_indices), index_size)) != cudaSuccess) {
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
         throw std::runtime_error(
             std::string("setTriangleMesh: index cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
     }
+    auto d_indices_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(mesh_entry.d_indices), cudaFree);
     if ((cuda_err = cudaMemcpy(
             reinterpret_cast<void*>(mesh_entry.d_indices),
             indices, index_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_indices));
         throw std::runtime_error(
             std::string("setTriangleMesh: index cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
     }
@@ -530,6 +531,11 @@ void OptiXWrapper::setTriangleMesh(
     mesh_params.d_vertices = mesh_entry.d_vertices;
     mesh_params.d_indices = mesh_entry.d_indices;
     mesh_params.vertex_stride = vertex_stride;
+
+    // Ownership transferred to impl->triangle_meshes / impl->scene — the guards must not free
+    // these buffers now.
+    d_vertices_guard.release();
+    d_indices_guard.release();
 }
 
 // Compose the 4D rotation matrix on the host as R_xw * R_yw * R_zw,
@@ -3116,31 +3122,20 @@ void OptiXWrapper::clearAllInstances() {
     impl->custom_geometry_stride = 0;
     impl->ias_handle = 0;
 
-    // Clear cylinder data. CR-2: reset last_*_count here (not only in dispose) — otherwise a
-    // clear → re-add of the same count skips the re-upload branch in render() and leaves
-    // params.*_data == nullptr with a non-zero count → illegal address in the intersection shader.
-    impl->cylinder_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_cylinder_data), "d_cylinder_data");
-    impl->d_cylinder_data = 0;
-    impl->last_cylinder_count = 0;
-
-    // Clear cone data
-    impl->cone_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_cone_data), "d_cone_data");
-    impl->d_cone_data = 0;
-    impl->last_cone_count = 0;
-
-    // Clear plane data
-    impl->plane_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_plane_data), "d_plane_data");
-    impl->d_plane_data = 0;
-    impl->last_plane_count = 0;
-
-    // Clear curve data
-    impl->curve_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_curve_data), "d_curve_data");
-    impl->d_curve_data = 0;
-    impl->last_curve_count = 0;
+    // Clear per-geometry-kind device data. CR-2: reset last_*_count here (not only in dispose)
+    // — otherwise a clear → re-add of the same count skips the re-upload branch in render() and
+    // leaves params.*_data == nullptr with a non-zero count → illegal address in the
+    // intersection shader.
+    auto clearGeometryBuffer = [](auto& dataVec, CUdeviceptr& dPtr, const char* label, auto& lastCount) {
+        dataVec.clear();
+        freeChecked(reinterpret_cast<void*>(dPtr), label);
+        dPtr = 0;
+        lastCount = 0;
+    };
+    clearGeometryBuffer(impl->cylinder_data, impl->d_cylinder_data, "d_cylinder_data", impl->last_cylinder_count);
+    clearGeometryBuffer(impl->cone_data, impl->d_cone_data, "d_cone_data", impl->last_cone_count);
+    clearGeometryBuffer(impl->plane_data, impl->d_plane_data, "d_plane_data", impl->last_plane_count);
+    clearGeometryBuffer(impl->curve_data, impl->d_curve_data, "d_curve_data", impl->last_curve_count);
 
 
     // CRITICAL: Synchronize CUDA before freeing GAS buffers

@@ -10,6 +10,7 @@
 #define MAX_VERTS_PER_FACE 8
 
 #include "Project4D.h"
+#include "OptiXConstants.h"
 
 namespace {
 
@@ -131,7 +132,7 @@ extern "C" cudaError_t launchProject4DQuadsKernel(
     if (num_faces <= 0) return cudaSuccess;
     if (params->verts_per_face < 3 || params->verts_per_face > MAX_VERTS_PER_FACE)
         return cudaErrorInvalidValue;
-    int block = 256;
+    int block = OptiXConstants::DEFAULT_THREADS_PER_BLOCK;
     int grid = (num_faces + block - 1) / block;
     project4d_faces_kernel<<<grid, block, 0, stream>>>(
         reinterpret_cast<const float4*>(d_faces_4d),

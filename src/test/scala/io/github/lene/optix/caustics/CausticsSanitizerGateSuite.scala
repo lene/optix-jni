@@ -38,9 +38,6 @@ class CausticsSanitizerGateSuite extends AnyFlatSpec with Matchers with Renderer
   private val causticIterations: Int = sys.env.get("GATE_ITERS").map(_.toInt).getOrElse(2)
 
   // Uniform-scale-r, translate-(cx,cy,cz) 4x3 row-major transform (as in MultiObjectCausticsSuite).
-  private def sphereTransform(cx: Float, cy: Float, cz: Float, r: Float): Array[Float] =
-    Array(r, 0f, 0f, cx, 0f, r, 0f, cy, 0f, 0f, r, cz)
-
   behavior of "Caustics hit-point counter overflow (CR-1)"
 
   it should "render full-HD caustics without out-of-bounds access when hit points exceed the cap" taggedAs (Slow) in {
