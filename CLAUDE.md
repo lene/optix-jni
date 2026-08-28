@@ -20,6 +20,8 @@ These are non-negotiable. Violating any of them causes real harm.
 7. **Never delete data without explicit user confirmation.** This includes generated artifacts, caches, and reference images.
 8. **Never infer values the user should provide** (version numbers, branch names, paths). Ask.
 9. **When a skill or instruction says "confirm with user," it is a hard stop.** A prior message in the conversation does not satisfy a fresh checkpoint — ask again.
+10. **Ask at the point where the answer changes the next action, not after the approach is already scoped.** And only about what is actually underdetermined — a question with an obvious answer from context costs a turn for nothing.
+11. **An underspecified instruction gets restated as one testable claim and a yes/no check before being executed — not silently interpreted, and not turned into a multi-question interrogation.** "Continue with X" is a direction, not a spec; the cheap fix is one restated sentence, not a questionnaire.
 
 ## Shared conventions
 
@@ -27,6 +29,39 @@ These are non-negotiable. Violating any of them causes real harm.
 - **The pre-push hook is the Definition-of-Done gate.** A task is done when its repo's pre-push hook passes on the change — not when a hand-picked subset of checks does. Don't assemble a substitute for it.
 - **Delete-on-resolve:** when a finding in `ARCHITECTURE_REVIEW.md` or `CODE_IMPROVEMENTS.md` is resolved, strike it through (`~~text~~`) and add a `**✅ Resolved (sprint/task):**` note with the sprint reference — do not delete the entry outright (the audit trail matters). Each repo that carries a `CODE_IMPROVEMENTS.md` is its own ledger; cross-repo findings (optix-jni, menger-common) should be seeded there when they accumulate.
 - **CI retry:** `gh run rerun <run-id> --failed` is the standard retry for a failed CI run — re-runs only the failed jobs, not a full re-push.
+
+## Branch and PR workflow
+
+```bash
+git checkout -b fix/short-description   # always branch from main
+# ... make changes, commit ...
+git push origin fix/short-description
+gh pr create --title "..." --body "..."
+```
+
+CI runs on every PR. All jobs must pass before merging.
+
+## Pointers
+
+| Where | What |
+|---|---|
+| `docs/ENFORCEMENT.md` | Policy → mechanism map; open enforcement gaps |
+| `../docs/QA_INCIDENTS.md` | Cross-repo QA incident log (workspace repo) |
+
+## Maven Central incident protocol
+
+Artifacts on Maven Central are **permanent — cannot be deleted**. If a defective artifact is published:
+1. Open an issue documenting the defect
+2. Fix the defect on a branch, bump patch version, publish new version
+3. Add `**Note:** X.Y.Z is defective — use X.Y.Z+1` to CHANGELOG.md
+
+## Pipeline monitoring
+
+```bash
+gh run list --limit 5
+gh run view <run-id>
+gh run rerun <run-id> --failed   # re-run only the failed jobs — the standard retry, not a full re-push
+```
 <!-- END shared rules -->
 
 ---
@@ -45,19 +80,6 @@ git config core.hooksPath .git_hooks
 | pre-push | on `git push` | compile, tests, scalafix, cppcheck (if installed) |
 
 CUDA warning on non-GPU machine is expected and non-fatal. Publishing stubs is blocked by `Compile/packageBin` in `build.sbt`.
-
----
-
-## Branch and PR workflow
-
-```bash
-git checkout -b fix/short-description   # always branch from main
-# ... make changes, commit ...
-git push origin fix/short-description
-gh pr create --title "..." --body "..."
-```
-
-CI runs on every PR. All jobs must pass before merging.
 
 ---
 
@@ -81,24 +103,6 @@ All jobs requiring native compilation must run on the nvidia self-hosted runner 
 
 ---
 
-## Pointers
-
-| Where | What |
-|---|---|
-| `docs/ENFORCEMENT.md` | Policy → mechanism map; open enforcement gaps |
-| `../docs/QA_INCIDENTS.md` | Cross-repo QA incident log (workspace repo) |
-
----
-
-## Maven Central incident protocol
-
-Artifacts on Maven Central are **permanent — cannot be deleted**. If a defective artifact is published:
-1. Open an issue documenting the defect
-2. Fix the defect on a branch, bump patch version, publish new version
-3. Add `**Note:** X.Y.Z is defective — use X.Y.Z+1` to CHANGELOG.md
-
----
-
 ## Common commands
 
 ```bash
@@ -108,11 +112,4 @@ sbt "testOnly ClassName"           # Specific test
 sbt nativeCompile                  # C++/CUDA native build
 sbt package                        # Build jar (aborts if PTX absent — stub guard)
 sbt publishLocal                   # Local ivy publish (aborts if PTX absent)
-```
-
-Pipeline monitoring:
-```bash
-gh run list --limit 5
-gh run view <run-id>
-gh run rerun <run-id> --failed   # re-run only the failed jobs — the standard retry, not a full re-push
 ```
