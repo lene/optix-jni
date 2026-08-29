@@ -1,3 +1,4 @@
+# shellcheck shell=sh
 # Shared helpers for hook policy checks (Sprint 28.2). POSIX sh; source me.
 
 # The source-of-truth main ref. Post GitHub migration (Sprint 35) `origin` still
