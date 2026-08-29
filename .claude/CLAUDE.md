@@ -11,7 +11,7 @@
 > (documentation, ownership, history, decisions). **Always verify against
 > actual source files before making changes** — the index may be stale.
 
-Last indexed: 2026-08-10 (commit e90fd15). Confidence: 100%.
+Last indexed: 2026-08-28 (commit 482424b). Confidence: 100%.
 ### Architecture
 This repository implements an end-to-end GPU ray tracing renderer: it ingests scene descriptions (geometry, materials, lights) through a Scala API, marshals all data via JNI into a native C++ OptiX wrapper, dispatches GPU-accelerated ray tracing using NVIDIA OptiX, and outputs rendered image buffers. The codebase is organized in three stacked layers:
 Data flow: The user constructs a scene using Scala model classes. The renderer invokes a native method, passing all scene data. JNI marshals the data into native structs.
@@ -20,6 +20,7 @@ Data flow: The user constructs a scene using Scala model classes. The renderer i
 - `src/main/native/tests/EnvMapCDFTest.cpp`
 - `src/main/native/tests/MaterialPayloadTest.cpp`
 - `src/main/native/tests/OptiXContextTest.cpp`
+- `src/main/native/tests/VectorMathTest.cpp`
 ### Tech Stack
 
 
@@ -44,27 +45,27 @@ Data flow: The user constructs a scene using Scala model classes. The renderer i
 ### Hotspots (High Churn)
 | File | Churn | 90d Commits | Owner |
 |------|-------|-------------|-------|
-| `src/main/native/OptiXWrapper.cpp` | 100.0th %ile | 53 | Lene Preuss |
-| `src/main/native/JNIBindings.cpp` | 99.3th %ile | 39 | Lene |
-| `src/main/native/PipelineManager.cpp` | 98.7th %ile | 14 | Lene |
-| `src/main/scala/io/github/lene/optix/OptiXRenderer.scala` | 98.0th %ile | 22 | Lene Preuss |
-| `src/main/native/OptiXContext.cpp` | 97.4th %ile | 14 | Lene Preuss |
+| `src/main/native/OptiXWrapper.cpp` | 100.0th %ile | 36 | Lene Preuss |
+| `src/main/native/JNIBindings.cpp` | 99.4th %ile | 39 | Lene |
+| `src/main/native/shaders/helpers.cu` | 98.8th %ile | 14 | Lene Preuss |
+| `src/main/native/PipelineManager.cpp` | 98.2th %ile | 12 | Lene |
+| `src/main/native/shaders/hit_triangle.cu` | 97.6th %ile | 6 | Lene Preuss |
 
 ## Code health
 Three signals: **defect risk** (the overall score), **maintainability** (smells that hurt readability/change-cost without predicting bugs), and **performance** (static performance RISK: I/O-in-loop / N+1 shapes that waste work, high-precision/low-recall). Maintainability and performance are co-equal views, never blended into the defect headline. See `docs/CODE_HEALTH.md`.
 
-Defect risk, Hotspot health: 4.48/10 (stable) ·
-Average: 7.53/10 ·
+Defect risk, Hotspot health: 4.54/10 (stable) ·
+Average: 7.55/10 ·
 Worst: 1.9/10 (`src/main/native/OptiXWrapper.cpp`)
-Maintainability, Average: 8.83/10
+Maintainability, Average: 8.85/10
 Performance risk, Average: 10.0/10
 
 ### Critical biomarkers
-- `src/main/native/include/OptiXData.h` — untested hotspot — impact −2.0
 - `src/main/scala/io/github/lene/optix/OptiXRenderer.scala` — untested hotspot — impact −2.0
+- `src/main/native/include/OptiXData.h` — untested hotspot — impact −2.0
+- `src/main/native/include/OptiXData.h` — prior defect — impact −2.0
+- `CHANGELOG.md` — prior defect — impact −2.0
 - `.github/workflows/ci.yml` — prior defect — impact −2.0
-- `src/main/native/OptiXWrapper.cpp` — prior defect — impact −1.7
-- `src/main/native/JNIBindings.cpp` — complex conditional (Java_io_github_lene_optix_OptiXRenderer_setLights) — impact −1.6
 
 ### Repowise MCP Tools
 

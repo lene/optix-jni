@@ -323,10 +323,6 @@ class ColoredShadowSuite
 
   // ========== Multi-object tests (Phase 2: anyhit accumulation) ==========
 
-  // Sphere transform: 4x3 row-major matrix — uniform scale r and translate (cx, cy, cz)
-  private def sphereTransform(cx: Float, cy: Float, cz: Float, r: Float): Array[Float] =
-    Array(r, 0f, 0f, cx, 0f, r, 0f, cy, 0f, 0f, r, cz)
-
   // Two spheres vertically aligned for light-from-above shadow path.
   // Both centered at x=0,z=0 so their shadows overlap on the floor.
   // Shadow rays from the floor travel in +y, passing through low sphere then high.

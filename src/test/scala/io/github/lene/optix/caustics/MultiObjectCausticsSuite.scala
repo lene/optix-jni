@@ -45,9 +45,6 @@ class MultiObjectCausticsSuite extends AnyFlatSpec with Matchers with RendererFi
   private val retainFraction = 0.5
 
   // 4x3 row-major transform: uniform scale r, translate (cx, cy, cz).
-  private def sphereTransform(cx: Float, cy: Float, cz: Float, r: Float): Array[Float] =
-    Array(r, 0f, 0f, cx, 0f, r, 0f, cy, 0f, 0f, r, cz)
-
   private val leftSphere  = sphereTransform(-sphereSeparation, 0f, 0f, sphereRadius)
   private val rightSphere = sphereTransform(sphereSeparation, 0f, 0f, sphereRadius)
 

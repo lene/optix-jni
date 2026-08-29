@@ -37,7 +37,9 @@ if sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$LOG" | grep -q '^SBT_TEST_RC=0$'; then
 fi
 
 echo "Tests: FAILED"
-FAILED_LINES=$(grep '\*\*\* FAILED \*\*\*' "$LOG" | sed 's/^\[info\] *//; s/ \*\*\* FAILED \*\*\*.*//')
+# Same ANSI-stripping as the SBT_TEST_RC check above: a failed test name landing right after
+# a color/erase escape sequence would otherwise leak "[31msomeTest" into the reported name.
+FAILED_LINES=$(sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$LOG" | grep '\*\*\* FAILED \*\*\*' | sed 's/^\[info\] *//; s/ \*\*\* FAILED \*\*\*.*//')
 COUNT=$(printf '%s\n' "$FAILED_LINES" | grep -c . || true)
 rm -f "$LOG"
 

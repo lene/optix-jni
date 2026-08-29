@@ -32,7 +32,7 @@ format established in `menger/docs/ENFORCEMENT.md` (Sprint 36 A4).
 | Tests must pass before push | CLAUDE.md §Critical rules | pre-push: `sbt test` | ✅ |
 | Modified/deleted test files require `Test-Change:` trailer | CLAUDE.md §Critical rules (shared) | `standards/hooks/check-test-justification.sh` (pre-push) | ✅ |
 | ArchUnit architecture rules | — | CI `archunit` job: `sbt "testOnly *ArchUnit*"` (self-hosted GPU runner) | ✅ |
-| Coverage floor / ratchet | — | Not implemented — no `.coverage_baseline` or CI coverage gate exists in this repo | ❌ |
+| Coverage floor / ratchet | — | Not implemented — no `.coverage_baseline` or CI coverage gate exists in this repo | ❌ [#42] |
 | Escaped-defect fix carries a regression test + `docs/QA_INCIDENTS.md` entry | `../docs/QA_STRATEGY.md` §O5 (workspace); `../docs/QA_INCIDENTS.md` | 🤖 AI policy | 🤖 |
 
 Mechanized `QA-Incident:` trailer check deferred per Sprint 36 SPRINT36.md E3 ("later if
@@ -56,7 +56,7 @@ leaky") — add only if the 🤖 row proves insufficient in practice.
 | clang-tidy | CLAUDE.md §Code style (shared) | CI `clang-tidy` job (self-hosted GPU runner) — not run in the local pre-push hook | ⚠️ CI-only |
 | No raw `std::cerr`/`std::cout`/`printf` in production native (F12) | — | `scripts/check-native-logging.sh`, run in pre-push (native changes) and CI `native-logging` job | ✅ |
 | JNI API doc completeness | — | CI `doc-completeness` job: `scripts/check-doc-completeness.sh` | ✅ |
-| Alpha: 0.0 = transparent, 1.0 = opaque (never inverted) | CLAUDE.md §Shared conventions | Unenforced — no static check | ❌ |
+| Alpha: 0.0 = transparent, 1.0 = opaque (never inverted) | CLAUDE.md §Shared conventions | Unenforced — no static check | ❌ [lene/menger#35] |
 
 ---
 

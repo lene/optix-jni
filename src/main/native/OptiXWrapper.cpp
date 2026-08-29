@@ -455,9 +455,10 @@ void OptiXWrapper::setTriangleMesh(
 ) {
     Impl::TriangleMeshGPU mesh_entry;
 
-    // CR-5(f): check every allocation/copy and free what was already allocated on failure —
+    // CR-5(f): guard every allocation so a later failure frees what was already allocated —
     // otherwise a failed cudaMalloc/cudaMemcpy left the mesh registered (push_back below) with
     // garbage/leaked device pointers. Throwing surfaces as a Java exception via JNIBindings.
+    // Guards released only once mesh_entry is fully valid and committed below.
     cudaError_t cuda_err;
 
     // Allocate and copy vertex buffer
@@ -468,10 +469,11 @@ void OptiXWrapper::setTriangleMesh(
         throw std::runtime_error(
             std::string("setTriangleMesh: vertex cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
     }
+    auto d_vertices_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(mesh_entry.d_vertices), cudaFree);
     if ((cuda_err = cudaMemcpy(
             reinterpret_cast<void*>(mesh_entry.d_vertices),
             vertices, vertex_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
         throw std::runtime_error(
             std::string("setTriangleMesh: vertex cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
     }
@@ -481,15 +483,14 @@ void OptiXWrapper::setTriangleMesh(
         num_triangles * 3 * sizeof(unsigned int);
     if ((cuda_err = cudaMalloc(
             reinterpret_cast<void**>(&mesh_entry.d_indices), index_size)) != cudaSuccess) {
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
         throw std::runtime_error(
             std::string("setTriangleMesh: index cudaMalloc failed: ") + cudaGetErrorString(cuda_err));
     }
+    auto d_indices_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(mesh_entry.d_indices), cudaFree);
     if ((cuda_err = cudaMemcpy(
             reinterpret_cast<void*>(mesh_entry.d_indices),
             indices, index_size, cudaMemcpyHostToDevice)) != cudaSuccess) {
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
-        cudaFree(reinterpret_cast<void*>(mesh_entry.d_indices));
         throw std::runtime_error(
             std::string("setTriangleMesh: index cudaMemcpy failed: ") + cudaGetErrorString(cuda_err));
     }
@@ -530,6 +531,11 @@ void OptiXWrapper::setTriangleMesh(
     mesh_params.d_vertices = mesh_entry.d_vertices;
     mesh_params.d_indices = mesh_entry.d_indices;
     mesh_params.vertex_stride = vertex_stride;
+
+    // Ownership transferred to impl->triangle_meshes / impl->scene — the guards must not free
+    // these buffers now.
+    d_vertices_guard.release();
+    d_indices_guard.release();
 }
 
 // Compose the 4D rotation matrix on the host as R_xw * R_yw * R_zw,
@@ -721,10 +727,12 @@ int OptiXWrapper::setProjectedMesh(
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
         return -1;
     }
+    bool sync_ok = true;
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
         OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel launch: "
                   << cudaGetErrorString(syncErr) << std::endl;
         cudaGetLastError();  // clear sticky error so later launches are not poisoned
+        sync_ok = false;
     }
 
     mesh_entry.num_vertices = num_vertices;
@@ -732,23 +740,47 @@ int OptiXWrapper::setProjectedMesh(
     mesh_entry.vertex_stride = vertex_stride;
     mesh_entry.gas_built = false;
 
-    // Compute mesh AABB by reading back projected vertices
+    // Compute mesh AABB by reading back projected vertices. If the sync above already failed,
+    // the device buffer's contents are not trustworthy — don't read back and silently compute
+    // an AABB from garbage; keep soft-continuing (S2 #7) but skip this specific step and say so.
     std::vector<float> projected(num_vertices * vertex_stride);
-    cudaMemcpy(
-        projected.data(),
-        reinterpret_cast<void*>(mesh_entry.d_vertices),
-        vertex_bytes, cudaMemcpyDeviceToHost
-    );
-    impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
-    impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-    for (unsigned int i = 0; i < num_vertices; ++i) {
-        const float* v = projected.data() + i * vertex_stride;
-        impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
-        impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
-        impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
-        impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
-        impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
-        impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
+    bool memcpy_ok = sync_ok;
+    if (sync_ok) {
+        cudaError_t copyErr = cudaMemcpy(
+            projected.data(),
+            reinterpret_cast<void*>(mesh_entry.d_vertices),
+            vertex_bytes, cudaMemcpyDeviceToHost
+        );
+        if (copyErr != cudaSuccess) {
+            OPTIX_LOG(ERROR) << "[OptiX] readback cudaMemcpy failed after project4d kernel launch: "
+                      << cudaGetErrorString(copyErr) << std::endl;
+            memcpy_ok = false;
+        }
+    }
+    if (!memcpy_ok) {
+        // Genuinely skip the update — do NOT touch impl->mesh_aabb_min/max here. The
+        // sentinel reset below is only safe when the loop that follows is guaranteed to
+        // run and replace it; on the failure path it previously replaced a valid (or
+        // zero-initialized) AABB with an inverted {FLT_MAX}/{-FLT_MAX} box that nothing
+        // downstream re-validates — render()'s triangle-mesh caustics-target computation
+        // reads mesh_aabb_min/max unconditionally and transforms it, turning the sentinel
+        // into Inf/NaN in the GPU caustics buffer. Leaving the field untouched keeps
+        // whatever finite value it already held (a prior successful registration, or the
+        // {0,0,0}/{0,0,0} Impl default) — degenerate at worst, never non-finite.
+        OPTIX_LOG(ERROR) << "[OptiX] skipping mesh AABB update — projected vertex readback unavailable"
+                  << std::endl;
+    } else {
+        impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
+        impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+        for (unsigned int i = 0; i < num_vertices; ++i) {
+            const float* v = projected.data() + i * vertex_stride;
+            impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
+            impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
+            impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
+            impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
+            impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
+            impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
+        }
     }
 
     int mesh_index = static_cast<int>(impl->triangle_meshes.size());
@@ -3116,31 +3148,20 @@ void OptiXWrapper::clearAllInstances() {
     impl->custom_geometry_stride = 0;
     impl->ias_handle = 0;
 
-    // Clear cylinder data. CR-2: reset last_*_count here (not only in dispose) — otherwise a
-    // clear → re-add of the same count skips the re-upload branch in render() and leaves
-    // params.*_data == nullptr with a non-zero count → illegal address in the intersection shader.
-    impl->cylinder_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_cylinder_data), "d_cylinder_data");
-    impl->d_cylinder_data = 0;
-    impl->last_cylinder_count = 0;
-
-    // Clear cone data
-    impl->cone_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_cone_data), "d_cone_data");
-    impl->d_cone_data = 0;
-    impl->last_cone_count = 0;
-
-    // Clear plane data
-    impl->plane_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_plane_data), "d_plane_data");
-    impl->d_plane_data = 0;
-    impl->last_plane_count = 0;
-
-    // Clear curve data
-    impl->curve_data.clear();
-    freeChecked(reinterpret_cast<void*>(impl->d_curve_data), "d_curve_data");
-    impl->d_curve_data = 0;
-    impl->last_curve_count = 0;
+    // Clear per-geometry-kind device data. CR-2: reset last_*_count here (not only in dispose)
+    // — otherwise a clear → re-add of the same count skips the re-upload branch in render() and
+    // leaves params.*_data == nullptr with a non-zero count → illegal address in the
+    // intersection shader.
+    auto clearGeometryBuffer = [](auto& dataVec, CUdeviceptr& dPtr, const char* label, auto& lastCount) {
+        dataVec.clear();
+        freeChecked(reinterpret_cast<void*>(dPtr), label);
+        dPtr = 0;
+        lastCount = 0;
+    };
+    clearGeometryBuffer(impl->cylinder_data, impl->d_cylinder_data, "d_cylinder_data", impl->last_cylinder_count);
+    clearGeometryBuffer(impl->cone_data, impl->d_cone_data, "d_cone_data", impl->last_cone_count);
+    clearGeometryBuffer(impl->plane_data, impl->d_plane_data, "d_plane_data", impl->last_plane_count);
+    clearGeometryBuffer(impl->curve_data, impl->d_curve_data, "d_curve_data", impl->last_curve_count);
 
 
     // CRITICAL: Synchronize CUDA before freeing GAS buffers

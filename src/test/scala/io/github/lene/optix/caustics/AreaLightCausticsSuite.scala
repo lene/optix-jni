@@ -43,9 +43,6 @@ class AreaLightCausticsSuite extends AnyFlatSpec with Matchers with RendererFixt
   private val softnessCeiling = 0.9
 
   // 4x3 row-major transform: uniform scale r, translate (cx, cy, cz).
-  private def sphereTransform(cx: Float, cy: Float, cz: Float, r: Float): Array[Float] =
-    Array(r, 0f, 0f, cx, 0f, r, 0f, cy, 0f, 0f, r, cz)
-
   private val sphere = sphereTransform(0f, 0f, 0f, sphereRadius)
 
   private val pointLight: Light = Light.Point(lightPosition, intensity = lightIntensity)

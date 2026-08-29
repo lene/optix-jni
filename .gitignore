@@ -47,3 +47,7 @@ package.html
 
 # OptiX SDK installer
 NVIDIA-OptiX-SDK-*.sh
+
+# repowise local cache/index/keys
+.repowise/
+.mcp.json

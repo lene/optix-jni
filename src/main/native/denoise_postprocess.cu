@@ -1,7 +1,8 @@
 #include "include/DenoisePostprocess.h"
+#include "include/OptiXConstants.h"
 
 namespace {
-constexpr int THREADS_PER_BLOCK = 256;
+constexpr int THREADS_PER_BLOCK = OptiXConstants::DEFAULT_THREADS_PER_BLOCK;
 constexpr int TONEMAP_REINHARD = 1;
 constexpr int TONEMAP_ACES = 2;
 constexpr float COLOR_SCALE_FACTOR = 255.99f;

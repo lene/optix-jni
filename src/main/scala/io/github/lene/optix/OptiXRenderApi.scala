@@ -61,7 +61,11 @@ private[optix] trait OptiXRenderApi:
       val stats = getCausticsStatsNative()
       if stats != null && stats.photonsEmitted > 0 then stats else null // scalafix:ok DisableSyntax.null
     catch
-      case _: Exception => null // scalafix:ok DisableSyntax.null
+      // S2 #7: log rather than silently swallow — soft-continue (return null) is still the
+      // right behavior here (stats are advisory), but a silent catch-all hid every failure.
+      case e: Exception =>
+        logger.error("getCausticsStats failed", e)
+        null // scalafix:ok DisableSyntax.null
 
   /** Renders an RGBA8 frame and ray statistics for an [[menger.common.ImageSize]].
     *
