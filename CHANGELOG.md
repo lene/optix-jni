@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-08-29
+
+### Fixed
+
+- `setProjectedMesh` now genuinely skips the mesh-AABB update when GPU readback of
+  projected vertices fails, instead of overwriting `mesh_aabb_min`/`mesh_aabb_max` with an
+  inverted sentinel box that the caustics-target computation then consumed unconditionally,
+  transforming it to Inf/NaN on any non-identity instance transform and feeding that into the
+  GPU photon-mapping kernel. The mesh keeps its last-known-good AABB on a readback failure.
+- 4D projection kernel's degenerate-face epsilon now scales with edge length instead of using
+  a fixed threshold, avoiding false-positive degenerate-face rejection on small/large meshes.
+
 ## [0.3.2] - 2026-08-22
 
 ### Fixed
@@ -496,6 +508,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.3.3]: https://github.com/lene/optix-jni/compare/0.3.2...0.3.3
 [0.3.2]: https://github.com/lene/optix-jni/compare/0.3.1...0.3.2
 [0.3.1]: https://github.com/lene/optix-jni/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/lene/optix-jni/compare/0.2.0...0.3.0
