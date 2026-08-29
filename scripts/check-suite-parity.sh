@@ -57,6 +57,10 @@ manifest_field() {
         printf 'true'
       fi
       ;;
+    *)
+      echo "manifest_field: unknown field '$2'" >&2
+      return 1
+      ;;
   esac
 }
 
