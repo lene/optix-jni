@@ -294,6 +294,7 @@ while IFS="$TAB" read -r name verdict detail; do
     CACHED) echo "  CACHED  $name (tree unchanged)" ;;
     SKIP) echo "  SKIPPED $name ($detail)" ;;
     FAIL) echo "  FAILED  $name${detail:+ [$detail]}" ;;
+    *) echo "  UNKNOWN $name (unrecognized verdict '$verdict')" ;;
   esac
 done < "$RESULTS"
 
