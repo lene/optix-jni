@@ -5,7 +5,6 @@ import scala.math.abs
 import io.github.lene.optix.ShadowValidation.Region
 import io.github.lene.optix.ShadowValidation.detectDarkestRegion
 import io.github.lene.optix.ShadowValidation.regionBrightness
-import io.github.lene.optix.Slow
 import io.github.lene.optix.ThresholdConstants.ALPHA_TOLERANCE_LOWER_RATIO
 import io.github.lene.optix.ThresholdConstants.ALPHA_TOLERANCE_UPPER_RATIO
 import io.github.lene.optix.ThresholdConstants.BOTTOM_REGION_FRACTION
@@ -15,26 +14,29 @@ import io.github.lene.optix.ThresholdConstants.DARK_SHADOW_THRESHOLD
 import io.github.lene.optix.ThresholdConstants.DEFAULT_SHADOW_GRID
 import io.github.lene.optix.ThresholdConstants.LARGE_SHADOW_GRID
 import io.github.lene.optix.ThresholdConstants.MAX_SHADOW_DARKENING_RATIO
-import io.github.lene.optix.ThresholdConstants.MAX_SHADOW_OVERHEAD
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_SHADOWS
 import io.github.lene.optix.ThresholdConstants.MIN_SHADOW_CONTRAST_RATIO
 import io.github.lene.optix.ThresholdConstants.MIN_SHADOW_SHIFT
 import io.github.lene.optix.ThresholdConstants.MODERATE_SHADOW_RATIO
 import io.github.lene.optix.ThresholdConstants.MODERATE_SHADOW_SHIFT
 import io.github.lene.optix.ThresholdConstants.OPAQUE_SHADOW_MAX_BRIGHTNESS
 import io.github.lene.optix.ThresholdConstants.RADIUS_TOLERANCE_RATIO
-import io.github.lene.optix.ThresholdConstants.RENDER_ITERATIONS
 import io.github.lene.optix.ThresholdConstants.SMALL_SHADOW_SHIFT
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_SHADOW_MIN_BRIGHTNESS
 import io.github.lene.optix.ThresholdConstants.WIDE_CENTER_TOLERANCE_FRACTION
+import io.github.lene.qa.Perf
+import io.github.lene.qa.PerfGate
+import io.github.lene.qa.RelativeBenchmark
+import io.github.lene.qa.Side
 import menger.common.Color
 import menger.common.Const
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
+class ShadowSuite extends AnyFlatSpec with Matchers with PerfGate with RendererFixture:
 
   private val imageSize = STANDARD_IMAGE_SIZE
 
@@ -495,22 +497,16 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     // Should be identical
     bright1 shouldBe bright2 +- BRIGHTNESS_TOLERANCE  // Allow 1 unit variation due to floating point
 
-  it should "have acceptable rendering performance with shadows enabled" taggedAs (Slow) in:
+  it should "have acceptable rendering performance with shadows enabled" taggedAs Perf in:
     setupShadowScene()
-
-    // Measure without shadows
-    renderer.setShadows(false)
-    val startNoShadow = System.nanoTime()
-    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageSize))
-    val timeNoShadow = (System.nanoTime() - startNoShadow) / RENDER_ITERATIONS
-
-    // Measure with shadows
-    renderer.setShadows(true)
-    val startWithShadow = System.nanoTime()
-    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageSize))
-    val timeWithShadow = (System.nanoTime() - startWithShadow) / RENDER_ITERATIONS
-
-    val overhead = (timeWithShadow - timeNoShadow).toDouble / timeNoShadow
-
-    // Should be less than 100% overhead (reasonable for quality improvement)
-    overhead should be < MAX_SHADOW_OVERHEAD
+    def shadows(enabled: Boolean): Side = Side(
+      if enabled then "shadows on" else "shadows off",
+      () => { val _ = renderer.render(imageSize) },
+      prepare = () => renderer.setShadows(enabled)
+    )
+    val verdict = RelativeBenchmark.compare(
+      reference = shadows(enabled = false),
+      subject = shadows(enabled = true),
+      maxRatio = MAX_SLOWDOWN_SHADOWS
+    )
+    assertWithin("shadows on vs off", verdict)
