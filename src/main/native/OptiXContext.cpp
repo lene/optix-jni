@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <filesystem>
+#include <utility>
 #include <unistd.h>
 #include <pwd.h>
 
@@ -62,11 +63,16 @@ bool OptiXContext::clearCache() {
     return clearCache(getDefaultCachePath());
 }
 
-// OptiX log callback - detects cache corruption for auto-recovery
-static void optixLogCallback(unsigned int level, const char* tag, const char* message, void* /*cbdata*/) {
+// OptiX log callback - records errors for launch diagnostics, detects cache corruption for
+// auto-recovery. `cbdata` is the owning OptiXContext.
+static void optixLogCallback(unsigned int level, const char* tag, const char* message, void* cbdata) {
     OPTIX_LOG(ERROR) << "[OptiX][" << level << "]["
               << (tag     ? tag     : "") << "]: "
               << (message ? message : "") << std::endl;
+
+    if (cbdata != nullptr && message != nullptr && level <= OptiXConstants::OPTIX_LOG_LEVEL_ERROR) {
+        static_cast<OptiXContext*>(cbdata)->recordOptixError(message);
+    }
 
     // Detect cache corruption: tag is "DISKCACHE" and message contains corruption indicators
     // Common error messages:
@@ -148,6 +154,7 @@ bool OptiXContext::initialize() {
         // Step 4: Create OptiX device context with the explicit driver-API context
         OptixDeviceContextOptions options = {};
         options.logCallbackFunction = &optixLogCallback;
+        options.logCallbackData = this;
         options.logCallbackLevel = OptiXConstants::OPTIX_LOG_LEVEL_INFO;
 
         OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &context_));
@@ -935,6 +942,7 @@ void OptiXContext::launch(
     // Non-zero stream ids require actual cudaStream_t handles (created via cudaStreamCreate),
     // which this code path does not manage. See CODE_IMPROVEMENTS for stream pool design.
 
+    clearOptixErrors();
     OPTIX_CHECK(optixLaunch(
         pipeline,
         0, // CUDA stream 0 (default, synchronous)
@@ -946,6 +954,26 @@ void OptiXContext::launch(
         1 // depth
     ));
 
-    // Wait for GPU to finish
-    CUDA_CHECK(cudaDeviceSynchronize());
+    // Wait for GPU to finish. optixLaunch can return success after OptiX logged the actual
+    // cause (e.g. no memory to grow the per-thread stack pool), so a failure here carries it.
+    const cudaError_t err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        throw std::runtime_error(formatLaunchFailure(
+            takeOptixErrors(), formatCudaError("cudaDeviceSynchronize()", err)));
+    }
+}
+
+void OptiXContext::recordOptixError(const std::string& message) {
+    std::lock_guard<std::mutex> lock(optix_errors_mutex_);
+    optix_errors_.push_back(message);
+}
+
+void OptiXContext::clearOptixErrors() {
+    std::lock_guard<std::mutex> lock(optix_errors_mutex_);
+    optix_errors_.clear();
+}
+
+std::vector<std::string> OptiXContext::takeOptixErrors() {
+    std::lock_guard<std::mutex> lock(optix_errors_mutex_);
+    return std::exchange(optix_errors_, {});
 }

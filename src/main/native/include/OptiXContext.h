@@ -3,7 +3,9 @@
 
 #include <optix.h>
 #include <cuda_runtime.h>
+#include <mutex>
 #include <string>
+#include <vector>
 
 // Forward declarations for data structures
 #include "OptiXData.h"
@@ -164,9 +166,18 @@ public:
     // Clear cache at a specific path
     static bool clearCache(const std::string& cache_path);
 
+    // Records a fatal/error OptiX log message. Called from the OptiX log callback, possibly on
+    // another thread; launch() folds messages recorded during a launch into its failure.
+    void recordOptixError(const std::string& message);
+
 private:
     OptixDeviceContext context_;
     bool initialized_;
+    std::mutex optix_errors_mutex_;
+    std::vector<std::string> optix_errors_;
+
+    void clearOptixErrors();
+    std::vector<std::string> takeOptixErrors();
 
     // Disable copy
     OptiXContext(const OptiXContext&) = delete;

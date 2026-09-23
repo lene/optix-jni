@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A render launch that fails after OptiX logged an error during it now reports that logged
+  cause in the thrown error. OptiX can return success from `optixLaunch` while logging the real
+  problem (e.g. `cblCudaReconfigureLocalMemory failed with out of memory` when GPU memory runs
+  out for the per-thread stack); only a generic `unspecified launch failure (719)` from the
+  following `cudaDeviceSynchronize()` used to surface. The error now leads with a plain-language
+  explanation and remedy (for the out-of-GPU-memory case), quotes OptiX's messages verbatim,
+  and keeps the `CUDA call '...' failed: ... (code)` line intact as its last line.
+
 ## [0.3.3] - 2026-08-29
 
 ### Fixed

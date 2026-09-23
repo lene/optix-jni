@@ -5,6 +5,7 @@
 namespace OptiXConstants {
     constexpr size_t LOG_BUFFER_SIZE = 2048;
     constexpr unsigned int OPTIX_LOG_LEVEL_INFO = 3;  // Print Info, Warning, and Error messages
+    constexpr unsigned int OPTIX_LOG_LEVEL_ERROR = 2;  // OptiX levels: 1 fatal, 2 error
 
     // Default background color (dark purple/maroon)
     constexpr float DEFAULT_BG_R = 0.3f;
