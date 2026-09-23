@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Performance tests are now noise-aware gates (tag `Perf`) run by their own push-tier `perf`
+  suite and CI job, and excluded from the regular test run. Each gate times its scene against a
+  reference scene in interleaved rounds (shared helper `io.github.lene.qa.RelativeBenchmark`)
+  and judges the median ratio by its confidence interval: a conclusive regression fails, an
+  unjudgeable measurement is skipped visibly. Previously one calibration render, measured once
+  per suite, failed gates on unchanged code when its value swung with GPU throttling.
+
 ### Fixed
 
 - A render launch that fails after OptiX logged an error during it now reports that logged

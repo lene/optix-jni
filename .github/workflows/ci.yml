@@ -240,13 +240,25 @@ jobs:
       - name: Run Scala tests (scripts/suites/unit.sh)
         run: ./scripts/suites/unit.sh
 
+  perf-tests:
+    name: Performance gates (GPU)
+    runs-on: [self-hosted, Linux, X64, nvidia]
+    timeout-minutes: 30
+    needs: [scala-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add CUDA to PATH
+        run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+      - name: Run performance gates (scripts/suites/perf.sh)
+        run: ./scripts/suites/perf.sh
+
   # ── build ──────────────────────────────────────────────────────────────────
 
   build-native:
     name: Build native .so + JAR
     runs-on: [self-hosted, Linux, X64, nvidia]
     timeout-minutes: 30
-    needs: [scala-tests, scalafix]
+    needs: [scala-tests, scalafix, perf-tests]
     steps:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
