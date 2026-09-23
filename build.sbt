@@ -188,6 +188,18 @@ Test / javaOptions ++= Seq(
 )
 Test / fork := true
 
+// Shared performance-gate helper (RelativeBenchmark), vendored from menger-toplevel's
+// shared/standards like the hooks.
+Test / unmanagedSourceDirectories += baseDirectory.value / "standards" / "test" / "scala"
+
+// Timing-based gates (ScalaTest tag "Perf") run alone in the `perf` suite (PERF_ONLY=1) and
+// are excluded from every other test run, where concurrent work would distort the timings.
+val perfOnly = sys.env.get("PERF_ONLY").contains("1")
+Test / testOptions += Tests.Argument(
+  TestFrameworks.ScalaTest,
+  (if (perfOnly) Seq("-n", "Perf") else Seq("-l", "Perf")): _*
+)
+
 libraryDependencies ++= Seq(
   "io.github.lene" %% "menger-common" % "0.1.4",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
