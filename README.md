@@ -1,6 +1,11 @@
-# OptiX JNI Module
+# OptiX JNI
 
-This module provides JNI bindings for NVIDIA OptiX ray tracing API.
+Generic JNI bindings for the NVIDIA OptiX ray tracing API, usable from any JVM language —
+spheres, meshes, planes, cones, curves, textures, PBR materials, caustics (progressive photon
+mapping), the AI denoiser, and a custom-geometry SPI for registering your own intersection
+programs. It contains no Menger-specific types; the [`menger`](https://github.com/lene/menger)
+renderer is its main consumer and extends it through the SPI. Development happens in the
+[`menger-toplevel`](https://github.com/lene/menger-toplevel) workspace.
 
 ## Standalone Usage
 
@@ -8,7 +13,8 @@ This module provides JNI bindings for NVIDIA OptiX ray tracing API.
 It depends on `menger-common` for shared scene types such as `Color`, `Vector`,
 `ImageSize`, and `Material`.
 
-Publication target: Maven Central.
+Published to Maven Central. The versions below are the current releases at the time of
+writing — check [CHANGELOG.md](CHANGELOG.md) (and menger-common's) for newer ones.
 
 ### sbt
 
@@ -16,8 +22,8 @@ Publication target: Maven Central.
 ThisBuild / scalaVersion := "3.8.3"
 
 libraryDependencies ++= Seq(
-  "io.github.lene" %% "menger-common" % "0.1.1",
-  "io.github.lene" % "optix-jni" % "0.1.5"
+  "io.github.lene" %% "menger-common" % "0.2.0",
+  "io.github.lene" % "optix-jni" % "0.3.3"
 )
 ```
 
@@ -28,12 +34,12 @@ libraryDependencies ++= Seq(
   <dependency>
     <groupId>io.github.lene</groupId>
     <artifactId>menger-common_3</artifactId>
-    <version>0.1.1</version>
+    <version>0.2.0</version>
   </dependency>
   <dependency>
     <groupId>io.github.lene</groupId>
     <artifactId>optix-jni</artifactId>
-    <version>0.1.5</version>
+    <version>0.3.3</version>
   </dependency>
 </dependencies>
 ```
@@ -46,8 +52,8 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.lene:menger-common_3:0.1.1")
-    implementation("io.github.lene:optix-jni:0.1.5")
+    implementation("io.github.lene:menger-common_3:0.2.0")
+    implementation("io.github.lene:optix-jni:0.3.3")
 }
 ```
 
@@ -72,15 +78,19 @@ For local unpublished builds, point the JVM at the native build output:
 
 ```bash
 java \
-  -Djava.library.path=/path/to/menger/optix-jni/target/native/x86_64-linux/bin \
+  -Djava.library.path=/path/to/optix-jni/target/native/x86_64-linux/bin \
   -cp your-app.jar your.Main
 ```
 
 When running through sbt:
 
 ```bash
-sbt -Djava.library.path=/path/to/menger/optix-jni/target/native/x86_64-linux/bin run
+sbt -Djava.library.path=/path/to/optix-jni/target/native/x86_64-linux/bin run
 ```
+
+(Here `/path/to/optix-jni` is your clone of this repo after `sbt nativeCompile`. To test an
+unpublished build from a consumer such as menger, `sbt publishLocal` here and point the
+consumer's version pin at the local version.)
 
 If CUDA libraries are not in the system linker cache, also set:
 
@@ -158,9 +168,20 @@ guide usage.
 
 ## CI Configuration
 
-### Docker Image
+### GPU runner setup
 
-The CI uses a pre-built Docker image based on NVIDIA's official CUDA image with OptiX SDK, Java 25, and sbt pre-installed. This avoids 15-20 minutes of installation time on every job run.
+CI for this repo (and for menger and menger-common) runs on **GitHub Actions**: hosted
+`ubuntu-latest` jobs for cppcheck/scalafix/doc checks, and a self-hosted NVIDIA runner (label
+`nvidia`) for native build, GPU tests and publishing. GPU jobs run **bare on the runner host**,
+which must provide CUDA 13.x and the OptiX SDK. Runner registration, hardening and host
+dependencies are documented in the workspace repo: `../infra/ci-runners/README.md` and
+`../infra/RUNNER_SETUP.md`. (`RUNNER_SETUP.md` in this repo is a pointer to those.)
+
+### Docker Image (optional, not used by CI)
+
+`Dockerfile` builds an image based on NVIDIA's official CUDA image with the OptiX SDK, Java 25
+and sbt pre-installed. It was the job container of menger's former GitLab CI; no current
+pipeline uses it. It remains useful for reproducible local containerized builds.
 
 **Image Versioning:**
 
@@ -170,27 +191,16 @@ Images are tagged with version numbers of all pre-installed components:
 - The `latest` tag always points to the newest stable version
 - Scala version is NOT in the tag (managed by sbt from build.sbt at runtime)
 
-### GPU runner setup
-
-This repo's own CI runs on **GitHub Actions** against a self-hosted NVIDIA runner (label
-`nvidia`). The Docker image built here is additionally consumed by **menger**'s GitLab CI,
-which needs a GPU-capable GitLab runner — the Docker image alone is not sufficient, the runner
-must expose GPU access to its containers.
-
-Both runner setups are documented in the workspace repo: `../infra/RUNNER_SETUP.md` for the
-GitLab runner, and `../infra/ci-runners/README.md` for registering and hardening the GitHub
-Actions runners. (See also `RUNNER_SETUP.md` in this repo, now a pointer to those.)
-
 ### Building and Pushing the Docker Image
 
-**Build the image locally** (one-time setup, or when Dockerfile changes):
+**Build the image locally** (from the root of this repo):
 
 ```bash
 # Set version tag (update when upgrading CUDA/OptiX/Java/sbt)
 export VERSION=13.2-9.0-25-1.12.0
 
 # Build the image (uses NVIDIA CUDA base image, faster than manual install)
-docker build -t registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION -f optix-jni/Dockerfile optix-jni/
+docker build -t registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION -f Dockerfile .
 
 # Tag as 'latest'
 docker tag registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION registry.gitlab.com/lilacashes/menger/optix-cuda:latest
@@ -205,7 +215,8 @@ docker push registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION
 docker push registry.gitlab.com/lilacashes/menger/optix-cuda:latest
 ```
 
-**After pushing a new version**, update `OPTIX_DOCKER_VERSION` in `.gitlab-ci.yml` to match.
+(The registry path is historical — it is where menger's retired GitLab CI pulled the image
+from. Push elsewhere if you need a shared copy.)
 
 #### Building against a different CUDA version
 
@@ -216,16 +227,15 @@ The toolkit must be **13.x**: `src/main/native/CMakeLists.txt` pins
 runs fine against CUDA 12.x. The driver floor is separate again (R570+ for OptiX 9.0, R590+
 for 9.1; CUDA 13.0 itself wants ≥580.65).
 
-13.2 specifically is what the CI runner and dev machines have installed; menger pins the
-resulting tag as `OPTIX_DOCKER_VERSION` in its `.gitlab-ci.yml`. To build against a different
-13.x toolkit, override the build arg and tag accordingly:
+13.2 specifically is what the CI runners and dev machines have installed. To build against a
+different 13.x toolkit, override the build arg and tag accordingly:
 
 ```bash
 export VERSION_ALT=13.0-9.0-25-1.12.0
 
 docker build --build-arg CUDA_VERSION=13.0.0 \
   -t registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION_ALT \
-  -f optix-jni/Dockerfile optix-jni/
+  -f Dockerfile .
 
 docker push registry.gitlab.com/lilacashes/menger/optix-cuda:$VERSION_ALT
 ```
@@ -236,9 +246,9 @@ When you need to update components (e.g., new CUDA/Java/sbt version):
 
 1. Edit `Dockerfile` (update FROM line, version numbers)
 2. Update version tag in build commands above
-3. Update `OPTIX_DOCKER_VERSION` in `.gitlab-ci.yml`
-4. Rebuild and push both tags
-5. The CI will automatically use the new image on the next run
+3. Rebuild (and push, if you keep a shared copy)
+4. Keep the CI runner hosts in step separately — they don't use this image (see
+   "GPU runner setup" above)
 
 **Layer optimization:** The image uses NVIDIA's official CUDA base image and separates components into distinct layers. When upgrading:
 - Only Java: Only rebuild/push Java + sbt layers (~500MB)

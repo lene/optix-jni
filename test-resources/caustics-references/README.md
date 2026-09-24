@@ -145,9 +145,11 @@ Download from https://appleseedhq.net/download.html
 
 ## Documentation
 
-- [CAUSTICS_REFERENCES.md](../CAUSTICS_REFERENCES.md) - Full reference documentation
-- [CAUSTICS_TEST_LADDER.md](../CAUSTICS_TEST_LADDER.md) - Test validation framework
-- [arc42 Section 10](../../docs/arc42/10-quality-requirements.md) - Quality requirements
+These documents live in other repos of the menger workspace:
+
+- [CAUSTICS_REFERENCES.md](https://github.com/lene/menger/blob/main/docs/caustics/CAUSTICS_REFERENCES.md) (menger) - Full reference documentation
+- [CAUSTICS_TEST_LADDER.md](https://github.com/lene/menger/blob/main/docs/caustics/CAUSTICS_TEST_LADDER.md) (menger) - Test validation framework
+- [arc42 Section 10](https://github.com/lene/menger-toplevel/blob/main/docs/arc42/10-quality-requirements.md) (menger-toplevel) - Quality requirements
 
 ## Validation Workflow
 
