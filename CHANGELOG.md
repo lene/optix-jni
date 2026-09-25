@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking (lighting):** a directional light's `direction` is now the direction the light
+  *travels* everywhere: `(0, -1, 0)` shines straight down. Surface shading and shadow rays used
+  to read it as "toward the light" while caustic photon emission read it as the travel
+  direction, so every scene lit its surfaces from the opposite side to its caustics. Callers
+  that relied on the shading reading must negate their directions; the built-in default light
+  was negated so it still comes from above.
+
 - Performance tests are now noise-aware gates (tag `Perf`) run by their own push-tier `perf`
   suite and CI job, and excluded from the regular test run. Each gate times its scene against a
   reference scene in interleaved rounds (shared helper `io.github.lene.qa.RelativeBenchmark`)

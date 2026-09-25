@@ -33,7 +33,7 @@ object FarSphereVisualization:
     )
 
     // Default light from setupShadowScene
-    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)
 
     val width = 800
     val height = 600

@@ -33,7 +33,7 @@ int main() {
         float up[] = {0.0f, 1.0f, 0.0f};
         wrapper.setCamera(eye, lookAt, up, 60.0f);
 
-        float lightDir[] = {0.57735f, 0.57735f, -0.57735f};
+        float lightDir[] = {-0.57735f, -0.57735f, 0.57735f};  // travel direction: from above
         wrapper.setLight(lightDir, 1.0f);
 
         // Render

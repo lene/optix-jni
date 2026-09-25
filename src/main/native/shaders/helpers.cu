@@ -239,12 +239,15 @@ __device__ void getDirectionalLightParams(
     float3& light_dir,
     float& attenuation
 ) {
-    // light.direction represents direction TO the light source
-    // Use as-is for both diffuse lighting (N·L) and shadow rays
+    // light.direction is the direction the light TRAVELS (e.g. (0,-1,0) shines straight down),
+    // the same convention caustic photon emission (emitDirectionalPhoton) uses. Shading and
+    // shadow rays need the direction TO the light, i.e. its negation. This function used to
+    // read the field as "toward the light" while photon emission read it as the travel
+    // direction, so every scene lit its surfaces from the opposite side to its caustics.
     light_dir = normalize(make_float3(
-        light.direction[0],
-        light.direction[1],
-        light.direction[2]
+        -light.direction[0],
+        -light.direction[1],
+        -light.direction[2]
     ));
     attenuation = 1.0f;  // No distance falloff for directional lights
 }
