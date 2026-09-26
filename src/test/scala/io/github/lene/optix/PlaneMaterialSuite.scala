@@ -45,7 +45,7 @@ class PlaneMaterialSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, 1.0f, 0.0f),
       60.0f
     )
-    renderer.setLight(Vector[3](0.5f, 1.0f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](-0.5f, -1.0f, 0.5f), 1.0f)
     renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.3f)
     renderer.setSphereColor(Color(0.7f, 0.7f, 0.7f, 1.0f))
 

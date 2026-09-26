@@ -139,7 +139,7 @@ class RendererTest extends AnyFlatSpec
 
     setSphere(Vector[3](0.0f, 0.0f, 0.0f), 0.5f)
     setCamera(Vector[3](0.0f, 0.5f, 3.0f), Vector[3](0.0f, 0.0f, 0.0f), Vector[3](0.0f, 1.0f, 0.0f), 60.0f)
-    setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)
 
     val image = render(100, 100)
     image.length shouldBe 100 * 100 * 4
@@ -203,7 +203,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_LIGHT_GRAY)
       .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
-      .withLightDirection(Vector[3](0.5f, 0.5f, -0.5f))
+      .withLightDirection(Vector[3](-0.5f, -0.5f, 0.5f))
       .applyTo(renderer)
     val image1 = renderer.render(size)
 
@@ -212,7 +212,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_LIGHT_GRAY)
       .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
-      .withLightDirection(Vector[3](-1.0f, 0.0f, 0.0f))
+      .withLightDirection(Vector[3](1.0f, 0.0f, 0.0f))
       .applyTo(renderer)
     val image2 = renderer.render(size)
 
@@ -221,7 +221,7 @@ class RendererTest extends AnyFlatSpec
       .withSphereColor(OPAQUE_LIGHT_GRAY)
       .withSphereRadius(Const.defaultSphereRadius)
       .withIOR(1.0f)
-      .withLightDirection(Vector[3](0.0f, 0.0f, 1.0f))
+      .withLightDirection(Vector[3](0.0f, 0.0f, -1.0f))
       .applyTo(renderer)
     val image3 = renderer.render(size)
 
@@ -439,7 +439,7 @@ class RendererTest extends AnyFlatSpec
   it should "support integer color API (0-255 range)" in:
     renderer.updateImageDimensions(TEST_IMAGE_SIZE)
     renderer.setCamera(Vector[3](0.0f, 0.5f, 3.0f), Vector[3](0.0f, 0.0f, 0.0f), Vector[3](0.0f, 1.0f, 0.0f), 60.0f)
-    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)
     renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)  // Larger sphere to fill more of the image
     renderer.setSphereColor(Color.fromRGBA(0, 255, 0, 255))  // Integer version: green, fully opaque
     renderer.setIOR(1.0f)

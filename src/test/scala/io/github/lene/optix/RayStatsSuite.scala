@@ -192,7 +192,7 @@ class RayStatsSuite extends AnyFlatSpec with Matchers with RendererFixture:
       .withHorizontalFOV(60f)
       .applyTo(renderer)
     renderer.setLight(
-      Vector[3](0f, 0f, -1f),  // Light from behind sphere, away from camera-facing front
+      Vector[3](0f, 0f, 1f),  // Light from behind the sphere, travelling toward the camera
       1.0f
     )
     renderer.setShadows(true)

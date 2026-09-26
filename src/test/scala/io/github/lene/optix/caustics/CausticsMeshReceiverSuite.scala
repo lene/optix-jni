@@ -26,7 +26,10 @@ class CausticsMeshReceiverSuite extends AnyFlatSpec with Matchers with RendererF
   private val casterRadius = 1.0f
   private val photonsPerIter = 100000
   private val causticIterations = 4
-  private val lightIntensity = 500.0f
+  // Low enough that direct light on the receiver doesn't clip, so the caustic can still add
+  // to it. At 500 the delta only showed while shading misread the light direction and lit the
+  // receiver from below (dark top); with correct top lighting every pixel saturated.
+  private val lightIntensity = 1.0f
 
   private val casterTransform: Array[Float] =
     Array(casterRadius, 0f, 0f, 0f, 0f, casterRadius, 0f, 0f, 0f, 0f, casterRadius, 0f)

@@ -57,15 +57,15 @@ object LightComparisonVisualization:
       Vector[3](0.0f, 1.0f, 0.0f),
       60.0f
     )
-    renderer2.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    renderer2.setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)
 
     val pixels2 = renderer2.render(width, height)
     TestUtilities.savePNG("light_setlight_unnormalized.png", pixels2, width, height)
     val brightness2 = measureBrightness(pixels2, width, height)
     println(s"Brightness: $brightness2")
 
-    // ========== Test 3: setLight with normalized (0.577, 0.577, -0.577) ==========
-    println("\n=== Test 3: setLight(0.577, 0.577, -0.577) normalized ===")
+    // ========== Test 3: setLight with normalized (-0.577, -0.577, 0.577) ==========
+    println("\n=== Test 3: setLight(-0.577, -0.577, 0.577) normalized ===")
     val renderer3 = new OptiXRenderer()
     renderer3.initialize()
 
@@ -78,7 +78,7 @@ object LightComparisonVisualization:
       Vector[3](0.0f, 1.0f, 0.0f),
       60.0f
     )
-    renderer3.setLight(Vector[3](0.577350f, 0.577350f, -0.577350f), 1.0f)
+    renderer3.setLight(Vector[3](-0.577350f, -0.577350f, 0.577350f), 1.0f)
 
     val pixels3 = renderer3.render(width, height)
     TestUtilities.savePNG("light_setlight_normalized.png", pixels3, width, height)
@@ -94,7 +94,7 @@ object LightComparisonVisualization:
       .withSphereColor(ColorConstants.OPAQUE_LIGHT_GRAY)
       .applyTo(renderer4)
 
-    renderer4.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    renderer4.setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)
 
     val pixels4 = renderer4.render(width, height)
     TestUtilities.savePNG("light_exact_test.png", pixels4, width, height)

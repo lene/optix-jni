@@ -260,7 +260,7 @@ class MultipleLightsSuite extends AnyFlatSpec with Matchers with RendererFixture
       .applyTo(renderer)
 
     // Old API
-    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)
 
     val result = renderer.render(STANDARD_IMAGE_SIZE)
     result should not be null // scalafix:ok DisableSyntax.null

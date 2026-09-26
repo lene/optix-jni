@@ -588,7 +588,7 @@ class OptiXRenderer
   // ---- Lights ----
   /** Sets one directional light for backward-compatible callers.
     *
-    * @param direction light direction vector in world space
+    * @param direction direction the light travels, in world space ((0, -1, 0) shines down)
     * @param intensity linear light intensity multiplier
     */
   def setLight(direction: Vector[3], intensity: Float): Unit =
