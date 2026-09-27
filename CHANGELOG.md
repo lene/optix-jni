@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `MENGER_OPTIX_DEBUG=1` turns on launch diagnostics: OptiX device-context validation mode
+  (full log level), stack-overflow / trace-depth / user exceptions in every module and the
+  pipeline, and an exception program that prints the exception code and launch index. Slow;
+  off by default, and without it the pipeline is unchanged. Replaces the dead
+  `MENGER_OPTIX_VALIDATION` stub, whose claim that OptiX 9.0 has no validation mode was wrong.
+
 ## [0.3.4] - 2026-09-26
 
 ### Changed

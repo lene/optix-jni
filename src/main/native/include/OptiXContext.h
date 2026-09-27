@@ -54,6 +54,10 @@ public:
         OptixModule module,
         const char* entry_function_name
     );
+    OptixProgramGroup createExceptionProgramGroup(
+        OptixModule module,
+        const char* entry_function_name
+    );
     OptixProgramGroup createHitgroupProgramGroup(
         OptixModule module_ch,
         const char* entry_ch,
@@ -142,6 +146,7 @@ public:
     // Shader binding table (SBT) helpers
     CUdeviceptr createRaygenSBTRecord(OptixProgramGroup program_group, const RayGenData& data);
     CUdeviceptr createMissSBTRecord(OptixProgramGroup program_group, const MissData& data);
+    CUdeviceptr createExceptionSBTRecord(OptixProgramGroup program_group);
     CUdeviceptr createHitgroupSBTRecord(OptixProgramGroup program_group, const HitGroupData& data);
     CUdeviceptr createTriangleHitgroupSBTRecord(OptixProgramGroup program_group, const TriangleHitGroupData& data);
     void freeSBTRecord(CUdeviceptr record);

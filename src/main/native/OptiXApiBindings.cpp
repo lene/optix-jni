@@ -4,6 +4,7 @@
 #include "include/CudaBuffer.h"
 #include "include/DenoiserManager.h"
 #include "include/OptiXContext.h"
+#include "include/OptiXDiagnostics.h"
 #include "include/OptiXErrorChecking.h"
 #include <cstdint>
 #include <iostream>
@@ -49,7 +50,7 @@ static OptixPipelineCompileOptions defaultPipelineCompileOptions() {
     // Primary: RGB+depth(4), Photon: flux+origin+dir+flags(10)
     opts.numPayloadValues                 = 11;
     opts.numAttributeValues               = 4;   // Normal x,y,z + radius from SDK intersection
-    opts.exceptionFlags                   = OPTIX_EXCEPTION_FLAG_NONE;
+    opts.exceptionFlags                   = optixPipelineExceptionFlags();
     opts.pipelineLaunchParamsVariableName = "params";
     opts.usesPrimitiveTypeFlags           = OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM |
                                             OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE |
