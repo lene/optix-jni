@@ -257,6 +257,39 @@ retry_with_backoff() {
     return 1
 }
 
+# --- suite duration tracking (T2#9: pre-push progress/ETA) ---
+#
+# .git/qa-cache/durations/<suite> holds the last 10 wall-clock durations (whole seconds)
+# of real runs of that suite, oldest first, one per line. Unlike the verdict cache
+# (.git/qa-cache/<suite>-<tree-sha>, pruned at 14 days because a verdict goes stale with
+# the tree), a duration doesn't depend on the tree at all, so this is never pruned.
+
+# $1 = cache dir, $2 = suite name, $3 = elapsed seconds of a real run.
+record_duration() {
+    _ddir="$1/durations"
+    mkdir -p "$_ddir" 2>/dev/null || true
+    _dfile="$_ddir/$2"
+    { [ -f "$_dfile" ] && cat "$_dfile"; echo "$3"; } | tail -n 10 > "$_dfile.tmp" && mv "$_dfile.tmp" "$_dfile"
+}
+
+# $1 = cache dir, $2 = suite name. Prints the median of recorded durations, or nothing
+# if none recorded yet.
+median_duration() {
+    _dfile="$1/durations/$2"
+    [ -f "$_dfile" ] || return 0
+    sort -n "$_dfile" | awk '{a[NR]=$1} END { if (NR==0) exit; print (NR%2==1) ? a[(NR+1)/2] : int((a[int(NR/2)]+a[int(NR/2)+1])/2) }'
+}
+
+# $1 = seconds. Prints "XmYYs" (or "Ys" under a minute). No output for an empty/missing arg.
+format_duration() {
+    [ -z "${1:-}" ] && return 0
+    if [ "$1" -ge 60 ]; then
+        printf '%dm%02ds' "$(($1 / 60))" "$(($1 % 60))"
+    else
+        printf '%ds' "$1"
+    fi
+}
+
 # --- generic ratchet comparison (Sprint 36 F, O7) ---
 #
 # Quality signals (coverage, Sonar rating, sanitizer warning count, perf ratio) ratchet:
