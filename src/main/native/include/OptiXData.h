@@ -23,7 +23,13 @@ constexpr unsigned int MAX_TRACE_DEPTH = 5;  // Allow internal reflections in gl
 // limit — undefined behavior, observed as an illegal-memory-access crash (Sprint 36 H3.2).
 // Headroom here also allows MAX_TRACE_DEPTH itself to grow later without another pipeline
 // rebuild.
-constexpr unsigned int PIPELINE_MAX_TRACE_DEPTH = 10;
+// 31 is OptiX's own ceiling. It also bounds pass-through rays, which spend no bounces: shaders
+// check it through TraceDepth (helpers.cu) before every nested radiance trace, so it must stay
+// a compile-time constant shared by host and device. Measured on an RTX 4060 Laptop (8 GB):
+// 10 -> 31 costs ~94 MiB of VRAM (~4.5 MiB per level) and no frame time; at 10, fractional
+// sponges nested past the limit (usability review 2026-09, F11), from 16 up none of the test
+// scenes did.
+constexpr unsigned int PIPELINE_MAX_TRACE_DEPTH = 31;
 
 // Ray tracing constants (shared between C++ and CUDA shaders)
 namespace RayTracingConstants {

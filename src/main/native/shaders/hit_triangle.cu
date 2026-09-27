@@ -281,7 +281,7 @@ extern "C" __global__ void __closesthit__triangle() {
         optixGetWorldRayDirection();
 
     // Get current depth from payload
-    const unsigned int depth = optixGetPayload_3();
+    const unsigned int depth = TraceDepth::bounce(optixGetPayload_3());
 
     // Track depth statistics
     if (params.stats) {
@@ -321,7 +321,8 @@ extern "C" __global__ void __closesthit__triangle() {
 
     // Handle fully transparent triangles
     if (mesh_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparent(geom.hit_point, ray_direction, depth);
+        if (!handleFullyTransparent(geom.hit_point, ray_direction, depth))
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, mesh_emission);  // nesting limit
         return;
     }
 
@@ -382,7 +383,8 @@ extern "C" __global__ void __closesthit__triangle() {
         computeDiffuseColor(geom.hit_point, geom.normal, mesh_color, diffuse_r, diffuse_g, diffuse_b);
 
         // Trace continuation ray through the face to get what lies behind
-        unsigned int through_r = 0, through_g = 0, through_b = 0;
+        unsigned int through_r = diffuse_r, through_g = diffuse_g, through_b = diffuse_b;
+        // Not traced at the nesting limit: through stays = diffuse, i.e. the face is opaque.
         traceContinuationRay(geom.hit_point, ray_direction, depth, through_r, through_g, through_b);
 
         // Coverage blend: coverage_alpha * diffuse + (1 - coverage_alpha) * through
@@ -445,8 +447,11 @@ extern "C" __global__ void __closesthit__triangle() {
 
         // Trace continuation ray (straight through — what lies behind the face)
         unsigned int thru_r = 0, thru_g = 0, thru_b = 0;
-        traceContinuationRay(geom.hit_point, ray_direction, depth, thru_r, thru_g, thru_b);
-        const float3 thru_color = payloadToFloat3(thru_r, thru_g, thru_b);
+        // Not traced at the nesting limit: through = the face's own colour, i.e. opaque.
+        const float3 thru_color =
+            traceContinuationRay(geom.hit_point, ray_direction, depth, thru_r, thru_g, thru_b)
+                ? payloadToFloat3(thru_r, thru_g, thru_b)
+                : fresnel_color;
 
         // Blend: vertex_alpha * fresnel + (1 - vertex_alpha) * through
         const float a = geom.vertex_alpha;

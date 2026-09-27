@@ -116,7 +116,7 @@ extern "C" __global__ void __closesthit__cone() {
         __uint_as_float(optixGetAttribute_2())
     );
 
-    const unsigned int depth = optixGetPayload_3();
+    const unsigned int depth = TraceDepth::bounce(optixGetPayload_3());
 
     if (params.stats) {
         atomicMax(&params.stats->max_depth_reached, depth + 1);
@@ -195,7 +195,8 @@ extern "C" __global__ void __closesthit__cone() {
     const float cone_alpha = material_color.w;
 
     if (cone_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparent(hit_point, ray_direction, depth);
+        if (!handleFullyTransparent(hit_point, ray_direction, depth))
+            handleFullyOpaque(hit_point, normal, material_color, emission);  // nesting limit
         return;
     }
 

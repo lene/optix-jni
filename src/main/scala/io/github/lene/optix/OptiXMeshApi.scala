@@ -263,6 +263,28 @@ private[optix] trait OptiXMeshApi:
       MaterialPayload.pack(material)
     )
 
+  /** Moves existing cylinder instances in place: new endpoints and radius per instance.
+    *
+    * Refits each cylinder's GAS and the IAS once instead of rebuilding the scene, for
+    * per-frame updates such as interactively rotating an edge-rendered 4D object. `p0s`
+    * and `p1s` hold 3 floats per cylinder. Nothing changes if any entry is invalid (an id
+    * that is not a cylinder, non-finite endpoints, radius <= 0): that throws, as does a
+    * native failure.
+    */
+  def updateCylinderInstances(
+    ids: Array[Int],
+    p0s: Array[Float],
+    p1s: Array[Float],
+    radii: Array[Float]
+  ): Unit =
+    require(
+      p0s.length == 3 * ids.length && p1s.length == 3 * ids.length && radii.length == ids.length,
+      s"updateCylinderInstances: expected ${ids.length} ids, ${3 * ids.length} floats per endpoint " +
+        s"array and ${ids.length} radii, got ${p0s.length}/${p1s.length}/${radii.length}"
+    )
+    val rc = updateCylinderInstancesNative(ids, p0s, p1s, radii)
+    require(rc == 0, s"updateCylinderInstances failed with code $rc")
+
   /** Adds a cylinder IAS instance from color and IOR.
     *
     * @return instance id `>= 0`, or `-1` on native failure

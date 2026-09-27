@@ -74,7 +74,7 @@ extern "C" __global__ void __raygen__rg() {
         }
 
         // Trace ray
-        unsigned int p3 = 0;  // Initial depth = 0
+        unsigned int p3 = TraceDepth::primary();  // bounce depth 0, nesting 1
 
         // Draw hero wavelength λ ∈ [380, 730] nm for spectral dispersion.
         // Stratified per pixel + per accumulation frame.

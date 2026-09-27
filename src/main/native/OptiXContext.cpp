@@ -1,6 +1,7 @@
 #include "include/OptiXContext.h"
 #include "include/OptiXConstants.h"
 #include "include/OptiXData.h"
+#include "include/OptiXDiagnostics.h"
 #include "include/OptiXErrorChecking.h"
 
 #include <iostream>
@@ -157,18 +158,16 @@ bool OptiXContext::initialize() {
         options.logCallbackData = this;
         options.logCallbackLevel = OptiXConstants::OPTIX_LOG_LEVEL_INFO;
 
-        OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &context_));
-
-        // Enable validation mode when MENGER_OPTIX_VALIDATION=1
-        // Note: optixDeviceContextSetValidationMode removed in OptiX 9.0.
-        // Validation is enabled via the debug layer (OptiX_INSTALL_DIR/lib/liboptix_denoiser.so)
-        // or by linking against the validation-enabled SDK build.
-        // For OptiX 9.0, use MENGER_OPTIX_DEBUG_LEVEL instead.
-        const char* validation_env = std::getenv("MENGER_OPTIX_VALIDATION");
-        if (validation_env != nullptr && std::string(validation_env) == "1") {
-            OPTIX_LOG(INFO) << "[OptiX] Validation mode requested but not available in OptiX 9.0. "
-                      << "Use MENGER_OPTIX_DEBUG_LEVEL=1 instead." << std::endl;
+        // MENGER_OPTIX_DEBUG=1 (see OptiXDiagnostics.h). OptiX 9.0 still has validation mode,
+        // as a context-creation option -- the removed API was only the post-creation setter.
+        if (optixDiagnosticsEnabled()) {
+            options.validationMode = OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL;
+            options.logCallbackLevel = OptiXConstants::OPTIX_LOG_LEVEL_PRINT;
+            OPTIX_LOG(INFO) << "[OptiX] MENGER_OPTIX_DEBUG=1: validation mode and exception "
+                            << "diagnostics enabled (slow)" << std::endl;
         }
+
+        OPTIX_CHECK(optixDeviceContextCreate(cu_ctx, &options, &context_));
 
         // Configure OptiX disk cache
         // Allow custom cache location via MENGER_OPTIX_CACHE environment variable
@@ -291,6 +290,33 @@ OptixProgramGroup OptiXContext::createMissProgramGroup(
     return program_group;
 }
 
+OptixProgramGroup OptiXContext::createExceptionProgramGroup(
+    OptixModule module,
+    const char* entry_function_name)
+{
+    OptixProgramGroupOptions program_group_options = {};
+    OptixProgramGroupDesc exception_desc = {};
+    exception_desc.kind = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
+    exception_desc.exception.module = module;
+    exception_desc.exception.entryFunctionName = entry_function_name;
+
+    char log[OptiXConstants::LOG_BUFFER_SIZE];
+    size_t log_size = sizeof(log);
+
+    OptixProgramGroup program_group = nullptr;
+    OPTIX_CHECK(optixProgramGroupCreate(
+        context_,
+        &exception_desc,
+        1,
+        &program_group_options,
+        log,
+        &log_size,
+        &program_group
+    ));
+
+    return program_group;
+}
+
 OptixProgramGroup OptiXContext::createHitgroupProgramGroup(
     OptixModule module_ch,
     const char* entry_ch,
@@ -371,7 +397,7 @@ OptixProgramGroup OptiXContext::createCurveHitgroupProgramGroup(
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
     pipeline_compile_options.numPayloadValues = 11;
     pipeline_compile_options.numAttributeValues = 4;
-    pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
+    pipeline_compile_options.exceptionFlags = optixPipelineExceptionFlags();
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
     pipeline_compile_options.usesPrimitiveTypeFlags =
         OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM
@@ -497,7 +523,7 @@ OptixProgramGroup OptiXContext::createCurveHitgroupProgramGroupWithAH(
     pipeline_compile_options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
     pipeline_compile_options.numPayloadValues = 11;
     pipeline_compile_options.numAttributeValues = 4;
-    pipeline_compile_options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
+    pipeline_compile_options.exceptionFlags = optixPipelineExceptionFlags();
     pipeline_compile_options.pipelineLaunchParamsVariableName = "params";
     pipeline_compile_options.usesPrimitiveTypeFlags =
         OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM
@@ -600,7 +626,11 @@ OptixPipeline OptiXContext::createPipeline(
     // Cylinder shaders with single-bounce metallic reflection need additional stack space
     // for the handleMetallicOpaque() helper and one level of optixTrace recursion
     constexpr unsigned int MIN_CONTINUATION_STACK_SIZE = 49152u;  // 48 KB minimum for metallic cylinders
+    const uint32_t computed_css = continuation_stack_size;
     continuation_stack_size = std::max(continuation_stack_size, MIN_CONTINUATION_STACK_SIZE);
+    OPTIX_LOG(INFO) << "[OptiX] pipeline maxTraceDepth=" << max_trace_depth
+                    << " continuation stack: computed " << computed_css
+                    << " B, used " << continuation_stack_size << " B" << std::endl;
 
     // maxTraversableGraphDepth: depth of the deepest traversal chain.
     //   2 covers main-IAS -> GAS (the original mixed-geometry path).
@@ -914,6 +944,15 @@ CUdeviceptr OptiXContext::createRaygenSBTRecord(OptixProgramGroup program_group,
 
 CUdeviceptr OptiXContext::createMissSBTRecord(OptixProgramGroup program_group, const MissData& data) {
     return createSBTRecordHelper(program_group, data);
+}
+
+namespace {
+// The exception program reads nothing from its record; SbtRecord<T> just needs some T.
+struct ExceptionRecordData { int unused; };
+}
+
+CUdeviceptr OptiXContext::createExceptionSBTRecord(OptixProgramGroup program_group) {
+    return createSBTRecordHelper(program_group, ExceptionRecordData{0});
 }
 
 CUdeviceptr OptiXContext::createHitgroupSBTRecord(OptixProgramGroup program_group, const HitGroupData& data) {

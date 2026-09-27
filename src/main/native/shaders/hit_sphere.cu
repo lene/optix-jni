@@ -49,7 +49,7 @@ extern "C" __global__ void __closesthit__ch() {
         : make_float3(-outward_normal_world.x, -outward_normal_world.y, -outward_normal_world.z);
 
     // Get current depth from payload
-    const unsigned int depth = optixGetPayload_3();
+    const unsigned int depth = TraceDepth::bounce(optixGetPayload_3());
 
     // Track depth statistics
     if (params.stats) {
@@ -85,7 +85,8 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Handle fully transparent spheres
     if (sphere_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparent(hit_point, ray_direction, depth);
+        if (!handleFullyTransparent(hit_point, ray_direction, depth))
+            handleFullyOpaque(hit_point, normal, material_color, emission);  // nesting limit
         return;
     }
 

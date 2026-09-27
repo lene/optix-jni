@@ -175,7 +175,7 @@ extern "C" __global__ void __miss__ms() {
         float3 total_color;
 
         if (plane.metallic > 0.0f) {
-            const unsigned int depth = optixGetPayload_3();
+            const unsigned int depth = TraceDepth::bounce(optixGetPayload_3());
             unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
             if (depth < static_cast<unsigned int>(params.max_ray_depth)) {
                 traceReflectedRay(hit_point, ray_direction, plane_normal, depth,

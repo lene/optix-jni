@@ -131,6 +131,9 @@ private:
     OptixProgramGroup caustics_grid_count_raygen = nullptr;
     OptixProgramGroup caustics_grid_scatter_raygen = nullptr;
 
+    // MENGER_OPTIX_DEBUG=1 only (see OptiXDiagnostics.h); nullptr otherwise
+    OptixProgramGroup exception_prog_group = nullptr;
+
     // Shader Binding Table and params buffer
     OptixShaderBindingTable sbt = {};
     CUdeviceptr d_params = 0;
