@@ -37,6 +37,10 @@
 # summary so far. --all (or a non-TTY caller, e.g. CI) runs every relevant suite regardless.
 set -u
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=../hooks/lib.sh
+. "$SCRIPT_DIR/../hooks/lib.sh"
+
 usage() {
   echo "usage: qa-runner.sh --tier <commit|push|pr|main|release> [--all] [<suite> ...]" >&2
   exit 2
@@ -82,7 +86,8 @@ CEILING=$(tier_rank "$TIER")
 MANIFEST_FLAT=$(mktemp)
 RESULTS=$(mktemp)
 SUITE_LIST_FILE=$(mktemp)
-trap 'rm -f "$MANIFEST_FLAT" "$RESULTS" "$SUITE_LIST_FILE"' EXIT
+DURATIONS_FILE=$(mktemp)
+trap 'rm -f "$MANIFEST_FLAT" "$RESULTS" "$SUITE_LIST_FILE" "$DURATIONS_FILE"' EXIT
 
 # --- Parse the manifest into flat, tab-separated CLASS/SUITE records --------------------
 # CLASS <name> <pattern>          (one line per pattern)
@@ -211,12 +216,47 @@ TREE_SHA=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo notree)
 
 FAILFAST=0
 [ -t 1 ] && [ "$ALL" -eq 0 ] && FAILFAST=1
+RUN_START=$(date +%s)
+
+# $1 = index (1-based) of the suite about to run; sums median durations of the suites
+# after it that will actually execute (mirrors the skip logic below). A suite with no
+# recorded duration yet makes the estimate a floor, flagged with a trailing '+?'.
+remaining_eta() {
+  _after="$1"
+  _sum=0
+  _unknown=0
+  _i=0
+  while IFS="$TAB" read -r _rtag _rname _rtier _rreq _rauto; do
+    [ "$_rtag" = "SUITE" ] || continue
+    _i=$((_i + 1))
+    [ "$_i" -le "$_after" ] && continue
+    [ "$_rreq" = "-" ] && _rreq=""
+    [ "$(tier_rank "$_rtier")" -gt "$CEILING" ] && continue
+    [ "$_rauto" = "false" ] && continue
+    suite_relevant "$_rreq" || continue
+    _rcache="$CACHE_DIR/$_rname-$TREE_SHA"
+    [ -f "$_rcache" ] && grep -q '^verdict=PASS$' "$_rcache" 2>/dev/null && continue
+    _rmed=$(median_duration "$CACHE_DIR" "$_rname")
+    if [ -n "$_rmed" ]; then
+      _sum=$((_sum + _rmed))
+    else
+      _unknown=1
+    fi
+  done < "$SUITE_LIST_FILE"
+  if [ "$_sum" -gt 0 ]; then
+    printf '%s' "$(format_duration "$_sum")"
+    [ "$_unknown" -eq 1 ] && printf '+?'
+  else
+    printf '?'
+  fi
+}
 
 while IFS="$TAB" read -r _tag name tier req auto; do
   [ "$_tag" = "SUITE" ] || continue
   [ "$req" = "-" ] && req=""
   N=$((N + 1))
-  echo "[$N/$TOTAL] $name"
+  _elapsed=$(( $(date +%s) - RUN_START ))
+  echo "[$N/$TOTAL] $name — elapsed $(format_duration "$_elapsed"), ETA ~$(remaining_eta "$((N - 1))")"
 
   suite_ceiling=$(tier_rank "$tier")
   if [ "$suite_ceiling" -gt "$CEILING" ]; then
@@ -252,12 +292,16 @@ while IFS="$TAB" read -r _tag name tier req auto; do
   fi
 
   LOG=$(mktemp)
+  _t0=$(date +%s)
   "$script" 2>&1 | tee "$LOG"
+  _t1=$(date +%s)
 
   LINE=$(grep "^SUITE $name " "$LOG" | tail -n 1)
   if [ -z "$LINE" ]; then
     echo "  ${name}: FAILED — no SUITE line emitted (crashed or misbehaved)"
     printf '%s%sFAIL%sno SUITE line emitted\n' "$name" "$TAB" "$TAB" >> "$RESULTS"
+    printf '%s\t%s\n' "$name" "$((_t1 - _t0))" >> "$DURATIONS_FILE"
+    record_duration "$CACHE_DIR" "$name" "$((_t1 - _t0))"
     OVERALL=1
     rm -f "$LOG"
     [ "$FAILFAST" -eq 1 ] && break
@@ -268,6 +312,8 @@ while IFS="$TAB" read -r _tag name tier req auto; do
   case "$VERDICT" in
     PASS)
       printf '%s%sPASS%s\n' "$name" "$TAB" "$TAB" >> "$RESULTS"
+      printf '%s\t%s\n' "$name" "$((_t1 - _t0))" >> "$DURATIONS_FILE"
+      record_duration "$CACHE_DIR" "$name" "$((_t1 - _t0))"
       { echo "verdict=PASS"; echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "tier=$tier"; } > "$CACHE_FILE"
       ;;
     SKIP)
@@ -277,6 +323,8 @@ while IFS="$TAB" read -r _tag name tier req auto; do
     *)
       FAILED_NAMES=$(printf '%s' "$LINE" | sed -n 's/.*failed="\([^"]*\)".*/\1/p')
       printf '%s%sFAIL%s%s\n' "$name" "$TAB" "$TAB" "$FAILED_NAMES" >> "$RESULTS"
+      printf '%s\t%s\n' "$name" "$((_t1 - _t0))" >> "$DURATIONS_FILE"
+      record_duration "$CACHE_DIR" "$name" "$((_t1 - _t0))"
       OVERALL=1
       ;;
   esac
@@ -289,11 +337,14 @@ done < "$SUITE_LIST_FILE"
 echo ""
 echo "=== QA summary ==="
 while IFS="$TAB" read -r name verdict detail; do
+  _dur=$(grep "^$name	" "$DURATIONS_FILE" 2>/dev/null | cut -f2)
+  _dur_suffix=""
+  [ -n "$_dur" ] && _dur_suffix=" ($(format_duration "$_dur"))"
   case "$verdict" in
-    PASS) echo "  PASS    $name" ;;
+    PASS) echo "  PASS    $name$_dur_suffix" ;;
     CACHED) echo "  CACHED  $name (tree unchanged)" ;;
     SKIP) echo "  SKIPPED $name ($detail)" ;;
-    FAIL) echo "  FAILED  $name${detail:+ [$detail]}" ;;
+    FAIL) echo "  FAILED  $name${detail:+ [$detail]}$_dur_suffix" ;;
     *) echo "  UNKNOWN $name (unrecognized verdict '$verdict')" ;;
   esac
 done < "$RESULTS"
