@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-09-27
+
+### Added
+
+- `addTriangleMesh(mesh): Int`, returning the new mesh's index. `setTriangleMesh` was always
+  an append (menger's multi-mesh IAS scene builders rely on this), never a replace, but the
+  name and the `Unit` return type suggested otherwise; it is now a `@deprecated` alias.
+- Gate progress/ETA: the pre-push suite runner now prints elapsed time and an ETA next to
+  each `[N/TOTAL]` suite header, and the final summary lists each suite's duration.
+
+### Fixed
+
+- `xyzToRGB` procedural texture (`helpers.cu`) lost a channel's color on an exact-integer
+  world coordinate: `fmodf(x, 1)` wraps `1.0` to `0.0`, so a cube built via the common
+  "positive octant, `pos = size/2`" DSL recipe had a face rendering fully black on that
+  channel instead of full-scale.
+
 ## [0.4.0] - 2026-09-27
 
 ### Added
@@ -572,6 +589,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.1]: https://github.com/lene/optix-jni/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/lene/optix-jni/compare/0.3.4...0.4.0
 [0.3.4]: https://github.com/lene/optix-jni/compare/0.3.3...0.3.4
 [0.3.3]: https://github.com/lene/optix-jni/compare/0.3.2...0.3.3
