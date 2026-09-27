@@ -1931,12 +1931,13 @@ __device__ float layeredNoise(float3 p) {
     return fminf(n * n * 2.f, 1.f);
 }
 
-// XYZ-to-RGB: replace color with position-derived RGB (|x|,|y|,|z| mod 1 → R,G,B)
+// XYZ-to-RGB: replace color with position-derived RGB (|x|,|y|,|z| mod 1, edge-inclusive →
+// R,G,B). See VectorMath.h's wrapFractionEdgeInclusive for why this isn't plain fmodf.
 __device__ float4 xyzToRGB(float3 p, float alpha) {
     return make_float4(
-        fminf(fmaxf(fabsf(fmodf(p.x, 1.f)), 0.f), 1.f),
-        fminf(fmaxf(fabsf(fmodf(p.y, 1.f)), 0.f), 1.f),
-        fminf(fmaxf(fabsf(fmodf(p.z, 1.f)), 0.f), 1.f),
+        wrapFractionEdgeInclusive(p.x),
+        wrapFractionEdgeInclusive(p.y),
+        wrapFractionEdgeInclusive(p.z),
         alpha
     );
 }

@@ -78,6 +78,22 @@ __host__ __device__ inline float3 reflect(float3 incident, float3 normal) {
     return incident - 2.0f * dot(incident, normal) * normal;
 }
 
+// Fraction of |x| in [0,1], with the top edge inclusive: an exact positive integer maps to
+// 1.0 instead of wrapping to 0.0. Plain fmodf(x, 1) wraps 1.0 -> 0.0, which is the F6 bug in
+// helpers.cu's xyzToRGB: a cube built via the common "positive octant, pos = size/2" DSL
+// recipe has a face landing exactly on an integer coordinate, and that face's channel went
+// fully black instead of full-scale.
+__host__ __device__ inline float wrapFractionEdgeInclusive(float x) {
+#ifdef __CUDA_ARCH__
+    const float ax = fabsf(x);
+    const float f = fmodf(ax, 1.0f);
+#else
+    const float ax = std::fabs(x);
+    const float f = std::fmod(ax, 1.0f);
+#endif
+    return (f == 0.0f && ax != 0.0f) ? 1.0f : f;
+}
+
 // Legacy array-based functions for host code compatibility
 namespace VectorMath {
     // Normalize a 3D vector in place (array version)

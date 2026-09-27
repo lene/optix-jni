@@ -84,3 +84,32 @@ TEST(ReflectTest, HeadOnHitDoesNotDegenerateToPassThrough) {
     // The correct result must be the opposite of that — reflected back, not passed through.
     EXPECT_LT(dot(normalize(result), incident), 0.0f);
 }
+
+// F6 regression: helpers.cu's xyzToRGB used plain fmodf, which wraps an exact positive
+// integer to 0.0 instead of 1.0. A cube built via the "positive octant, pos = size/2" DSL
+// recipe has a face landing exactly on an integer world coordinate, so that face's channel
+// went fully black instead of full-scale. wrapFractionEdgeInclusive is __host__ __device__,
+// so it's tested directly here as plain host C++ — no GPU, no ray-plane intersection
+// float noise to worry about.
+TEST(WrapFractionEdgeInclusiveTest, ExactIntegerMapsToOneNotZero) {
+    EXPECT_FLOAT_EQ(wrapFractionEdgeInclusive(1.0f), 1.0f);
+    EXPECT_FLOAT_EQ(wrapFractionEdgeInclusive(-1.0f), 1.0f);
+    EXPECT_FLOAT_EQ(wrapFractionEdgeInclusive(5.0f), 1.0f);
+}
+
+TEST(WrapFractionEdgeInclusiveTest, ZeroStaysZero) {
+    EXPECT_FLOAT_EQ(wrapFractionEdgeInclusive(0.0f), 0.0f);
+}
+
+TEST(WrapFractionEdgeInclusiveTest, NonIntegerFractionUnaffected) {
+    EXPECT_NEAR(wrapFractionEdgeInclusive(2.25f), 0.25f, kEpsilon);
+    EXPECT_NEAR(wrapFractionEdgeInclusive(-2.25f), 0.25f, kEpsilon);
+}
+
+TEST(WrapFractionEdgeInclusiveTest, StaysWithinUnitRange) {
+    for (float x = -3.0f; x <= 3.0f; x += 0.37f) {
+        const float f = wrapFractionEdgeInclusive(x);
+        EXPECT_GE(f, 0.0f);
+        EXPECT_LE(f, 1.0f);
+    }
+}
