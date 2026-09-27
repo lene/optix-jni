@@ -4,6 +4,7 @@
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <cstring>
+#include <vector>
 
 /**
  * @file JNIBindings.cpp
@@ -898,6 +899,46 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCpuTriangle
         return static_cast<jint>(rc);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in updateCpuTriangleMesh: " << e.what() << std::endl;
+        throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
+        return -1;
+    }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
+}
+
+/**
+ * In-place update of existing cylinder instances (edge-rendered 4D rotation fast path).
+ * ids: n instance ids; p0s/p1s: 3n floats; radii: n floats.
+ * Returns 0 on success, -1 on invalid input (incl. mismatched array lengths).
+ */
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCylinderInstancesNative(
+    JNIEnv* env, jobject obj,
+    jintArray ids, jfloatArray p0s, jfloatArray p1s, jfloatArray radii) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr || ids == nullptr || p0s == nullptr || p1s == nullptr
+            || radii == nullptr) {
+            return -1;
+        }
+        const jsize n = env->GetArrayLength(ids);
+        if (env->GetArrayLength(p0s) != 3 * n || env->GetArrayLength(p1s) != 3 * n
+            || env->GetArrayLength(radii) != n) {
+            return -1;
+        }
+        std::vector<jint> id_buf(static_cast<size_t>(n));
+        std::vector<jfloat> p0_buf(static_cast<size_t>(3 * n));
+        std::vector<jfloat> p1_buf(static_cast<size_t>(3 * n));
+        std::vector<jfloat> r_buf(static_cast<size_t>(n));
+        env->GetIntArrayRegion(ids, 0, n, id_buf.data());
+        env->GetFloatArrayRegion(p0s, 0, 3 * n, p0_buf.data());
+        env->GetFloatArrayRegion(p1s, 0, 3 * n, p1_buf.data());
+        env->GetFloatArrayRegion(radii, 0, n, r_buf.data());
+        return static_cast<jint>(wrapper->updateCylinderInstances(
+            reinterpret_cast<const int*>(id_buf.data()),
+            p0_buf.data(), p1_buf.data(), r_buf.data(),
+            static_cast<int>(n)
+        ));
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in updateCylinderInstances: " << e.what() << std::endl;
         throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
         return -1;
     }

@@ -160,6 +160,13 @@ class RendererTest extends AnyFlatSpec
     savedFile.exists() shouldBe true
     savedFile.length() should be > 0L
 
+  "maxInstances" should "report the capacity of the current native handle" in:
+    renderer.maxInstances shouldBe 64  // RendererFixture's initialize() default
+    renderer.reinitialize(256) shouldBe true
+    renderer.maxInstances shouldBe 256
+    renderer.dispose()
+    renderer.maxInstances shouldBe 0
+
   "Camera position" should "produce different images" in:
     val size = QUICK_TEST_SIZE
 

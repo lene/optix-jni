@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pipeline, and an exception program that prints the exception code and launch index. Slow;
   off by default, and without it the pipeline is unchanged. Replaces the dead
   `MENGER_OPTIX_VALIDATION` stub, whose claim that OptiX 9.0 has no validation mode was wrong.
+- `updateCylinderInstances(ids, p0s, p1s, radii)` moves existing cylinder instances in place:
+  each cylinder's GAS (now built with `ALLOW_UPDATE`) and the IAS are refit, instead of
+  clearing and re-adding every instance. For per-frame updates such as rotating an
+  edge-rendered 4D object; renders byte-identical to re-adding the cylinder at its new place.
+- `OptiXRenderer.maxInstances`: the IAS instance capacity of the current native handle, so
+  callers can skip a `reinitialize` (a full native teardown and rebuild) when it suffices.
 
 ### Changed
 
