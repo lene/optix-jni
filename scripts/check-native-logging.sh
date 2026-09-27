@@ -10,11 +10,14 @@ set -euo pipefail
 # translation unit, and is run by the pre-push hook and CI.
 #
 # Exempt: the tests/ tree and standalone_test.cpp (test-only), stb_image_impl.cpp (vendored
-# third-party). The sink header itself is the one allowed place for raw std::cerr/std::cout; it
-# is a .h and is not scanned here (only .cpp/.cu are).
+# third-party), and shaders/exception.cu: device code, where OPTIX_LOG (host iostream) can't run
+# and printf is CUDA's only output, and it is only linked into the pipeline under
+# MENGER_OPTIX_DEBUG=1, so it never writes to a released library's console by default. The sink
+# header itself is the one allowed place for raw std::cerr/std::cout; it is a .h and is not
+# scanned here (only .cpp/.cu are).
 
 BANNED='std::cerr|std::cout|std::clog|(^|[^[:alnum:]_])printf[[:space:]]*\(|(^|[^[:alnum:]_])fprintf[[:space:]]*\('
-EXEMPT='src/main/native/tests/|standalone_test\.cpp|stb_image_impl\.cpp'
+EXEMPT='src/main/native/tests/|standalone_test\.cpp|stb_image_impl\.cpp|shaders/exception\.cu'
 
 mapfile -t files < <(find src/main/native \( -name '*.cpp' -o -name '*.cu' \) \
   | grep -vE "$EXEMPT" | sort)
