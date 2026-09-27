@@ -437,13 +437,14 @@ class OptiXRenderer
     textureIndex: Int): Unit
 
   // ---- Triangle mesh @native declarations (called from OptiXMeshApi) ----
+  // Appends a mesh; returns its index (>= 0), or -1 on native failure.
   @native private[optix] def setTriangleMeshNative(
     vertices: Array[Float],
     numVertices: Int,
     indices: Array[Int],
     numTriangles: Int,
     vertexStride: Int
-  ): Unit
+  ): Int
 
   @native private[optix] def setProjectedMeshNative(
     facesData: Array[Float],

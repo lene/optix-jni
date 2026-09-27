@@ -18,8 +18,10 @@ import menger.common.z
 private[optix] trait OptiXMeshApi:
   this: OptiXRenderer =>
 
-  /** Uploads a legacy single triangle mesh to native scene state. */
-  def setTriangleMesh(mesh: TriangleMeshData): Unit =
+  /** Uploads a triangle mesh to native scene state. Appends — does not replace an
+    * already-uploaded mesh — and returns the new mesh's index.
+    */
+  def addTriangleMesh(mesh: TriangleMeshData): Int =
     setTriangleMeshNative(
       mesh.vertices,
       mesh.numVertices,
@@ -27,6 +29,12 @@ private[optix] trait OptiXMeshApi:
       mesh.numTriangles,
       mesh.vertexStride
     )
+
+  /** @deprecated Use [[addTriangleMesh]]; the name "set" was misleading — this appends. */
+  @deprecated("use addTriangleMesh; it appends and returns the new mesh's index", "0.4.1")
+  def setTriangleMesh(mesh: TriangleMeshData): Unit =
+    addTriangleMesh(mesh)
+    ()
 
   /** Uploads a 4D face mesh and projects it on the GPU.
     *

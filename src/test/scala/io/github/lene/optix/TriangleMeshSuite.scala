@@ -74,6 +74,11 @@ class TriangleMeshSuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderer.setTriangleMesh(singleTriangle)
     renderer.hasTriangleMesh() shouldBe true
 
+  "addTriangleMesh" should "return the appended mesh's index, not replace the previous one" in:
+    renderer.addTriangleMesh(singleTriangle) shouldBe 0
+    renderer.addTriangleMesh(quadMesh) shouldBe 1
+    renderer.hasTriangleMesh() shouldBe true
+
   it should "report no mesh after clearing" in:
     renderer.setTriangleMesh(singleTriangle)
     renderer.hasTriangleMesh() shouldBe true

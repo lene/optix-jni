@@ -446,7 +446,7 @@ void OptiXWrapper::setCaustics(bool enabled, int photonsPerIter, int iterations,
     impl->config.setCaustics(enabled, photonsPerIter, iterations, initialRadius, alpha);
 }
 
-void OptiXWrapper::setTriangleMesh(
+int OptiXWrapper::setTriangleMesh(
     const float* vertices,
     unsigned int num_vertices,
     const unsigned int* indices,
@@ -501,6 +501,7 @@ void OptiXWrapper::setTriangleMesh(
     mesh_entry.vertex_stride = vertex_stride;
     mesh_entry.gas_built = false;
 
+    int mesh_index = static_cast<int>(impl->triangle_meshes.size());
     impl->triangle_meshes.push_back(mesh_entry);
 
     // Compute mesh AABB from vertex positions (for caustic target)
@@ -536,6 +537,8 @@ void OptiXWrapper::setTriangleMesh(
     // these buffers now.
     d_vertices_guard.release();
     d_indices_guard.release();
+
+    return mesh_index;
 }
 
 // Compose the 4D rotation matrix on the host as R_xw * R_yw * R_zw,
