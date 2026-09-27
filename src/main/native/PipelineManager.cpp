@@ -1,6 +1,7 @@
 #include "include/PipelineManager.h"
 #include "include/OptiXData.h"
 #include "include/OptiXConstants.h"
+#include "include/OptiXDiagnostics.h"
 #include "include/OptiXErrorChecking.h"
 #include "include/OptiXFileUtils.h"
 #include <vector>
@@ -22,7 +23,7 @@ static OptixPipelineCompileOptions getDefaultPipelineCompileOptions() {
     options.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_ANY;
     options.numPayloadValues = 11;  // Primary: RGB+depth(4)+denoise(6)+wavelength(1)=11; Photon: flux+origin+dir+flags(10)
     options.numAttributeValues = 4;  // Normal x, y, z + radius from SDK intersection
-    options.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
+    options.exceptionFlags = optixPipelineExceptionFlags();
     options.pipelineLaunchParamsVariableName = "params";
     // Support custom primitives, built-in triangles, and built-in curves.
     options.usesPrimitiveTypeFlags =
@@ -223,6 +224,13 @@ void PipelineManager::createProgramGroups() {
     caustics_grid_scatter_raygen = optix_context.createRaygenProgramGroup(
         module, "__raygen__grid_scatter"
     );
+
+    // MENGER_OPTIX_DEBUG=1 only: the default pipeline stays exactly as it was without it.
+    if (optixDiagnosticsEnabled()) {
+        exception_prog_group = optix_context.createExceptionProgramGroup(
+            module, "__exception__diagnostic"
+        );
+    }
 }
 
 void PipelineManager::createPipeline() {
@@ -266,6 +274,7 @@ void PipelineManager::createPipeline() {
         if (reg.shadow) program_groups.push_back(reg.shadow);
         if (reg.photon) program_groups.push_back(reg.photon);
     }
+    if (exception_prog_group) program_groups.push_back(exception_prog_group);
 
     OptixPipelineCompileOptions pipeline_compile_options = getDefaultPipelineCompileOptions();
 
@@ -545,10 +554,17 @@ void PipelineManager::setupShaderBindingTable(const SceneParameters& scene, Opti
         optix_context.freeSBTRecord(sbt.hitgroupRecordBase);
         sbt.hitgroupRecordBase = 0;
     }
+    if (sbt.exceptionRecord) {
+        optix_context.freeSBTRecord(sbt.exceptionRecord);
+        sbt.exceptionRecord = 0;
+    }
 
     createRaygenRecord(scene);
     createMissRecords();
     createHitgroupRecords(scene);
+    if (exception_prog_group) {
+        sbt.exceptionRecord = optix_context.createExceptionSBTRecord(exception_prog_group);
+    }
 }
 
 void PipelineManager::destroyProgramGroupIfExists(OptixProgramGroup& prog_group) {
@@ -586,6 +602,7 @@ void PipelineManager::cleanup(bool includeCaustics) {
     destroyProgramGroupIfExists(plane_shadow_hitgroup_prog_group);
     destroyProgramGroupIfExists(photon_plane_hitgroup);
     destroyProgramGroupIfExists(photon_miss_prog_group);
+    destroyProgramGroupIfExists(exception_prog_group);
 
     if (includeCaustics) {
         destroyProgramGroupIfExists(caustics_hitpoints_raygen);
@@ -636,6 +653,10 @@ void PipelineManager::cleanup(bool includeCaustics) {
     if (sbt.hitgroupRecordBase) {
         optix_context.freeSBTRecord(sbt.hitgroupRecordBase);
         sbt.hitgroupRecordBase = 0;
+    }
+    if (sbt.exceptionRecord) {
+        optix_context.freeSBTRecord(sbt.exceptionRecord);
+        sbt.exceptionRecord = 0;
     }
 
     // Clean up params buffer

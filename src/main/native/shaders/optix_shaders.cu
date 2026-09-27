@@ -20,3 +20,4 @@ using namespace RayTracingConstants;
 #include "hit_plane.cu"
 #include "shadows.cu"
 #include "caustics_ppm.cu"
+#include "exception.cu"

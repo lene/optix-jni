@@ -113,21 +113,6 @@ object TestUtilities extends LazyLogging:
     }
 
 
-  def measureFPS(
-    renderer: OptiXRenderer,
-    scenario: TestScenario,
-    size: ImageSize,
-    frames: Int = 100
-  ): Double =
-    scenario.applyTo(renderer)
-
-    val start = System.nanoTime
-    (0 until frames).foreach { _ =>
-      renderer.render(size)
-    }
-    val duration = (System.nanoTime - start) / 1e9
-    frames / duration
-
   /** Create a simple unit cube mesh centered at origin for testing.
     * Cube has vertices at ±0.5 on each axis.
     * Uses 8-float vertex format: position(3) + normal(3) + uv(2)

@@ -515,6 +515,13 @@ class OptiXRenderer
     textureIndex: Int
   ): Int
 
+  @native private[optix] def updateCylinderInstancesNative(
+    ids: Array[Int],
+    p0s: Array[Float],
+    p1s: Array[Float],
+    radii: Array[Float]
+  ): Int
+
   @native private[optix] def addCylinderInstanceNative(
     p0_x: Float, p0_y: Float, p0_z: Float,
     p1_x: Float, p1_y: Float, p1_z: Float,
@@ -588,7 +595,7 @@ class OptiXRenderer
   // ---- Lights ----
   /** Sets one directional light for backward-compatible callers.
     *
-    * @param direction light direction vector in world space
+    * @param direction direction the light travels, in world space ((0, -1, 0) shines down)
     * @param intensity linear light intensity multiplier
     */
   def setLight(direction: Vector[3], intensity: Float): Unit =
@@ -621,6 +628,14 @@ class OptiXRenderer
   // renderer per thread; OptiX contexts are not safe for concurrent launches on a shared handle.
   private val lifecycleLock = new Object
 
+  private val instanceCapacity = new java.util.concurrent.atomic.AtomicInteger(0)
+
+  /** IAS instance capacity of the current native handle (the `maxInstances` it was last
+    * initialized or reinitialized with); 0 while uninitialized. Lets callers skip a
+    * [[reinitialize]] -- a full native teardown and rebuild -- when capacity already suffices.
+    */
+  def maxInstances: Int = instanceCapacity.get
+
   /** Initializes the native OptiX wrapper if it is not already initialized.
     *
     * The method is idempotent: after a successful initialization, later calls
@@ -633,6 +648,7 @@ class OptiXRenderer
         true  // Already initialized, return success
       else
         val result = initializeNative(maxInstances)
+        instanceCapacity.set(if result then maxInstances else 0)
         if !result then
           logger.error("Failed to initialize OptiX renderer")
         result
@@ -649,6 +665,7 @@ class OptiXRenderer
       if isInitialized then
         disposeNative()
       val result = initializeNative(newMaxInstances)
+      instanceCapacity.set(if result then newMaxInstances else 0)
       if !result then
         logger.error("Failed to re-initialize OptiX renderer")
       result
@@ -663,6 +680,7 @@ class OptiXRenderer
     lifecycleLock.synchronized:
       if isInitialized then
         disposeNative()
+      instanceCapacity.set(0)
 
   /** Releases native resources; [[AutoCloseable]] alias for [[dispose]] so a renderer can be
     * used with `scala.util.Using` or Java try-with-resources (CR-6). */

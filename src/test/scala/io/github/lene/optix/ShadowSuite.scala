@@ -5,7 +5,6 @@ import scala.math.abs
 import io.github.lene.optix.ShadowValidation.Region
 import io.github.lene.optix.ShadowValidation.detectDarkestRegion
 import io.github.lene.optix.ShadowValidation.regionBrightness
-import io.github.lene.optix.Slow
 import io.github.lene.optix.ThresholdConstants.ALPHA_TOLERANCE_LOWER_RATIO
 import io.github.lene.optix.ThresholdConstants.ALPHA_TOLERANCE_UPPER_RATIO
 import io.github.lene.optix.ThresholdConstants.BOTTOM_REGION_FRACTION
@@ -15,33 +14,37 @@ import io.github.lene.optix.ThresholdConstants.DARK_SHADOW_THRESHOLD
 import io.github.lene.optix.ThresholdConstants.DEFAULT_SHADOW_GRID
 import io.github.lene.optix.ThresholdConstants.LARGE_SHADOW_GRID
 import io.github.lene.optix.ThresholdConstants.MAX_SHADOW_DARKENING_RATIO
-import io.github.lene.optix.ThresholdConstants.MAX_SHADOW_OVERHEAD
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_SHADOWS
 import io.github.lene.optix.ThresholdConstants.MIN_SHADOW_CONTRAST_RATIO
 import io.github.lene.optix.ThresholdConstants.MIN_SHADOW_SHIFT
 import io.github.lene.optix.ThresholdConstants.MODERATE_SHADOW_RATIO
 import io.github.lene.optix.ThresholdConstants.MODERATE_SHADOW_SHIFT
 import io.github.lene.optix.ThresholdConstants.OPAQUE_SHADOW_MAX_BRIGHTNESS
 import io.github.lene.optix.ThresholdConstants.RADIUS_TOLERANCE_RATIO
-import io.github.lene.optix.ThresholdConstants.RENDER_ITERATIONS
 import io.github.lene.optix.ThresholdConstants.SMALL_SHADOW_SHIFT
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_SHADOW_MIN_BRIGHTNESS
 import io.github.lene.optix.ThresholdConstants.WIDE_CENTER_TOLERANCE_FRACTION
+import io.github.lene.qa.Perf
+import io.github.lene.qa.PerfGate
+import io.github.lene.qa.RelativeBenchmark
+import io.github.lene.qa.Side
 import menger.common.Color
 import menger.common.Const
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
+class ShadowSuite extends AnyFlatSpec with Matchers with PerfGate with RendererFixture:
 
   private val imageSize = STANDARD_IMAGE_SIZE
 
   // Helper method for standard shadow scene setup
   def setupShadowScene(
     sphereAlpha: Float = 1.0f,
-    lightDir: Vector[3] = Vector[3](0.5f, 0.5f, -0.5f),
+    // Directional light travel direction: shines down onto the plane from upper -x/+z.
+    lightDir: Vector[3] = Vector[3](-0.5f, -0.5f, 0.5f),
     sphereRadius: Float = 0.5f,
     sphereY: Float = 0.0f,
     planeY: Float = -0.6f
@@ -74,7 +77,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val up = Vector[3](0.0f, 1.0f, 0.0f)
     renderer.setCamera(eye, lookAt, up, 45.0f)
 
-    val lightDir = Vector[3](0.5f, 0.5f, -0.5f)
+    val lightDir = Vector[3](-0.5f, -0.5f, 0.5f)
     renderer.setLight(lightDir, 1.0f)
 
     // Render without shadows
@@ -101,7 +104,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val up = Vector[3](0.0f, 1.0f, 0.0f)
     renderer.setCamera(eye, lookAt, up, 45.0f)
 
-    val lightDir = Vector[3](0.5f, 0.5f, -0.5f)
+    val lightDir = Vector[3](-0.5f, -0.5f, 0.5f)
     renderer.setLight(lightDir, 1.0f)
     renderer.setShadows(true)
 
@@ -249,11 +252,11 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
   // ========== LIGHT DIRECTION TESTS ==========
 
   "Shadows" should "appear on opposite side of sphere from light" in:
-    setupShadowScene(lightDir = Vector[3](1.0f, 0.5f, 0.0f))  // Light direction toward +X
+    setupShadowScene(lightDir = Vector[3](-1.0f, -0.5f, 0.0f))  // light from +X, travelling to -X
     renderer.setShadows(true)
     val imageRight = renderer.render(imageSize)
 
-    setupShadowScene(lightDir = Vector[3](-1.0f, 0.5f, 0.0f))  // Light direction toward -X
+    setupShadowScene(lightDir = Vector[3](1.0f, -0.5f, 0.0f))  // light from -X, travelling to +X
     renderer.setShadows(true)
     val imageLeft = renderer.render(imageSize)
 
@@ -267,7 +270,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     abs(shadowXRight - shadowXLeft) should be > MIN_SHADOW_SHIFT
 
   it should "cast shadow directly below sphere for overhead light" in:
-    setupShadowScene(lightDir = Vector[3](0.0f, 1.0f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](0.0f, -1.0f, 0.0f))  // shining straight down
     renderer.setShadows(true)
     val image = renderer.render(imageSize)
 
@@ -279,11 +282,11 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     abs(shadowCenterX - imageCenterX) should be < (imageSize.width * CENTER_TOLERANCE_FRACTION).toInt
 
   it should "cast shadow that shifts with light direction (X-axis)" in:
-    setupShadowScene(lightDir = Vector[3](1.0f, 0.5f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](-1.0f, -0.5f, 0.0f))
     renderer.setShadows(true)
     val imageRight = renderer.render(imageSize)
 
-    setupShadowScene(lightDir = Vector[3](-1.0f, 0.5f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](1.0f, -0.5f, 0.0f))
     renderer.setShadows(true)
     val imageLeft = renderer.render(imageSize)
 
@@ -297,11 +300,11 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     abs(shadowXRight - shadowXLeft) should be > MODERATE_SHADOW_SHIFT
 
   it should "respond to light angle changes" in:
-    setupShadowScene(lightDir = Vector[3](0.7f, 0.7f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](-0.7f, -0.7f, 0.0f))
     renderer.setShadows(true)
     val image1 = renderer.render(imageSize)
 
-    setupShadowScene(lightDir = Vector[3](-0.7f, 0.7f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](0.7f, -0.7f, 0.0f))
     renderer.setShadows(true)
     val image2 = renderer.render(imageSize)
 
@@ -309,7 +312,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     java.util.Arrays.equals(image1, image2) shouldBe false
 
   it should "have minimal shadow contrast for light behind camera" in:
-    setupShadowScene(lightDir = Vector[3](0.0f, 0.0f, 1.0f))  // Light from camera direction
+    setupShadowScene(lightDir = Vector[3](0.0f, 0.0f, -1.0f))  // Light from camera direction
     renderer.setShadows(true)
     val imageOn = renderer.render(imageSize)
 
@@ -325,7 +328,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     brightOn should be > (brightOff * MIN_SHADOW_CONTRAST_RATIO)
 
   it should "handle grazing light angle without artifacts" in:
-    setupShadowScene(lightDir = Vector[3](1.0f, 0.1f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](-1.0f, -0.1f, 0.0f))
     renderer.setShadows(true)
 
     noException should be thrownBy {
@@ -334,7 +337,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     }
 
   it should "handle light from below gracefully (degenerate case)" in:
-    setupShadowScene(lightDir = Vector[3](0.0f, -1.0f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](0.0f, 1.0f, 0.0f))  // travelling upward
     renderer.setShadows(true)
 
     noException should be thrownBy {
@@ -345,12 +348,12 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
   // ========== GEOMETRIC VALIDATION TESTS ==========
 
   "Shadow position" should "shift with horizontal light direction" in:
-    setupShadowScene(lightDir = Vector[3](1.0f, 0.5f, 0.0f))  // Right
+    setupShadowScene(lightDir = Vector[3](-1.0f, -0.5f, 0.0f))  // from the right
     renderer.setShadows(true)
     val imageRight = renderer.render(imageSize)
     val darkestRight = detectDarkestRegion(imageRight, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
-    setupShadowScene(lightDir = Vector[3](-1.0f, 0.5f, 0.0f))  // Left
+    setupShadowScene(lightDir = Vector[3](1.0f, -0.5f, 0.0f))  // from the left
     renderer.setShadows(true)
     val imageLeft = renderer.render(imageSize)
     val darkestLeft = detectDarkestRegion(imageLeft, imageSize, gridSize = DEFAULT_SHADOW_GRID)
@@ -363,13 +366,13 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   it should "change position with different light angles" in:
     // Light from right
-    setupShadowScene(lightDir = Vector[3](1.0f, 0.5f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](-1.0f, -0.5f, 0.0f))
     renderer.setShadows(true)
     val imageRight = renderer.render(imageSize)
     val darkestRight = detectDarkestRegion(imageRight, imageSize, gridSize = DEFAULT_SHADOW_GRID)
 
     // Light from left
-    setupShadowScene(lightDir = Vector[3](-1.0f, 1.0f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](1.0f, -1.0f, 0.0f))
     renderer.setShadows(true)
     val imageLeft = renderer.render(imageSize)
     val darkestLeft = detectDarkestRegion(imageLeft, imageSize, gridSize = DEFAULT_SHADOW_GRID)
@@ -380,7 +383,7 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     abs(posRight - posLeft) should be > SMALL_SHADOW_SHIFT
 
   it should "remain centered for overhead light" in:
-    setupShadowScene(lightDir = Vector[3](0.0f, 1.0f, 0.0f))
+    setupShadowScene(lightDir = Vector[3](0.0f, -1.0f, 0.0f))
     renderer.setShadows(true)
     val image = renderer.render(imageSize)
     val darkest = detectDarkestRegion(image, imageSize, gridSize = LARGE_SHADOW_GRID)
@@ -495,22 +498,16 @@ class ShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     // Should be identical
     bright1 shouldBe bright2 +- BRIGHTNESS_TOLERANCE  // Allow 1 unit variation due to floating point
 
-  it should "have acceptable rendering performance with shadows enabled" taggedAs (Slow) in:
+  it should "have acceptable rendering performance with shadows enabled" taggedAs Perf in:
     setupShadowScene()
-
-    // Measure without shadows
-    renderer.setShadows(false)
-    val startNoShadow = System.nanoTime()
-    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageSize))
-    val timeNoShadow = (System.nanoTime() - startNoShadow) / RENDER_ITERATIONS
-
-    // Measure with shadows
-    renderer.setShadows(true)
-    val startWithShadow = System.nanoTime()
-    (0 until RENDER_ITERATIONS).foreach(_ => renderer.render(imageSize))
-    val timeWithShadow = (System.nanoTime() - startWithShadow) / RENDER_ITERATIONS
-
-    val overhead = (timeWithShadow - timeNoShadow).toDouble / timeNoShadow
-
-    // Should be less than 100% overhead (reasonable for quality improvement)
-    overhead should be < MAX_SHADOW_OVERHEAD
+    def shadows(enabled: Boolean): Side = Side(
+      if enabled then "shadows on" else "shadows off",
+      () => { val _ = renderer.render(imageSize) },
+      prepare = () => renderer.setShadows(enabled)
+    )
+    val verdict = RelativeBenchmark.compare(
+      reference = shadows(enabled = false),
+      subject = shadows(enabled = true),
+      maxRatio = MAX_SLOWDOWN_SHADOWS
+    )
+    assertWithin("shadows on vs off", verdict)

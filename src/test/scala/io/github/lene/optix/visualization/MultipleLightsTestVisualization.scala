@@ -24,7 +24,7 @@ object MultipleLightsTestVisualization:
       .applyTo(renderer)
 
     // Old API as used in test
-    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)
 
     val width = 800
     val height = 600

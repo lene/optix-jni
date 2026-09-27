@@ -51,9 +51,9 @@ trait RendererFixture extends BeforeAndAfterEach:
       60.0f                     // field of view
     )
 
-    // Default light: directional light from upper-right-front
+    // Default light: directional light from above, shining down (travel direction)
     renderer.setLight(
-      Vector[3](0.5f, 0.5f, -0.5f),  // direction
+      Vector[3](-0.5f, -0.5f, 0.5f),  // direction the light travels
       1.0f                            // intensity
     )
 

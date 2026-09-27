@@ -3,7 +3,9 @@
 
 #include <optix.h>
 #include <cuda_runtime.h>
+#include <mutex>
 #include <string>
+#include <vector>
 
 // Forward declarations for data structures
 #include "OptiXData.h"
@@ -49,6 +51,10 @@ public:
         const char* entry_function_name
     );
     OptixProgramGroup createMissProgramGroup(
+        OptixModule module,
+        const char* entry_function_name
+    );
+    OptixProgramGroup createExceptionProgramGroup(
         OptixModule module,
         const char* entry_function_name
     );
@@ -140,6 +146,7 @@ public:
     // Shader binding table (SBT) helpers
     CUdeviceptr createRaygenSBTRecord(OptixProgramGroup program_group, const RayGenData& data);
     CUdeviceptr createMissSBTRecord(OptixProgramGroup program_group, const MissData& data);
+    CUdeviceptr createExceptionSBTRecord(OptixProgramGroup program_group);
     CUdeviceptr createHitgroupSBTRecord(OptixProgramGroup program_group, const HitGroupData& data);
     CUdeviceptr createTriangleHitgroupSBTRecord(OptixProgramGroup program_group, const TriangleHitGroupData& data);
     void freeSBTRecord(CUdeviceptr record);
@@ -164,9 +171,18 @@ public:
     // Clear cache at a specific path
     static bool clearCache(const std::string& cache_path);
 
+    // Records a fatal/error OptiX log message. Called from the OptiX log callback, possibly on
+    // another thread; launch() folds messages recorded during a launch into its failure.
+    void recordOptixError(const std::string& message);
+
 private:
     OptixDeviceContext context_;
     bool initialized_;
+    std::mutex optix_errors_mutex_;
+    std::vector<std::string> optix_errors_;
+
+    void clearOptixErrors();
+    std::vector<std::string> takeOptixErrors();
 
     // Disable copy
     OptiXContext(const OptiXContext&) = delete;

@@ -1,102 +1,87 @@
 package io.github.lene.optix
 
-import com.typesafe.scalalogging.LazyLogging
 import io.github.lene.optix.ColorConstants.HIGHLY_TRANSPARENT_WHITE
 import io.github.lene.optix.ColorConstants.PERFORMANCE_TEST_GREEN_CYAN
-import io.github.lene.optix.Slow
-import io.github.lene.optix.ThresholdConstants.MIN_FPS_RATIO
-import io.github.lene.optix.ThresholdConstants.MIN_FPS_RATIO_ANTIALIASING
-import io.github.lene.optix.ThresholdConstants.MIN_FPS_RATIO_BUFFER_REUSE
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_ANTIALIASING
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_BUFFER_REUSE
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_DIAMOND
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_LARGE_SPHERE
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_OPAQUE
+import io.github.lene.optix.ThresholdConstants.MAX_SLOWDOWN_TRANSPARENT
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
+import io.github.lene.qa.Perf
+import io.github.lene.qa.PerfGate
+import io.github.lene.qa.RelativeBenchmark
+import io.github.lene.qa.Side
 import menger.common.Const
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-
+/** Render-time gates. Each scene is timed against a reference scene on the same renderer, in
+  * interleaved rounds (see io.github.lene.qa.RelativeBenchmark), so GPU clock changes and
+  * background load affect both sides of every comparison equally. */
 class PerformanceSuite extends AnyFlatSpec
     with Matchers
-    with LazyLogging
+    with PerfGate
     with RendererFixture:
 
   private val runningUnderSanitizer: Boolean =
     sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
 
-  private val performanceSize = STANDARD_IMAGE_SIZE
-  private val iterations = 100
-
   // Ensure library is loaded before running tests
   OptiXRenderer.isLibraryLoaded shouldBe true
 
-  private def measureAndLog(testName: String)(setup: => Unit): Double =
-    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer instrumentation")
+  private def render(): Unit =
+    val _ = renderer.render(STANDARD_IMAGE_SIZE)
 
-    setup
+  private def scene(name: String)(setup: => Unit): Side =
+    Side(name, () => render(), prepare = () => setup)
 
-    // Warmup render
-    renderer.render(performanceSize)
+  private val defaultScene = scene("default scene")(TestScenario.default().applyTo(renderer))
 
-    val startNs = System.nanoTime()
-    (0 until iterations).foreach(_ => renderer.render(performanceSize))
-    val elapsedNs = System.nanoTime() - startNs
+  private def gate(subject: Side, maxSlowdown: Double, reference: Side = defaultScene) =
+    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer")
+    assertWithin(
+      s"${subject.name} vs ${reference.name}",
+      RelativeBenchmark.compare(reference, subject, maxSlowdown)
+    )
 
-    val durationMs = elapsedNs / 1_000_000.0
-    val fps = iterations * 1000.0 / durationMs
-
-    logger.info(f"$testName: $iterations renders at ${performanceSize.width}x${performanceSize.height} in $durationMs%.2fms @$fps%.1f fps")
-
-    fps
-
-  // Same-run calibration probe (Sprint 36 D2): a minimal, fixed scene distinct from all
-  // 5 tested scenarios below, measured once via the same measureAndLog path. `lazy`
-  // because `renderer` only exists inside a running test's beforeEach — this evaluates
-  // on whichever test first touches it and is cached for the rest of the suite, so every
-  // fps assertion below judges its scenario as a fraction of THIS run's own probe rather
-  // than an absolute floor. Hot/cold GPU state (thermal throttling, prior-test warmup)
-  // then cancels out, superseding the hand-tuned MIN_FPS_ANTIALIASING workaround whose
-  // own comment already flagged this as the "proper long-term fix."
-  private lazy val calibrationFps: Double = measureAndLog("Calibration probe (same-run baseline)"):
-    TestScenario.default().applyTo(renderer)
-
-  "Performance" should "achieve the FPS ratio floor for opaque spheres" taggedAs (Slow) in:
-    val fps = measureAndLog("Opaque sphere"):
+  "Performance" should "render opaque spheres within their slowdown limit" taggedAs Perf in:
+    val opaque = scene("opaque sphere"):
       TestScenario.performanceBaseline()
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
+    gate(opaque, MAX_SLOWDOWN_OPAQUE)
 
-    fps / calibrationFps should be > MIN_FPS_RATIO
-
-  it should "achieve the FPS ratio floor for transparent spheres" taggedAs (Slow) in:
-    val fps = measureAndLog("Transparent sphere"):
+  it should "render transparent spheres within their slowdown limit" taggedAs Perf in:
+    val transparent = scene("transparent sphere"):
       TestScenario.performanceTransparent()
         .withIOR(Const.iorGlass)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
+    gate(transparent, MAX_SLOWDOWN_TRANSPARENT)
 
-    fps / calibrationFps should be > MIN_FPS_RATIO
-
-  it should "achieve the FPS ratio floor for high-IOR materials" taggedAs (Slow) in:
-    val fps = measureAndLog("Diamond material"):
+  it should "render high-IOR materials within their slowdown limit" taggedAs Perf in:
+    val diamond = scene("diamond sphere"):
       TestScenario.diamondSphere()
         .withSphereColor(HIGHLY_TRANSPARENT_WHITE)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
+    gate(diamond, MAX_SLOWDOWN_DIAMOND)
 
-    fps / calibrationFps should be > MIN_FPS_RATIO
-
-  it should "achieve the FPS ratio floor for large spheres" taggedAs (Slow) in:
-    val fps = measureAndLog("Large sphere"):
+  it should "render large spheres within their slowdown limit" taggedAs Perf in:
+    val large = scene("large sphere"):
       TestScenario.largeSphere()
         .withSphereColor(PERFORMANCE_TEST_GREEN_CYAN)
         .withIOR(Const.iorGlass)
         .withSphereRadius(2.0f)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
+    gate(large, MAX_SLOWDOWN_LARGE_SPHERE)
 
-    fps / calibrationFps should be > MIN_FPS_RATIO
-
-  it should "achieve the FPS ratio floor with buffer reuse" in:
-    val fps = measureAndLog("Buffer reuse"):
+  it should "render with buffer reuse within its slowdown limit" taggedAs Perf in:
+    val bufferReuse = scene("buffer reuse"):
       renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
       renderer.setCamera(
         Vector[3](0.0f, 0.0f, 3.0f),
@@ -104,15 +89,17 @@ class PerformanceSuite extends AnyFlatSpec
         Vector[3](0.0f, 1.0f, 0.0f),
         60f
       )
+    gate(bufferReuse, MAX_SLOWDOWN_BUFFER_REUSE)
 
-    fps / calibrationFps should be > MIN_FPS_RATIO_BUFFER_REUSE
-
-  it should "stay above the antialiasing FPS ratio floor" taggedAs (Slow) in:
-    val fps = measureAndLog("Antialiasing"):
+  it should "keep the antialiasing overhead within its limit" taggedAs Perf in:
+    def antialiasingScene(enabled: Boolean): Unit =
       TestScenario.default()
         .withSphereRadius(0.5f)
         .withPlane(1, false, -2.0f)
         .applyTo(renderer)
-      renderer.setAntialiasing(enabled = true, maxDepth = 2, threshold = 0.1f)
-
-    fps / calibrationFps should be > MIN_FPS_RATIO_ANTIALIASING
+      renderer.setAntialiasing(enabled = enabled, maxDepth = 2, threshold = 0.1f)
+    gate(
+      scene("antialiasing on")(antialiasingScene(enabled = true)),
+      MAX_SLOWDOWN_ANTIALIASING,
+      reference = scene("antialiasing off")(antialiasingScene(enabled = false))
+    )

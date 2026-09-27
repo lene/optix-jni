@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-27
+
+### Added
+
+- `MENGER_OPTIX_DEBUG=1` turns on launch diagnostics: OptiX device-context validation mode
+  (full log level), stack-overflow / trace-depth / user exceptions in every module and the
+  pipeline, and an exception program that prints the exception code and launch index. Slow;
+  off by default, and without it the pipeline is unchanged. Replaces the dead
+  `MENGER_OPTIX_VALIDATION` stub, whose claim that OptiX 9.0 has no validation mode was wrong.
+- `updateCylinderInstances(ids, p0s, p1s, radii)` moves existing cylinder instances in place:
+  each cylinder's GAS (now built with `ALLOW_UPDATE`) and the IAS are refit, instead of
+  clearing and re-adding every instance. For per-frame updates such as rotating an
+  edge-rendered 4D object; renders byte-identical to re-adding the cylinder at its new place.
+- `OptiXRenderer.maxInstances`: the IAS instance capacity of the current native handle, so
+  callers can skip a `reinitialize` (a full native teardown and rebuild) when it suffices.
+
+### Changed
+
+- **Breaking (custom-geometry shaders):** a radiance ray's payload 3 now carries two counters,
+  the bounce depth in bits 0-7 and the number of nested `optixTrace` calls in bits 8+. Hit
+  programs read the bounce depth with `TraceDepth::bounce(optixGetPayload_3())` (helpers.cu);
+  custom-geometry shaders that read payload 3 directly must do the same.
+  `handleFullyTransparent` and `traceContinuationRay` now return `false` (without tracing) at
+  the nesting limit, and the caller shades the face as opaque.
+- The pipeline's `maxTraceDepth` is now 31, OptiX's own ceiling (was 10): ~4.5 MiB of VRAM per
+  level, no measurable frame time.
+
+### Fixed
+
+- Rays passing through transparent or coverage-blended faces nested `optixTrace` without
+  spending the bounce budget, so a ray crossing enough see-through faces (a fractional-level
+  sponge) went past the pipeline's compiled trace depth: undefined behaviour, seen as
+  intermittent, view-dependent CUDA 700/719 crashes. Every radiance trace now checks the
+  nesting count, keeping one level free for the child's shadow ray, and a face the limit is
+  reached at renders opaque.
+
+## [0.3.4] - 2026-09-26
+
+### Changed
+
+- **Breaking (lighting):** a directional light's `direction` is now the direction the light
+  *travels* everywhere: `(0, -1, 0)` shines straight down. Surface shading and shadow rays used
+  to read it as "toward the light" while caustic photon emission read it as the travel
+  direction, so every scene lit its surfaces from the opposite side to its caustics. Callers
+  that relied on the shading reading must negate their directions; the built-in default light
+  was negated so it still comes from above.
+
+- Performance tests are now noise-aware gates (tag `Perf`) run by their own push-tier `perf`
+  suite and CI job, and excluded from the regular test run. Each gate times its scene against a
+  reference scene in interleaved rounds (shared helper `io.github.lene.qa.RelativeBenchmark`)
+  and judges the median ratio by its confidence interval: a conclusive regression fails, an
+  unjudgeable measurement is skipped visibly. Previously one calibration render, measured once
+  per suite, failed gates on unchanged code when its value swung with GPU throttling.
+
+### Fixed
+
+- A render launch that fails after OptiX logged an error during it now reports that logged
+  cause in the thrown error. OptiX can return success from `optixLaunch` while logging the real
+  problem (e.g. `cblCudaReconfigureLocalMemory failed with out of memory` when GPU memory runs
+  out for the per-thread stack); only a generic `unspecified launch failure (719)` from the
+  following `cudaDeviceSynchronize()` used to surface. The error now leads with a plain-language
+  explanation and remedy (for the out-of-GPU-memory case), quotes OptiX's messages verbatim,
+  and keeps the `CUDA call '...' failed: ... (code)` line intact as its last line.
+
 ## [0.3.3] - 2026-08-29
 
 ### Fixed
@@ -508,6 +572,8 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.0]: https://github.com/lene/optix-jni/compare/0.3.4...0.4.0
+[0.3.4]: https://github.com/lene/optix-jni/compare/0.3.3...0.3.4
 [0.3.3]: https://github.com/lene/optix-jni/compare/0.3.2...0.3.3
 [0.3.2]: https://github.com/lene/optix-jni/compare/0.3.1...0.3.2
 [0.3.1]: https://github.com/lene/optix-jni/compare/0.3.0...0.3.1

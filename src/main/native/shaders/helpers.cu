@@ -14,6 +14,45 @@
 //   RGB(1,0,0) → absorbs green/blue, shows red (red tinted when opaque)
 
 //==============================================================================
+// Trace depth payload (payload 3)
+//==============================================================================
+
+// Payload 3 of a radiance ray carries two counters. Bits 0-7: the bounce depth that
+// params.max_ray_depth budgets (reflections/refractions). Bits 8+: how many optixTrace calls
+// are nested on the stack for this ray, including its own. Pass-through rays (transparent and
+// coverage-blended faces) deliberately don't spend bounces, so only the nesting count bounds
+// them; before this, nothing did, and a ray crossing enough see-through faces (a fractional
+// sponge) nested past the pipeline's compiled maxTraceDepth -- undefined behaviour, observed as
+// intermittent CUDA 700/719 (usability review 2026-09, F11). Every radiance trace from a hit or
+// miss program now goes through canNest()/child(), and one level is kept free for the child
+// hit's shadow ray. Hit programs read the bounce depth with bounce(optixGetPayload_3()).
+namespace TraceDepth {
+    constexpr unsigned int BOUNCE_BITS = 8u;
+    constexpr unsigned int BOUNCE_MASK = (1u << BOUNCE_BITS) - 1u;
+
+    __forceinline__ __device__ unsigned int bounce(unsigned int payload) {
+        return payload & BOUNCE_MASK;
+    }
+    __forceinline__ __device__ unsigned int nesting(unsigned int payload) {
+        return payload >> BOUNCE_BITS;
+    }
+    __forceinline__ __device__ unsigned int pack(unsigned int bounce_depth, unsigned int nest) {
+        return bounce_depth | (nest << BOUNCE_BITS);
+    }
+    // For the radiance ray a raygen program traces: no bounces yet, one trace on the stack.
+    __forceinline__ __device__ unsigned int primary() {
+        return pack(0u, 1u);
+    }
+    // Only valid inside the closest-hit / miss program of a radiance ray.
+    __forceinline__ __device__ bool canNest() {
+        return nesting(optixGetPayload_3()) + 2u <= PIPELINE_MAX_TRACE_DEPTH;
+    }
+    __forceinline__ __device__ unsigned int child(unsigned int bounce_depth) {
+        return pack(bounce_depth, nesting(optixGetPayload_3()) + 1u);
+    }
+}
+
+//==============================================================================
 // Shadow Payload Helper
 //==============================================================================
 
@@ -239,12 +278,15 @@ __device__ void getDirectionalLightParams(
     float3& light_dir,
     float& attenuation
 ) {
-    // light.direction represents direction TO the light source
-    // Use as-is for both diffuse lighting (N·L) and shadow rays
+    // light.direction is the direction the light TRAVELS (e.g. (0,-1,0) shines straight down),
+    // the same convention caustic photon emission (emitDirectionalPhoton) uses. Shading and
+    // shadow rays need the direction TO the light, i.e. its negation. This function used to
+    // read the field as "toward the light" while photon emission read it as the travel
+    // direction, so every scene lit its surfaces from the opposite side to its caustics.
     light_dir = normalize(make_float3(
-        light.direction[0],
-        light.direction[1],
-        light.direction[2]
+        -light.direction[0],
+        -light.direction[1],
+        -light.direction[2]
     ));
     attenuation = 1.0f;  // No distance falloff for directional lights
 }
@@ -611,7 +653,7 @@ __device__ void traceRay(
     unsigned int& g,
     unsigned int& b
 ) {
-    unsigned int depth = 0;
+    unsigned int depth = TraceDepth::primary();
     optixTrace(
         params.handle,
         ray_origin,
@@ -815,16 +857,19 @@ __device__ void subdividePixel(
  *
  * @param hit_point Surface intersection point
  * @param ray_direction Incoming ray direction
- * @param depth Current recursion depth
+ * @param depth Current bounce depth (not incremented for pass-through)
+ * @return false, without tracing, when the nesting limit is reached (see TraceDepth); the
+ *         caller then shades the face as opaque instead
  */
-__device__ void handleFullyTransparent(
+__device__ bool handleFullyTransparent(
     const float3& hit_point,
     const float3& ray_direction,
     unsigned int depth
 ) {
+    if (!TraceDepth::canNest()) return false;
     const float3 continue_origin = hit_point + ray_direction * CONTINUATION_RAY_OFFSET;
     unsigned int continue_r = 0, continue_g = 0, continue_b = 0;
-    unsigned int next_depth = depth;  // Don't increment depth for transparent pass-through
+    unsigned int next_depth = TraceDepth::child(depth);  // pass-through: no bounce spent
 
     optixTrace(
         params.handle,
@@ -842,6 +887,7 @@ __device__ void handleFullyTransparent(
     optixSetPayload_0(continue_r);
     optixSetPayload_1(continue_g);
     optixSetPayload_2(continue_b);
+    return true;
 }
 
 /**
@@ -852,8 +898,10 @@ __device__ void handleFullyTransparent(
  *
  * @param hit_point Surface intersection point
  * @param ray_direction Incoming ray direction
- * @param depth Current recursion depth (not incremented for pass-through)
- * @param r/g/b Output: color from continuation ray (0-255)
+ * @param depth Current bounce depth (not incremented for pass-through)
+ * @param r/g/b Output: color from continuation ray (0-255); untouched when not traced
+ * @return false, without tracing, when the nesting limit is reached (see TraceDepth); the
+ *         caller then treats the face as opaque
  */
 // Small tmin for coverage-alpha continuation rays.
 // Must be smaller than the skin face offset (SKIN_NORMAL_OFFSET in SpongeByVolume) so the
@@ -862,7 +910,7 @@ __device__ void handleFullyTransparent(
 // face at ~0.003 distance while still avoiding self-intersection on the skin face itself.
 constexpr float COVERAGE_CONTINUATION_OFFSET = 0.0001f;
 
-__device__ void traceContinuationRay(
+__device__ bool traceContinuationRay(
     const float3& hit_point,
     const float3& ray_direction,
     unsigned int depth,
@@ -870,8 +918,9 @@ __device__ void traceContinuationRay(
     unsigned int& g,
     unsigned int& b
 ) {
+    if (!TraceDepth::canNest()) return false;
     const float3 continue_origin = hit_point + ray_direction * COVERAGE_CONTINUATION_OFFSET;
-    unsigned int next_depth = depth;  // Don't increment depth for transparent pass-through
+    unsigned int next_depth = TraceDepth::child(depth);  // pass-through: no bounce spent
 
     optixTrace(
         params.handle,
@@ -885,6 +934,7 @@ __device__ void traceContinuationRay(
         params.sbt_base_offset + SBTConstants::RAY_TYPE_PRIMARY, SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_PRIMARY,
         r, g, b, next_depth
     );
+    return true;
 }
 
 /**
@@ -1013,12 +1063,19 @@ __device__ void traceFinalNonRecursiveRay(
     const float3 reflect_dir = reflect(ray_direction, normal);
 
     unsigned int final_r = 0, final_g = 0, final_b = 0;
+    if (!TraceDepth::canNest()) {
+        optixSetPayload_0(final_r);
+        optixSetPayload_1(final_g);
+        optixSetPayload_2(final_b);
+        return;
+    }
     // One past max_ray_depth: marks this ray's result as the single allowed bailout bounce
     // already spent. Every closest-hit shader's depth-cutoff check must treat depth >
     // max_ray_depth as terminal (no further optixTrace) rather than re-entering this bailout
     // — otherwise a bailout ray landing on another reflective/refractive surface re-triggers
     // it, chaining nested optixTrace calls past OptiX's compiled recursion limit (Sprint 36 H3.2).
-    unsigned int final_depth = static_cast<unsigned int>(params.max_ray_depth) + 1;
+    unsigned int final_depth =
+        TraceDepth::child(static_cast<unsigned int>(params.max_ray_depth) + 1);
     const float3 final_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
 
     optixTrace(
@@ -1267,8 +1324,12 @@ __device__ void traceReflectedRay(
         atomicAdd(&params.stats->total_rays, 1ULL);
     }
 
+    if (!TraceDepth::canNest()) {  // nesting limit: no light from beyond it
+        reflect_r = reflect_g = reflect_b = 0;
+        return;
+    }
     const float3 reflect_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = depth + 1;
+    unsigned int next_depth = TraceDepth::child(depth + 1);
     unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
     unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 
@@ -1355,8 +1416,12 @@ __device__ bool traceRefractedRay(
         eta * ray_direction.z + coeff * normal.z
     );
 
+    if (!TraceDepth::canNest()) {  // nesting limit: no light from beyond it
+        refract_r = refract_g = refract_b = 0;
+        return true;
+    }
     const float3 refract_origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = depth + 1;
+    unsigned int next_depth = TraceDepth::child(depth + 1);
     unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
     unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 

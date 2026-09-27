@@ -8,6 +8,9 @@ import io.github.lene.optix.ThresholdConstants.QUICK_TEST_SIZE
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import menger.common.Color
 import menger.common.Vector
+import menger.common.x
+import menger.common.y
+import menger.common.z
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -170,6 +173,55 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
     result should be >= 0
 
   // ========== Cylinder Rendering ==========
+
+  // ========== In-place update (interactive 4D rotation of edge-rendered objects) ==========
+
+  private val Start0 = Vector[3](-0.8f, -0.3f, 0.0f)
+  private val Start1 = Vector[3](0.8f, -0.3f, 0.0f)
+  private val Moved0 = Vector[3](-0.4f, 0.2f, 0.3f)
+  private val Moved1 = Vector[3](0.5f, 0.6f, -0.2f)
+  private val StartRadius = 0.15f
+  private val MovedRadius = 0.25f
+
+  private def moveTo(id: Int, p0: Vector[3], p1: Vector[3], radius: Float): Unit =
+    renderer.updateCylinderInstances(
+      Array(id), Array(p0.x, p0.y, p0.z), Array(p1.x, p1.y, p1.z), Array(radius)
+    )
+
+  private def renderFresh(p0: Vector[3], p1: Vector[3], radius: Float): Array[Byte] =
+    renderer.clearAllInstances()
+    renderer.addCylinderInstance(p0, p1, radius, Material(OPAQUE_GREEN, ior = 1.0f))
+    renderImage(TEST_IMAGE_SIZE)
+
+  "updateCylinderInstances" should "render exactly what adding the cylinder there renders" in:
+    val id = renderer.addCylinderInstance(Start0, Start1, StartRadius, Material(OPAQUE_GREEN, ior = 1.0f))
+    val before = renderImage(TEST_IMAGE_SIZE)  // builds the IAS, so the update refits it
+    moveTo(id, Moved0, Moved1, MovedRadius)
+    val updated = renderImage(TEST_IMAGE_SIZE)
+
+    updated should not equal before
+    updated shouldEqual renderFresh(Moved0, Moved1, MovedRadius)
+
+  it should "also work before the first render has built the IAS" in:
+    val id = renderer.addCylinderInstance(Start0, Start1, StartRadius, Material(OPAQUE_GREEN, ior = 1.0f))
+    moveTo(id, Moved0, Moved1, MovedRadius)
+    val updated = renderImage(TEST_IMAGE_SIZE)
+
+    updated shouldEqual renderFresh(Moved0, Moved1, MovedRadius)
+
+  it should "reject an instance id that is not a cylinder" in:
+    val sphereId = renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), Material.Chrome)
+    an[IllegalArgumentException] should be thrownBy moveTo(sphereId, Moved0, Moved1, MovedRadius)
+
+  it should "reject an out-of-range instance id and a non-positive radius" in:
+    val id = renderer.addCylinderInstance(Start0, Start1, StartRadius, Material.Chrome)
+    an[IllegalArgumentException] should be thrownBy moveTo(id + 100, Moved0, Moved1, MovedRadius)
+    an[IllegalArgumentException] should be thrownBy moveTo(id, Moved0, Moved1, 0.0f)
+
+  it should "reject endpoint arrays that don't match the id count" in:
+    val id = renderer.addCylinderInstance(Start0, Start1, StartRadius, Material.Chrome)
+    an[IllegalArgumentException] should be thrownBy
+      renderer.updateCylinderInstances(Array(id), Array(0f, 0f), Array(1f, 1f, 1f), Array(0.1f))
 
   "Cylinder rendering" should "produce non-empty image data" in:
     renderer.addCylinderInstance(

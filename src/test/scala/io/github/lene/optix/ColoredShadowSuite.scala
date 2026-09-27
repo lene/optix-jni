@@ -48,7 +48,7 @@ class ColoredShadowSuite
       Vector[3](0.0f, 1.0f, 0.0f),
       45.0f
     )
-    renderer.setLight(Vector[3](0.5f, 0.5f, -0.5f), 1.0f)
+    renderer.setLight(Vector[3](-0.5f, -0.5f, 0.5f), 1.0f)  // travel direction: shining down
     renderer.setShadows(true)
     renderer.setTransparentShadows(coloredShadows)
 
@@ -350,8 +350,9 @@ class ColoredShadowSuite
       Vector[3](0.0f, 1.0f, 0.0f),
       45.0f
     )
-    // Light straight up so shadow rays travel vertically through both stacked spheres
-    renderer.setLight(Vector[3](0.0f, 1.0f, 0.0f), 1.0f)
+    // Light straight down (overhead), so shadow rays travel vertically up through both
+    // stacked spheres
+    renderer.setLight(Vector[3](0.0f, -1.0f, 0.0f), 1.0f)
     renderer.setShadows(true)
     renderer.setTransparentShadows(transparentShadows)
 

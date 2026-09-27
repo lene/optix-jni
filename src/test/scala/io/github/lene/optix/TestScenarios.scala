@@ -32,7 +32,8 @@ case class CameraConfig(
 )
 
 case class LightConfig(
-  direction: Vector[3] = Vector[3](0.5f, 0.5f, -0.5f),
+  // Direction the light travels: from above, shining down.
+  direction: Vector[3] = Vector[3](-0.5f, -0.5f, 0.5f),
   intensity: Float = 1.0f
 )
 

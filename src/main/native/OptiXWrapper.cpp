@@ -918,11 +918,18 @@ int OptiXWrapper::updateMesh4DProjection(
         CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp)));
     }
 
-    // IAS refit. The IAS already had ALLOW_UPDATE in its build flags
-    // (see buildIAS), and instance handles do not change since the mesh's
-    // GAS handle is stable across UPDATE — only AABBs need to be
-    // recomputed by OptiX.
-    if (impl->use_ias && impl->ias_handle && impl->d_ias_output_buffer
+    // The mesh's GAS handle is stable across UPDATE, so only the IAS's AABBs need recomputing.
+    refitIAS();
+
+    return 0;
+}
+
+void OptiXWrapper::refitIAS() {
+    // The IAS already had ALLOW_UPDATE in its build flags (see buildIAS), and instance
+    // handles do not change when a child GAS is refit -- only AABBs need to be recomputed.
+    // Not while ias_dirty: instances changed since the build, so a refit's instance count
+    // would not match the built one; the next render() rebuilds it anyway.
+    if (impl->use_ias && !impl->ias_dirty && impl->ias_handle && impl->d_ias_output_buffer
         && impl->d_instances_buffer) {
         OptixBuildInput ias_input = {};
         ias_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
@@ -967,7 +974,102 @@ int OptiXWrapper::updateMesh4DProjection(
         CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_ias_temp)));
         CUDA_CHECK(cudaDeviceSynchronize());
     }
+}
 
+namespace {
+OptixAabb cylinderAabb(const float* p0, const float* p1, float radius) {
+    OptixAabb aabb;
+    aabb.minX = fminf(p0[0], p1[0]) - radius;
+    aabb.minY = fminf(p0[1], p1[1]) - radius;
+    aabb.minZ = fminf(p0[2], p1[2]) - radius;
+    aabb.maxX = fmaxf(p0[0], p1[0]) + radius;
+    aabb.maxY = fmaxf(p0[1], p1[1]) + radius;
+    aabb.maxZ = fmaxf(p0[2], p1[2]) + radius;
+    return aabb;
+}
+
+bool finite3(const float* v) {
+    return std::isfinite(v[0]) && std::isfinite(v[1]) && std::isfinite(v[2]);
+}
+}  // namespace
+
+int OptiXWrapper::updateCylinderInstances(
+    const int* instance_ids,
+    const float* p0,
+    const float* p1,
+    const float* radii,
+    int count
+) {
+    if (count < 0) return -1;
+    if (count == 0) return 0;
+
+    // Validate everything first, so an invalid entry leaves the scene untouched.
+    for (int i = 0; i < count; ++i) {
+        const int id = instance_ids[i];
+        if (id < 0 || static_cast<size_t>(id) >= impl->instances.size()
+            || impl->instances[id].geometry_type != GEOMETRY_TYPE_CYLINDER
+            || !finite3(p0 + 3 * i) || !finite3(p1 + 3 * i)
+            || !std::isfinite(radii[i]) || radii[i] <= 0.0f) {
+            OPTIX_LOG(ERROR) << "[OptiX][Cylinder] updateCylinderInstances: invalid entry " << i
+                             << " (instance id " << id << ")" << std::endl;
+            return -1;
+        }
+    }
+
+    // One single-AABB custom-primitive build input, re-pointed at each cylinder's AABB buffer.
+    CUdeviceptr aabb_buffer = 0;
+    uint32_t input_flags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+    OptixBuildInput input = {};
+    input.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+    input.customPrimitiveArray.aabbBuffers = &aabb_buffer;
+    input.customPrimitiveArray.numPrimitives = 1;
+    input.customPrimitiveArray.flags = input_flags;
+    input.customPrimitiveArray.numSbtRecords = 1;
+
+    // Same flags the cylinder GASes are built with in addCylinderInstance.
+    OptixAccelBuildOptions update_options = {};
+    update_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION | OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+    update_options.operation = OPTIX_BUILD_OPERATION_UPDATE;
+
+    OptixAccelBufferSizes sizes;
+    OPTIX_CHECK(optixAccelComputeMemoryUsage(
+        impl->optix_context.getContext(), &update_options, &input, 1, &sizes));
+    CUdeviceptr d_temp = 0;
+    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp), sizes.tempUpdateSizeInBytes));
+    auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
+        reinterpret_cast<void*>(d_temp), cudaFree);
+
+    for (int i = 0; i < count; ++i) {
+        auto& inst = impl->instances[instance_ids[i]];
+        const auto cyl = static_cast<size_t>(inst.geometry_data_index);
+        CylinderData& data = impl->cylinder_data[cyl];
+        std::memcpy(data.p0, p0 + 3 * i, 3 * sizeof(float));
+        std::memcpy(data.p1, p1 + 3 * i, 3 * sizeof(float));
+        data.radius = radii[i];
+
+        auto& gas = impl->cylinder_gas_buffers[cyl];
+        const OptixAabb aabb = cylinderAabb(p0 + 3 * i, p1 + 3 * i, radii[i]);
+        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(gas.aabb_buffer), &aabb,
+                              sizeof(OptixAabb), cudaMemcpyHostToDevice));
+        aabb_buffer = gas.aabb_buffer;
+        OPTIX_CHECK(optixAccelBuild(
+            impl->optix_context.getContext(), 0, &update_options, &input, 1,
+            d_temp, sizes.tempUpdateSizeInBytes,
+            gas.gas_buffer, sizes.outputSizeInBytes,
+            &gas.handle, nullptr, 0
+        ));
+        inst.gas_handle = gas.handle;  // stable across UPDATE; kept in sync regardless
+    }
+
+    // render() only re-uploads cylinder data when the count changes, so push it here.
+    if (impl->d_cylinder_data && impl->last_cylinder_count == impl->cylinder_data.size()) {
+        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_cylinder_data),
+                              impl->cylinder_data.data(),
+                              impl->cylinder_data.size() * sizeof(CylinderData),
+                              cudaMemcpyHostToDevice));
+    }
+
+    refitIAS();
     return 0;
 }
 
@@ -2597,7 +2699,9 @@ int OptiXWrapper::addCylinderInstance(
     }
 
     OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    // ALLOW_UPDATE: updateCylinderInstances refits this GAS in place (interactive 4D rotation
+    // of edge-rendered objects); its flags must match these.
+    accel_options.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION | OPTIX_BUILD_FLAG_ALLOW_UPDATE;
     accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
 
     OptiXContext::GASBuildResult result = impl->optix_context.buildCustomPrimitiveGAS(

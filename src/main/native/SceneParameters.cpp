@@ -8,11 +8,12 @@ SceneParameters::SceneParameters() {
 }
 
 void SceneParameters::initializeDefaultLight() {
-    // Default directional light from top-right-front (normalized)
+    // Default directional light from top-right-front (normalized). `direction` is the
+    // direction the light travels, so it points away from where the light comes from.
     lights[0].type = LightType::DIRECTIONAL;
-    lights[0].direction[0] = 0.577350f;   // 0.5 / sqrt(0.75)
-    lights[0].direction[1] = 0.577350f;   // 0.5 / sqrt(0.75)
-    lights[0].direction[2] = -0.577350f;  // -0.5 / sqrt(0.75)
+    lights[0].direction[0] = -0.577350f;  // -0.5 / sqrt(0.75)
+    lights[0].direction[1] = -0.577350f;  // -0.5 / sqrt(0.75)
+    lights[0].direction[2] = 0.577350f;   //  0.5 / sqrt(0.75)
     lights[0].position[0] = 0.0f;
     lights[0].position[1] = 0.0f;
     lights[0].position[2] = 0.0f;

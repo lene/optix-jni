@@ -106,6 +106,20 @@ public:
         unsigned int vertex_stride
     );
 
+    // In-place endpoint/radius update for existing cylinder instances (edge-rendered 4D
+    // objects rotating interactively): refits each cylinder's single-AABB GAS in place and
+    // the IAS once, instead of clearAllInstances() + re-adding every edge. `p0`/`p1` hold
+    // 3 floats per cylinder, `radii` one. Validates every entry before changing anything.
+    // Returns 0 on success, -1 on invalid input (id out of range or not a cylinder, count
+    // < 0, non-finite endpoints, radius <= 0); throws on CUDA/OptiX failure.
+    int updateCylinderInstances(
+        const int* instance_ids,
+        const float* p0,
+        const float* p1,
+        const float* radii,
+        int count
+    );
+
     // Camera configuration
     void setCamera(const float* eye, const float* lookAt, const float* up, float fov);
     void updateImageDimensions(int width, int height);
@@ -306,6 +320,10 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl;
+
+    // Refits the built IAS in place after child GASes changed but instance handles did not.
+    // No-op when no IAS has been built yet (the next render builds it).
+    void refitIAS();
 
     // Internal pipeline build helpers
     void buildPipeline();

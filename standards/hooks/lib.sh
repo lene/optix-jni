@@ -154,6 +154,14 @@ suite_pass() {
 # $1 = suite name, $2 = human reason (no quote or semicolon characters)
 suite_skip() {
     echo "SUITE $1 SKIP n_failed=0 failed=\"\" reason=\"$2\""
+    # A skipped suite inside a green CI job is otherwise invisible: surface it as a job
+    # annotation and in the run summary.
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        echo "::warning title=$1 skipped::$2"
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            echo "- **$1 skipped:** $2" >> "$GITHUB_STEP_SUMMARY"
+        fi
+    fi
 }
 
 # $1 = suite name, $2 = failure count, $3 = ';'-joined failed item names
@@ -169,17 +177,59 @@ suite_fail() {
 # silently skipping GPU tests would be dangerous — it could mask a real regression going
 # unnoticed for a week — so it reports FAIL with an unmistakably-labeled reason instead,
 # forcing a human to look and rerun (`gh run rerun --failed`, already documented, C6).
+# `--skip-in-ci` (second argument) makes CI skip too: for suites whose verdict can't be
+# trusted on a busy card anyway (perf gates), while another suite still enforces the GPU.
 # Returns 1 (caller must stop and exit) when the GPU is unsuitable; 0 to proceed.
 gpu_preflight_or_skip() {
     _suite="$1"
+    _skip_in_ci="${2:-}"
     command -v nvidia-smi >/dev/null 2>&1 || return 0
     _detail=$(./standards/scripts/gpu-preflight.sh) && return 0
-    if [ -n "${CI:-}" ]; then
+    if [ -n "${CI:-}" ] && [ "$_skip_in_ci" != "--skip-in-ci" ]; then
         suite_fail "$_suite" 0 "ENV-UNSUITABLE(GPU busy: $_detail)"
     else
         suite_skip "$_suite" "env: GPU busy — $_detail"
     fi
     return 1
+}
+
+# --- performance-gate verdict ---
+#
+# $1 = suite name, $2 = log of an sbt run of Perf-tagged tests (io.github.lene.qa.RelativeBenchmark
+# gates; ANSI codes allowed), $3 = sbt's exit code. Emits the SUITE line. Returns 1 only for a
+# FAIL: a failed gate, a build error, or no gate having run at all (a vacuous pass). A gate
+# that couldn't be judged reliably is canceled by the test and makes the suite SKIP -- never a
+# failure, but also never a PASS, because a PASS is cached per tree and would hide the
+# unjudged gates for good.
+perf_suite_verdict() {
+    _suite="$1"; _log="$2"; _rc="$3"
+    _clean=$(sed 's/\x1b\[[0-9;]*[A-Za-z]//g' "$_log")
+    _failed=$(printf '%s\n' "$_clean" | grep -c '\*\*\* FAILED \*\*\*' || true)
+    if [ "$_failed" -gt 0 ]; then
+        suite_fail "$_suite" "$_failed" "$(printf '%s\n' "$_clean" | grep '\*\*\* FAILED \*\*\*' \
+            | sed 's/^\[info\] *- *//; s/ \*\*\* FAILED \*\*\*.*//' | paste -sd';' -)"
+        return 1
+    fi
+    if [ "$_rc" -ne 0 ]; then
+        suite_fail "$_suite" 1 "build-or-unknown"
+        return 1
+    fi
+    _summary=$(printf '%s\n' "$_clean" | grep 'Tests: succeeded' | tail -n 1)
+    _succeeded=$(printf '%s' "$_summary" | sed -n 's/.*succeeded \([0-9]*\).*/\1/p')
+    _canceled=$(printf '%s' "$_summary" | sed -n 's/.*canceled \([0-9]*\).*/\1/p')
+    _total=$(( ${_succeeded:-0} + ${_canceled:-0} ))
+    if [ "$_total" -eq 0 ]; then
+        suite_fail "$_suite" 1 "no perf gates ran"
+        return 1
+    fi
+    if [ "${_canceled:-0}" -gt 0 ]; then
+        suite_skip "$_suite" "$_canceled/$_total gates inconclusive: $(printf '%s\n' "$_clean" \
+            | grep '!!! CANCELED !!!' | sed 's/^\[info\] *- *//; s/ !!! CANCELED !!!.*//' \
+            | paste -sd';' -)"
+        return 0
+    fi
+    suite_pass "$_suite"
+    return 0
 }
 
 # --- network retry (Sprint 36 D4) ---

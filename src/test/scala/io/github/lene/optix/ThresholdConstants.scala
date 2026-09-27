@@ -6,28 +6,20 @@ object ThresholdConstants:
 
   // ========== Performance Thresholds ==========
 
-  // Sprint 36 D2: fps floors are expressed as a fraction of a same-run calibration
-  // probe (PerformanceSuite.calibrationFps) instead of an absolute fps number — this is
-  // the "proper long-term fix" the old MIN_FPS_ANTIALIASING comment (below, historically)
-  // deferred to. A hot/cold/throttled GPU moves the probe and the tested scenario's fps
-  // by roughly the same factor, so the ratio holds steady where an absolute floor didn't
-  // (2026-08-03, Sprint 35 Release B: 8.89-9.3 fps cold vs. ~1.6-1.7 fps hot on the same
-  // unmodified code, on the self-hosted nvidia CI runner, reproduced 3x back-to-back).
-  //
-  // MIN_FPS_RATIO covers the four "light" scenarios (opaque/transparent/diamond/large
-  // sphere); MIN_FPS_RATIO_ANTIALIASING is separate because antialiasing (maxDepth=2)
-  // does ~2x the ray work and runs near the floor even relative to the probe.
-  //
-  // Measured on an idle RTX 4060 Laptop, one real run (2026-08-09): opaque 0.84,
-  // transparent 0.68, diamond 0.76, large sphere 0.21x (the binding case for
-  // MIN_FPS_RATIO), buffer reuse 1.10x, antialiasing 0.019x. Floors set at roughly half
-  // the observed worst case per group — enough margin to absorb normal run-to-run
-  // variance while still catching a real regression (e.g. a silent fallback to a much
-  // slower path). Not yet validated against a hot/throttled run; revisit if it proves
-  // too tight or too loose in practice.
-  val MIN_FPS_RATIO = 0.10
-  val MIN_FPS_RATIO_ANTIALIASING = 0.01
-  val MIN_FPS_RATIO_BUFFER_REUSE = 0.5
+  // Maximum render-time ratio (subject / reference) for PerformanceSuite and ShadowSuite,
+  // judged by io.github.lene.qa.RelativeBenchmark: both scenes are timed in interleaved rounds
+  // on the same renderer, so throttling and background load hit both sides alike. (The
+  // previous design divided by one calibration render measured once per suite; its value
+  // swung ~50% between runs on a throttling laptop GPU and failed gates with unchanged code.)
+  // Each limit is ~2x the highest upper confidence bound measured on this project's RTX A1000
+  // laptop GPU (also the CI runner), over 6 idle runs and 5 runs under a 99% GPU burn plus CPU
+  // load (2026-09-23; load compressed every ratio toward 1). Highest bound -> limit:
+  val MAX_SLOWDOWN_OPAQUE = 2.5          // 1.22 (loaded)
+  val MAX_SLOWDOWN_TRANSPARENT = 4.5     // 2.20
+  val MAX_SLOWDOWN_DIAMOND = 4.2         // 2.06
+  val MAX_SLOWDOWN_LARGE_SPHERE = 26.0   // 12.73
+  val MAX_SLOWDOWN_BUFFER_REUSE = 2.1    // 1.05 (loaded)
+  val MAX_SLOWDOWN_ANTIALIASING = 330.0  // 160.9 (AA on vs the same scene with AA off)
 
   // Images with lighting/shading should have stddev > 10; solid colors are near 0
   val MIN_BRIGHTNESS_VARIATION = 10.0
@@ -121,8 +113,9 @@ object ThresholdConstants:
 
   // ========== Shadow Performance Limits ==========
 
-  val MAX_SHADOW_OVERHEAD = 1.0                  // Max 100% performance overhead for shadows
-  val RENDER_ITERATIONS = 10                     // Number of iterations for performance tests
+  // Render time with / without shadows: the original "< 100% overhead" requirement. Highest
+  // measured upper confidence bound 1.34 (idle), 1.20 under load.
+  val MAX_SLOWDOWN_SHADOWS = 2.0
 
   // ========== Shadow Brightness Comparison Tolerance ==========
 
