@@ -661,14 +661,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerCo
 }
 
 /**
- * Set triangle mesh geometry data.
+ * Add triangle mesh geometry data (appends; returns the new mesh's index).
  * @param vertices Interleaved float array: [px, py, pz, nx, ny, nz, u, v, ...] (stride floats/vertex)
  * @param numVertices Number of vertices
  * @param indices Triangle indices array (3 per triangle, as unsigned ints)
  * @param numTriangles Number of triangles
  * @param vertexStride Floats per vertex (6 for pos+normal, 8 for pos+normal+uv, 9 for pos+normal+uv+alpha)
+ * @return the new mesh's index (>= 0), or -1 on native failure
  */
-JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNative(
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNative(
     JNIEnv* env, jobject obj,
     jfloatArray vertices, jint numVertices,
     jintArray indices, jint numTriangles, jint vertexStride) {
@@ -677,19 +678,19 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
         if (wrapper == nullptr) {
-            return;
+            return -1;
         }
 
         // Validate input parameters
         if (numVertices <= 0 || numTriangles <= 0) {
             throwException(env, "java/lang/IllegalArgumentException", "numVertices and numTriangles must be positive");
-            return;
+            return -1;
         }
 
         // Validate vertex stride (6, 8, or 9)
         if (vertexStride != 6 && vertexStride != 8 && vertexStride != 9) {
             throwException(env, "java/lang/IllegalArgumentException", "vertexStride must be 6, 8, or 9");
-            return;
+            return -1;
         }
 
         jsize vertexArrayLen = env->GetArrayLength(vertices);
@@ -701,14 +702,14 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
                 ") must equal numVertices * vertexStride (" +
                 std::to_string(numVertices * vertexStride) + ")";
             throwException(env, "java/lang/IllegalArgumentException", msg.c_str());
-            return;
+            return -1;
         }
 
         if (indexArrayLen != numTriangles * 3) {
             std::string msg = "indices array length (" + std::to_string(indexArrayLen) +
                 ") must equal numTriangles * 3 (" + std::to_string(numTriangles * 3) + ")";
             throwException(env, "java/lang/IllegalArgumentException", msg.c_str());
-            return;
+            return -1;
         }
 
         // Get arrays from JNI (declared before try for catch-block release)
@@ -719,34 +720,38 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
             if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
             if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
             throwException(env, OPTIX_EXCEPTION_CLASS, "Failed to get array elements");
-            return;
+            return -1;
         }
 
         // Convert jint indices to unsigned int (OptiX uses 32-bit unsigned indices)
         // Note: Java has no unsigned int, so we need to interpret jint as unsigned
-        wrapper->setTriangleMesh(
+        jint mesh_index = static_cast<jint>(wrapper->setTriangleMesh(
             vertexArr,
             static_cast<unsigned int>(numVertices),
             reinterpret_cast<const unsigned int*>(indexArr),
             static_cast<unsigned int>(numTriangles),
             static_cast<unsigned int>(vertexStride)
-        );
+        ));
 
         env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
         env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
         vertexArr = nullptr;
         indexArr = nullptr;
 
+        return mesh_index;
+
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setTriangleMesh: " << e.what() << std::endl;
         if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
         if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
         throwException(env, OPTIX_EXCEPTION_CLASS, e.what());
+        return -1;
     } catch (...) {  // CR-4: same array cleanup for a non-std::exception native throw
         if (vertexArr != nullptr) env->ReleaseFloatArrayElements(vertices, vertexArr, JNI_ABORT);
         if (indexArr != nullptr) env->ReleaseIntArrayElements(indices, indexArr, JNI_ABORT);
         throwException(env, OPTIX_EXCEPTION_CLASS,
             (std::string("Unknown native error in ") + __func__).c_str());
+        return -1;
     }
 }
 

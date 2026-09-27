@@ -30,8 +30,8 @@ public:
     void setIOR(float ior);
     void setScale(float scale);
 
-    // Triangle mesh support
-    void setTriangleMesh(
+    // Triangle mesh support. Appends to the mesh list; returns the new mesh's index.
+    int setTriangleMesh(
         const float* vertices,        // Interleaved pos+normal+uv, stride floats per vertex
         unsigned int num_vertices,
         const unsigned int* indices,  // 3 indices per triangle
