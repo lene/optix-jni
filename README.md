@@ -23,7 +23,7 @@ ThisBuild / scalaVersion := "3.8.3"
 
 libraryDependencies ++= Seq(
   "io.github.lene" %% "menger-common" % "0.2.0",
-  "io.github.lene" % "optix-jni" % "0.3.3"
+  "io.github.lene" % "optix-jni" % "0.4.0"
 )
 ```
 
@@ -39,7 +39,7 @@ libraryDependencies ++= Seq(
   <dependency>
     <groupId>io.github.lene</groupId>
     <artifactId>optix-jni</artifactId>
-    <version>0.3.3</version>
+    <version>0.4.0</version>
   </dependency>
 </dependencies>
 ```
@@ -53,7 +53,7 @@ repositories {
 
 dependencies {
     implementation("io.github.lene:menger-common_3:0.2.0")
-    implementation("io.github.lene:optix-jni:0.3.3")
+    implementation("io.github.lene:optix-jni:0.4.0")
 }
 ```
 
@@ -367,6 +367,7 @@ Build and native-linkage troubleshooting — PTX-not-found, `libcudart.so.13` li
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `MENGER_OPTIX_CACHE` | Custom OptiX cache directory path | `/var/tmp/OptixCache_<username>` |
+| `MENGER_OPTIX_DEBUG` | `1` turns on launch diagnostics: OptiX validation mode, stack-overflow / trace-depth exceptions, and an exception program that prints the exception code and launch index. Slow; for debugging only | unset (off) |
 
 ### Cache Management
 
