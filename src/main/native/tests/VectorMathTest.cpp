@@ -107,7 +107,8 @@ TEST(WrapFractionEdgeInclusiveTest, NonIntegerFractionUnaffected) {
 }
 
 TEST(WrapFractionEdgeInclusiveTest, StaysWithinUnitRange) {
-    for (float x = -3.0f; x <= 3.0f; x += 0.37f) {
+    for (int i = 0; i <= 16; ++i) {
+        const float x = -3.0f + static_cast<float>(i) * 0.37f;
         const float f = wrapFractionEdgeInclusive(x);
         EXPECT_GE(f, 0.0f);
         EXPECT_LE(f, 1.0f);

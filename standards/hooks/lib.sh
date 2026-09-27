@@ -270,6 +270,7 @@ record_duration() {
     mkdir -p "$_ddir" 2>/dev/null || true
     _dfile="$_ddir/$2"
     { [ -f "$_dfile" ] && cat "$_dfile"; echo "$3"; } | tail -n 10 > "$_dfile.tmp" && mv "$_dfile.tmp" "$_dfile"
+    return 0
 }
 
 # $1 = cache dir, $2 = suite name. Prints the median of recorded durations, or nothing

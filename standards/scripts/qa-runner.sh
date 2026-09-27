@@ -249,6 +249,7 @@ remaining_eta() {
   else
     printf '?'
   fi
+  return 0
 }
 
 while IFS="$TAB" read -r _tag name tier req auto; do
