@@ -725,7 +725,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
 
         // Convert jint indices to unsigned int (OptiX uses 32-bit unsigned indices)
         // Note: Java has no unsigned int, so we need to interpret jint as unsigned
-        jint mesh_index = static_cast<jint>(wrapper->setTriangleMesh(
+        auto mesh_index = static_cast<jint>(wrapper->setTriangleMesh(
             vertexArr,
             static_cast<unsigned int>(numVertices),
             reinterpret_cast<const unsigned int*>(indexArr),

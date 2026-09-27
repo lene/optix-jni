@@ -501,7 +501,7 @@ int OptiXWrapper::setTriangleMesh(
     mesh_entry.vertex_stride = vertex_stride;
     mesh_entry.gas_built = false;
 
-    int mesh_index = static_cast<int>(impl->triangle_meshes.size());
+    auto mesh_index = static_cast<int>(impl->triangle_meshes.size());
     impl->triangle_meshes.push_back(mesh_entry);
 
     // Compute mesh AABB from vertex positions (for caustic target)
