@@ -56,7 +56,7 @@ extern "C" __global__ void __closesthit__curve() {
         ? outward_normal
         : make_float3(-outward_normal.x, -outward_normal.y, -outward_normal.z);
 
-    const unsigned int depth = optixGetPayload_3();
+    const unsigned int depth = TraceDepth::bounce(optixGetPayload_3());
 
     if (params.stats) {
         atomicMax(&params.stats->max_depth_reached, depth + 1);
@@ -83,7 +83,8 @@ extern "C" __global__ void __closesthit__curve() {
     const float alpha = material_color.w;
 
     if (alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparent(hit_point, ray_direction, depth);
+        if (!handleFullyTransparent(hit_point, ray_direction, depth))
+            handleFullyOpaque(hit_point, normal, material_color, emission);  // nesting limit
         return;
     }
 

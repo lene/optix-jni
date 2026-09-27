@@ -15,6 +15,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   off by default, and without it the pipeline is unchanged. Replaces the dead
   `MENGER_OPTIX_VALIDATION` stub, whose claim that OptiX 9.0 has no validation mode was wrong.
 
+### Changed
+
+- **Breaking (custom-geometry shaders):** a radiance ray's payload 3 now carries two counters,
+  the bounce depth in bits 0-7 and the number of nested `optixTrace` calls in bits 8+. Hit
+  programs read the bounce depth with `TraceDepth::bounce(optixGetPayload_3())` (helpers.cu);
+  custom-geometry shaders that read payload 3 directly must do the same.
+  `handleFullyTransparent` and `traceContinuationRay` now return `false` (without tracing) at
+  the nesting limit, and the caller shades the face as opaque.
+- The pipeline's `maxTraceDepth` is now 31, OptiX's own ceiling (was 10): ~4.5 MiB of VRAM per
+  level, no measurable frame time.
+
+### Fixed
+
+- Rays passing through transparent or coverage-blended faces nested `optixTrace` without
+  spending the bounce budget, so a ray crossing enough see-through faces (a fractional-level
+  sponge) went past the pipeline's compiled trace depth: undefined behaviour, seen as
+  intermittent, view-dependent CUDA 700/719 crashes. Every radiance trace now checks the
+  nesting count, keeping one level free for the child's shadow ray, and a face the limit is
+  reached at renders opaque.
+
 ## [0.3.4] - 2026-09-26
 
 ### Changed

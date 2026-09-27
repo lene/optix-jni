@@ -148,16 +148,18 @@ extern "C" __global__ void __closesthit__plane() {
 
     const float material_alpha = material_color.w;
 
-    // Fully transparent: pass through
-    if (material_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
-        handleFullyTransparent(hit_point, ray_direction, optixGetPayload_3());
+    const unsigned int depth = TraceDepth::bounce(optixGetPayload_3());
+
+    // Fully transparent: pass through (shaded opaque below if the nesting limit is reached)
+    if (material_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD
+        && handleFullyTransparent(hit_point, ray_direction, depth)) {
         return;
     }
 
     // Opaque: diffuse or metallic (no refraction - plane has no volume)
     if (metallic > 0.0f) {
         handleMetallicOpaque(hit_point, ray_direction, normal,
-                             material_color, metallic, optixGetPayload_3(), emission);
+                             material_color, metallic, depth, emission);
         return;
     }
     // Use geometric_normal (pre-flip) with double_sided=true to match legacy miss-shader lighting:

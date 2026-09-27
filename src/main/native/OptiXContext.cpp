@@ -626,7 +626,11 @@ OptixPipeline OptiXContext::createPipeline(
     // Cylinder shaders with single-bounce metallic reflection need additional stack space
     // for the handleMetallicOpaque() helper and one level of optixTrace recursion
     constexpr unsigned int MIN_CONTINUATION_STACK_SIZE = 49152u;  // 48 KB minimum for metallic cylinders
+    const uint32_t computed_css = continuation_stack_size;
     continuation_stack_size = std::max(continuation_stack_size, MIN_CONTINUATION_STACK_SIZE);
+    OPTIX_LOG(INFO) << "[OptiX] pipeline maxTraceDepth=" << max_trace_depth
+                    << " continuation stack: computed " << computed_css
+                    << " B, used " << continuation_stack_size << " B" << std::endl;
 
     // maxTraversableGraphDepth: depth of the deepest traversal chain.
     //   2 covers main-IAS -> GAS (the original mixed-geometry path).

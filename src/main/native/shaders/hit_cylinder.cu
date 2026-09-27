@@ -248,7 +248,7 @@ extern "C" __global__ void __closesthit__cylinder() {
     );
 
     // Get current depth from payload
-    const unsigned int depth = optixGetPayload_3();
+    const unsigned int depth = TraceDepth::bounce(optixGetPayload_3());
 
     // Track depth statistics
     if (params.stats) {
