@@ -3322,6 +3322,11 @@ void OptiXWrapper::clearAllInstances() {
         freeChecked(reinterpret_cast<void*>(mesh.d_vertices), "triangle_meshes[].d_vertices");
         freeChecked(reinterpret_cast<void*>(mesh.d_indices), "triangle_meshes[].d_indices");
         freeChecked(reinterpret_cast<void*>(mesh.d_gas_output_buffer), "triangle_meshes[].d_gas_output_buffer");
+        // Resident 4D-projection buffers of a setProjectedMesh mesh, as in clearTriangleMesh.
+        // Missing here, every rebuild of an animated 4D scene leaked them (menger usability
+        // review 2026-09, F34).
+        freeChecked(reinterpret_cast<void*>(mesh.projection4d.d_quads_4d), "triangle_meshes[].projection4d.d_quads_4d");
+        freeChecked(reinterpret_cast<void*>(mesh.projection4d.d_uvs), "triangle_meshes[].projection4d.d_uvs");
     }
     impl->triangle_meshes.clear();
 

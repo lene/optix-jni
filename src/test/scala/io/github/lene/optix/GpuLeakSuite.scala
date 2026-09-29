@@ -135,6 +135,46 @@ class GpuLeakSuite extends AnyFlatSpec with Matchers with LazyLogging {
     } finally r.dispose()
   }
 
+  // Enough faces that the leaked 4D face buffer (64 bytes per quad) of 20 reloads, ~25 MB,
+  // stands far above the measured noise floor.
+  private val ProjectedQuadCount = 20000
+
+  /** A flat grid of small 4D quads at w = 0: valid input for the projection kernel. */
+  private val projectedQuads: Array[Float] =
+    (0 until ProjectedQuadCount).toArray.flatMap { i =>
+      val x = (i % 200) * 0.01f - 1.0f
+      val y = (i / 200) * 0.01f - 0.5f
+      Array(x, y, 0f, 0f, x + 0.005f, y, 0f, 0f, x + 0.005f, y + 0.005f, 0f, 0f, x, y + 0.005f, 0f, 0f)
+    }
+
+  private def addProjectedMeshRenderClear(r: OptiXRenderer): Unit = {
+    r.setProjectedMesh(projectedQuads, 4, null, 3.0f, 1.5f, 0f, 0f, 0f) // scalafix:ok DisableSyntax.null
+    r.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), Color(1.0f, 0.5f, 0.2f, 1.0f), 1.5f)
+    r.render(Width, Height)
+    r.clearAllInstances()
+  }
+
+  // Usability review 2026-09, session 2 (F34): clearAllInstances freed a projected mesh's
+  // vertices, indices and GAS but not its resident 4D face/UV buffers, so every rebuild of an
+  // animated 4D scene leaked them until the window ran out of GPU memory. The mixed-geometry
+  // loop above never uploads a projected mesh, so it couldn't see this.
+  "clear -> re-add projected 4D mesh loop" should "not leak GPU memory across rebuilds" taggedAs (Slow) in {
+    assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
+    val r = new OptiXRenderer()
+    try {
+      r.initialize() should be (true)
+      setupCamera(r)
+      addProjectedMeshRenderClear(r)
+      val baseline = r.freeGpuMemoryBytes()
+      val tolerance = measureToleranceBytes(r)
+      for (_ <- 1 to Iterations) addProjectedMeshRenderClear(r)
+      val after = r.freeGpuMemoryBytes()
+      val leaked = baseline - after
+      logger.info(s"projected-mesh leak check: baseline=$baseline after=$after leaked=$leaked over $Iterations iters")
+      math.abs(leaked) should be <= tolerance
+    } finally r.dispose()
+  }
+
   "create/render/dispose loop" should "not leak GPU memory across renderer lifetimes" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
     // Baseline measured from a fresh live context so it is comparable to the post-loop probe.
