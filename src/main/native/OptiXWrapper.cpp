@@ -2352,6 +2352,14 @@ int OptiXWrapper::setInstanceMaterial(
     return 0;
 }
 
+int OptiXWrapper::setInstanceTransform(int instanceId, const float* transform) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
+    std::memcpy(impl->instances[instanceId].transform, transform, 12 * sizeof(float));
+    // buildIAS copies transforms into the OptixInstance array; child GASes are reused.
+    impl->ias_dirty = true;
+    return 0;
+}
+
 int OptiXWrapper::updateCustomGeometryInstanceData(
     int instanceId, const void* customData, int customDataSize
 ) {

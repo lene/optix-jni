@@ -248,6 +248,10 @@ public:
         int instanceId, float r, float g, float b, float a, float ior,
         float roughness, float metallic, float specular, float emission,
         float film_thickness, float cauchy_a, float cauchy_b);
+    // Replace an instance's 4x3 row-major transform (same layout as add*Instance).
+    // Cheap: marks only the top-level IAS dirty; no GAS is rebuilt. Returns 0, or -1
+    // for an unknown instance id.
+    int setInstanceTransform(int instanceId, const float* transform);
     // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
     // Cheap: patches the CPU blob and, if the GPU buffer already exists, memcpy's just
     // this instance's slot — no GAS/IAS rebuild (custom AABBs are pose-independent, e.g.
