@@ -82,8 +82,11 @@ __host__ __device__ inline float3 reflect(float3 incident, float3 normal) {
 // 1.0 instead of wrapping to 0.0. Plain fmodf(x, 1) wraps 1.0 -> 0.0, which is the F6 bug in
 // helpers.cu's xyzToRGB: a cube built via the common "positive octant, pos = size/2" DSL
 // recipe has a face landing exactly on an integer coordinate, and that face's channel went
-// fully black instead of full-scale.
+// fully black instead of full-scale. A real hit point on such a face is never exactly the
+// integer but a few ulps off either side (F41), so anything within kEdgeTolerance above a
+// positive integer counts as that edge too.
 __host__ __device__ inline float wrapFractionEdgeInclusive(float x) {
+    constexpr float kEdgeTolerance = 1e-4f;
 #ifdef __CUDA_ARCH__
     const float ax = fabsf(x);
     const float f = fmodf(ax, 1.0f);
@@ -91,7 +94,7 @@ __host__ __device__ inline float wrapFractionEdgeInclusive(float x) {
     const float ax = std::fabs(x);
     const float f = std::fmod(ax, 1.0f);
 #endif
-    return (f == 0.0f && ax != 0.0f) ? 1.0f : f;
+    return (f < kEdgeTolerance && ax > kEdgeTolerance) ? 1.0f : f;
 }
 
 // Legacy array-based functions for host code compatibility
