@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-09-29
+
+### Fixed
+
+- GPU memory leak: `clearAllInstances()` freed a projected 4D mesh's vertex, index and GAS
+  buffers but not its resident 4D-projection buffers (`setProjectedMesh`'s quad and UV
+  buffers), which `clearTriangleMesh()` already freed. Every clear-and-rebuild of a scene with
+  a projected 4D mesh leaked 64 bytes per quad; an animated 4D preview that rebuilds each frame
+  filled a 6 GB GPU within minutes.
+- `xyzToRGB` procedural texture: the 0.4.1 fix mapped only an exact integer to full-scale. A
+  real hit point on a face at an integer coordinate carries a few ulps of float noise either
+  side, so the pixels just above it still wrapped to ~0 and the face rendered speckled.
+  Values within 1e-4 above a positive integer now count as that edge.
+
 ## [0.4.1] - 2026-09-27
 
 ### Added
@@ -589,6 +603,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.2]: https://github.com/lene/optix-jni/compare/0.4.1...0.4.2
 [0.4.1]: https://github.com/lene/optix-jni/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/lene/optix-jni/compare/0.3.4...0.4.0
 [0.3.4]: https://github.com/lene/optix-jni/compare/0.3.3...0.3.4
