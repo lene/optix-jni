@@ -1,3 +1,4 @@
+#include <cfloat>
 #include <cmath>
 
 #include <gtest/gtest.h>
@@ -95,6 +96,16 @@ TEST(WrapFractionEdgeInclusiveTest, ExactIntegerMapsToOneNotZero) {
     EXPECT_FLOAT_EQ(wrapFractionEdgeInclusive(1.0f), 1.0f);
     EXPECT_FLOAT_EQ(wrapFractionEdgeInclusive(-1.0f), 1.0f);
     EXPECT_FLOAT_EQ(wrapFractionEdgeInclusive(5.0f), 1.0f);
+}
+
+// Usability review 2026-09, session 2 (F41): a real hit point on a max face is never exactly
+// an integer. hit_point = origin + dir * t carries a few ulps of noise either side, so the
+// exact-integer check above still wrapped the pixels just above it to ~0 (a speckled face).
+TEST(WrapFractionEdgeInclusiveTest, JustAboveIntegerFromFloatNoiseMapsToOne) {
+    EXPECT_NEAR(wrapFractionEdgeInclusive(2.5f * 0.4f), 1.0f, kEpsilon);
+    EXPECT_NEAR(wrapFractionEdgeInclusive(std::nextafter(1.0f, 2.0f)), 1.0f, kEpsilon);
+    EXPECT_NEAR(wrapFractionEdgeInclusive(1.0f + 8.0f * FLT_EPSILON), 1.0f, kEpsilon);
+    EXPECT_NEAR(wrapFractionEdgeInclusive(-std::nextafter(3.0f, 4.0f)), 1.0f, kEpsilon);
 }
 
 TEST(WrapFractionEdgeInclusiveTest, ZeroStaysZero) {
