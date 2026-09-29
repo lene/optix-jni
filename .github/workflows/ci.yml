@@ -354,8 +354,17 @@ jobs:
       - name: Read release version
         id: ver
         run: echo "version=$(grep 'version :=' build.sbt | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Build release artifacts
+        # Built separately so the GitHub Release gets its jars and .so even when the publish
+        # step finds the version already on Central and uploads nothing.
+        run: sbt nativeCompile package packageSrc packageDoc
       - name: Publish to Maven Central
-        run: sbt nativeCompile publishSigned sonatypeBundleRelease
+        # Idempotent, with presence on Central as the source of truth (see the script): a
+        # transient failure of sbt-sonatype's status poll after a good upload no longer fails
+        # the release (0.1.17, 0.4.2), and re-running this job never uploads a version twice.
+        run: >-
+          standards/scripts/publish-maven-central.sh io/github/lene/optix-jni
+          "${{ steps.ver.outputs.version }}" nativeCompile publishSigned sonatypeBundleRelease
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
@@ -366,10 +375,11 @@ jobs:
           # release/tag to the build.sbt version so the tag-triggered default doesn't
           # attach the release to the branch name.
           tag_name: ${{ steps.ver.outputs.version }}
+          # crossPaths := false, so the jars are directly in target/.
           files: |
             target/*.jar
-            target/scala-3*/*.jar
             target/native/x86_64-linux/bin/*.so
+          fail_on_unmatched_files: true
           generate_release_notes: false
           body_path: CHANGELOG.md
 
