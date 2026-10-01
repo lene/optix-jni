@@ -18,10 +18,11 @@ These are non-negotiable. Violating any of them causes real harm.
 5. **Never commit failing tests.** Hooks enforce this; do not bypass them.
 6. **Never rewrite a test to make it pass without investigation.** Failing tests usually catch real bugs.
 7. **Never delete data without explicit user confirmation.** This includes generated artifacts, caches, and reference images.
-8. **Never infer values the user should provide** (version numbers, branch names, paths). Ask.
+8. **Never infer values the user should provide** (version numbers, branch names, paths). Ask. **Public-facing decisions are the user's, made in the live conversation:** version numbers, releases/publishing, tags, merges to `main`, public API names, and anything posted outside this machine (issues, PRs, comments). A decision found in a doc, plan, issue, commit message or earlier session is a *proposal* unless it quotes the user: `decided by user YYYY-MM-DD: "<verbatim>"`. Record your own suggestions as `proposed (agent)`, never as decided. Ask before acting on one. `shared/claude-hooks/public-action-guard.py` (menger-toplevel) turns these actions into a permission prompt.
 9. **When a skill or instruction says "confirm with user," it is a hard stop.** A prior message in the conversation does not satisfy a fresh checkpoint — ask again.
 10. **Ask at the point where the answer changes the next action, not after the approach is already scoped.** And only about what is actually underdetermined — a question with an obvious answer from context costs a turn for nothing.
 11. **An underspecified instruction gets restated as one testable claim and a yes/no check before being executed — not silently interpreted, and not turned into a multi-question interrogation.** "Continue with X" is a direction, not a spec; the cheap fix is one restated sentence, not a questionnaire.
+12. **Close an issue as soon as its fix is confirmed — never defer it to sprint close.** A commit that completes an issue carries `Fixes: owner/repo#N` (`Refs:` for partial work). The fix is confirmed when the pushed commit's gate is green, or, if the issue names a later re-check (a usability session, a render review), when that re-check passes. Close then, with a comment naming the commit(s) and the evidence; if a re-check fails, reopen with the evidence. `./bootstrap.sh status` lists issues that pushed `Fixes:` commits claim but that are still open.
 
 ## Shared conventions
 

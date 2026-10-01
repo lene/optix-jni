@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-10-01
+
+### Added
+
+- `setInstanceTransform(instanceId, transform)`: replace an existing instance's 4x3 row-major
+  transform. Only the top-level IAS is rebuilt on the next render; every child GAS is reused.
+  An animation that moves or rotates an object no longer has to clear and re-add it (a
+  rotating level-2 tesseract sponge preview rebuilt its whole scene each frame, ~1.1 s).
+  Returns -1 for an unknown instance id; throws `IllegalArgumentException` unless the array
+  has 12 elements.
+
 ## [0.4.2] - 2026-09-29
 
 ### Fixed
@@ -603,6 +614,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.3]: https://github.com/lene/optix-jni/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/lene/optix-jni/compare/0.4.1...0.4.2
 [0.4.1]: https://github.com/lene/optix-jni/compare/0.4.0...0.4.1
 [0.4.0]: https://github.com/lene/optix-jni/compare/0.3.4...0.4.0

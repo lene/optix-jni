@@ -1378,6 +1378,28 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceMateri
     JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceTransformNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId, jfloatArray transform) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        if (transform == nullptr || env->GetArrayLength(transform) != 12) {
+            env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                "Transform array must have 12 elements (4x3 matrix)");
+            return -1;
+        }
+        float xform[12];
+        env->GetFloatArrayRegion(transform, 0, 12, xform);
+        return wrapper->setInstanceTransform(instanceId, xform);
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setInstanceTransform: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), e.what());
+        return -1;
+    }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
+}
+
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCustomGeometryInstanceDataNative(
     JNIEnv* env, jobject obj,
     jint instanceId, jbyteArray customData) {

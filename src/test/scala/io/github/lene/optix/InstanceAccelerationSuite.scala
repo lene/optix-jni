@@ -337,6 +337,38 @@ class InstanceAccelerationSuite extends AnyFlatSpec
       img.count(_ != 0) should be > 0
 
   // ================================
+  // setInstanceTransform
+  // ================================
+
+  "setInstanceTransform" should "move an existing instance on the next render" taggedAs (Slow) in:
+    def greenCenter() = ImageValidation.detectSphereCenter(renderImage(TEST_IMAGE_SIZE), TEST_IMAGE_SIZE)
+    val target = sphereTransform(1.0f, 0f, 0f, 0.5f)
+    // Reference: an instance added directly at the target position.
+    renderer.addSphereInstance(target, OPAQUE_GREEN, 1.0f)
+    val expected = greenCenter()
+    renderer.clearAllInstances()
+
+    val id = renderer.addSphereInstance(sphereTransform(-1.0f, 0f, 0f, 0.5f), OPAQUE_GREEN, 1.0f)
+    val before = greenCenter()
+    renderer.setInstanceTransform(id, target) shouldBe 0
+    val after = greenCenter()
+
+    math.abs(after.x - before.x) should be > TEST_IMAGE_SIZE.width / 4
+    math.abs(after.x - expected.x) should be <= 2
+    math.abs(after.y - expected.y) should be <= 2
+    renderer.getInstanceCount() shouldBe 1
+
+  it should "return -1 for an unknown instance id" in:
+    renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    renderer.setInstanceTransform(7, sphereTransform(0f, 0f, 0f, 1f)) shouldBe -1
+    renderer.setInstanceTransform(-1, sphereTransform(0f, 0f, 0f, 1f)) shouldBe -1
+
+  it should "reject transform arrays with wrong size" in:
+    val id = renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
+    an[IllegalArgumentException] should be thrownBy:
+      renderer.setInstanceTransform(id, Array(1.0f, 0.0f, 0.0f))
+
+  // ================================
   // Mixed Instance Tests
   // ================================
 

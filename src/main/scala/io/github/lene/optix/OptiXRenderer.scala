@@ -344,6 +344,13 @@ class OptiXRenderer
       MaterialPayload.of(r, g, b, a, ior, roughness, metallic, specular, emission,
         filmThickness, cauchyA, cauchyB))
 
+  // Replace an instance's 4x3 row-major transform (same layout as add*Instance).
+  // Cheap: only the top-level IAS is rebuilt on the next render, no GAS. Use it to
+  // move/rotate an existing object per frame instead of re-adding it. Returns 0, or
+  // -1 for an unknown instance id; throws IllegalArgumentException unless length 12.
+  def setInstanceTransform(instanceId: Int, transform: Array[Float]): Int =
+    setInstanceTransformNative(instanceId, transform)
+
   // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
   // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
   // updates such as a 4D fractal's projection (eye/screen/rotation). Returns 0 on ok.
@@ -358,6 +365,8 @@ class OptiXRenderer
       customData: Array[Byte]): Int
   @native private def setInstanceMaterialNative(
       instanceId: Int, material: Array[Float]): Int
+  @native private def setInstanceTransformNative(
+      instanceId: Int, transform: Array[Float]): Int
   @native private def updateCustomGeometryInstanceDataNative(
       instanceId: Int, customData: Array[Byte]): Int
 
