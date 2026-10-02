@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "include/OptiXWrapper.h"
 #include "include/MaterialPayload.h"
+#include "include/OptiXFileUtils.h"
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <cstring>
@@ -80,8 +81,15 @@ static void throwException(JNIEnv* env, const char* className, const char* msg) 
     catch (...) { throwException(env, OPTIX_EXCEPTION_CLASS, \
         (std::string("Unknown native error in ") + __func__).c_str()); return ret; }
 
-JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances, jstring ptxPath) {
     try {
+        if (ptxPath != nullptr) {
+            const char* path = env->GetStringUTFChars(ptxPath, nullptr);
+            if (path != nullptr) {
+                optix_utils::preferredPTXPath() = path;
+                env->ReleaseStringUTFChars(ptxPath, path);
+            }
+        }
         // Check if already initialized (defensive check - Scala layer should prevent this)
         const OptiXWrapper* existing = getWrapper(env, obj);
         if (existing != nullptr) {

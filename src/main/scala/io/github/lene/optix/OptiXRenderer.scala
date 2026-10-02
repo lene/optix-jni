@@ -234,7 +234,8 @@ class OptiXRenderer
   private[optix] def isInitialized: Boolean = nativeHandle != 0L
 
   // ---- Lifecycle @native declarations ----
-  @native private def initializeNative(maxInstances: Int): Boolean
+  // `ptxPath`: the extracted shader PTX, tried before the developer fallbacks ("" = none).
+  @native private def initializeNative(maxInstances: Int, ptxPath: String): Boolean
   @native private def disposeNative(): Unit
 
   // ---- Single-sphere legacy @native declarations ----
@@ -657,7 +658,7 @@ class OptiXRenderer
       if isInitialized then
         true  // Already initialized, return success
       else
-        val result = initializeNative(maxInstances)
+        val result = initializeNative(maxInstances, OptiXRenderer.extractedPtxPath.getOrElse(""))
         instanceCapacity.set(if result then maxInstances else 0)
         if !result then
           logger.error("Failed to initialize OptiX renderer")
@@ -674,7 +675,7 @@ class OptiXRenderer
     lifecycleLock.synchronized:
       if isInitialized then
         disposeNative()
-      val result = initializeNative(newMaxInstances)
+      val result = initializeNative(newMaxInstances, OptiXRenderer.extractedPtxPath.getOrElse(""))
       instanceCapacity.set(if result then newMaxInstances else 0)
       if !result then
         logger.error("Failed to re-initialize OptiX renderer")
@@ -725,8 +726,12 @@ object OptiXRenderer extends LazyLogging:
 
   // liboptixjni.so via the shared NativeLibrary loader, then extract the bundled
   // PTX (optix-jni-specific); both must succeed for the renderer to be usable.
-  private val libraryLoaded: Boolean =
-    NativeLibrary.load(libraryName) && extractPTX(NativeLibrary.platform()).isSuccess
+  private val extractedPtx: Try[Option[String]] = extractPTX(NativeLibrary.platform())
+  private val libraryLoaded: Boolean = NativeLibrary.load(libraryName) && extractedPtx.isSuccess
+
+  /** Absolute path of the bundled PTX, extracted into a temp directory (optix-jni#55: it used to
+    * go into `target/` under the JVM's working directory). None when the jar carries no PTX. */
+  private[optix] def extractedPtxPath: Option[String] = extractedPtx.toOption.flatten
 
   /** Returns whether `liboptixjni.so` was loaded from `java.library.path` or the classpath. */
   def isLibraryLoaded: Boolean = libraryLoaded
@@ -742,22 +747,25 @@ object OptiXRenderer extends LazyLogging:
           copyLoop()
     copyLoop()
 
-  private def extractPTX(platform: String): Try[Unit] = Try:
+  private def extractPTX(platform: String): Try[Option[String]] = Try:
     val ptxResourcePath = s"/native/$platform/optix_shaders.ptx"
     Option(getClass.getResourceAsStream(ptxResourcePath)) match
       case Some(ptxStream) =>
-        val ptxDir = new java.io.File("target/native/x86_64-linux/bin")
-        ptxDir.mkdirs()
+        val ptxDir = java.nio.file.Files.createTempDirectory("optix-jni-ptx").toFile
+        ptxDir.deleteOnExit()
         val ptxFile = new java.io.File(ptxDir, "optix_shaders.ptx")
+        ptxFile.deleteOnExit()
         val ptxOut = new FileOutputStream(ptxFile)
         try
           copyStreamToFile(ptxStream, ptxOut).get
           logger.debug(s"Extracted PTX file to: ${ptxFile.getAbsolutePath}")
+          Some(ptxFile.getAbsolutePath)
         finally
           ptxOut.close()
           ptxStream.close()
       case None =>
         logger.debug(s"PTX resource not found: $ptxResourcePath")
+        None
 
 /** Raised by [[OptiXRenderer.ensureAvailable]] when native OptiX cannot be used. */
 case class OptiXNotAvailableException(message: String) extends Exception(message)

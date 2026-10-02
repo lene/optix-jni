@@ -51,14 +51,17 @@ PipelineManager::~PipelineManager() {
 
 OptixModule PipelineManager::loadPTXModules() {
     // Try multiple PTX locations in priority order:
-    // 1. Working directory (for packaged app after OptiXRenderer extracts from JAR)
-    // 2. Build output directory (for sbt run / sbt test)
+    // 1. The PTX OptiXRenderer extracted from the jar into a temp directory (optix-jni#55)
+    // 2. Working directory and build output (developer fallbacks: sbt run / sbt test)
     // 3. Classes directory (for IntelliJ/IDE runs)
     std::vector<std::string> ptx_search_paths = {
-        "target/native/x86_64-linux/bin/optix_shaders.ptx",  // Extracted from JAR
+        "target/native/x86_64-linux/bin/optix_shaders.ptx",
         "optix-jni/target/native/x86_64-linux/bin/optix_shaders.ptx",  // sbt build output
         "optix-jni/target/classes/native/x86_64-linux/optix_shaders.ptx"  // sbt-jni managed
     };
+    if (!optix_utils::preferredPTXPath().empty()) {
+        ptx_search_paths.insert(ptx_search_paths.begin(), optix_utils::preferredPTXPath());
+    }
     std::string ptx_content = optix_utils::readPTXFile(ptx_search_paths);
 
     OptixModuleCompileOptions module_compile_options = {};
