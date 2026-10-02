@@ -55,10 +55,11 @@ short_ref() {
 # and NOT vendored (every repo's policy history starts at a different commit): it holds
 # the SHA the check was live as of. Commits at or before it are grandfathered; commits
 # after must comply. Absent file or empty value = no exemption, all history enforced.
+# The value is read from main, not the working tree: a commit in the range being checked
+# could otherwise move it forward and exempt the commits before it (optix-jni#38).
 is_bootstrapped_commit() {
-    _bsha_file="$HOOKS_DIR/bootstrap-sha.txt"
-    [ -f "$_bsha_file" ] || return 1
-    _bsha=$(cat "$_bsha_file")
+    _bsha_path="$(cd "$HOOKS_DIR" && git rev-parse --show-prefix)bootstrap-sha.txt"
+    _bsha=$(git show "$(main_ref):$_bsha_path" 2>/dev/null)
     [ -n "$_bsha" ] || return 1
     git merge-base --is-ancestor "$1" "$_bsha" 2>/dev/null
 }
