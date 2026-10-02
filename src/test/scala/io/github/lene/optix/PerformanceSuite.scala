@@ -26,9 +26,6 @@ class PerformanceSuite extends AnyFlatSpec
     with PerfGate
     with RendererFixture:
 
-  private val runningUnderSanitizer: Boolean =
-    sys.env.get("RUNNING_UNDER_COMPUTE_SANITIZER").contains("true")
-
   // Ensure library is loaded before running tests
   OptiXRenderer.isLibraryLoaded shouldBe true
 
@@ -40,8 +37,8 @@ class PerformanceSuite extends AnyFlatSpec
 
   private val defaultScene = scene("default scene")(TestScenario.default().applyTo(renderer))
 
+  // Perf-tagged tests run only under PERF_ONLY=1, never under compute-sanitizer (#47).
   private def gate(subject: Side, maxSlowdown: Double, reference: Side = defaultScene) =
-    assume(!runningUnderSanitizer, "Performance test skipped under compute-sanitizer")
     assertWithin(
       s"${subject.name} vs ${reference.name}",
       RelativeBenchmark.compare(reference, subject, maxSlowdown)
@@ -81,14 +78,16 @@ class PerformanceSuite extends AnyFlatSpec
     gate(large, MAX_SLOWDOWN_LARGE_SPHERE)
 
   it should "render with buffer reuse within its slowdown limit" taggedAs Perf in:
+    // A fully defined scene (#47: it used to set only sphere and camera and inherit the
+    // reference scene's plane and light in interleaved rounds).
     val bufferReuse = scene("buffer reuse"):
-      renderer.setSphere(Vector[3](0.0f, 0.0f, 0.0f), 1.5f)
-      renderer.setCamera(
-        Vector[3](0.0f, 0.0f, 3.0f),
-        Vector[3](0.0f, 0.0f, 0.0f),
-        Vector[3](0.0f, 1.0f, 0.0f),
-        60f
-      )
+      TestScenario.default()
+        .withSphereRadius(1.5f)
+        .withCameraEye(Vector[3](0.0f, 0.0f, 3.0f))
+        .withCameraLookAt(Vector[3](0.0f, 0.0f, 0.0f))
+        .withCameraUp(Vector[3](0.0f, 1.0f, 0.0f))
+        .withHorizontalFOV(60f)
+        .applyTo(renderer)
     gate(bufferReuse, MAX_SLOWDOWN_BUFFER_REUSE)
 
   it should "keep the antialiasing overhead within its limit" taggedAs Perf in:
