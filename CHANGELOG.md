@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `setProjectedMesh` no longer registers a mesh whose projected vertices couldn't be synchronized
+  or read back: the native call returns -2 (the Scala wrapper raises `IllegalArgumentException`)
+  instead of a mesh index with untrusted vertices and a stale AABB (#41).
+
 ### Fixed
 
 - Loading the library no longer writes `target/native/x86_64-linux/bin/optix_shaders.ptx` into

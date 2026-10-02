@@ -471,6 +471,9 @@ class OptiXRenderer
     centerZ: Float
   ): Int
 
+  // Test hook (#41): the next setProjectedMesh fails as if its readback had (-2).
+  @native private[optix] def failNextProjectionReadbackNative(): Unit
+
   @native private[optix] def updateMesh4DProjectionNative(
     meshIndex: Int,
     eyeW: Float,

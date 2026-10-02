@@ -70,6 +70,7 @@ private[optix] trait OptiXMeshApi:
       eyeW, screenW, rotXW, rotYW, rotZW,
       centerX, centerY, centerZ
     )
+    // -2: the projected vertices couldn't be synchronized or read back; nothing was registered.
     require(result >= 0, s"setProjectedMesh failed with code $result")
     result
 

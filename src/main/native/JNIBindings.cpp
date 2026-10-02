@@ -777,7 +777,8 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
  * @param centerX 3D translation X applied after projection
  * @param centerY 3D translation Y applied after projection
  * @param centerZ 3D translation Z applied after projection
- * @return mesh index (slot in triangle_meshes[]), or -1 on error
+ * @return mesh index (slot in triangle_meshes[]), -1 on error, -2 when the projected vertices
+ *         couldn't be read back (nothing registered)
  */
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshNative(
     JNIEnv* env, jobject obj,
@@ -850,6 +851,13 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshN
         return -1;
     }
     JNI_CATCH_UNKNOWN_THROW_RET(-1)
+}
+
+// Test hook (#41): the next setProjectedMesh behaves as if its readback failed.
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextProjectionReadbackNative(
+    JNIEnv* env, jobject obj) {
+    OptiXWrapper* wrapper = getWrapper(env, obj);
+    if (wrapper != nullptr) wrapper->failNextProjectionReadbackForTest();
 }
 
 /**
