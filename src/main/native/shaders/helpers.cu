@@ -1453,7 +1453,7 @@ __device__ bool traceRefractedRay(
 }
 
 /**
- * Handle metallic opaque surface with blended metallic/diffuse rendering.
+ * Colour of a surface with blended metallic/diffuse shading, without emission or fog.
  *
  * Combines reflection (metallic component) with diffuse shading (non-metallic component)
  * using the formula: final = metallic * tinted_reflection + (1-metallic) * diffuse
@@ -1461,6 +1461,7 @@ __device__ bool traceRefractedRay(
  * This implements physically-based rendering where metallic materials reflect their
  * environment tinted by their color (e.g., gold reflects with yellow tint, copper with
  * orange tint), while non-metallic portions show standard diffuse lighting.
+ * Traces a reflection ray, so the caller must be below the max ray depth.
  *
  * @param hit_point Surface hit point
  * @param ray_direction Incoming ray direction
@@ -1468,6 +1469,41 @@ __device__ bool traceRefractedRay(
  * @param material_color Material RGBA color
  * @param metallic Metallic value [0,1] (0=fully diffuse, 1=fully metallic)
  * @param depth Current ray depth
+ * @param r,g,b Output colour, 0..255 per channel
+ */
+__device__ void computeMetallicColor(
+    const float3& hit_point,
+    const float3& ray_direction,
+    const float3& normal,
+    const float4& material_color,
+    float metallic,
+    unsigned int depth,
+    unsigned int& r, unsigned int& g, unsigned int& b
+) {
+    // Trace reflection ray (metallic component)
+    unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
+    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
+
+    // Tint reflected color by material color (colored metals like gold, copper)
+    const float3 tint = make_float3(material_color.x, material_color.y, material_color.z);
+    const float tinted_r = static_cast<float>(reflect_r) * tint.x;
+    const float tinted_g = static_cast<float>(reflect_g) * tint.y;
+    const float tinted_b = static_cast<float>(reflect_b) * tint.z;
+
+    // Compute diffuse component (non-metallic)
+    unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
+    computeDiffuseColor(hit_point, normal, material_color, diffuse_r, diffuse_g, diffuse_b);
+
+    // Blend: final = metallic * reflection + (1 - metallic) * diffuse
+    r = static_cast<unsigned int>(fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), RayTracingConstants::COLOR_BYTE_MAX));
+    g = static_cast<unsigned int>(fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), RayTracingConstants::COLOR_BYTE_MAX));
+    b = static_cast<unsigned int>(fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), RayTracingConstants::COLOR_BYTE_MAX));
+}
+
+/**
+ * Handle metallic opaque surface: computeMetallicColor plus emission and fog, written to the
+ * payload; at the max ray depth it falls back to the final non-recursive ray.
+ *
  * @param emission Emission intensity (0.0-10.0)
  */
 __device__ void handleMetallicOpaque(
@@ -1493,24 +1529,8 @@ __device__ void handleMetallicOpaque(
         return;
     }
 
-    // Trace reflection ray (metallic component)
-    unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
-
-    // Tint reflected color by material color (colored metals like gold, copper)
-    const float3 tint = make_float3(material_color.x, material_color.y, material_color.z);
-    const float tinted_r = static_cast<float>(reflect_r) * tint.x;
-    const float tinted_g = static_cast<float>(reflect_g) * tint.y;
-    const float tinted_b = static_cast<float>(reflect_b) * tint.z;
-
-    // Compute diffuse component (non-metallic)
-    unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
-    computeDiffuseColor(hit_point, normal, material_color, diffuse_r, diffuse_g, diffuse_b);
-
-    // Blend: final = metallic * reflection + (1 - metallic) * diffuse
-    unsigned int r = static_cast<unsigned int>(fminf(metallic * tinted_r + (1.0f - metallic) * static_cast<float>(diffuse_r), RayTracingConstants::COLOR_BYTE_MAX));
-    unsigned int g = static_cast<unsigned int>(fminf(metallic * tinted_g + (1.0f - metallic) * static_cast<float>(diffuse_g), RayTracingConstants::COLOR_BYTE_MAX));
-    unsigned int b = static_cast<unsigned int>(fminf(metallic * tinted_b + (1.0f - metallic) * static_cast<float>(diffuse_b), RayTracingConstants::COLOR_BYTE_MAX));
+    unsigned int r = 0, g = 0, b = 0;
+    computeMetallicColor(hit_point, ray_direction, normal, material_color, metallic, depth, r, g, b);
 
     // Add emission
     addEmissionToColor(r, g, b, material_color, emission);

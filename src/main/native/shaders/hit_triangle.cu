@@ -378,9 +378,14 @@ extern "C" __global__ void __closesthit__triangle() {
             return;
         }
 
-        // Compute diffuse shading for this face (as if fully opaque)
+        // Shade this face as if fully opaque, metallic included: plain diffuse made the fading
+        // hole caps of a gold sponge brighter than the opaque metal around them.
         unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
-        computeDiffuseColor(geom.hit_point, geom.normal, mesh_color, diffuse_r, diffuse_g, diffuse_b);
+        if (metallic > 0.0f)
+            computeMetallicColor(geom.hit_point, ray_direction, geom.normal, mesh_color, metallic,
+                                 depth, diffuse_r, diffuse_g, diffuse_b);
+        else
+            computeDiffuseColor(geom.hit_point, geom.normal, mesh_color, diffuse_r, diffuse_g, diffuse_b);
 
         // Trace continuation ray through the face to get what lies behind
         unsigned int through_r = diffuse_r, through_g = diffuse_g, through_b = diffuse_b;

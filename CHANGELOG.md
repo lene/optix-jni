@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Loading the library no longer writes `target/native/x86_64-linux/bin/optix_shaders.ptx` into
   the JVM's working directory: the bundled PTX is extracted into a temp directory and native code
   loads it from there; the relative paths remain as developer fallbacks (#55).
+- A partly covering (coverage-alpha) triangle instance with a metallic material is shaded as
+  metal, blended with what lies behind it. It used plain diffuse shading, so the fading hole
+  caps of a fractional gold sponge came out brighter than the opaque metal around them
+  (lene/menger#55).
 
 ## [0.4.3] - 2026-10-01
 
