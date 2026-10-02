@@ -856,8 +856,11 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshN
 // Test hook (#41): the next setProjectedMesh behaves as if its readback failed.
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextProjectionReadbackNative(
     JNIEnv* env, jobject obj) {
-    OptiXWrapper* wrapper = getWrapper(env, obj);
-    if (wrapper != nullptr) wrapper->failNextProjectionReadbackForTest();
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) wrapper->failNextProjectionReadbackForTest();
+    }
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**
