@@ -38,6 +38,20 @@ enum Verdict:
   case Fail(measurement: Measurement)
   case Inconclusive(measurement: Measurement, reason: String)
 
+/** What a sample is timed with. `ThreadCpu` counts only the CPU time of the measuring thread:
+  * under load it ignores time spent waiting for a CPU (menger#45: wall-time ratios of CPU-bound
+  * gates spread 2-3x with all cores busy), but it misses work done on other threads (GC, JIT,
+  * anything the op parallelises), so it suits single-threaded CPU-bound work only. */
+enum Clock:
+  case Wall, ThreadCpu
+
+  def now(): Long = this match
+    case Wall => System.nanoTime()
+    case ThreadCpu => Clock.threads.getCurrentThreadCpuTime
+
+object Clock:
+  private val threads = java.lang.management.ManagementFactory.getThreadMXBean
+
 final case class BenchConfig(
     rounds: Int = BenchConfig.DefaultRounds,
     warmupRounds: Int = BenchConfig.DefaultWarmupRounds,
@@ -45,7 +59,8 @@ final case class BenchConfig(
     maxBatchReps: Int = BenchConfig.DefaultMaxBatchReps,
     confidence: Double = BenchConfig.DefaultConfidence,
     maxSpread: Double = BenchConfig.DefaultMaxSpread,
-    collectGarbageBeforeSample: Boolean = false
+    collectGarbageBeforeSample: Boolean = false,
+    clock: Clock = Clock.Wall
 ):
   require(rounds >= BenchConfig.MinRounds, s"rounds must be >= ${BenchConfig.MinRounds}")
   require(confidence > 0.0 && confidence < 1.0, "confidence must be in (0, 1)")
@@ -63,13 +78,17 @@ object BenchConfig:
   // Below 9 rounds no order-statistic interval reaches 95% coverage.
   val MinRounds = 9
 
-  /** For CPU-bound work in the JVM, where garbage-collection pauses and JIT compilation
-    * dominate short samples: collect garbage before each (untimed), warm up longer so the JIT
-    * settles, and time longer batches so the remaining pauses average out. */
+  /** For single-threaded CPU-bound work in the JVM, where garbage-collection pauses and JIT
+    * compilation dominate short samples: collect garbage before each (untimed), warm up longer
+    * so the JIT settles, time longer batches so the remaining pauses average out, and time on
+    * the thread CPU clock so background load doesn't count. Allocation-heavy subjects also need
+    * a fixed, pre-touched heap in the forked test JVM (menger#45: heap resizing after each
+    * explicit GC made the kernel fault in fresh pages, 23-59% of the sample time). */
   val JvmCpu: BenchConfig = BenchConfig(
     warmupRounds = 5,
     minBatchNanos = 100_000_000L,
-    collectGarbageBeforeSample = true
+    collectGarbageBeforeSample = true,
+    clock = Clock.ThreadCpu
   )
 
 /** Interleaved relative benchmark: the reference and the subject are measured back to back in
@@ -148,9 +167,9 @@ object RelativeBenchmark:
     if config.collectGarbageBeforeSample then System.gc()
     side.prepare()
     side.op()
-    val start = System.nanoTime()
+    val start = config.clock.now()
     (1 to reps).foreach(_ => side.op())
-    (System.nanoTime() - start).toDouble / reps
+    (config.clock.now() - start).toDouble / reps
 
 /** Turns a verdict into a test outcome: FAIL fails the test, INCONCLUSIVE cancels it (the
   * `perf` suite reports cancellations as a visible SKIP, never as a failure). */
