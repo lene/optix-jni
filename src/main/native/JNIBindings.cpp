@@ -1,6 +1,7 @@
 #include <jni.h>
 #include "include/OptiXWrapper.h"
 #include "include/MaterialPayload.h"
+#include "include/OptiXFileUtils.h"
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <cstring>
@@ -80,8 +81,15 @@ static void throwException(JNIEnv* env, const char* className, const char* msg) 
     catch (...) { throwException(env, OPTIX_EXCEPTION_CLASS, \
         (std::string("Unknown native error in ") + __func__).c_str()); return ret; }
 
-JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances) {
+JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_initializeNative(JNIEnv* env, jobject obj, jint maxInstances, jstring ptxPath) {
     try {
+        if (ptxPath != nullptr) {
+            const char* path = env->GetStringUTFChars(ptxPath, nullptr);
+            if (path != nullptr) {
+                optix_utils::preferredPTXPath() = path;
+                env->ReleaseStringUTFChars(ptxPath, path);
+            }
+        }
         // Check if already initialized (defensive check - Scala layer should prevent this)
         const OptiXWrapper* existing = getWrapper(env, obj);
         if (existing != nullptr) {
@@ -769,7 +777,8 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
  * @param centerX 3D translation X applied after projection
  * @param centerY 3D translation Y applied after projection
  * @param centerZ 3D translation Z applied after projection
- * @return mesh index (slot in triangle_meshes[]), or -1 on error
+ * @return mesh index (slot in triangle_meshes[]), -1 on error, -2 when the projected vertices
+ *         couldn't be read back (nothing registered)
  */
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshNative(
     JNIEnv* env, jobject obj,
@@ -842,6 +851,16 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshN
         return -1;
     }
     JNI_CATCH_UNKNOWN_THROW_RET(-1)
+}
+
+// Test hook (#41): the next setProjectedMesh behaves as if its readback failed.
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextProjectionReadbackNative(
+    JNIEnv* env, jobject obj) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper != nullptr) wrapper->failNextProjectionReadbackForTest();
+    }
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**

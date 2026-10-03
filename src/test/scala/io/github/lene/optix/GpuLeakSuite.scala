@@ -19,6 +19,10 @@ import org.scalatest.matchers.should.Matchers
   * lazy allocations (context/module/cached GAS) and driver granularity — measured per test run
   * (Sprint 36 D3) via [[measureToleranceBytes]] rather than a guessed flat constant.
   *
+  * Memory is read per process (2026-10-02): [[processGpuMemoryBytes]], the driver's accounting
+  * for this JVM, replaced device-wide free memory (cudaMemGetInfo), which counted every other
+  * program's VRAM use as a leak — a video player playing next to the run reported -122 MB.
+  *
   * Exercises the instance + gas_registry path that Task 2.3 fixed, so a regression there fails here.
   * Covers every GAS-owning geometry kind, not only spheres — see [[addMixedGeometryRenderClear]].
   */
@@ -37,41 +41,45 @@ class GpuLeakSuite extends AnyFlatSpec with Matchers with LazyLogging {
   private val ToleranceStddevMultiplier = 5.0
   private val MinimumToleranceBytes = 1L * 1024 * 1024 // guards a degenerate all-identical-reads case
 
-  // Investigated empirically (Sprint 36 D3, 2026-08-09): unlike same-renderer idle reads
-  // (near-zero stddev, real leak noise there), the lifetime-loop comparison's baseline
-  // (from `warm`, disposed) vs. after (from a freshly created `probe`, post 20 other
-  // create/dispose cycles) reproduced an exact, deterministic -20 MB delta across three
-  // consecutive full runs — a fixed cross-CUDA-context driver-allocator effect, not
-  // random variance. A same-process k-sample calibration structurally cannot see it: the
-  // calibration and the real measurement share the same driver session, so both observe
-  // the identical deterministic value, and stddev-across-samples reads as ~0 either way.
-  // This is exactly the "-20 MB pure noise" QA_STRATEGY.md's O4 already documented from
-  // prior investigation. Floor set from that real, reproduced number plus margin — not a
-  // guess, but honestly not derived from same-run variance either.
-  private val MinimumCrossContextToleranceBytes = 32L * 1024 * 1024
+  // The lifetime test used a 32 MB floor for a deterministic -20 MB cross-context effect
+  // (Sprint 36 D3) that device-wide free memory showed; per-process reads don't (baseline and
+  // after were byte-identical on 2026-10-02), so it uses the same 1 MiB floor as the others.
 
-  private def toleranceFromReads(reads: Seq[Double], minimumBytes: Long = MinimumToleranceBytes): Long = {
+  private def toleranceFromReads(reads: Seq[Double]): Long = {
     val mean = reads.sum / reads.length
     val stddev = math.sqrt(reads.map(v => math.pow(v - mean, 2)).sum / reads.length)
-    (stddev * ToleranceStddevMultiplier).toLong.max(minimumBytes)
+    (stddev * ToleranceStddevMultiplier).toLong.max(MinimumToleranceBytes)
   }
 
-  /** Repeated freeGpuMemoryBytes() reads with nothing happening between them — measures
-    * the noise floor on the given, already-initialized renderer. Call right after the
+  /** GPU memory held by this JVM, in bytes, from the driver's per-process accounting
+    * (`nvidia-smi --query-compute-apps`, matched by PID; MiB resolution). Only this process's
+    * allocations show, so other programs on the same GPU can't look like a leak. 0 when the
+    * process holds no CUDA context. */
+  private def processGpuMemoryBytes(): Long = {
+    val pid = ProcessHandle.current().pid().toString
+    val out = scala.sys.process.Process(Seq(
+      "nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"
+    )).!!
+    out.linesIterator.map(_.split(",").map(_.trim)).collectFirst {
+      case Array(p, mib) if p == pid => mib.toLong * 1024 * 1024
+    }.getOrElse(0L)
+  }
+
+  private def nvidiaSmiAvailable: Boolean = scala.util.Try(processGpuMemoryBytes()).isSuccess
+
+  /** Repeated processGpuMemoryBytes() reads with nothing happening between them — measures
+    * the noise floor with an already-initialized renderer. Call right after the
     * existing warmup + baseline read, before the real leak-inducing work, so the noise
     * reflects only steady-state driver jitter, not first-call lazy allocation. Use this
     * when baseline and after are read from the SAME live renderer (the reload-loop test).
     */
-  private def measureToleranceBytes(r: OptiXRenderer): Long =
-    toleranceFromReads((1 to IdleCalibrationIterations).map(_ => r.freeGpuMemoryBytes().toDouble))
+  private def measureToleranceBytes(): Long =
+    toleranceFromReads((1 to IdleCalibrationIterations).map(_ => processGpuMemoryBytes().toDouble))
 
   /** Like [[measureToleranceBytes]], but for a comparison whose baseline and after
     * readings come from DIFFERENT renderer instances (the lifetime-loop test: baseline
-    * from `warm`, disposed, `after` from a freshly created `probe`). Cross-CUDA-context
-    * allocator behavior is a materially larger, different noise source than same-context
-    * repeated reads — measured on this machine: ~0 bytes same-renderer vs. ~20 MB
-    * across a dispose/recreate, exactly the "-20 MB pure noise" QA_STRATEGY.md's O4
-    * cites — so it needs its own k independent create/init/read/dispose samples.
+    * from `warm`, `after` from a freshly created `probe`), so it samples k independent
+    * create/init/read/dispose cycles.
     */
   private def measureToleranceBytesAcrossRenderers(): Long =
     toleranceFromReads(
@@ -81,10 +89,9 @@ class GpuLeakSuite extends AnyFlatSpec with Matchers with LazyLogging {
           r.initialize()
           setupCamera(r)
           addMixedGeometryRenderClear(r)
-          r.freeGpuMemoryBytes().toDouble
+          processGpuMemoryBytes().toDouble
         } finally r.dispose()
-      },
-      minimumBytes = MinimumCrossContextToleranceBytes
+      }
     )
 
   private def setupCamera(r: OptiXRenderer): Unit =
@@ -118,18 +125,19 @@ class GpuLeakSuite extends AnyFlatSpec with Matchers with LazyLogging {
 
   "clear -> re-add reload loop" should "not leak GPU memory across scene reloads" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
+    assume(nvidiaSmiAvailable, "nvidia-smi not available for per-process GPU memory")
     val r = new OptiXRenderer()
     try {
       r.initialize() should be (true)
       setupCamera(r)
       // Warm up once so lazy context/module/GAS allocation is out of the way, then baseline.
       addMixedGeometryRenderClear(r)
-      val baseline = r.freeGpuMemoryBytes()
-      val tolerance = measureToleranceBytes(r)
+      val baseline = processGpuMemoryBytes()
+      val tolerance = measureToleranceBytes()
       logger.info(s"measured noise-floor tolerance: $tolerance bytes over $IdleCalibrationIterations idle reads")
       for (_ <- 1 to Iterations) addMixedGeometryRenderClear(r)
-      val after = r.freeGpuMemoryBytes()
-      val leaked = baseline - after
+      val after = processGpuMemoryBytes()
+      val leaked = after - baseline
       logger.info(s"reload leak check: baseline=$baseline after=$after leaked=$leaked over $Iterations iters")
       math.abs(leaked) should be <= tolerance
     } finally r.dispose()
@@ -160,16 +168,17 @@ class GpuLeakSuite extends AnyFlatSpec with Matchers with LazyLogging {
   // loop above never uploads a projected mesh, so it couldn't see this.
   "clear -> re-add projected 4D mesh loop" should "not leak GPU memory across rebuilds" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
+    assume(nvidiaSmiAvailable, "nvidia-smi not available for per-process GPU memory")
     val r = new OptiXRenderer()
     try {
       r.initialize() should be (true)
       setupCamera(r)
       addProjectedMeshRenderClear(r)
-      val baseline = r.freeGpuMemoryBytes()
-      val tolerance = measureToleranceBytes(r)
+      val baseline = processGpuMemoryBytes()
+      val tolerance = measureToleranceBytes()
       for (_ <- 1 to Iterations) addProjectedMeshRenderClear(r)
-      val after = r.freeGpuMemoryBytes()
-      val leaked = baseline - after
+      val after = processGpuMemoryBytes()
+      val leaked = after - baseline
       logger.info(s"projected-mesh leak check: baseline=$baseline after=$after leaked=$leaked over $Iterations iters")
       math.abs(leaked) should be <= tolerance
     } finally r.dispose()
@@ -177,12 +186,13 @@ class GpuLeakSuite extends AnyFlatSpec with Matchers with LazyLogging {
 
   "create/render/dispose loop" should "not leak GPU memory across renderer lifetimes" taggedAs (Slow) in {
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
+    assume(nvidiaSmiAvailable, "nvidia-smi not available for per-process GPU memory")
     // Baseline measured from a fresh live context so it is comparable to the post-loop probe.
     val warm = new OptiXRenderer()
     warm.initialize() should be (true)
     setupCamera(warm)
     addMixedGeometryRenderClear(warm)
-    val baseline = warm.freeGpuMemoryBytes()
+    val baseline = processGpuMemoryBytes()
     warm.dispose()
     val tolerance = measureToleranceBytesAcrossRenderers()
     logger.info(s"measured noise-floor tolerance: $tolerance bytes over $IdleCalibrationIterations create/dispose cycles")
@@ -199,8 +209,10 @@ class GpuLeakSuite extends AnyFlatSpec with Matchers with LazyLogging {
     val probe = new OptiXRenderer()
     try {
       probe.initialize() should be (true)
-      val after = probe.freeGpuMemoryBytes()
-      val leaked = baseline - after
+      setupCamera(probe)
+      addMixedGeometryRenderClear(probe)
+      val after = processGpuMemoryBytes()
+      val leaked = after - baseline
       logger.info(s"lifetime leak check: baseline=$baseline after=$after leaked=$leaked over $Iterations iters")
       math.abs(leaked) should be <= tolerance
     } finally probe.dispose()

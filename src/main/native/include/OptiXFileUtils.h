@@ -8,6 +8,14 @@
 
 namespace optix_utils {
 
+// Absolute path of the PTX the JVM side extracted from the jar into a temp directory
+// (optix-jni#55); tried before the relative developer paths when non-empty. One PTX per
+// process, so a process-wide value is enough.
+inline std::string& preferredPTXPath() {
+    static std::string path;
+    return path;
+}
+
 // Read PTX file from first available location in search paths
 // Throws runtime_error with detailed diagnostic if file not found
 inline std::string readPTXFile(const std::vector<std::string>& search_paths) {

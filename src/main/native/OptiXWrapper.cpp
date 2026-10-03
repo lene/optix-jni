@@ -55,6 +55,7 @@ struct OptiXWrapper::Impl {
     bool initialized = false;
     bool denoising_enabled = false;
     bool ser_supported = false;          // Ada Lovelace+ GPU supports shader execution reordering
+    bool fail_next_projection_readback = false;  // test hook for setProjectedMesh's -2 (#41)
 
     // Triangle mesh GPU state
     struct TriangleMeshGPU {
@@ -744,8 +745,7 @@ int OptiXWrapper::setProjectedMesh(
     mesh_entry.gas_built = false;
 
     // Compute mesh AABB by reading back projected vertices. If the sync above already failed,
-    // the device buffer's contents are not trustworthy — don't read back and silently compute
-    // an AABB from garbage; keep soft-continuing (S2 #7) but skip this specific step and say so.
+    // the device buffer's contents are not trustworthy.
     std::vector<float> projected(num_vertices * vertex_stride);
     bool memcpy_ok = sync_ok;
     if (sync_ok) {
@@ -760,30 +760,34 @@ int OptiXWrapper::setProjectedMesh(
             memcpy_ok = false;
         }
     }
+    if (impl->fail_next_projection_readback) {
+        impl->fail_next_projection_readback = false;
+        memcpy_ok = false;
+    }
     if (!memcpy_ok) {
-        // Genuinely skip the update — do NOT touch impl->mesh_aabb_min/max here. The
-        // sentinel reset below is only safe when the loop that follows is guaranteed to
-        // run and replace it; on the failure path it previously replaced a valid (or
-        // zero-initialized) AABB with an inverted {FLT_MAX}/{-FLT_MAX} box that nothing
-        // downstream re-validates — render()'s triangle-mesh caustics-target computation
-        // reads mesh_aabb_min/max unconditionally and transforms it, turning the sentinel
-        // into Inf/NaN in the GPU caustics buffer. Leaving the field untouched keeps
-        // whatever finite value it already held (a prior successful registration, or the
-        // {0,0,0}/{0,0,0} Impl default) — degenerate at worst, never non-finite.
-        OPTIX_LOG(ERROR) << "[OptiX] skipping mesh AABB update — projected vertex readback unavailable"
+        // A mesh whose projected vertices can't be trusted is not registered: it would render
+        // garbage and leave a stale AABB, and the caller couldn't tell (#41; it used to
+        // soft-continue). impl->mesh_aabb_min/max stay untouched, so they never turn
+        // non-finite (render()'s caustics-target computation reads them unconditionally).
+        OPTIX_LOG(ERROR) << "[OptiX] setProjectedMesh: projected vertices unavailable, mesh not registered"
                   << std::endl;
-    } else {
-        impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
-        impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-        for (unsigned int i = 0; i < num_vertices; ++i) {
-            const float* v = projected.data() + i * vertex_stride;
-            impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
-            impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
-            impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
-            impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
-            impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
-            impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
-        }
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.d_indices));
+        cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_quads_4d));
+        if (mesh_entry.projection4d.d_uvs)
+            cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
+        return -2;
+    }
+    impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
+    impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    for (unsigned int i = 0; i < num_vertices; ++i) {
+        const float* v = projected.data() + i * vertex_stride;
+        impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
+        impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
+        impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
+        impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
+        impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
+        impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
     }
 
     int mesh_index = static_cast<int>(impl->triangle_meshes.size());
@@ -796,6 +800,10 @@ int OptiXWrapper::setProjectedMesh(
     mesh_params.vertex_stride = vertex_stride;
 
     return mesh_index;
+}
+
+void OptiXWrapper::failNextProjectionReadbackForTest() {
+    impl->fail_next_projection_readback = true;
 }
 
 // Re-projects an already-uploaded 4D mesh in place.

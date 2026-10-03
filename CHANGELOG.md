@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.4] - 2026-10-03
+
+### Changed
+
+- `setProjectedMesh` no longer registers a mesh whose projected vertices couldn't be synchronized
+  or read back: the native call returns -2 (the Scala wrapper raises `IllegalArgumentException`)
+  instead of a mesh index with untrusted vertices and a stale AABB (#41).
+
+### Fixed
+
+- Loading the library no longer writes `target/native/x86_64-linux/bin/optix_shaders.ptx` into
+  the JVM's working directory: the bundled PTX is extracted into a temp directory and native code
+  loads it from there; the relative paths remain as developer fallbacks (#55).
+- A partly covering (coverage-alpha) triangle instance with a metallic material is shaded as
+  metal, blended with what lies behind it. It used plain diffuse shading, so the fading hole
+  caps of a fractional gold sponge came out brighter than the opaque metal around them
+  (lene/menger#55).
+
 ## [0.4.3] - 2026-10-01
 
 ### Added
@@ -614,6 +632,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.4]: https://github.com/lene/optix-jni/compare/0.4.3...0.4.4
 [0.4.3]: https://github.com/lene/optix-jni/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/lene/optix-jni/compare/0.4.1...0.4.2
 [0.4.1]: https://github.com/lene/optix-jni/compare/0.4.0...0.4.1

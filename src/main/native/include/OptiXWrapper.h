@@ -50,7 +50,9 @@ public:
     // - rotXW_deg / rotYW_deg / rotZW_deg: 4D rotation in degrees, composed
     //   on the host as R_xw * R_yw * R_zw (matches Rotation.scala).
     // - center_{x,y,z}: 3D translation applied after projection.
-    // Returns the mesh index (slot in triangle_meshes[]).
+    // Returns the mesh index (slot in triangle_meshes[]); -1 for bad input or a failed
+    // allocation/upload/launch, -2 when the projected vertices couldn't be synchronized or read
+    // back (nothing is registered then; #41).
     // The 4D and projected buffers stay resident on the device for the
     // mesh's lifetime so Cut F's updateMesh4DProjection can re-launch the
     // kernel without re-uploading. Generalized: verts_per_face allows
@@ -64,6 +66,9 @@ public:
         float rotXW_deg, float rotYW_deg, float rotZW_deg,
         float center_x, float center_y, float center_z
     );
+
+    // Test hook: the next setProjectedMesh behaves as if its readback failed (-2).
+    void failNextProjectionReadbackForTest();
 
     // Backward-compatible quad-only alias
     int setTriangleMesh4DQuads(
