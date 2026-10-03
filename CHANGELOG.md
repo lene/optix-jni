@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `setInstanceCoverage(instanceId, coverage)`: how much of a triangle instance is present
+  (0..1, default 1), separate from its material's alpha. Coverage c renders c × the instance +
+  (1 − c) × what lies behind it, for every material, and weakens its shadow accordingly. Fades a
+  refractive instance, whose alpha is Beer-Lambert absorption and couldn't: the hole caps of a
+  fractional glass or film sponge looked the same at every fractional level (lene/menger#56).
+  For a non-refractive material, coverage c renders exactly like alpha c did. Returns -1 for an
+  unknown instance id; throws `IllegalArgumentException` outside [0, 1].
+
 ### Fixed
 
 - `OptiXRenderer.extractedPtxPath` returns a `String` (empty when the jar carries no PTX)

@@ -352,6 +352,15 @@ class OptiXRenderer
   def setInstanceTransform(instanceId: Int, transform: Array[Float]): Int =
     setInstanceTransformNative(instanceId, transform)
 
+  // Set how much of a triangle instance is present, 0..1 (default 1), separate from its
+  // material's alpha: coverage c renders c * the instance + (1 - c) * what lies behind it, for
+  // every material. Fades an instance in or out; for a refractive material alpha is absorption
+  // and can't do that. Cheap like setInstanceTransform. Returns 0, or -1 for an unknown
+  // instance id; throws IllegalArgumentException outside [0, 1].
+  def setInstanceCoverage(instanceId: Int, coverage: Float): Int =
+    require(coverage >= 0f && coverage <= 1f, s"coverage must be in [0, 1], got $coverage")
+    setInstanceCoverageNative(instanceId, coverage)
+
   // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
   // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
   // updates such as a 4D fractal's projection (eye/screen/rotation). Returns 0 on ok.
@@ -368,6 +377,7 @@ class OptiXRenderer
       instanceId: Int, material: Array[Float]): Int
   @native private def setInstanceTransformNative(
       instanceId: Int, transform: Array[Float]): Int
+  @native private def setInstanceCoverageNative(instanceId: Int, coverage: Float): Int
   @native private def updateCustomGeometryInstanceDataNative(
       instanceId: Int, customData: Array[Byte]): Int
 
