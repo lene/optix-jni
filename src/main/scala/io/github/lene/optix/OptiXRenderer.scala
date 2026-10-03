@@ -661,7 +661,7 @@ class OptiXRenderer
       if isInitialized then
         true  // Already initialized, return success
       else
-        val result = initializeNative(maxInstances, OptiXRenderer.extractedPtxPath.getOrElse(""))
+        val result = initializeNative(maxInstances, OptiXRenderer.extractedPtxPath)
         instanceCapacity.set(if result then maxInstances else 0)
         if !result then
           logger.error("Failed to initialize OptiX renderer")
@@ -678,7 +678,7 @@ class OptiXRenderer
     lifecycleLock.synchronized:
       if isInitialized then
         disposeNative()
-      val result = initializeNative(newMaxInstances, OptiXRenderer.extractedPtxPath.getOrElse(""))
+      val result = initializeNative(newMaxInstances, OptiXRenderer.extractedPtxPath)
       instanceCapacity.set(if result then newMaxInstances else 0)
       if !result then
         logger.error("Failed to re-initialize OptiX renderer")
@@ -733,8 +733,10 @@ object OptiXRenderer extends LazyLogging:
   private val libraryLoaded: Boolean = NativeLibrary.load(libraryName) && extractedPtx.isSuccess
 
   /** Absolute path of the bundled PTX, extracted into a temp directory (optix-jni#55: it used to
-    * go into `target/` under the JVM's working directory). None when the jar carries no PTX. */
-  private[optix] def extractedPtxPath: Option[String] = extractedPtx.toOption.flatten
+    * go into `target/` under the JVM's working directory). Empty when the jar carries no PTX.
+    * A String, not an Option: `private[optix]` is public in bytecode, and the JVM-facing API
+    * exposes no Scala types (#59). */
+  private[optix] def extractedPtxPath: String = extractedPtx.toOption.flatten.getOrElse("")
 
   /** Returns whether `liboptixjni.so` was loaded from `java.library.path` or the classpath. */
   def isLibraryLoaded: Boolean = libraryLoaded
