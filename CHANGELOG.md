@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.5] - 2026-10-03
+
+### Added
+
+- `setInstanceCoverage(instanceId, coverage)`: how much of a triangle instance is present
+  (0..1, default 1), separate from its material's alpha. Coverage c renders c × the instance +
+  (1 − c) × what lies behind it, for every material, and weakens its shadow accordingly. Fades a
+  refractive instance, whose alpha is Beer-Lambert absorption and couldn't: the hole caps of a
+  fractional glass or film sponge looked the same at every fractional level (lene/menger#56).
+  For a non-refractive material, coverage c renders exactly like alpha c did. Returns -1 for an
+  unknown instance id; throws `IllegalArgumentException` outside [0, 1].
+
+### Fixed
+
+- `OptiXRenderer.extractedPtxPath` returns a `String` (empty when the jar carries no PTX)
+  instead of `Option[String]`: `private[optix]` is public in bytecode, so 0.4.4 exposed a Scala
+  type to Java callers. A new ArchUnit rule keeps Scala types out of JVM-public method
+  signatures (#59).
+
 ## [0.4.4] - 2026-10-03
 
 ### Changed
@@ -632,6 +651,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.5]: https://github.com/lene/optix-jni/compare/0.4.4...0.4.5
 [0.4.4]: https://github.com/lene/optix-jni/compare/0.4.3...0.4.4
 [0.4.3]: https://github.com/lene/optix-jni/compare/0.4.2...0.4.3
 [0.4.2]: https://github.com/lene/optix-jni/compare/0.4.1...0.4.2

@@ -1728,6 +1728,13 @@ __device__ void getInstanceMaterial(float4& color, float& ior) {
     }
 }
 
+/** How much of the current hit instance is present (setInstanceCoverage), 1 outside IAS mode. */
+__device__ float getInstanceCoverage() {
+    if (params.use_ias && params.instance_materials)
+        return params.instance_materials[optixGetInstanceId()].coverage;
+    return 1.0f;
+}
+
 /**
  * Get material properties including PBR values for the current hit instance.
  *

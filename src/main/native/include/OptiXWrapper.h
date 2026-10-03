@@ -257,6 +257,10 @@ public:
     // Cheap: marks only the top-level IAS dirty; no GAS is rebuilt. Returns 0, or -1
     // for an unknown instance id.
     int setInstanceTransform(int instanceId, const float* transform);
+    // Set how much of a triangle instance is present (0..1, default 1), separate from its
+    // material's alpha: coverage c renders c * the instance + (1 - c) * what lies behind it.
+    // Marks only the IAS dirty. Returns 0, or -1 for an unknown instance id.
+    int setInstanceCoverage(int instanceId, float coverage);
     // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
     // Cheap: patches the CPU blob and, if the GPU buffer already exists, memcpy's just
     // this instance's slot — no GAS/IAS rebuild (custom AABBs are pose-independent, e.g.

@@ -13,7 +13,9 @@ class PtxExtractionSuite extends AnyFlatSpec with Matchers:
 
   "OptiXRenderer" should "extract the bundled PTX into a temp directory, not the working directory" in:
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not available")
-    val path = Paths.get(OptiXRenderer.extractedPtxPath.getOrElse(fail("no PTX was extracted")))
+    val extracted = OptiXRenderer.extractedPtxPath
+    if extracted.isEmpty then fail("no PTX was extracted")
+    val path = Paths.get(extracted)
     path.isAbsolute shouldBe true
     path.startsWith(Paths.get(System.getProperty("java.io.tmpdir"))) shouldBe true
     Files.size(path) should be > 0L

@@ -318,6 +318,9 @@ extern "C" __global__ void __closesthit__triangle() {
     writeDenoiseGuides(mesh_color, geom.normal);
 
     const float mesh_alpha = mesh_color.w;
+    // How much of this instance is present (setInstanceCoverage), separate from mesh_alpha:
+    // for a refractive material alpha is Beer-Lambert absorption, so it can't fade an instance.
+    const float instance_coverage = getInstanceCoverage();
 
     // Handle fully transparent triangles
     if (mesh_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
@@ -326,8 +329,9 @@ extern "C" __global__ void __closesthit__triangle() {
         return;
     }
 
-    // Handle fully opaque triangles with metallic/diffuse blending
-    if (mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
+    // Handle fully opaque, fully present triangles with metallic/diffuse blending
+    if (mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD
+        && instance_coverage >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
         // Check if material has any metallic component
         if (metallic > 0.0f) {
             handleMetallicOpaque(geom.hit_point, ray_direction, geom.normal, mesh_color, metallic, depth);
@@ -358,18 +362,27 @@ extern "C" __global__ void __closesthit__triangle() {
     // Refractive materials (IOR > 1.05) must not use coverage blend — neither for material
     // alpha (glass alpha=0.02 is Beer-Lambert, not coverage) nor for per-vertex alpha (glass
     // sponge skin faces must use the Fresnel/refraction path, not diffuse blend).
+    //
+    // 3. Instance coverage (setInstanceCoverage) multiplies into both: it fades any instance,
+    //    including an opaque material of any IOR (shaded as opaque, then blended) and a
+    //    refractive one (refractive blend below), e.g. a fractional 4D sponge's glass hole caps.
     const bool is_refractive = mesh_ior > 1.05f;  // same threshold used in caustics and IAS setup
     const bool has_vertex_alpha_channel = active_vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
-    const float coverage_alpha = has_vertex_alpha_channel ? geom.vertex_alpha : mesh_alpha;
-    const bool use_coverage_blend =
-        (!is_refractive && has_vertex_alpha_channel && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD) ||
-        (!has_vertex_alpha_channel && !is_refractive && params.use_ias && mesh_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD);
+    const bool is_opaque_material = mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD;
+    // Legacy alpha-as-coverage: vertex alpha, or a non-refractive IAS instance's material alpha.
+    const float alpha_coverage = has_vertex_alpha_channel ? geom.vertex_alpha
+        : (params.use_ias ? mesh_alpha : 1.0f);
+    const float coverage_alpha = alpha_coverage * instance_coverage;
+    const bool use_coverage_blend = coverage_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD
+        && (!is_refractive || is_opaque_material);
 
-    // Refractive skin faces (glass sponge fractional level boundaries): blend Fresnel result
-    // with a straight-through continuation ray weighted by vertex_alpha.  vertex_alpha * fresnel
-    // + (1 - vertex_alpha) * through gives correct partial-presence glass appearance.
-    const bool use_refractive_coverage_blend = is_refractive && has_vertex_alpha_channel
-        && geom.vertex_alpha < ALPHA_FULLY_OPAQUE_THRESHOLD;
+    // Refractive skin faces (glass sponge fractional level boundaries) and refractive instances
+    // with coverage < 1: blend the Fresnel result with a straight-through continuation ray,
+    // coverage * fresnel + (1 - coverage) * through, for a correct partial-presence glass look.
+    const float refractive_coverage =
+        (has_vertex_alpha_channel ? geom.vertex_alpha : 1.0f) * instance_coverage;
+    const bool use_refractive_coverage_blend = is_refractive && !is_opaque_material
+        && refractive_coverage < ALPHA_FULLY_OPAQUE_THRESHOLD;
 
     if (use_coverage_blend) {
         if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
@@ -458,8 +471,8 @@ extern "C" __global__ void __closesthit__triangle() {
                 ? payloadToFloat3(thru_r, thru_g, thru_b)
                 : fresnel_color;
 
-        // Blend: vertex_alpha * fresnel + (1 - vertex_alpha) * through
-        const float a = geom.vertex_alpha;
+        // Blend: coverage * fresnel + (1 - coverage) * through
+        const float a = refractive_coverage;
         const float3 blended = make_float3(
             fminf(a * fresnel_color.x + (1.0f - a) * thru_color.x, 1.0f),
             fminf(a * fresnel_color.y + (1.0f - a) * thru_color.y, 1.0f),
@@ -540,7 +553,8 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
 
-    const float alpha = material_color.w;
+    // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
+    const float alpha = material_color.w * getInstanceCoverage();
     if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
 
     accumulateShadowAttenuation(alpha, material_color);
@@ -554,5 +568,5 @@ extern "C" __global__ void __closesthit__triangle_shadow() {
     float4 material_color;
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
-    setShadowPayload(material_color.w, material_color);
+    setShadowPayload(material_color.w * getInstanceCoverage(), material_color);
 }

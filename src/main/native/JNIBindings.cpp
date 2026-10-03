@@ -1419,6 +1419,21 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceTransf
     JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceCoverageNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId, jfloat coverage) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        return wrapper->setInstanceCoverage(instanceId, coverage);
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setInstanceCoverage: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), e.what());
+        return -1;
+    }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
+}
+
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCustomGeometryInstanceDataNative(
     JNIEnv* env, jobject obj,
     jint instanceId, jbyteArray customData) {

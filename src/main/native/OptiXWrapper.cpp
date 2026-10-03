@@ -110,6 +110,7 @@ struct OptiXWrapper::Impl {
         int height_texture_index;             // Height map index (-1 = no height map)
         bool active;                          // True if instance is enabled
         size_t mesh_index;                    // Index into triangle_meshes (SIZE_MAX = not a triangle)
+        float coverage = 1.0f;                // How much of the instance is present (0..1)
     };
 
     std::vector<ObjectInstance> instances;    // All object instances
@@ -1370,6 +1371,7 @@ void OptiXWrapper::buildIAS() {
         mat.metallic_texture_index = inst.metallic_texture_index;
         mat.ao_texture_index = inst.ao_texture_index;
         mat.height_texture_index = inst.height_texture_index;
+        mat.coverage = inst.coverage;
         // Per-mesh triangle buffer pointers for IAS mode
         if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
             && inst.mesh_index < impl->triangle_meshes.size()) {
@@ -2356,6 +2358,14 @@ int OptiXWrapper::setInstanceMaterial(
     inst.cauchy_a = cauchy_a;
     inst.cauchy_b = cauchy_b;
     // Material lives in the InstanceMaterial array rebuilt by buildIAS; re-upload it.
+    impl->ias_dirty = true;
+    return 0;
+}
+
+int OptiXWrapper::setInstanceCoverage(int instanceId, float coverage) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
+    impl->instances[instanceId].coverage = coverage;
+    // Coverage lives in the InstanceMaterial array rebuilt by buildIAS; re-upload it.
     impl->ias_dirty = true;
     return 0;
 }

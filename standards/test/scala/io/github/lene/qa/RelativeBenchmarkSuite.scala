@@ -48,6 +48,20 @@ class RelativeBenchmarkSuite extends AnyFlatSpec with Matchers:
   "BenchConfig" should "reject fewer rounds than a 95% interval needs" in:
     an[IllegalArgumentException] should be thrownBy BenchConfig(rounds = BenchConfig.MinRounds - 1)
 
+  it should "time CPU-bound JVM work on the thread CPU clock" in:
+    BenchConfig.JvmCpu.clock shouldBe Clock.ThreadCpu
+    BenchConfig().clock shouldBe Clock.Wall
+
+  // menger#45: under load the measuring thread waits for a CPU; wall time counts the wait.
+  "Clock.ThreadCpu" should "not count time the thread spends off the CPU" in:
+    val sleepNanos = 50_000_000L
+    def elapsed(clock: Clock): Long =
+      val start = clock.now()
+      Thread.sleep(sleepNanos / 1_000_000)
+      clock.now() - start
+    elapsed(Clock.Wall) should be >= sleepNanos
+    elapsed(Clock.ThreadCpu) should be < sleepNanos / 5
+
   "compare" should "not fail a subject that does the same work as the reference" in:
     val workSize = 20_000
     def work(): Unit =

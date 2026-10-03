@@ -214,6 +214,9 @@ struct InstanceMaterial {
     float* vertices;            // Device pointer to vertex data
     unsigned int* indices;      // Device pointer to index data
     unsigned int vertex_stride; // Floats per vertex (6, 8, or 9)
+    // How much of the instance is present (0..1, default 1), separate from color[3]: for a
+    // refractive material alpha is absorption, so it can't fade an instance (menger#56).
+    float coverage;
 };
 
 // Extended material properties for physically-based rendering (Sprint 7)
