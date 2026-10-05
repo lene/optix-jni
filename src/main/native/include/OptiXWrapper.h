@@ -170,6 +170,8 @@ public:
 
     // Procedural texture configuration
     void setProceduralTexture(int instanceId, int proceduralType, float proceduralScale);
+    // Row-major 3x4 world -> object-local transform onto the object's [0,1]^3 bounding box.
+    void setObjectFrame(int instanceId, const float worldToLocal[12]);
 
     // PBR map texture configuration (Task 20.7)
     void setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex,

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `setObjectFrame(instanceId, worldToLocal)`: an instance's object frame, a row-major 3x4
+  world → object-local transform mapping its bounding box onto [0,1]³ (#61). Throws
+  `IllegalArgumentException` for a matrix that is not 12 finite floats.
+- `ProceduralType.XYZToRGBLocal` (11): like `XYZToRGB`, in the object frame, so a centred object
+  gets each colour once, following its rotation, instead of world colours mirrored at 0 (#61).
+  Without a frame it falls back to world coordinates.
+
+### Changed
+
+- The shadow of a transparent surface uses the colour the camera sees there, procedural colour
+  included, not only the material colour (#61). For a refractive material on an instance with an
+  object frame, it is the colour seen through the object: Beer-Lambert absorption over its mean
+  chord (2/3 of the box extent), the extinction camera rays use, times the Fresnel transmission
+  of two surfaces. A red glass now casts a red shadow; the old alpha × (1 − colour) tint was
+  next to nothing for glass. Without a frame, or for a non-refractive material, shadows keep the
+  surface model.
+
 ## [0.4.5] - 2026-10-03
 
 ### Added

@@ -384,6 +384,7 @@ class OptiXRenderer
   // ---- Texture @native declarations (called from OptiXTextureApi) ----
   @native private[optix] def setEnvironmentMapNative(textureIndex: Int): Unit
   @native private[optix] def setProceduralTextureNative(instanceId: Int, proceduralType: Int, proceduralScale: Float): Unit
+  @native private[optix] def setObjectFrameNative(instanceId: Int, worldToLocal: Array[Float]): Unit
   @native private[optix] def setMapTexturesNative(instanceId: Int, normalTextureIndex: Int, roughnessTextureIndex: Int,
     metallicTextureIndex: Int, aoTextureIndex: Int, heightTextureIndex: Int): Unit
   @native private[optix] def setImageTextureNative(instanceId: Int, imageTextureIndex: Int): Unit
@@ -798,5 +799,8 @@ object ProceduralType:
   val XYZToRGB     = 8
   val HeatMap      = 9
   val Triplanar    = 10
+  /** Like [[XYZToRGB]], in the instance's object frame ([[OptiXTextureApi.setObjectFrame]]):
+    * each colour once over the object at scale 1, following its rotation, no mirroring. */
+  val XYZToRGBLocal = 11
 /** Raised when [[OptiXTextureApi.uploadTexture]] receives a negative native result code. */
 case class TextureUploadException(message: String, cause: Throwable = null) extends Exception(message, cause) // scalafix:ok DisableSyntax.null

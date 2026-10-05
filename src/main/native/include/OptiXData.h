@@ -217,6 +217,11 @@ struct InstanceMaterial {
     // How much of the instance is present (0..1, default 1), separate from color[3]: for a
     // refractive material alpha is absorption, so it can't fade an instance (menger#56).
     float coverage;
+    // Row-major 3x4 world -> object-local transform mapping the object's bounding box onto
+    // [0,1]^3 (setObjectFrame); valid only when has_object_frame. Used by the object-local
+    // procedural colouring and by a refractive object's shadow thickness (optix-jni#61).
+    float object_frame[12];
+    int has_object_frame;
 };
 
 // Extended material properties for physically-based rendering (Sprint 7)

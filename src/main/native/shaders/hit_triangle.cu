@@ -554,10 +554,11 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     getInstanceMaterial(material_color, material_ior);
 
     // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
-    const float alpha = material_color.w * getInstanceCoverage();
+    const float coverage = getInstanceCoverage();
+    const float alpha = material_color.w * coverage;
     if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
 
-    accumulateShadowAttenuation(alpha, material_color);
+    accumulateTransparentShadow(material_color, alpha, material_ior, coverage);
     optixIgnoreIntersection();
 }
 

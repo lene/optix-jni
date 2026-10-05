@@ -45,10 +45,11 @@ class ProceduralTextureSuite extends AnyFlatSpec with Matchers with RendererFixt
     }
   }
 
-  it should "reject invalid type > 10" in {
+  it should "reject invalid type > 11" in {
+    // 11 is XYZToRGBLocal (optix-jni#61).
     val instanceId = renderer.addSphereInstance(Vector[3](0f, 0f, 0f), white, 1.5f)
     an[IllegalArgumentException] should be thrownBy {
-      renderer.setProceduralTexture(instanceId, 11, 1.0f)
+      renderer.setProceduralTexture(instanceId, 12, 1.0f)
     }
   }
 

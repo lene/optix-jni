@@ -1996,14 +1996,52 @@ __device__ float2 sphereUV(float3 n) {
     return make_float2(u, v);
 }
 
+// The current instance's object frame (setObjectFrame), or nullptr when it has none.
+__device__ const float* instanceObjectFrame() {
+    if (!(params.use_ias && params.instance_materials)) return nullptr;
+    const InstanceMaterial& mat = params.instance_materials[optixGetInstanceId()];
+    return mat.has_object_frame ? mat.object_frame : nullptr;
+}
+
+// `world_pos` in the object's own frame: its bounding box spans [0,1]^3 and the frame follows
+// the object's position, size and rotation (optix-jni#61, F63: xyz_rgb was world-fixed and
+// mirrored at 0). False, `local` untouched, when the instance has no frame.
+__device__ bool objectLocalPosition(float3 world_pos, float3& local) {
+    const float* f = instanceObjectFrame();
+    if (f == nullptr) return false;
+    local = make_float3(
+        f[0] * world_pos.x + f[1] * world_pos.y + f[2]  * world_pos.z + f[3],
+        f[4] * world_pos.x + f[5] * world_pos.y + f[6]  * world_pos.z + f[7],
+        f[8] * world_pos.x + f[9] * world_pos.y + f[10] * world_pos.z + f[11]);
+    return true;
+}
+
+// Mean path length of a ray through the object (F67): the mean chord of a convex body is
+// 4V/S, which is 2/3 of the bounding-box extent for a cube and for a sphere alike. The extent is
+// 1 / the frame's scale along x (the frame maps the box onto [0,1]). 0 without a frame.
+__device__ float objectMeanChord() {
+    const float* f = instanceObjectFrame();
+    if (f == nullptr) return 0.f;
+    const float scale = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    return scale > 0.f ? (2.f / 3.f) / scale : 0.f;
+}
+
 // Procedural texture dispatcher — modulates base_color RGB by noise value (types 1-7,10)
-// or replaces color entirely (types 8-9)
+// or replaces color entirely (types 8, 9, 11)
 __device__ float4 applyProceduralTexture(const float4& base_color, float3 world_pos,
                                           float3 surface_normal,
                                           int proc_type, float proc_scale) {
     float3 p = world_pos * proc_scale;
     float n;
     switch (proc_type) {
+        case 11: {
+            // Object-local xyz -> rgb: each colour once over the object at scale 1, no mirroring.
+            float3 local;
+            if (!objectLocalPosition(world_pos, local)) return xyzToRGB(p, base_color.w);
+            local = make_float3(fminf(fmaxf(local.x, 0.f), 1.f), fminf(fmaxf(local.y, 0.f), 1.f),
+                                fminf(fmaxf(local.z, 0.f), 1.f));
+            return xyzToRGB(local * proc_scale, base_color.w);
+        }
         case 1:  n = valueNoise3D(p);                   break;
         case 2:  n = fbm3D(p, 4, 2.f, 0.5f);           break;
         case 3:  n = fminf(worleyNoise3D(p), 1.f);      break;
@@ -2031,6 +2069,50 @@ __device__ void getInstanceProceduralParams(int& proc_type, float& proc_scale) {
         proc_type  = 0;
         proc_scale = 1.0f;
     }
+}
+
+/**
+ * A shadow ray passing a transparent surface (optix-jni#61, F67): tints by the colour the
+ * camera sees there -- the procedural colour if the instance has one, not only the material
+ * colour -- and, for a refractive material on an instance with an object frame, by the colour
+ * seen THROUGH the object: Beer-Lambert absorption over its mean chord (objectMeanChord), the
+ * same extinction applyBeerLambertAbsorption uses for camera rays, times the Fresnel
+ * transmission of its two surfaces. A glass that looks red casts a red shadow; before, the
+ * tint was alpha * (1 - colour), next to nothing for glass (alpha 0.02).
+ *
+ * Without a frame, or for a non-refractive material, keeps the surface model:
+ * accumulateShadowAttenuation(fallback_alpha, colour).
+ *
+ * @param color          Material colour (alpha = absorption for refractive materials)
+ * @param fallback_alpha The caller's surface-model shadow alpha
+ * @param ior            Index of refraction
+ * @param coverage       How much of the instance is present (setInstanceCoverage)
+ */
+__device__ void accumulateTransparentShadow(float4 color, float fallback_alpha, float ior,
+                                            float coverage) {
+    int proc_type; float proc_scale;
+    getInstanceProceduralParams(proc_type, proc_scale);
+    if (proc_type != 0) {
+        const float3 dir = optixGetWorldRayDirection();
+        const float3 hit = optixGetWorldRayOrigin() + optixGetRayTmax() * dir;
+        color = applyProceduralTexture(color, hit, make_float3(-dir.x, -dir.y, -dir.z),
+                                       proc_type, proc_scale);
+    }
+    const float chord = objectMeanChord();
+    if (ior <= 1.0f || chord <= 0.f) {
+        accumulateShadowAttenuation(fallback_alpha, color);
+        return;
+    }
+    const float f0 = (ior - 1.0f) / (ior + 1.0f);
+    const float surfaces = (1.0f - f0 * f0) * (1.0f - f0 * f0);
+    const float k = color.w * BEER_LAMBERT_ABSORPTION_SCALE * chord;
+    const float3 through = make_float3(
+        surfaces * expf(logf(fmaxf(color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k),
+        surfaces * expf(logf(fmaxf(color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k),
+        surfaces * expf(logf(fmaxf(color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k));
+    // accumulateShadowAttenuation(a, c) blocks a * (1 - c) per channel; with a = coverage and
+    // c = the transmitted colour that is coverage * (1 - through), the same screen blend.
+    accumulateShadowAttenuation(coverage, make_float4(through.x, through.y, through.z, 1.f));
 }
 
 //==============================================================================

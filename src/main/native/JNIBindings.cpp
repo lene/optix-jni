@@ -509,6 +509,20 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralText
     JNI_CATCH_UNKNOWN_LOG
 }
 
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setObjectFrameNative(
+    JNIEnv* env, jobject obj, jint instanceId, jfloatArray worldToLocal) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr || worldToLocal == nullptr || env->GetArrayLength(worldToLocal) != 12) return;
+        float frame[12];
+        env->GetFloatArrayRegion(worldToLocal, 0, 12, frame);
+        wrapper->setObjectFrame((int)instanceId, frame);
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setObjectFrame: " << e.what() << std::endl;
+    }
+    JNI_CATCH_UNKNOWN_LOG
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMapTexturesNative(
     JNIEnv* env, jobject obj, jint instanceId, jint normalTextureIndex, jint roughnessTextureIndex,
     jint metallicTextureIndex, jint aoTextureIndex, jint heightTextureIndex) {

@@ -158,7 +158,7 @@ extern "C" __global__ void __anyhit__curve_shadow() {
     const float alpha = material_color.w;
     if (alpha >= 1.0f - 1e-4f) return;
 
-    accumulateShadowAttenuation(alpha, material_color);
+    accumulateTransparentShadow(material_color, alpha, material_ior, getInstanceCoverage());
     optixIgnoreIntersection();
 }
 

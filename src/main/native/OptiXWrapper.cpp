@@ -111,6 +111,8 @@ struct OptiXWrapper::Impl {
         bool active;                          // True if instance is enabled
         size_t mesh_index;                    // Index into triangle_meshes (SIZE_MAX = not a triangle)
         float coverage = 1.0f;                // How much of the instance is present (0..1)
+        float object_frame[12] = {};          // World -> [0,1]^3 bounding box (setObjectFrame)
+        bool has_object_frame = false;
     };
 
     std::vector<ObjectInstance> instances;    // All object instances
@@ -376,6 +378,13 @@ void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
     impl->instances[instanceId].procedural_type  = proceduralType;
     impl->instances[instanceId].procedural_scale = proceduralScale;
+    impl->ias_dirty = true;
+}
+
+void OptiXWrapper::setObjectFrame(int instanceId, const float worldToLocal[12]) {
+    if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
+    std::memcpy(impl->instances[instanceId].object_frame, worldToLocal, 12 * sizeof(float));
+    impl->instances[instanceId].has_object_frame = true;
     impl->ias_dirty = true;
 }
 
@@ -1372,6 +1381,8 @@ void OptiXWrapper::buildIAS() {
         mat.ao_texture_index = inst.ao_texture_index;
         mat.height_texture_index = inst.height_texture_index;
         mat.coverage = inst.coverage;
+        std::memcpy(mat.object_frame, inst.object_frame, 12 * sizeof(float));
+        mat.has_object_frame = inst.has_object_frame ? 1 : 0;
         // Per-mesh triangle buffer pointers for IAS mode
         if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
             && inst.mesh_index < impl->triangle_meshes.size()) {
