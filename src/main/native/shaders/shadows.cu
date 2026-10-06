@@ -27,7 +27,7 @@ extern "C" __global__ void __anyhit__shadow() {
     const float alpha = effectiveShadowAlpha(material_color.w, material_ior);
     if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
 
-    accumulateShadowAttenuation(alpha, material_color);
+    accumulateTransparentShadow(material_color, alpha, material_ior, getInstanceCoverage());
     optixIgnoreIntersection();  // Transparent: continue past this object
 }
 

@@ -19,9 +19,21 @@ private[optix] trait OptiXTextureApi:
     * world-space texture units and must be positive.
     */
   def setProceduralTexture(instanceId: Int, proceduralType: Int, proceduralScale: Float = 1.0f): Unit =
-    require(proceduralType >= 0 && proceduralType <= 10, "proceduralType must be 0–10")
+    require(proceduralType >= 0 && proceduralType <= 11, "proceduralType must be 0–11")
     require(proceduralScale > 0f, "proceduralScale must be positive")
     setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
+
+  /** Gives an IAS instance its object frame: a row-major 3x4 world -> object-local transform
+    * that maps the object's bounding box onto [0,1]^3 and follows its position, size and
+    * rotation. [[ProceduralType.XYZToRGBLocal]] colours by this local position; a transparent
+    * refractive instance with a frame casts the shadow of the colour seen through it
+    * (Beer-Lambert over its mean chord, 2/3 of the box extent). Without a frame, the local
+    * colouring falls back to world coordinates and shadows keep the surface model.
+    */
+  def setObjectFrame(instanceId: Int, worldToLocal: Array[Float]): Unit =
+    require(worldToLocal.length == 12, "worldToLocal must be a 3x4 matrix (12 floats, row-major)")
+    require(worldToLocal.forall(v => !v.isNaN && !v.isInfinite), "worldToLocal must be finite")
+    setObjectFrameNative(instanceId, worldToLocal)
 
   /** Assigns optional normal and roughness texture maps to an IAS instance. */
   def setMapTextures(instanceId: Int, normalTextureIndex: Int = -1, roughnessTextureIndex: Int = -1,
