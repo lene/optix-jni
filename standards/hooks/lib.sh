@@ -180,15 +180,21 @@ suite_fail() {
 # forcing a human to look and rerun (`gh run rerun --failed`, already documented, C6).
 # `--skip-in-ci` (second argument) makes CI skip too: for suites whose verdict can't be
 # trusted on a busy card anyway (perf gates), while another suite still enforces the GPU.
+# A suite that would FAIL in CI first waits longer (GPU_PREFLIGHT_CI_RETRIES samples of the
+# preflight's interval, default 60 x 10 s): on a self-hosted runner shared with a desktop, a
+# busy GPU is usually transient (a render window left playing, toplevel#64). 10 minutes fits
+# the 20-minute GPU job timeouts. Locally and for --skip-in-ci, the preflight's own window.
 # Returns 1 (caller must stop and exit) when the GPU is unsuitable; 0 to proceed.
 gpu_preflight_or_skip() {
     _suite="$1"
     _skip_in_ci="${2:-}"
     command -v nvidia-smi >/dev/null 2>&1 || return 0
-    _detail=$(./standards/scripts/gpu-preflight.sh) && return 0
     if [ -n "${CI:-}" ] && [ "$_skip_in_ci" != "--skip-in-ci" ]; then
+        _detail=$(./standards/scripts/gpu-preflight.sh \
+            --retries "${GPU_PREFLIGHT_CI_RETRIES:-60}") && return 0
         suite_fail "$_suite" 0 "ENV-UNSUITABLE(GPU busy: $_detail)"
     else
+        _detail=$(./standards/scripts/gpu-preflight.sh) && return 0
         suite_skip "$_suite" "env: GPU busy — $_detail"
     fi
     return 1
