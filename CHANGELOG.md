@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-10-14
+
+### Added
+
+- `setInstanceVisible(instanceId, visible)`: show or hide an instance (default visible). A
+  hidden instance stays in the scene with visibility mask 0, so no ray hits it -- camera,
+  shadow or caustics photon -- and no photon is aimed at it. Unlike `removeInstance` it can be
+  shown again, and the other instances keep their ids, so a recursive-IAS sponge added after it
+  keeps its material. Renders a scene in alternative versions without rebuilding it: menger
+  renders the two levels of a fractional glass sponge separately and mixes the images
+  (lene/menger#69). Returns -1 for an unknown instance id.
+
+### Changed
+
+- `clearAllInstances()` is a plain method around a private native call, so a subclass that keeps
+  per-instance state of its own can override it and call `super` (Scala 3 rejects `super` calls
+  to a native method). Same signature; menger's renderer forgets its level mixes there.
+
 ## [0.4.6] - 2026-10-06
 
 ### Added
@@ -672,6 +690,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.7]: https://github.com/lene/optix-jni/compare/0.4.6...0.4.7
 [0.4.6]: https://github.com/lene/optix-jni/compare/0.4.5...0.4.6
 [0.4.5]: https://github.com/lene/optix-jni/compare/0.4.4...0.4.5
 [0.4.4]: https://github.com/lene/optix-jni/compare/0.4.3...0.4.4

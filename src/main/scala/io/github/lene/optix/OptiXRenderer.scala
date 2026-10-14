@@ -361,6 +361,15 @@ class OptiXRenderer
     require(coverage >= 0f && coverage <= 1f, s"coverage must be in [0, 1], got $coverage")
     setInstanceCoverageNative(instanceId, coverage)
 
+  // Show or hide an instance (default visible). A hidden instance stays in the scene but no ray
+  // hits it -- camera, shadow or caustics photon -- and no photon is aimed at it; it can be
+  // shown again, and other instances keep their ids (unlike removeInstance). Cheap like
+  // setInstanceTransform. Renders a scene in alternative versions without rebuilding it, e.g.
+  // the two levels of a fractional sponge, mixed afterwards. Returns 0, or -1 for an unknown
+  // instance id.
+  def setInstanceVisible(instanceId: Int, visible: Boolean): Int =
+    setInstanceVisibleNative(instanceId, visible)
+
   // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
   // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
   // updates such as a 4D fractal's projection (eye/screen/rotation). Returns 0 on ok.
@@ -378,6 +387,7 @@ class OptiXRenderer
   @native private def setInstanceTransformNative(
       instanceId: Int, transform: Array[Float]): Int
   @native private def setInstanceCoverageNative(instanceId: Int, coverage: Float): Int
+  @native private def setInstanceVisibleNative(instanceId: Int, visible: Boolean): Int
   @native private def updateCustomGeometryInstanceDataNative(
       instanceId: Int, customData: Array[Byte]): Int
 
@@ -578,8 +588,11 @@ class OptiXRenderer
   /** Removes one IAS instance by id. Invalid ids are ignored by native code. */
   @native def removeInstance(instanceId: Int): Unit
 
-  /** Removes all IAS instances from native scene state. */
-  @native def clearAllInstances(): Unit
+  /** Removes all IAS instances from native scene state. A plain method around the native call,
+    * so a subclass that keeps per-instance state of its own can override it and call `super`
+    * (Scala 3 does not allow `super` calls to a native method). */
+  def clearAllInstances(): Unit = clearAllInstancesNative()
+  @native private def clearAllInstancesNative(): Unit
 
   /** Returns the number of currently active IAS instances. */
   @native def getInstanceCount(): Int

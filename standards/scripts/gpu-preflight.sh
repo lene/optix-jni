@@ -61,7 +61,11 @@ while [ "$attempt" -lt "$RETRIES" ]; do
         && REASON="free VRAM ${FREE_MIB}MiB < ${MIN_FREE_MIB}MiB"
     [ -z "$REASON" ] && exit 0
     attempt=$((attempt + 1))
-    [ "$attempt" -lt "$RETRIES" ] && sleep "$INTERVAL"
+    if [ "$attempt" -lt "$RETRIES" ]; then
+        # stderr: stdout is the caller's one-line verdict
+        echo "gpu-preflight: GPU busy ($REASON), sample $attempt/$RETRIES, waiting ${INTERVAL}s" >&2
+        sleep "$INTERVAL"
+    fi
 done
 
 # Name the biggest other GPU user as the likely culprit (per-process utilization isn't

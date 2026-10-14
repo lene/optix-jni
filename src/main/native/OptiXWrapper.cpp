@@ -31,6 +31,9 @@
 namespace {
 constexpr unsigned int RGBA8_BYTES_PER_PIXEL = 4;
 constexpr unsigned int FLOAT_RGBA_BYTES_PER_PIXEL = 4 * sizeof(float);
+// Instance visibility masks; every optixTrace call passes OptixVisibilityMask(255).
+constexpr unsigned int VISIBILITY_MASK_ALL = 255;
+constexpr unsigned int VISIBILITY_MASK_NONE = 0;
 }  // namespace
 
 /**
@@ -111,6 +114,7 @@ struct OptiXWrapper::Impl {
         bool active;                          // True if instance is enabled
         size_t mesh_index;                    // Index into triangle_meshes (SIZE_MAX = not a triangle)
         float coverage = 1.0f;                // How much of the instance is present (0..1)
+        bool visible = true;                  // False: kept in the IAS, but no ray hits it
         float object_frame[12] = {};          // World -> [0,1]^3 bounding box (setObjectFrame)
         bool has_object_frame = false;
     };
@@ -1353,7 +1357,11 @@ void OptiXWrapper::buildIAS() {
         // SBT offset: 2 ray types (primary + shadow) per geometry type
         oi.sbtOffset = inst.geometry_type * SBTConstants::STRIDE_RAY_TYPES;
 
-        oi.visibilityMask = 255;
+        // Every ray is traced with mask 255, so mask 0 hides the instance from all of them:
+        // camera, shadow and photon rays. A hidden instance keeps its slot in the IAS, unlike
+        // removeInstance, so the instance ids buildIAS assigns (which recursive-IAS sponges
+        // predict when they are added) do not shift.
+        oi.visibilityMask = inst.visible ? VISIBILITY_MASK_ALL : VISIBILITY_MASK_NONE;
         oi.flags = OPTIX_INSTANCE_FLAG_NONE;
         oi.traversableHandle = inst.gas_handle;
 
@@ -1895,7 +1903,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             int nt = 0;                 // per-instance targets written (capped at MAX)
 
             for (const auto& inst : impl->instances) {
-                if (!inst.active || inst.ior <= 1.05f) continue;
+                // A hidden instance gets no photons aimed at it: no ray can reach it.
+                if (!inst.active || !inst.visible || inst.ior <= 1.05f) continue;
                 found = true;
                 ++refractive_count;
 
@@ -2381,6 +2390,14 @@ int OptiXWrapper::setInstanceCoverage(int instanceId, float coverage) {
     return 0;
 }
 
+int OptiXWrapper::setInstanceVisible(int instanceId, bool visible) {
+    if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
+    impl->instances[instanceId].visible = visible;
+    // The mask lives in the OptixInstance array buildIAS fills; child GASes are reused.
+    impl->ias_dirty = true;
+    return 0;
+}
+
 int OptiXWrapper::setInstanceTransform(int instanceId, const float* transform) {
     if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
     std::memcpy(impl->instances[instanceId].transform, transform, 12 * sizeof(float));
@@ -2551,7 +2568,7 @@ OptixTraversableHandle OptiXWrapper::buildSubIAS(
         std::memcpy(oi.transform, transforms[i], 12 * sizeof(float));
         oi.instanceId = inherited_instance_id;
         oi.sbtOffset = 0;
-        oi.visibilityMask = 255;
+        oi.visibilityMask = VISIBILITY_MASK_ALL;  // the outer instance's mask decides
         oi.flags = OPTIX_INSTANCE_FLAG_NONE;
         oi.traversableHandle = child_handle;
     }

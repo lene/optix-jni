@@ -1433,6 +1433,21 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceTransf
     JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
+JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceVisibleNative(
+    JNIEnv* env, jobject obj,
+    jint instanceId, jboolean visible) {
+    try {
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return -1;
+        return wrapper->setInstanceVisible(instanceId, visible == JNI_TRUE);
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setInstanceVisible: " << e.what() << std::endl;
+        env->ThrowNew(env->FindClass(OPTIX_EXCEPTION_CLASS), e.what());
+        return -1;
+    }
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
+}
+
 JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceCoverageNative(
     JNIEnv* env, jobject obj,
     jint instanceId, jfloat coverage) {
@@ -1804,7 +1819,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_removeInstance(
 /**
  * Clear all instances from the scene.
  */
-JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstances(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstancesNative(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);
