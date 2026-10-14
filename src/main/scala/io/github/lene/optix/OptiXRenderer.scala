@@ -361,6 +361,15 @@ class OptiXRenderer
     require(coverage >= 0f && coverage <= 1f, s"coverage must be in [0, 1], got $coverage")
     setInstanceCoverageNative(instanceId, coverage)
 
+  // Show or hide an instance (default visible). A hidden instance stays in the scene but no ray
+  // hits it -- camera, shadow or caustics photon -- and no photon is aimed at it; it can be
+  // shown again, and other instances keep their ids (unlike removeInstance). Cheap like
+  // setInstanceTransform. Renders a scene in alternative versions without rebuilding it, e.g.
+  // the two levels of a fractional sponge, mixed afterwards. Returns 0, or -1 for an unknown
+  // instance id.
+  def setInstanceVisible(instanceId: Int, visible: Boolean): Int =
+    setInstanceVisibleNative(instanceId, visible)
+
   // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
   // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
   // updates such as a 4D fractal's projection (eye/screen/rotation). Returns 0 on ok.
@@ -378,6 +387,7 @@ class OptiXRenderer
   @native private def setInstanceTransformNative(
       instanceId: Int, transform: Array[Float]): Int
   @native private def setInstanceCoverageNative(instanceId: Int, coverage: Float): Int
+  @native private def setInstanceVisibleNative(instanceId: Int, visible: Boolean): Int
   @native private def updateCustomGeometryInstanceDataNative(
       instanceId: Int, customData: Array[Byte]): Int
 

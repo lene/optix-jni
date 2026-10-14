@@ -263,6 +263,11 @@ public:
     // material's alpha: coverage c renders c * the instance + (1 - c) * what lies behind it.
     // Marks only the IAS dirty. Returns 0, or -1 for an unknown instance id.
     int setInstanceCoverage(int instanceId, float coverage);
+    // Show or hide an instance (default visible). A hidden instance stays in the IAS with
+    // visibility mask 0, so no ray hits it (camera, shadow or photon) and no photon is aimed
+    // at it; unlike removeInstance it can be shown again, and other instances' ids do not
+    // shift. Marks only the IAS dirty. Returns 0, or -1 for an unknown instance id.
+    int setInstanceVisible(int instanceId, bool visible);
     // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
     // Cheap: patches the CPU blob and, if the GPU buffer already exists, memcpy's just
     // this instance's slot — no GAS/IAS rebuild (custom AABBs are pose-independent, e.g.

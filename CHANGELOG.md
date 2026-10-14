@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `setInstanceVisible(instanceId, visible)`: show or hide an instance (default visible). A
+  hidden instance stays in the scene with visibility mask 0, so no ray hits it -- camera,
+  shadow or caustics photon -- and no photon is aimed at it. Unlike `removeInstance` it can be
+  shown again, and the other instances keep their ids, so a recursive-IAS sponge added after it
+  keeps its material. Renders a scene in alternative versions without rebuilding it: menger
+  renders the two levels of a fractional glass sponge separately and mixes the images
+  (lene/menger#69). Returns -1 for an unknown instance id.
+
 ## [0.4.6] - 2026-10-06
 
 ### Added
