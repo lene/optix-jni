@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   renders the two levels of a fractional glass sponge separately and mixes the images
   (lene/menger#69). Returns -1 for an unknown instance id.
 
+### Changed
+
+- `clearAllInstances()` is a plain method around a private native call, so a subclass that keeps
+  per-instance state of its own can override it and call `super` (Scala 3 rejects `super` calls
+  to a native method). Same signature; menger's renderer forgets its level mixes there.
+
 ## [0.4.6] - 2026-10-06
 
 ### Added

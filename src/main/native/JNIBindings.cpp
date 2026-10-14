@@ -1819,7 +1819,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_removeInstance(
 /**
  * Clear all instances from the scene.
  */
-JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstances(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstancesNative(
     JNIEnv* env, jobject obj) {
     try {
         OptiXWrapper* wrapper = getWrapper(env, obj);

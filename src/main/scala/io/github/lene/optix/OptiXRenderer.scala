@@ -588,8 +588,11 @@ class OptiXRenderer
   /** Removes one IAS instance by id. Invalid ids are ignored by native code. */
   @native def removeInstance(instanceId: Int): Unit
 
-  /** Removes all IAS instances from native scene state. */
-  @native def clearAllInstances(): Unit
+  /** Removes all IAS instances from native scene state. A plain method around the native call,
+    * so a subclass that keeps per-instance state of its own can override it and call `super`
+    * (Scala 3 does not allow `super` calls to a native method). */
+  def clearAllInstances(): Unit = clearAllInstancesNative()
+  @native private def clearAllInstancesNative(): Unit
 
   /** Returns the number of currently active IAS instances. */
   @native def getInstanceCount(): Int
