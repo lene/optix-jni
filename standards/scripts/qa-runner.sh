@@ -66,7 +66,8 @@ esac
 
 SUITES_DIR="./scripts/suites"
 MANIFEST="./qa-manifest.yaml"
-CACHE_DIR=".git/qa-cache"
+# --git-path: in a `git worktree`, .git is a file, not a directory.
+CACHE_DIR=$(git rev-parse --git-path qa-cache 2>/dev/null || echo .git/qa-cache)
 CHANGED_FILES="${CHANGED_FILES:-}"
 
 [ -r "$MANIFEST" ] || { echo "qa-runner.sh: missing $MANIFEST" >&2; exit 2; }
@@ -141,6 +142,12 @@ section == "suites" {
     }
     if (req == "") req = "-"
     print "SUITE\t" name "\t" tier "\t" req "\t" auto
+  } else if ($0 ~ /^  [A-Za-z0-9_-]+:/) {
+    # A suite this parser cannot read (e.g. block-style YAML) used to vanish silently.
+    name = $0
+    sub(/^  /, "", name)
+    sub(/:.*/, "", name)
+    print "BAD\t" name "\tnot a one-line { tier: ..., requires: [...] } entry"
   }
   next
 }
@@ -194,6 +201,49 @@ suite_relevant() {
   return 1
 }
 
+# --- Validate the manifest before running anything (review 2026-10-14, menger-toplevel#67) ---
+# Each of these used to turn into a SKIP (or vanish) with exit 0, so a one-character manifest
+# typo or a lost exec bit removed a gate while the run stayed green.
+CONFIG_ERRORS=""
+config_error() { CONFIG_ERRORS="${CONFIG_ERRORS}  $1
+"; }
+_bad=$(grep '^BAD' "$MANIFEST_FLAT" | cut -f2,3 | tr '\t' ':')
+[ -n "$_bad" ] && config_error "unparseable suite entries: $_bad"
+_classes=" $(grep '^CLASS' "$MANIFEST_FLAT" | cut -f2 | sort -u | tr '\n' ' ')"
+for _class in $(grep '^CLASS' "$MANIFEST_FLAT" | cut -f2 | sort -u); do
+  for _p in $(grep "^CLASS	$_class	" "$MANIFEST_FLAT" | cut -f3 | grep '^@file:'); do
+    [ -r "${_p#@file:}" ] || config_error "class $_class: pattern file ${_p#@file:} not readable"
+  done
+  _pattern=$(class_pattern "$_class")
+  if [ -n "$_pattern" ]; then
+    printf '' | grep -E "$_pattern" >/dev/null 2>&1
+    [ $? -eq 2 ] && config_error "class $_class: invalid regular expression"
+  fi
+done
+while IFS="$(printf '\t')" read -r _tag _name _tier _req _auto; do
+  [ "$_tag" = "SUITE" ] || continue
+  [ "$(tier_rank "$_tier")" -eq 99 ] && config_error "suite $_name: unknown tier '$_tier'"
+  if [ "$_req" != "-" ]; then
+    for _r in $(printf '%s' "$_req" | tr ',' ' '); do
+      case "$_classes" in
+        *" $_r "*) ;;
+        *) config_error "suite $_name: requires undefined change class '$_r'" ;;
+      esac
+    done
+  fi
+  if [ "$_auto" != "false" ] && [ ! -x "$SUITES_DIR/$_name.sh" ]; then
+    config_error "suite $_name: $SUITES_DIR/$_name.sh missing or not executable"
+  fi
+done < "$MANIFEST_FLAT"
+for _want in "$@"; do
+  grep -q "^SUITE	$_want	" "$MANIFEST_FLAT" || config_error "requested suite '$_want' is not in $MANIFEST"
+done
+if [ -n "$CONFIG_ERRORS" ]; then
+  echo "qa-runner.sh: $MANIFEST has errors — refusing to run with gates silently missing:" >&2
+  printf '%s' "$CONFIG_ERRORS" >&2
+  exit 2
+fi
+
 grep '^SUITE' "$MANIFEST_FLAT" > "$SUITE_LIST_FILE"
 
 if [ $# -gt 0 ]; then
@@ -204,6 +254,17 @@ if [ $# -gt 0 ]; then
   mv "$SUITE_LIST_FILE.filtered" "$SUITE_LIST_FILE"
 fi
 
+# --- The tree being tested must be the tree being pushed (menger-toplevel#66) ---------
+# Only for a local push: CI runs on a fresh checkout of exactly the pushed commit.
+if [ "$TIER" = "push" ] && [ -z "${CI:-}" ]; then
+  assert_tested_tree_is_pushed "${QA_RANGES:-}" || exit 1
+fi
+
+# Suites see whether a human is watching: a local GPU-busy SKIP is only acceptable then
+# (gpu_preflight_or_skip, menger-toplevel#68).
+if [ -t 1 ]; then QA_INTERACTIVE=1; else QA_INTERACTIVE=0; fi
+export QA_INTERACTIVE
+
 TOTAL=$(grep -c '^SUITE' "$SUITE_LIST_FILE" || true)
 [ -z "$TOTAL" ] && TOTAL=0
 N=0
@@ -212,7 +273,8 @@ TAB=$(printf '\t')
 
 mkdir -p "$CACHE_DIR" 2>/dev/null || true
 find "$CACHE_DIR" -type f -mtime +14 -delete 2>/dev/null || true
-TREE_SHA=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo notree)
+# No tree, no cache: a shared fallback key ("notree") let one PASS stand for any code.
+TREE_SHA=$(git rev-parse 'HEAD^{tree}' 2>/dev/null) || TREE_SHA=""
 
 FAILFAST=0
 [ -t 1 ] && [ "$ALL" -eq 0 ] && FAILFAST=1
@@ -235,7 +297,8 @@ remaining_eta() {
     [ "$_rauto" = "false" ] && continue
     suite_relevant "$_rreq" || continue
     _rcache="$CACHE_DIR/$_rname-$TREE_SHA"
-    [ -f "$_rcache" ] && grep -q '^verdict=PASS$' "$_rcache" 2>/dev/null && continue
+    [ -n "$TREE_SHA" ] && [ -f "$_rcache" ] && grep -q '^verdict=PASS$' "$_rcache" 2>/dev/null \
+      && continue
     _rmed=$(median_duration "$CACHE_DIR" "$_rname")
     if [ -n "$_rmed" ]; then
       _sum=$((_sum + _rmed))
@@ -280,13 +343,17 @@ while IFS="$TAB" read -r _tag name tier req auto; do
 
   script="$SUITES_DIR/$name.sh"
   if [ ! -x "$script" ]; then
-    echo "  SKIPPED (no such suite script: $script)"
-    printf '%s%sSKIP%smissing script\n' "$name" "$TAB" "$TAB" >> "$RESULTS"
+    # Validated up front; reaching this means the script vanished mid-run. Never a SKIP.
+    echo "  ${name}: FAILED — suite script $script missing or not executable"
+    printf '%s%sFAIL%smissing script\n' "$name" "$TAB" "$TAB" >> "$RESULTS"
+    OVERALL=1
+    [ "$FAILFAST" -eq 1 ] && break
     continue
   fi
 
   CACHE_FILE="$CACHE_DIR/$name-$TREE_SHA"
-  if [ -f "$CACHE_FILE" ] && grep -q '^verdict=PASS$' "$CACHE_FILE" 2>/dev/null; then
+  if [ -n "$TREE_SHA" ] && [ -f "$CACHE_FILE" ] \
+      && grep -q '^verdict=PASS$' "$CACHE_FILE" 2>/dev/null; then
     echo "  CACHED PASS (tree unchanged)"
     printf '%s%sCACHED%s\n' "$name" "$TAB" "$TAB" >> "$RESULTS"
     continue
@@ -315,7 +382,9 @@ while IFS="$TAB" read -r _tag name tier req auto; do
       printf '%s%sPASS%s\n' "$name" "$TAB" "$TAB" >> "$RESULTS"
       printf '%s\t%s\n' "$name" "$((_t1 - _t0))" >> "$DURATIONS_FILE"
       record_duration "$CACHE_DIR" "$name" "$((_t1 - _t0))"
-      { echo "verdict=PASS"; echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "tier=$tier"; } > "$CACHE_FILE"
+      if [ -n "$TREE_SHA" ]; then
+        { echo "verdict=PASS"; echo "timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)"; echo "tier=$tier"; } > "$CACHE_FILE"
+      fi
       ;;
     SKIP)
       REASON=$(printf '%s' "$LINE" | sed -n 's/.*reason="\([^"]*\)".*/\1/p')
@@ -349,6 +418,12 @@ while IFS="$TAB" read -r name verdict detail; do
     *) echo "  UNKNOWN $name (unrecognized verdict '$verdict')" ;;
   esac
 done < "$RESULTS"
+
+_env_skips=$(grep -c "${TAB}SKIP${TAB}env:" "$RESULTS" 2>/dev/null || true)
+if [ "${_env_skips:-0}" -gt 0 ]; then
+  echo ""
+  echo "WARNING: $_env_skips suite(s) skipped for environment reasons — this run is NOT fully gated."
+fi
 
 if [ "$OVERALL" -ne 0 ]; then
   echo ""

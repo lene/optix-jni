@@ -128,6 +128,49 @@ changed_files() {
     done | sort -u
 }
 
+# --- tested tree == pushed tree (review 2026-10-14, menger-toplevel#66) ---------------
+#
+# The suites build and test the files on disk, and qa-runner caches a PASS against HEAD's
+# tree. Both are only sound when what is on disk is exactly what is being pushed: no
+# uncommitted changes to tracked files, no untracked file a build would pick up, and every
+# pushed ref at HEAD. Otherwise an uncommitted fix makes the gate pass a commit that lacks
+# it, and `git push origin <other-branch>` tests the checked-out branch instead.
+# Untracked files that are not build inputs (notes, scratch output) are fine.
+BUILD_INPUT_ERE='(^|/)(src|project|scripts|standards|\.git_hooks|docker)/|\.(sbt|scala|java|kt|py|sh|cpp|cu|cuh|h|hpp|cmake)$|(^|/)CMakeLists\.txt$|^qa-manifest\.yaml$'
+
+# $1 = newline-separated "<base>..<sha>" ranges (QA_RANGES). Prints what differs; returns 1.
+assert_tested_tree_is_pushed() {
+    _problems=""
+    _dirty=$(git status --porcelain --untracked-files=no 2>/dev/null)
+    if [ -n "$_dirty" ]; then
+        _problems="${_problems}  uncommitted changes to tracked files:
+$(printf '%s\n' "$_dirty" | sed 's/^/    /')
+"
+    fi
+    _untracked=$(git ls-files --others --exclude-standard 2>/dev/null \
+        | grep -E "$BUILD_INPUT_ERE" || true)
+    if [ -n "$_untracked" ]; then
+        _problems="${_problems}  untracked files the build would use:
+$(printf '%s\n' "$_untracked" | sed 's/^/    /')
+"
+    fi
+    _head=$(git rev-parse HEAD 2>/dev/null)
+    for _range in $1; do
+        _tip=${_range##*..}
+        _tip_sha=$(git rev-parse --verify --quiet "$_tip^{commit}" 2>/dev/null)
+        if [ "$_tip_sha" != "$_head" ]; then
+            _problems="${_problems}  pushing $(short_ref "$_tip") but HEAD is $(short_ref "$_head")
+"
+        fi
+    done
+    [ -z "$_problems" ] && return 0
+    echo "pre-push: the gate tests the working tree, but it is not what is being pushed:" >&2
+    printf '%s' "$_problems" >&2
+    echo "  Commit or stash (git stash -u) the changes, or check out the branch you push," >&2
+    echo "  then push again." >&2
+    return 1
+}
+
 # $1 = the detected file list. An empty set on a branch that has commits to push
 # means detection failed; reporting that as "nothing to check" is the bug this
 # whole helper exists to prevent, so refuse to continue.
@@ -184,6 +227,10 @@ suite_fail() {
 # preflight's interval, default 60 x 10 s): on a self-hosted runner shared with a desktop, a
 # busy GPU is usually transient (a render window left playing, toplevel#64). 10 minutes fits
 # the 20-minute GPU job timeouts. Locally and for --skip-in-ci, the preflight's own window.
+# Locally the SKIP is only for an interactive push (QA_INTERACTIVE=1, set by qa-runner when
+# its stdout is a terminal), where a human sees it. A non-interactive push — an agent or a
+# script, which only reads the exit code — FAILs instead (review 2026-10-14,
+# menger-toplevel#68), unless QA_ALLOW_ENV_SKIP=1 says the skip is knowingly accepted.
 # Returns 1 (caller must stop and exit) when the GPU is unsuitable; 0 to proceed.
 gpu_preflight_or_skip() {
     _suite="$1"
@@ -193,9 +240,13 @@ gpu_preflight_or_skip() {
         _detail=$(./standards/scripts/gpu-preflight.sh \
             --retries "${GPU_PREFLIGHT_CI_RETRIES:-60}") && return 0
         suite_fail "$_suite" 0 "ENV-UNSUITABLE(GPU busy: $_detail)"
-    else
+    elif [ -n "${CI:-}" ] || [ "${QA_INTERACTIVE:-}" = "1" ] \
+        || [ "${QA_ALLOW_ENV_SKIP:-}" = "1" ]; then
         _detail=$(./standards/scripts/gpu-preflight.sh) && return 0
         suite_skip "$_suite" "env: GPU busy — $_detail"
+    else
+        _detail=$(./standards/scripts/gpu-preflight.sh) && return 0
+        suite_fail "$_suite" 0 "ENV-UNSUITABLE(GPU busy, non-interactive push: $_detail; free the GPU, or set QA_ALLOW_ENV_SKIP=1 to skip knowingly)"
     fi
     return 1
 }
