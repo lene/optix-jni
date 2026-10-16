@@ -662,8 +662,10 @@ class OptiXRenderer
   // ---- Lifecycle ----
   // Serializes lifecycle transitions (initialize/dispose/reinitialize) so a handle swap is
   // atomic with respect to other lifecycle calls: no window where a concurrent caller observes
-  // or frees a half-swapped handle (CR-6). Rendering itself is thread-confined — use one
-  // renderer per thread; OptiX contexts are not safe for concurrent launches on a shared handle.
+  // or frees a half-swapped handle (CR-6). A dispose from another thread waits for native calls
+  // in flight: the JNI layer holds a read/write lock, shared by every call and exclusive for
+  // initialize/dispose (optix-jni#71). Rendering itself is thread-confined — use one renderer per
+  // thread; OptiX contexts are not safe for concurrent launches on a shared handle.
   private val lifecycleLock = new Object
 
   private val instanceCapacity = new java.util.concurrent.atomic.AtomicInteger(0)

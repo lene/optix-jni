@@ -50,6 +50,20 @@ private[optix] trait OptiXTextureApi:
   def setImageTexture(instanceId: Int, imageTextureIndex: Int): Unit =
     setImageTextureNative(instanceId, imageTextureIndex)
 
+  /** Dimensions positive and bounded, size computed in `Long` (optix-jni#68): `width * height * 4`
+    * in `Int` wrapped, so a far too short array passed. The native entry checks the same. */
+  private def requireRgbaImage(imageData: Array[Byte], width: Int, height: Int): Unit =
+    require(width > 0, s"Width must be positive, got $width")
+    require(height > 0, s"Height must be positive, got $height")
+    val pixels = width.toLong * height.toLong
+    require(pixels <= OptiXTextureApi.MaxPixels,
+      s"Texture ${width}x$height exceeds ${OptiXTextureApi.MaxPixels} pixels")
+    require(
+      imageData.length.toLong == pixels * 4,
+      s"Image data size mismatch: expected ${pixels * 4} bytes (${width}x${height}x4), " +
+        s"got ${imageData.length}"
+    )
+
   /** Uploads an RGBA8 texture buffer into a native texture slot.
     *
     * @param imageData row-major RGBA bytes, length `width * height * 4`
@@ -61,14 +75,7 @@ private[optix] trait OptiXTextureApi:
     // JNI boundary validation - null checks required for native method safety
     require(name != null && name.nonEmpty, "Texture name must not be null or empty") // scalafix:ok DisableSyntax.null
     require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
-    require(width > 0, s"Width must be positive, got $width")
-    require(height > 0, s"Height must be positive, got $height")
-    val expectedSize = width * height * 4  // RGBA, 4 bytes per pixel
-    require(
-      imageData.length == expectedSize,
-      s"Image data size mismatch: expected $expectedSize bytes " +
-        s"(${width}x${height}x4), got ${imageData.length}"
-    )
+    requireRgbaImage(imageData, width, height)
     val index = uploadTextureNative(name, imageData, width, height)
     if index < 0 then
       throw TextureUploadException(s"Failed to upload texture '$name': error code $index")
@@ -86,14 +93,7 @@ private[optix] trait OptiXTextureApi:
   def updateTexture(textureIndex: Int, imageData: Array[Byte], width: Int, height: Int): Unit =
     require(textureIndex >= 0, "textureIndex must be >= 0")
     require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
-    require(width > 0, s"Width must be positive, got $width")
-    require(height > 0, s"Height must be positive, got $height")
-    val expectedSize = width * height * 4  // RGBA, 4 bytes per pixel
-    require(
-      imageData.length == expectedSize,
-      s"Image data size mismatch: expected $expectedSize bytes " +
-        s"(${width}x${height}x4), got ${imageData.length}"
-    )
+    requireRgbaImage(imageData, width, height)
     val result = updateTextureNative(textureIndex, imageData, width, height)
     if result < 0 then
       throw TextureUploadException(s"Failed to update texture $textureIndex: error code $result")
@@ -115,3 +115,7 @@ private[optix] trait OptiXTextureApi:
   /** Releases all native texture objects owned by this renderer. */
   def releaseTextures(): Unit =
     releaseTexturesNative()
+
+private[optix] object OptiXTextureApi:
+  /** The largest texture or image: 16384 x 16384 pixels (native `jni_checks::kMaxPixels`). */
+  val MaxPixels: Long = 16384L * 16384L

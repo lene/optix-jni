@@ -67,6 +67,8 @@ public:
     OptixProgramGroup getCausticsUpdateRadiiRaygen() const { return caustics_update_radii_raygen; }
     OptixProgramGroup getCausticsGridCountRaygen() const { return caustics_grid_count_raygen; }
     OptixProgramGroup getCausticsGridScatterRaygen() const { return caustics_grid_scatter_raygen; }
+    // Built-in plus registered geometry types: the hitgroup table's length in types.
+    int geometryTypeCount() const { return custom_geometry_registry.totalGeometryTypeCount(); }
 
     // Temporary SBT for caustics passes
     CUdeviceptr createTempRaygenSBTRecord(OptixProgramGroup raygen, const SceneParameters& scene);

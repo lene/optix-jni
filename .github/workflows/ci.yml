@@ -14,6 +14,17 @@ on:
   # branch only runs the checks, so CI can be exercised on a feature branch safely.
   workflow_dispatch:
 
+# ── FORK PRs AND PUBLISHING (security review 2026-10-14, menger-toplevel#83) ──
+# Every self-hosted GPU job carries `if: !github.event.pull_request.head.repo.fork`: a pull
+# request from a fork never runs on the self-hosted GPU runners (they run as the maintainer's
+# user). The guard lives in this file, so a fork PR can delete it — the real gate is the repo's
+# "require approval for all external contributors" setting: before approving a fork PR's run,
+# check its changes to .github/, build.sbt, project/ and scripts/.
+# The publish job runs only on the dedicated `publish` runner (its own unprivileged OS user, no
+# default labels, so no other job can land there) inside the protected `release` environment,
+# and imports the signing key into a throwaway GNUPGHOME. Setup: menger-toplevel
+# infra/ci-runners/setup-publish-runner.sh.
+
 jobs:
   # ── preconditions ──────────────────────────────────────────────────────────
 
@@ -149,6 +160,7 @@ jobs:
 
   archunit:
     name: ArchUnit
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: [self-hosted, Linux, X64, nvidia]
     # CR-14: bound every self-hosted GPU job so a hung run cannot wedge the single
     # shared nvidia runner's queue (its default is GitHub's 360-minute ceiling).
@@ -185,6 +197,7 @@ jobs:
 
   clang-tidy:
     name: clang-tidy
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: [self-hosted, Linux, X64, nvidia]
     timeout-minutes: 30
     steps:
@@ -233,6 +246,7 @@ jobs:
 
   scala-tests:
     name: Scala Tests (GPU)
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: [self-hosted, Linux, X64, nvidia]
     timeout-minutes: 45
     steps:
@@ -244,6 +258,7 @@ jobs:
 
   perf-tests:
     name: Performance gates (GPU)
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: [self-hosted, Linux, X64, nvidia]
     timeout-minutes: 30
     needs: [scala-tests]
@@ -258,6 +273,7 @@ jobs:
 
   build-native:
     name: Build native .so + JAR
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: [self-hosted, Linux, X64, nvidia]
     timeout-minutes: 30
     needs: [scala-tests, scalafix, perf-tests]
@@ -279,6 +295,7 @@ jobs:
 
   smoke-tests:
     name: Smoke Tests (Java + Kotlin)
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     runs-on: [self-hosted, Linux, X64, nvidia]
     timeout-minutes: 30
     needs: [build-native]
@@ -337,7 +354,11 @@ jobs:
 
   publish:
     name: Publish to Maven Central + GitHub Release
-    runs-on: [self-hosted, Linux, X64, nvidia]
+    # Dedicated runner: registered with --no-default-labels --labels publish, so the GPU test jobs
+    # (which ask for [self-hosted, Linux, X64, nvidia]) can never run on it, and this job can only
+    # run there. The `release` environment requires a maintainer approval per run.
+    runs-on: [publish]
+    environment: release
     timeout-minutes: 60
     needs: [smoke-tests, build-native]
     if: >-
@@ -349,8 +370,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Add CUDA to PATH
         run: echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+      - name: Throwaway GNUPGHOME
+        # The key must not persist in the runner user's ~/.gnupg after the job.
+        run: |
+          d="$(mktemp -d)"; chmod 700 "$d"
+          echo "GNUPGHOME=$d" >> "$GITHUB_ENV"
       - name: Import GPG key
-        run: echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: printf '%s\n' "$GPG_PRIVATE_KEY" | gpg --batch --import
       - name: Read release version
         id: ver
         run: echo "version=$(grep 'version :=' build.sbt | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
@@ -382,6 +410,11 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: false
           body_path: CHANGELOG.md
+      - name: Remove throwaway GNUPGHOME
+        if: always()
+        run: |
+          gpgconf --kill gpg-agent || true
+          rm -rf "$GNUPGHOME"
 
   # ── post-publish verification ───────────────────────────────────────────────
 

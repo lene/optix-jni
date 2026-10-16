@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.8] - 2026-10-16
+
+### Security
+
+- The native entries validate their input (review 2026-10-14, #68-#71). They are the
+  library's only trusted boundary. Inputs a caller passed before and that are now rejected:
+  - Image and texture sizes are computed in 64 bits and capped at 16384 x 16384 pixels.
+    32768 x 32769 had wrapped, so a 128 KiB array was accepted for a ~4 GiB copy.
+  - Null or short arrays and strings throw `NullPointerException` / `IllegalArgumentException`.
+    Before, they aborted the JVM or were read past their end. `updateCpuTriangleMesh` had no
+    checks at all.
+  - Triangle indices must be below the vertex count. A custom-geometry `typeId` must be a
+    registered custom type.
+  - Range checks for the max ray depth (1-5), AA depth (1-4) and threshold (0-1), IBL samples
+    (1-64), accumulation frames (1-1024), caustics photons (1-10^7) and iterations (1-1000),
+    and the plane axis (0-2). The IBL, AA and caustics limits apply only when the feature is
+    enabled.
+- `dispose`/`reinitialize` wait for native calls running on other threads instead of freeing
+  the renderer under them (use-after-free).
+
 ## [0.4.7] - 2026-10-14
 
 ### Added
@@ -690,6 +710,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.8]: https://github.com/lene/optix-jni/compare/0.4.7...0.4.8
 [0.4.7]: https://github.com/lene/optix-jni/compare/0.4.6...0.4.7
 [0.4.6]: https://github.com/lene/optix-jni/compare/0.4.5...0.4.6
 [0.4.5]: https://github.com/lene/optix-jni/compare/0.4.4...0.4.5

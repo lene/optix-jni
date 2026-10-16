@@ -15,7 +15,8 @@ BufferManager::~BufferManager() {
 }
 
 void BufferManager::ensureImageBuffer(int width, int height) {
-    const size_t required_size = width * height * 4; // RGBA
+    // size_t before multiplying (optix-jni#68); width/height are bounded at the JNI entry.
+    const size_t required_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4; // RGBA
     if (current_image_size != required_size) {
         image_buffer.allocate(required_size);
         current_image_size = required_size;
@@ -114,7 +115,7 @@ void BufferManager::zeroCausticsGridCounts() {
 }
 
 void BufferManager::downloadImage(unsigned char* output, int width, int height) {
-    const size_t pixel_count = width * height * 4; // RGBA
+    const size_t pixel_count = static_cast<size_t>(width) * static_cast<size_t>(height) * 4; // RGBA
     image_buffer.downloadTo(output, pixel_count);
 }
 

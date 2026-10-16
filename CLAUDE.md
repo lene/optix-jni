@@ -98,9 +98,10 @@ CUDA warning on non-GPU machine is expected and non-fatal. Publishing stubs is b
 | Job | Runner | Needs CUDA? |
 |---|---|---|
 | scalafix, cppcheck, doc-completeness | ubuntu-latest | No |
-| archunit, scala-tests, build-native, smoke-tests, publish | `[self-hosted, Linux, X64, nvidia]` | Yes |
+| archunit, scala-tests, build-native, smoke-tests | `[self-hosted, Linux, X64, nvidia]` — skipped for fork PRs | Yes |
+| publish | `[publish]` — dedicated runner, own OS user, `release` environment (approval per run) | Yes (nvcc only) |
 
-All jobs requiring native compilation must run on the nvidia self-hosted runner with `Add CUDA to PATH` step.
+All jobs requiring native compilation must run on the nvidia self-hosted runner with `Add CUDA to PATH` step. Every such job carries `if: !github.event.pull_request.head.repo.fork`; keep that guard on any new self-hosted job. The publish runner is set up by menger-toplevel `infra/ci-runners/setup-publish-runner.sh` (security review 2026-10-14, menger-toplevel#83).
 
 ---
 

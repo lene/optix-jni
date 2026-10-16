@@ -51,3 +51,5 @@ NVIDIA-OptiX-SDK-*.sh
 # repowise local cache/index/keys
 .repowise/
 .mcp.json
+# pre-push code-quality review log (global CLAUDE.md rule): local, never committed
+LOCAL_CODE_IMPROVEMENTS.md

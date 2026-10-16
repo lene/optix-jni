@@ -35,7 +35,8 @@ object RenderHealth:
       channelEpsilon: Int = DefaultChannelEpsilon
   ): Unit =
     require(width > 0 && height > 0, "width and height must be positive")
-    require(pixels.length >= width * height * 4,
+    // Long: in Int the product wraps and a short buffer passed (optix-jni#68).
+    require(pixels.length.toLong >= width.toLong * height.toLong * 4,
       s"pixel buffer too small for ${width}x$height RGBA, got ${pixels.length} bytes")
     require(uniformFraction > 0.0 && uniformFraction <= 1.0,
       s"uniformFraction must be in (0, 1], got $uniformFraction")
