@@ -1966,6 +1966,30 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanceCount(
 }
 
 /**
+ * [full IAS builds, in-place IAS updates] so far (optix-jni#66), for tests; null if the
+ * renderer is not initialized.
+ */
+JNIEXPORT jlongArray JNICALL Java_io_github_lene_optix_OptiXRenderer_iasUpdateCountsNative(
+    JNIEnv* env, jobject obj) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        const OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return nullptr;
+        unsigned long builds = 0, updates = 0;
+        wrapper->iasUpdateCounts(builds, updates);
+        jlongArray result = env->NewLongArray(2);
+        if (result == nullptr) return nullptr;
+        const jlong values[2] = {static_cast<jlong>(builds), static_cast<jlong>(updates)};
+        env->SetLongArrayRegion(result, 0, 2, values);
+        return result;
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in iasUpdateCounts: " << e.what() << std::endl;
+        return nullptr;
+    }
+    JNI_CATCH_UNKNOWN_LOG_RET(nullptr)
+}
+
+/**
  * Check if IAS mode is enabled.
  */
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isIASMode(

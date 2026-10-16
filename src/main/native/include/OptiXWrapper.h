@@ -250,6 +250,8 @@ public:
     // True if `typeId` is a registered custom type: past the built-ins, before the end of the
     // SBT's hitgroup table (optix-jni#70).
     bool isCustomGeometryType(int typeId) const;
+    // Full IAS builds and in-place updates so far (optix-jni#66; for tests).
+    void iasUpdateCounts(unsigned long& fullBuilds, unsigned long& inPlaceUpdates) const;
     // Set PBR material on any existing instance (built-in or custom-geometry). Custom
     // instances start with a white default; registrants (e.g. menger-geometry's 4D
     // fractals) call this so their shaders read colour/PBR via getInstanceMaterialPBR

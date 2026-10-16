@@ -346,7 +346,8 @@ class OptiXRenderer
         filmThickness, cauchyA, cauchyB))
 
   // Replace an instance's 4x3 row-major transform (same layout as add*Instance).
-  // Cheap: only the top-level IAS is rebuilt on the next render, no GAS. Use it to
+  // Cheap: the next render copies the instance records into the existing buffers and refits the
+  // top-level IAS -- no rebuild, no reallocation, no GAS (optix-jni#66). Use it to
   // move/rotate an existing object per frame instead of re-adding it. Returns 0, or
   // -1 for an unknown instance id; throws IllegalArgumentException unless length 12.
   def setInstanceTransform(instanceId: Int, transform: Array[Float]): Int =
@@ -596,6 +597,11 @@ class OptiXRenderer
 
   /** Returns the number of currently active IAS instances. */
   @native def getInstanceCount(): Int
+
+  /** `[full IAS builds, in-place IAS updates]` since initialization, or `null` when not
+    * initialized: a test can tell an instance change that refits from one that rebuilds
+    * (optix-jni#66). */
+  @native private[optix] def iasUpdateCountsNative(): Array[Long]
 
   /** Returns whether native rendering uses IAS instance mode. */
   @native def isIASMode(): Boolean
