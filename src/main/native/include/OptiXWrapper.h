@@ -247,6 +247,9 @@ public:
     int addCustomGeometryInstance(
         int typeId, const float* aabbMin, const float* aabbMax, const float* transform,
         const void* customData = nullptr, int customDataSize = 0);
+    // True if `typeId` is a registered custom type: past the built-ins, before the end of the
+    // SBT's hitgroup table (optix-jni#70).
+    bool isCustomGeometryType(int typeId) const;
     // Set PBR material on any existing instance (built-in or custom-geometry). Custom
     // instances start with a white default; registrants (e.g. menger-geometry's 4D
     // fractals) call this so their shaders read colour/PBR via getInstanceMaterialPBR

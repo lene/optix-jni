@@ -2300,6 +2300,11 @@ int OptiXWrapper::registerCustomGeometry(
 // type. The caller supplies the object-space AABB (its custom IS intersects
 // within it) and the 3x4 transform. The instance's sbtOffset = typeId * STRIDE
 // is set generically by the IAS build, targeting the type's registered SBT block.
+bool OptiXWrapper::isCustomGeometryType(int typeId) const {
+    return typeId >= GEOMETRY_TYPE_COUNT &&
+        typeId < impl->pipeline_manager.geometryTypeCount();
+}
+
 int OptiXWrapper::addCustomGeometryInstance(
     int typeId, const float* aabbMin, const float* aabbMax, const float* transform,
     const void* customData, int customDataSize) {
@@ -3468,8 +3473,8 @@ int OptiXWrapper::uploadTexture(
         CUDA_CHECK(cudaMemcpy2DToArray(
             cuda_array, 0, 0,
             image_data,
-            width * RGBA8_BYTES_PER_PIXEL,  // Source pitch (bytes per row)
-            width * RGBA8_BYTES_PER_PIXEL,  // Width in bytes
+            static_cast<size_t>(width) * RGBA8_BYTES_PER_PIXEL,  // Source pitch (bytes per row)
+            static_cast<size_t>(width) * RGBA8_BYTES_PER_PIXEL,  // Width in bytes
             height,
             cudaMemcpyHostToDevice
         ));
