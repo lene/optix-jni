@@ -56,6 +56,10 @@ Compile / scalacOptions := (Compile / scalacOptions).value.map(
 // Configure native build
 nativeCompile / sourceDirectory := sourceDirectory.value / "main" / "native"
 nativeBuildTool := CMakeWithoutVersionBug.make(Seq(
+  // This explicit list replaces CMakeWithoutVersionBug's default, which is where the build type
+  // was set: without it the host C++ (JNI layer, wrapper, BVH preparation) built at -O0. Found
+  // by ScalingPerformanceSuite's renderMix gate (review 2026-10-14, optix-jni#67).
+  "-DCMAKE_BUILD_TYPE=Release",
   "-Wno-dev",
   "--log-level=WARNING",
   s"-DJAVAH_INCLUDE_DIR=${(target.value / "native" / "include").getAbsolutePath}"
