@@ -20,6 +20,15 @@ object ThresholdConstants:
   val MAX_SLOWDOWN_LARGE_SPHERE = 26.0   // 12.73
   val MAX_SLOWDOWN_BUFFER_REUSE = 2.1    // 1.05 (loaded)
   val MAX_SLOWDOWN_ANTIALIASING = 330.0  // 160.9 (AA on vs the same scene with AA off)
+  // ScalingPerformanceSuite (optix-jni#67), same convention: ~2x the highest upper bound of three
+  // idle runs on the RTX A1000 laptop GPU (2026-10-17, Release build).
+  val MAX_SLOWDOWN_INSTANCE_SCALING = 3.0   // 1.41 (64 sphere instances vs 1)
+  val MAX_SLOWDOWN_INSTANCE_MOVE = 2.2      // 1.09 (one instance moved per frame: in-place refit)
+  // renderMix must never be slower than the JVM loop it replaces (measured 0.46; 2.15 before the
+  // Release build type, which this gate found).
+  val MAX_SLOWDOWN_RENDER_MIX = 1.0
+  val MAX_SLOWDOWN_CUSTOM_GEOMETRY = 2.1    // 1.04 (SPI stub instance vs built-in sphere)
+  val MAX_SLOWDOWN_CAUSTICS = 1100.0        // 527 (50k photons x 2 iterations vs none)
 
   // Images with lighting/shading should have stddev > 10; solid colors are near 0
   val MIN_BRIGHTNESS_VARIATION = 10.0
