@@ -7,6 +7,7 @@
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <vector>
@@ -1169,6 +1170,41 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_hasTriangleMe
     JNI_CATCH_UNKNOWN_LOG_RET(JNI_FALSE)
 }
 
+// The RenderResult (image + ray stats) for a finished render; nullptr with a pending Java
+// exception if construction failed. frameMs is set by the Scala wrapper, which times the call.
+static jobject makeRenderResult(JNIEnv* env, jbyteArray imageArray, const RayStats& stats,
+                                const char* caller) {
+    jclass resultClass = env->FindClass("io/github/lene/optix/RenderResult");
+    if (resultClass == nullptr) {
+        OPTIX_LOG(ERROR) << "[JNI] " << caller << ": failed to find RenderResult class" << std::endl;
+        return nullptr;
+    }
+    jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJJJJIIF)V");
+    if (constructor == nullptr) {
+        OPTIX_LOG(ERROR) << "[JNI] " << caller << ": failed to find RenderResult constructor" << std::endl;
+        return nullptr;
+    }
+    jobject result = env->NewObject(resultClass, constructor,
+        imageArray,
+        static_cast<jlong>(stats.total_rays),
+        static_cast<jlong>(stats.primary_rays),
+        static_cast<jlong>(stats.reflected_rays),
+        static_cast<jlong>(stats.refracted_rays),
+        static_cast<jlong>(stats.shadow_rays),
+        static_cast<jlong>(stats.aa_rays),
+        static_cast<jlong>(stats.aa_stack_overflows),
+        static_cast<jlong>(stats.spectral_rays),
+        static_cast<jint>(stats.max_depth_reached),
+        static_cast<jint>(stats.min_depth_reached),
+        static_cast<jfloat>(0.0f));
+    if (env->ExceptionCheck()) {
+        // Let the constructor failure propagate to Scala; do not clear it into a silent null.
+        OPTIX_LOG(ERROR) << "[JNI] " << caller << ": RenderResult constructor threw" << std::endl;
+        return nullptr;
+    }
+    return result;
+}
+
 JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStats(
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {
@@ -1211,45 +1247,63 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
         }
         env->ReleaseByteArrayElements(imageArray, buffer, 0);
 
-        // Create RenderResult object (image + stats)
-        jclass resultClass = env->FindClass("io/github/lene/optix/RenderResult");
-        if (resultClass == nullptr) {
-            OPTIX_LOG(ERROR) << "[JNI] Failed to find RenderResult class" << std::endl;
-            return nullptr;
-        }
-
-        jmethodID constructor = env->GetMethodID(resultClass, "<init>", "([BJJJJJJJJIIF)V");
-        if (constructor == nullptr) {
-            OPTIX_LOG(ERROR) << "[JNI] Failed to find RenderResult constructor" << std::endl;
-            return nullptr;
-        }
-
-        jobject result = env->NewObject(resultClass, constructor,
-            imageArray,
-            static_cast<jlong>(stats.total_rays),
-            static_cast<jlong>(stats.primary_rays),
-            static_cast<jlong>(stats.reflected_rays),
-            static_cast<jlong>(stats.refracted_rays),
-            static_cast<jlong>(stats.shadow_rays),
-            static_cast<jlong>(stats.aa_rays),
-            static_cast<jlong>(stats.aa_stack_overflows),
-            static_cast<jlong>(stats.spectral_rays),
-            static_cast<jint>(stats.max_depth_reached),
-            static_cast<jint>(stats.min_depth_reached),
-            static_cast<jfloat>(0.0f)
-        );
-
-        if (env->ExceptionCheck()) {
-            // Let the constructor failure propagate to Scala; do not clear it into a silent null.
-            OPTIX_LOG(ERROR) << "[JNI] renderWithStats: RenderResult constructor threw" << std::endl;
-            return nullptr;
-        }
-
-        return result;
+        return makeRenderResult(env, imageArray, stats, "renderWithStats");
     } catch (const std::exception& e) {
         // Propagate as a Java exception instead of swallowing to a silent null — the swallow
         // here is what made the render-path failures (July MultiObjectCaustics crashes)
         // undiagnosable from the JVM side.
+        throwOptiXFailure(env, e);
+        return nullptr;
+    }
+    JNI_CATCH_UNKNOWN_THROW_RET(nullptr)
+}
+
+// optix-jni#85: one frame mixed from several renders that differ in instance visibility, in a
+// single call -- menger's fractional levels made one JNI call, one byte array and one JVM mix per
+// pass. `visible` is passes x instances, row-major.
+JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderMixNative(
+    JNIEnv* env, jobject obj, jint width, jint height,
+    jintArray instanceIds, jbooleanArray visible, jdoubleArray weights) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = getWrapper(env, obj);
+        if (wrapper == nullptr) return nullptr;
+        const int64_t size = jni_checks::rgbaBytes(env, width, height);
+        if (size < 0) return nullptr;
+        if (!jni_checks::requireNonNull(env, instanceIds, "instanceIds") ||
+            !jni_checks::requireNonNull(env, weights, "weights")) {
+            return nullptr;
+        }
+        const jsize numInstances = env->GetArrayLength(instanceIds);
+        const jsize numPasses = env->GetArrayLength(weights);
+        if (!jni_checks::requireRange<jint>(env, numPasses, 1, jni_checks::kMaxMixPasses,
+                                            "mix passes") ||
+            !jni_checks::requireLength(env, visible, "visible", {numPasses, numInstances},
+                                       "passes * instances")) {
+            return nullptr;
+        }
+        std::vector<jint> ids(static_cast<size_t>(numInstances));
+        std::vector<jboolean> vis(static_cast<size_t>(numPasses) * numInstances);
+        std::vector<jdouble> w(static_cast<size_t>(numPasses));
+        env->GetIntArrayRegion(instanceIds, 0, numInstances, ids.data());
+        env->GetBooleanArrayRegion(visible, 0, static_cast<jsize>(vis.size()), vis.data());
+        env->GetDoubleArrayRegion(weights, 0, numPasses, w.data());
+        std::unique_ptr<bool[]> shown(new bool[vis.size()]);
+        for (size_t i = 0; i < vis.size(); ++i) shown[i] = vis[i] == JNI_TRUE;
+
+        jbyteArray imageArray = env->NewByteArray(static_cast<jsize>(size));
+        if (imageArray == nullptr) return nullptr;
+        std::vector<unsigned char> image(static_cast<size_t>(size));
+        RayStats stats{};
+        if (!wrapper->renderMix(width, height, ids.data(), numInstances, shown.get(), w.data(),
+                                numPasses, image.data(), &stats)) {
+            jni_checks::throwIllegalArgument(env, "renderMix: unknown instance id");
+            return nullptr;
+        }
+        env->SetByteArrayRegion(imageArray, 0, static_cast<jsize>(size),
+                                reinterpret_cast<const jbyte*>(image.data()));
+        return makeRenderResult(env, imageArray, stats, "renderMix");
+    } catch (const std::exception& e) {
         throwOptiXFailure(env, e);
         return nullptr;
     }

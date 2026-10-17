@@ -443,6 +443,11 @@ class OptiXRenderer
     */
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
+  // optix-jni#85: `visible` is passes x instances, row-major; see renderMix.
+  @native private[optix] def renderMixNative(
+      width: Int, height: Int, instanceIds: Array[Int], visible: Array[Boolean],
+      weights: Array[Double]): RenderResult
+
   // ---- Diagnostics ----
   /** Free device memory in bytes (`cudaMemGetInfo`). For leak-assertion tests: a create/render/
     * dispose or clear→re-add loop should return this to ~baseline. Device-global, but exposed as an

@@ -229,6 +229,14 @@ public:
 
     // Rendering
     void render(int width, int height, unsigned char* output, RayStats* stats = nullptr);
+    // optix-jni#85: one image mixed from `numPasses` renders. In pass p, instance
+    // instanceIds[i] is visible iff visible[p * numInstances + i]; the passes' RGBA8 images
+    // are summed with `weights` per channel, rounded and clamped to 0..255. Stats are summed
+    // (depths: max of max, min of min). Visibility is left as the last pass set it. Returns
+    // false (nothing rendered) if an instance id is unknown.
+    bool renderMix(int width, int height, const int* instanceIds, int numInstances,
+                   const bool* visible, const double* weights, int numPasses,
+                   unsigned char* output, RayStats* stats);
 
     // Statistics
     bool getCausticsStats(CausticsStats* stats);  // Get PPM validation statistics

@@ -107,6 +107,8 @@ constexpr int kMaxIblSamples = 64;
 constexpr int kMaxAccumulationFrames = 1024;
 constexpr int kMaxPhotonsPerIteration = 10000000;
 constexpr int kMaxCausticsIterations = 1000;
+// Renders one renderMix call may combine (optix-jni#85): menger needs up to 2^4 = 16.
+constexpr int kMaxMixPasses = 64;
 
 // True if lo <= value <= hi; otherwise throws naming the value and the range.
 template <typename T>

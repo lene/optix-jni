@@ -2229,6 +2229,49 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
     }
 }
 
+bool OptiXWrapper::renderMix(int width, int height, const int* instanceIds, int numInstances,
+                             const bool* visible, const double* weights, int numPasses,
+                             unsigned char* output, RayStats* stats) {
+    for (int i = 0; i < numInstances; ++i) {
+        if (instanceIds[i] < 0 || instanceIds[i] >= static_cast<int>(impl->instances.size())) {
+            return false;
+        }
+    }
+    // ponytail: each pass is a visibility change (an in-place IAS refit since #66), a full
+    // render() and a host copy of its image; the mix runs on the host. Device-side
+    // accumulation would save the per-pass copies -- worth it only if they show in a profile.
+    const size_t bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+    std::vector<double> sum(bytes, 0.0);
+    std::vector<unsigned char> pass_image(bytes);
+    RayStats total{};
+    for (int p = 0; p < numPasses; ++p) {
+        for (int i = 0; i < numInstances; ++i) {
+            setInstanceVisible(instanceIds[i], visible[static_cast<size_t>(p) * numInstances + i]);
+        }
+        RayStats pass{};
+        render(width, height, pass_image.data(), &pass);
+        for (size_t b = 0; b < bytes; ++b) sum[b] += pass_image[b] * weights[p];
+        total.total_rays += pass.total_rays;
+        total.primary_rays += pass.primary_rays;
+        total.reflected_rays += pass.reflected_rays;
+        total.refracted_rays += pass.refracted_rays;
+        total.shadow_rays += pass.shadow_rays;
+        total.aa_rays += pass.aa_rays;
+        total.aa_stack_overflows += pass.aa_stack_overflows;
+        total.spectral_rays += pass.spectral_rays;
+        total.max_depth_reached = std::max(total.max_depth_reached, pass.max_depth_reached);
+        total.min_depth_reached = p == 0 ? pass.min_depth_reached
+                                         : std::min(total.min_depth_reached, pass.min_depth_reached);
+    }
+    // The same result as menger's LevelMix.mix (Math.round, clamp): the sums are >= 0, where
+    // llround and Math.round agree.
+    for (size_t b = 0; b < bytes; ++b) {
+        output[b] = static_cast<unsigned char>(std::clamp(std::llround(sum[b]), 0LL, 255LL));
+    }
+    if (stats) *stats = total;
+    return true;
+}
+
 bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
     if (!impl->initialized || !impl->config.getCausticsEnabled() || !stats
             || impl->caustics_renderer == nullptr) {
