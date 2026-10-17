@@ -24,7 +24,7 @@ class RenderMixSuite extends AnyFlatSpec with Matchers:
     val b = r.addSphereInstance(Vector[3](0.6f, 0f, 0f), Material(Color(0.1f, 0.2f, 0.9f, 1f), 1.0f))
     (r, Array(a, b))
 
-  private val passes = Seq(
+  private val passes = Array(
     MixPass(Array(true, false), 0.3),
     MixPass(Array(false, true), 0.5),
     MixPass(Array(true, true), 0.2)
@@ -48,10 +48,10 @@ class RenderMixSuite extends AnyFlatSpec with Matchers:
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
     val (r, ids) = renderer()
     Using.resource(r): _ =>
-      an[IllegalArgumentException] should be thrownBy r.renderMix(imageSize, ids, Seq.empty)
+      an[IllegalArgumentException] should be thrownBy r.renderMix(imageSize, ids, Array.empty[MixPass])
       an[IllegalArgumentException] should be thrownBy
-        r.renderMix(imageSize, ids, Seq(MixPass(Array(true), 1.0)))
+        r.renderMix(imageSize, ids, Array(MixPass(Array(true), 1.0)))
       an[IllegalArgumentException] should be thrownBy
-        r.renderMix(imageSize, Array(ids(0), 9999), Seq(MixPass(Array(true, true), 1.0)))
+        r.renderMix(imageSize, Array(ids(0), 9999), Array(MixPass(Array(true, true), 1.0)))
       an[IllegalArgumentException] should be thrownBy
-        r.renderMix(imageSize, ids, Seq.fill(65)(MixPass(Array(true, true), 1.0 / 65)))
+        r.renderMix(imageSize, ids, Array.fill(65)(MixPass(Array(true, true), 1.0 / 65)))
