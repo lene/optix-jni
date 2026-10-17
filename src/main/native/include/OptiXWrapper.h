@@ -2,6 +2,7 @@
 #define OPTIX_WRAPPER_H
 
 #include <memory>
+#include <string>
 #include <optix.h>
 #include <cuda_runtime.h>
 
@@ -69,6 +70,10 @@ public:
 
     // Test hook: the next setProjectedMesh behaves as if its readback failed (-2).
     void failNextProjectionReadbackForTest();
+    // Test hooks for the process-wide CUDA context-lost latch (optix-jni#73): a real sticky
+    // error would poison the test process for every later test.
+    static void simulateContextLostForTest(const std::string& reason);
+    static void clearContextLostForTest();
 
     // Backward-compatible quad-only alias
     int setTriangleMesh4DQuads(

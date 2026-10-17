@@ -757,7 +757,7 @@ int OptiXWrapper::setProjectedMesh(
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
         OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel launch: "
                   << cudaGetErrorString(syncErr) << std::endl;
-        cudaGetLastError();  // clear sticky error so later launches are not poisoned
+        noteCudaError(syncErr, "project4d kernel");  // latch if sticky, clear if not (#73)
         sync_ok = false;
     }
 
@@ -822,6 +822,15 @@ int OptiXWrapper::setProjectedMesh(
     mesh_params.vertex_stride = vertex_stride;
 
     return mesh_index;
+}
+
+void OptiXWrapper::simulateContextLostForTest(const std::string& reason) {
+    latchContextLost(reason);
+}
+
+void OptiXWrapper::clearContextLostForTest() {
+    std::lock_guard<std::mutex> lock(cuda_state::lostMutex());
+    cuda_state::lostReason().clear();
 }
 
 void OptiXWrapper::failNextProjectionReadbackForTest() {
@@ -889,7 +898,7 @@ int OptiXWrapper::updateMesh4DProjection(
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
         OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel relaunch: "
                   << cudaGetErrorString(syncErr) << std::endl;
-        cudaGetLastError();  // clear sticky error so later launches are not poisoned
+        noteCudaError(syncErr, "project4d kernel relaunch");  // latch if sticky (#73)
     }
 
     // GAS refit. Cut A flagged this mesh's GAS with ALLOW_UPDATE so we can
@@ -1580,6 +1589,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
     if (!impl->initialized) {
         throw std::runtime_error("[OptiX] render() called before initialize()");
     }
+    // A sticky CUDA error earlier in this process: launching again would only fail again, or
+    // render garbage (optix-jni#73).
+    throwIfContextLost();
 
     try {
         // Build pipeline on first render or when geometry changes (expensive)
@@ -3849,7 +3861,7 @@ void OptiXWrapper::dispose() {
         if (err != cudaSuccess) {
             OPTIX_LOG(ERROR) << "[OptiX] CUDA synchronization warning during dispose: "
                       << cudaGetErrorString(err) << std::endl;
-            cudaGetLastError();  // Clear the error
+            noteCudaError(err, "dispose");  // a sticky error cannot be cleared (#73)
         }
     });
 
