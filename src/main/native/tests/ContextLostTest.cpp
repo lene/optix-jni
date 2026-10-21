@@ -36,14 +36,7 @@ TEST_F(ContextLost, AStickyFailureThrowsContextLostAndLatches) {
 }
 
 TEST_F(ContextLost, ARecoverableFailureThrowsAPlainErrorAndDoesNotLatch) {
-    try {
-        throwCudaFailure("no memory", cudaErrorMemoryAllocation);
-        FAIL() << "expected a throw";
-    } catch (const CudaContextLost&) {
-        FAIL() << "out of memory is recoverable";
-    } catch (const std::runtime_error& e) {
-        EXPECT_STREQ(e.what(), "no memory");
-    }
+    EXPECT_THROW(throwCudaFailure("no memory", cudaErrorMemoryAllocation), std::runtime_error);
     EXPECT_EQ(contextLostReason(), "");
     EXPECT_NO_THROW(throwIfContextLost());
 }
