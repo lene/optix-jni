@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A transparent shadow through a triangle mesh charged the object's whole Beer-Lambert chord at
+  every front face the shadow ray crossed. A coloured glass sponge, which a ray crosses at
+  dozens of faces, cast a grey shadow instead of a tinted one. The chord is now charged once per
+  instance and shadow ray (shadow payload 3 holds the instance id). A sphere already counted
+  only its entry hit and is unchanged (lene/menger#128).
+
 ## [0.4.9] - 2026-10-22
 
 ### Added

@@ -150,7 +150,8 @@ __device__ float3 traceShadowRay(
     const float3& light_dir
 ) {
     const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
-    unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0;
+    // p3: the instance whose absorption this ray already carries (chargeInstanceOnce).
+    unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0, shadow_p3 = 0;
 
     optixTrace(
         params.handle,
@@ -164,7 +165,7 @@ __device__ float3 traceShadowRay(
         params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
         SBTConstants::STRIDE_RAY_TYPES,
         SBTConstants::MISS_SHADOW,
-        shadow_p0, shadow_p1, shadow_p2
+        shadow_p0, shadow_p1, shadow_p2, shadow_p3
     );
 
     const float3 shadow_factor = make_float3(
@@ -2088,6 +2089,22 @@ __device__ void getInstanceProceduralParams(int& proc_type, float& proc_scale) {
  * @param ior            Index of refraction
  * @param coverage       How much of the instance is present (setInstanceCoverage)
  */
+/**
+ * True the first time a shadow ray reaches the current instance, recording it in payload 3
+ * (instance id + 1; 0 = none). A ray through a level-3 sponge crosses dozens of its front
+ * faces; charging the whole-object chord at each made a coloured glass sponge's shadow grey
+ * (usability review 2026-10, session 5, F111, menger#128). Recursive-IAS sub-instances carry
+ * their object's id, so a sponge is one instance here.
+ * ponytail: one id per ray -- any-hit order is arbitrary, so two transparent objects whose hits
+ * interleave are charged more than once; a small id set if that shows.
+ */
+__device__ bool chargeInstanceOnce() {
+    const unsigned int id = optixGetInstanceId() + 1u;
+    if (optixGetPayload_3() == id) return false;
+    optixSetPayload_3(id);
+    return true;
+}
+
 __device__ void accumulateTransparentShadow(float4 color, float fallback_alpha, float ior,
                                             float coverage) {
     int proc_type; float proc_scale;
@@ -2103,6 +2120,8 @@ __device__ void accumulateTransparentShadow(float4 color, float fallback_alpha, 
         accumulateShadowAttenuation(fallback_alpha, color);
         return;
     }
+    // The chord stands for the whole object, so it is charged once per instance and ray.
+    if (!chargeInstanceOnce()) return;
     const float f0 = (ior - 1.0f) / (ior + 1.0f);
     const float surfaces = (1.0f - f0 * f0) * (1.0f - f0 * f0);
     const float k = color.w * BEER_LAMBERT_ABSORPTION_SCALE * chord;

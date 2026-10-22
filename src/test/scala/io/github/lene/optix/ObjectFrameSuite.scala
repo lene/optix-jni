@@ -4,6 +4,7 @@ import io.github.lene.optix.ImageValidation.getRGBAt
 import menger.common.Color
 import menger.common.Const
 import menger.common.ImageSize
+import menger.common.TriangleMeshData
 import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -108,6 +109,55 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
   "A red glass sphere without a frame" should "keep the old surface-model shadow, barely tinted" in {
     // alpha * (1 - colour): 0.02 * 0.9 of the direct light.
     redToGreen(patch(renderShadow(redGlass, frame = false), 32, 32)) should be < 1.05
+  }
+
+  // --- menger#128 (F111): a mesh is charged once per instance, not per front face ------------
+
+  private val unitCubeFrame = Array(1f, 0f, 0f, 0.5f, 0f, 1f, 0f, 0.5f, 0f, 0f, 1f, 0.5f)
+  private val LayerCount = 4
+
+  /** The unit cube's volume as `LayerCount` separate slabs stacked along y in one mesh: a
+    * shadow ray crosses a front face of each, as one crosses many in a sponge. */
+  private def layeredCube: TriangleMeshData =
+    val cube = TestUtilities.createUnitCubeMesh()
+    val stride = cube.vertexStride
+    val vertexCount = cube.vertices.length / stride
+    val thickness = 1f / LayerCount
+    val layers = (0 until LayerCount).map { k =>
+      val centreY = -0.5f + thickness * (k + 0.5f)
+      val vertices = cube.vertices.grouped(stride).flatMap { v =>
+        v.updated(1, v(1) * thickness * 0.8f + centreY)
+      }.toArray
+      (vertices, cube.indices.map(_ + k * vertexCount))
+    }
+    TriangleMeshData(
+      layers.flatMap(_._1).toArray, layers.flatMap(_._2).toArray, stride
+    )
+
+  private def renderMeshShadow(mesh: TriangleMeshData): Array[Byte] =
+    renderer.setCamera(
+      Vector[3](2f, 4f, 4f), Vector[3](2f, Const.defaultFloorPlaneY, 0f), Vector[3](0f, 1f, 0f), 60f
+    )
+    renderer.setLight(Vector[3](1f, -1f, 0f), 1.0f)
+    renderer.setShadows(true)
+    renderer.setTransparentShadows(true)
+    renderer.clearAllInstances()
+    renderer.clearTriangleMesh()
+    val _ = renderer.addTriangleMesh(mesh)
+    val id = renderer.addTriangleMeshInstance(
+      Array(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f), Material(redGlass, Const.iorGlass)
+    )
+    renderer.setObjectFrame(id, unitCubeFrame)
+    renderImage(imgSize)
+
+  "A glass mesh crossed through many front faces" should "cast as light a shadow as one block" in {
+    // Charging the whole-object chord at every front face made a sponge's shadow grey.
+    def brightness(rgb: (Double, Double, Double)) = rgb._1 + rgb._2 + rgb._3
+    val block = patch(renderMeshShadow(TestUtilities.createUnitCubeMesh()), 32, 32)
+    val layers = patch(renderMeshShadow(layeredCube), 32, 32)
+    info(f"block $block, layers $layers")
+    brightness(layers) should be > 0.9 * brightness(block)
+    redToGreen(layers) should be > 1.1
   }
 
   "A glass sphere coloured by XYZToRGBLocal" should "cast a shadow whose hue varies across it" in {
