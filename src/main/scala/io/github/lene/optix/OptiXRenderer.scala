@@ -346,7 +346,8 @@ class OptiXRenderer
         filmThickness, cauchyA, cauchyB))
 
   // Replace an instance's 4x3 row-major transform (same layout as add*Instance).
-  // Cheap: only the top-level IAS is rebuilt on the next render, no GAS. Use it to
+  // Cheap: the next render copies the instance records into the existing buffers and refits the
+  // top-level IAS -- no rebuild, no reallocation, no GAS (optix-jni#66). Use it to
   // move/rotate an existing object per frame instead of re-adding it. Returns 0, or
   // -1 for an unknown instance id; throws IllegalArgumentException unless length 12.
   def setInstanceTransform(instanceId: Int, transform: Array[Float]): Int =
@@ -442,6 +443,11 @@ class OptiXRenderer
     */
   @native def renderWithStats(width: Int, height: Int): RenderResult
 
+  // optix-jni#85: `visible` is passes x instances, row-major; see renderMix.
+  @native private[optix] def renderMixNative(
+      width: Int, height: Int, instanceIds: Array[Int], visible: Array[Boolean],
+      weights: Array[Double]): RenderResult
+
   // ---- Diagnostics ----
   /** Free device memory in bytes (`cudaMemGetInfo`). For leak-assertion tests: a create/render/
     * dispose or clear→re-add loop should return this to ~baseline. Device-global, but exposed as an
@@ -494,6 +500,10 @@ class OptiXRenderer
 
   // Test hook (#41): the next setProjectedMesh fails as if its readback had (-2).
   @native private[optix] def failNextProjectionReadbackNative(): Unit
+
+  // Test hooks for the process-wide CUDA context-lost latch (optix-jni#73).
+  @native private[optix] def simulateContextLostNative(reason: String): Unit
+  @native private[optix] def clearContextLostNative(): Unit
 
   @native private[optix] def updateMesh4DProjectionNative(
     meshIndex: Int,
@@ -596,6 +606,11 @@ class OptiXRenderer
 
   /** Returns the number of currently active IAS instances. */
   @native def getInstanceCount(): Int
+
+  /** `[full IAS builds, in-place IAS updates]` since initialization, or `null` when not
+    * initialized: a test can tell an instance change that refits from one that rebuilds
+    * (optix-jni#66). */
+  @native private[optix] def iasUpdateCountsNative(): Array[Long]
 
   /** Returns whether native rendering uses IAS instance mode. */
   @native def isIASMode(): Boolean

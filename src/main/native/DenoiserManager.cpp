@@ -105,6 +105,8 @@ bool DenoiserManager::denoiseFloat4(
 
         CUDA_CHECK(cudaDeviceSynchronize());
         return true;
+    } catch (const CudaContextLost&) {
+        throw;  // optix-jni#73: not a denoiser problem the caller can fall back from
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiX] Denoise failed: " << e.what() << std::endl;
         return false;

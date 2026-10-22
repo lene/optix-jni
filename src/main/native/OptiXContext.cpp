@@ -997,8 +997,9 @@ void OptiXContext::launch(
     // cause (e.g. no memory to grow the per-thread stack pool), so a failure here carries it.
     const cudaError_t err = cudaDeviceSynchronize();
     if (err != cudaSuccess) {
-        throw std::runtime_error(formatLaunchFailure(
-            takeOptixErrors(), formatCudaError("cudaDeviceSynchronize()", err)));
+        // A sticky error here (illegal address, launch failure) is latched (optix-jni#73).
+        throwCudaFailure(formatLaunchFailure(
+            takeOptixErrors(), formatCudaError("cudaDeviceSynchronize()", err)), err);
     }
 }
 

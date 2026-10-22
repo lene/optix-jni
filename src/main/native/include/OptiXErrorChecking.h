@@ -3,11 +3,13 @@
 #include <optix.h>
 #include <cuda_runtime.h>
 #include <algorithm>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 #include "OptiXConstants.h"
+#include "CudaContextLost.h"
 
 /**
  * @file OptiXErrorChecking.h
@@ -16,6 +18,69 @@
  * These macros provide consistent error handling across the OptiX JNI codebase.
  * They throw std::runtime_error with detailed diagnostic information on failure.
  */
+
+/**
+ * Sticky CUDA errors (optix-jni#73): after one of these (illegal address, launch failure, ...)
+ * the process's CUDA context is unusable -- every later call fails, and cudaGetLastError()
+ * does not clear it. The first one is latched process-wide; from then on renders throw
+ * CudaContextLost naming it instead of launching into the broken context. Only a new process
+ * recovers. The codes match menger's OptiXRendererWrapper.StickyCudaErrorCodes.
+ */
+inline bool isStickyCudaError(cudaError_t err) {
+    switch (static_cast<int>(err)) {
+        case 700: case 702: case 714: case 715: case 716: case 717: case 718: case 719:
+            return true;
+        default:
+            return false;
+    }
+}
+
+namespace cuda_state {
+inline std::mutex& lostMutex() { static std::mutex m; return m; }
+inline std::string& lostReason() { static std::string reason; return reason; }
+}  // namespace cuda_state
+
+/** Records `reason` as the context loss, unless one is recorded already (the first wins). */
+inline void latchContextLost(const std::string& reason) {
+    std::lock_guard<std::mutex> lock(cuda_state::lostMutex());
+    if (cuda_state::lostReason().empty()) cuda_state::lostReason() = reason;
+}
+
+/** The latched context loss, or "" while the context is fine. */
+inline std::string contextLostReason() {
+    std::lock_guard<std::mutex> lock(cuda_state::lostMutex());
+    return cuda_state::lostReason();
+}
+
+inline void throwIfContextLost() {
+    const std::string reason = contextLostReason();
+    if (!reason.empty()) {
+        throw CudaContextLost("CUDA context lost earlier in this process (restart it): " + reason);
+    }
+}
+
+/** Throws `message`: as CudaContextLost (and latched) when `cuda` is a sticky error. */
+[[noreturn]] inline void throwCudaFailure(const std::string& message, cudaError_t cuda) {
+    if (isStickyCudaError(cuda)) {
+        latchContextLost(message);
+        throw CudaContextLost(message);
+    }
+    throw std::runtime_error(message);
+}
+
+/**
+ * For a CUDA error the caller handles itself (logs and continues): latches a sticky one, so
+ * the next render reports it, and clears a recoverable one. Replaces `cudaGetLastError()` used
+ * as if it cleared sticky errors.
+ */
+inline void noteCudaError(cudaError_t err, const std::string& context) {
+    if (isStickyCudaError(err)) {
+        latchContextLost(context + ": " + cudaGetErrorString(err) + " (" +
+                         std::to_string(static_cast<int>(err)) + ")");
+    } else {
+        cudaGetLastError();
+    }
+}
 
 /**
  * @brief Check OptiX API call return value and throw exception on error
@@ -34,7 +99,7 @@
             std::ostringstream ss;                                            \
             ss << "OptiX call '" << #call << "' failed: "                     \
                << optixGetErrorName(res) << " (" << res << ")";               \
-            throw std::runtime_error(ss.str());                               \
+            throwCudaFailure(ss.str(), cudaPeekAtLastError());                \
         }                                                                     \
     } while(0)
 
@@ -56,7 +121,7 @@
     do {                                                                      \
         cudaError_t err = call;                                               \
         if (err != cudaSuccess) {                                             \
-            throw std::runtime_error(formatCudaError(#call, err));            \
+            throwCudaFailure(formatCudaError(#call, err), err);               \
         }                                                                     \
     } while(0)
 

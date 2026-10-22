@@ -78,6 +78,24 @@ private[optix] trait OptiXRenderApi:
     val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
     Optional.ofNullable(raw).map((r: RenderResult) => r.copy(frameMs = elapsedMs))
 
+  /** One image mixed from several renders that differ only in which instances are visible
+    * (optix-jni#85): in each pass, `instanceIds(i)` is visible iff `pass.visible(i)`; the passes'
+    * RGBA8 images are summed per channel with their weights, rounded and clamped. Ray stats are
+    * summed. One native call and one image, instead of one render, one array and one JVM mix
+    * per pass. Visibility stays as the last pass set it. At most 64 passes.
+    *
+    * @return the mixed frame, or empty when the renderer is not initialized
+    */
+  def renderMix(size: ImageSize, instanceIds: Array[Int], passes: Array[MixPass]): Optional[RenderResult] =
+    require(passes.nonEmpty, "renderMix needs at least one pass")
+    require(passes.forall(_.visible.length == instanceIds.length),
+      "every pass names the visibility of every instance")
+    val startNs = System.nanoTime()
+    val raw = renderMixNative(size.width, size.height, instanceIds,
+      passes.flatMap(_.visible), passes.map(_.weight))
+    val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
+    Optional.ofNullable(raw).map((r: RenderResult) => r.copy(frameMs = elapsedMs))
+
   /** Renders an RGBA8 image.
     *
     * @return row-major RGBA bytes, or `null` on failure
@@ -91,3 +109,7 @@ private[optix] trait OptiXRenderApi:
     */
   def render(width: Int, height: Int): Array[Byte] =
     render(ImageSize(width, height))
+
+/** One pass of [[OptiXRenderApi.renderMix]]: which of the mix's instances it shows, and the
+  * weight of its image in the mix. */
+final case class MixPass(visible: Array[Boolean], weight: Double)

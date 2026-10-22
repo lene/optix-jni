@@ -130,7 +130,15 @@ struct OptiXWrapper::Impl {
     std::vector<std::vector<char>> custom_geometry_blobs;
     CUdeviceptr d_custom_geometry_data = 0;   // Packed per-instance custom data on GPU
     size_t custom_geometry_stride = 0;        // Bytes per blob (uniform)
-    bool ias_dirty = false;                   // True if IAS needs rebuild
+    bool ias_dirty = false;                   // True if IAS needs rebuild (instances added/removed)
+    // optix-jni#66: what changed without changing the instance list. Transforms and visibility
+    // re-upload the OptixInstance array and refit the IAS; material fields re-upload only the
+    // InstanceMaterial array. Neither reallocates or rebuilds.
+    bool ias_instances_dirty = false;
+    bool ias_materials_dirty = false;
+    unsigned int ias_built_count = 0;         // instances in the built IAS
+    unsigned long ias_full_builds = 0;        // counters for tests (iasUpdateCounts)
+    unsigned long ias_in_place_updates = 0;
     bool use_ias = false;                     // True = multi-object mode
     unsigned int max_instances = 64;          // Configurable instance limit
     bool max_instances_warning_shown = false; // Suppress repeated warnings
@@ -382,14 +390,14 @@ void OptiXWrapper::setProceduralTexture(int instanceId, int proceduralType,
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
     impl->instances[instanceId].procedural_type  = proceduralType;
     impl->instances[instanceId].procedural_scale = proceduralScale;
-    impl->ias_dirty = true;
+    impl->ias_materials_dirty = true;
 }
 
 void OptiXWrapper::setObjectFrame(int instanceId, const float worldToLocal[12]) {
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
     std::memcpy(impl->instances[instanceId].object_frame, worldToLocal, 12 * sizeof(float));
     impl->instances[instanceId].has_object_frame = true;
-    impl->ias_dirty = true;
+    impl->ias_materials_dirty = true;
 }
 
 void OptiXWrapper::setMapTextures(int instanceId, int normalTextureIndex, int roughnessTextureIndex,
@@ -400,13 +408,13 @@ void OptiXWrapper::setMapTextures(int instanceId, int normalTextureIndex, int ro
     impl->instances[instanceId].metallic_texture_index  = metallicTextureIndex;
     impl->instances[instanceId].ao_texture_index        = aoTextureIndex;
     impl->instances[instanceId].height_texture_index    = heightTextureIndex;
-    impl->ias_dirty = true;
+    impl->ias_materials_dirty = true;
 }
 
 void OptiXWrapper::setImageTexture(int instanceId, int imageTextureIndex) {
     if (instanceId < 0 || instanceId >= (int)impl->instances.size()) return;
     impl->instances[instanceId].image_texture_index = imageTextureIndex;
-    impl->ias_dirty = true;
+    impl->ias_materials_dirty = true;
 }
 
 void OptiXWrapper::clearPlanes() {
@@ -749,7 +757,7 @@ int OptiXWrapper::setProjectedMesh(
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
         OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel launch: "
                   << cudaGetErrorString(syncErr) << std::endl;
-        cudaGetLastError();  // clear sticky error so later launches are not poisoned
+        noteCudaError(syncErr, "project4d kernel");  // latch if sticky, clear if not (#73)
         sync_ok = false;
     }
 
@@ -814,6 +822,15 @@ int OptiXWrapper::setProjectedMesh(
     mesh_params.vertex_stride = vertex_stride;
 
     return mesh_index;
+}
+
+void OptiXWrapper::simulateContextLostForTest(const std::string& reason) {
+    latchContextLost(reason);
+}
+
+void OptiXWrapper::clearContextLostForTest() {
+    std::lock_guard<std::mutex> lock(cuda_state::lostMutex());
+    cuda_state::lostReason().clear();
 }
 
 void OptiXWrapper::failNextProjectionReadbackForTest() {
@@ -881,7 +898,7 @@ int OptiXWrapper::updateMesh4DProjection(
     if (cudaError_t syncErr = cudaDeviceSynchronize(); syncErr != cudaSuccess) {
         OPTIX_LOG(ERROR) << "[OptiX] cudaDeviceSynchronize failed after project4d kernel relaunch: "
                   << cudaGetErrorString(syncErr) << std::endl;
-        cudaGetLastError();  // clear sticky error so later launches are not poisoned
+        noteCudaError(syncErr, "project4d kernel relaunch");  // latch if sticky (#73)
     }
 
     // GAS refit. Cut A flagged this mesh's GAS with ALLOW_UPDATE so we can
@@ -1324,20 +1341,6 @@ void OptiXWrapper::buildIAS() {
         return;
     }
 
-    // Free existing IAS buffers
-    if (impl->d_ias_output_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
-        impl->d_ias_output_buffer = 0;
-    }
-    if (impl->d_instances_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instances_buffer));
-        impl->d_instances_buffer = 0;
-    }
-    if (impl->d_instance_materials) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
-        impl->d_instance_materials = 0;
-    }
-
     // Build OptixInstance and InstanceMaterial arrays from active instances
     std::vector<OptixInstance> optix_instances;
     std::vector<InstanceMaterial> materials;
@@ -1413,6 +1416,46 @@ void OptiXWrapper::buildIAS() {
     if (optix_instances.empty()) {
         impl->use_ias = false;
         return;
+    }
+
+    // optix-jni#66: the same instances, only transforms/visibility or material fields changed --
+    // copy the arrays into the existing buffers and refit, instead of freeing, reallocating and
+    // rebuilding everything. Handles and buffer addresses stay as they are.
+    if (!impl->ias_dirty && impl->ias_handle && impl->d_ias_output_buffer
+        && impl->d_instances_buffer && impl->d_instance_materials
+        && optix_instances.size() == impl->ias_built_count) {
+        if (impl->ias_materials_dirty) {
+            CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_instance_materials),
+                materials.data(), materials.size() * sizeof(InstanceMaterial),
+                cudaMemcpyHostToDevice));
+        }
+        if (impl->ias_instances_dirty) {
+            CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_instances_buffer),
+                optix_instances.data(), optix_instances.size() * sizeof(OptixInstance),
+                cudaMemcpyHostToDevice));
+            // ponytail: a refit only, never a rebuild, however far instances move; trace speed
+            // drifts after many large moves -- rebuild every N refits if that ever shows.
+            refitIAS();
+        }
+        CUDA_CHECK(cudaDeviceSynchronize());
+        impl->ias_instances_dirty = false;
+        impl->ias_materials_dirty = false;
+        ++impl->ias_in_place_updates;
+        return;
+    }
+
+    // Free existing IAS buffers
+    if (impl->d_ias_output_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
+        impl->d_ias_output_buffer = 0;
+    }
+    if (impl->d_instances_buffer) {
+        cudaFree(reinterpret_cast<void*>(impl->d_instances_buffer));
+        impl->d_instances_buffer = 0;
+    }
+    if (impl->d_instance_materials) {
+        cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
+        impl->d_instance_materials = 0;
     }
 
     // Upload instances to GPU
@@ -1512,6 +1555,10 @@ void OptiXWrapper::buildIAS() {
 
     impl->use_ias = true;
     impl->ias_dirty = false;
+    impl->ias_instances_dirty = false;
+    impl->ias_materials_dirty = false;
+    impl->ias_built_count = static_cast<unsigned int>(optix_instances.size());
+    ++impl->ias_full_builds;
 }
 
 void OptiXWrapper::buildPipeline() {
@@ -1542,6 +1589,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
     if (!impl->initialized) {
         throw std::runtime_error("[OptiX] render() called before initialize()");
     }
+    // A sticky CUDA error earlier in this process: launching again would only fail again, or
+    // render garbage (optix-jni#73).
+    throwIfContextLost();
 
     try {
         // Build pipeline on first render or when geometry changes (expensive)
@@ -1556,8 +1606,9 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
             impl->scene.clearCameraDirty();
         }
 
-        // Rebuild IAS if in IAS mode and dirty
-        if (impl->use_ias && impl->ias_dirty) {
+        // Rebuild the IAS, or update it in place when only instance fields changed (#66)
+        if (impl->use_ias
+            && (impl->ias_dirty || impl->ias_instances_dirty || impl->ias_materials_dirty)) {
             buildIAS();
         }
 
@@ -2178,6 +2229,49 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
     }
 }
 
+bool OptiXWrapper::renderMix(int width, int height, const int* instanceIds, int numInstances,
+                             const bool* visible, const double* weights, int numPasses,
+                             unsigned char* output, RayStats* stats) {
+    for (int i = 0; i < numInstances; ++i) {
+        if (instanceIds[i] < 0 || instanceIds[i] >= static_cast<int>(impl->instances.size())) {
+            return false;
+        }
+    }
+    // ponytail: each pass is a visibility change (an in-place IAS refit since #66), a full
+    // render() and a host copy of its image; the mix runs on the host. Device-side
+    // accumulation would save the per-pass copies -- worth it only if they show in a profile.
+    const size_t bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * 4;
+    std::vector<double> sum(bytes, 0.0);
+    std::vector<unsigned char> pass_image(bytes);
+    RayStats total{};
+    for (int p = 0; p < numPasses; ++p) {
+        for (int i = 0; i < numInstances; ++i) {
+            setInstanceVisible(instanceIds[i], visible[static_cast<size_t>(p) * numInstances + i]);
+        }
+        RayStats pass{};
+        render(width, height, pass_image.data(), &pass);
+        for (size_t b = 0; b < bytes; ++b) sum[b] += pass_image[b] * weights[p];
+        total.total_rays += pass.total_rays;
+        total.primary_rays += pass.primary_rays;
+        total.reflected_rays += pass.reflected_rays;
+        total.refracted_rays += pass.refracted_rays;
+        total.shadow_rays += pass.shadow_rays;
+        total.aa_rays += pass.aa_rays;
+        total.aa_stack_overflows += pass.aa_stack_overflows;
+        total.spectral_rays += pass.spectral_rays;
+        total.max_depth_reached = std::max(total.max_depth_reached, pass.max_depth_reached);
+        total.min_depth_reached = p == 0 ? pass.min_depth_reached
+                                         : std::min(total.min_depth_reached, pass.min_depth_reached);
+    }
+    // The same result as menger's LevelMix.mix (Math.round, clamp): the sums are >= 0, where
+    // llround and Math.round agree.
+    for (size_t b = 0; b < bytes; ++b) {
+        output[b] = static_cast<unsigned char>(std::clamp(std::llround(sum[b]), 0LL, 255LL));
+    }
+    if (stats) *stats = total;
+    return true;
+}
+
 bool OptiXWrapper::getCausticsStats(CausticsStats* stats) {
     if (!impl->initialized || !impl->config.getCausticsEnabled() || !stats
             || impl->caustics_renderer == nullptr) {
@@ -2300,6 +2394,11 @@ int OptiXWrapper::registerCustomGeometry(
 // type. The caller supplies the object-space AABB (its custom IS intersects
 // within it) and the 3x4 transform. The instance's sbtOffset = typeId * STRIDE
 // is set generically by the IAS build, targeting the type's registered SBT block.
+void OptiXWrapper::iasUpdateCounts(unsigned long& fullBuilds, unsigned long& inPlaceUpdates) const {
+    fullBuilds = impl->ias_full_builds;
+    inPlaceUpdates = impl->ias_in_place_updates;
+}
+
 bool OptiXWrapper::isCustomGeometryType(int typeId) const {
     return typeId >= GEOMETRY_TYPE_COUNT &&
         typeId < impl->pipeline_manager.geometryTypeCount();
@@ -2382,32 +2481,32 @@ int OptiXWrapper::setInstanceMaterial(
     inst.film_thickness = film_thickness;
     inst.cauchy_a = cauchy_a;
     inst.cauchy_b = cauchy_b;
-    // Material lives in the InstanceMaterial array rebuilt by buildIAS; re-upload it.
-    impl->ias_dirty = true;
+    // Material lives in the InstanceMaterial array; re-uploaded in place (optix-jni#66).
+    impl->ias_materials_dirty = true;
     return 0;
 }
 
 int OptiXWrapper::setInstanceCoverage(int instanceId, float coverage) {
     if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
     impl->instances[instanceId].coverage = coverage;
-    // Coverage lives in the InstanceMaterial array rebuilt by buildIAS; re-upload it.
-    impl->ias_dirty = true;
+    // Coverage lives in the InstanceMaterial array; re-uploaded in place (optix-jni#66).
+    impl->ias_materials_dirty = true;
     return 0;
 }
 
 int OptiXWrapper::setInstanceVisible(int instanceId, bool visible) {
     if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
     impl->instances[instanceId].visible = visible;
-    // The mask lives in the OptixInstance array buildIAS fills; child GASes are reused.
-    impl->ias_dirty = true;
+    // The mask lives in the OptixInstance array: re-uploaded and the IAS refit (optix-jni#66).
+    impl->ias_instances_dirty = true;
     return 0;
 }
 
 int OptiXWrapper::setInstanceTransform(int instanceId, const float* transform) {
     if (instanceId < 0 || instanceId >= static_cast<int>(impl->instances.size())) return -1;
     std::memcpy(impl->instances[instanceId].transform, transform, 12 * sizeof(float));
-    // buildIAS copies transforms into the OptixInstance array; child GASes are reused.
-    impl->ias_dirty = true;
+    // The transform lives in the OptixInstance array: re-uploaded and the IAS refit (#66).
+    impl->ias_instances_dirty = true;
     return 0;
 }
 
@@ -3805,7 +3904,7 @@ void OptiXWrapper::dispose() {
         if (err != cudaSuccess) {
             OPTIX_LOG(ERROR) << "[OptiX] CUDA synchronization warning during dispose: "
                       << cudaGetErrorString(err) << std::endl;
-            cudaGetLastError();  // Clear the error
+            noteCudaError(err, "dispose");  // a sticky error cannot be cleared (#73)
         }
     });
 

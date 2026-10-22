@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.9] - 2026-10-22
+
+### Added
+
+- `OptiXRenderApi.renderMix(size, instanceIds, passes)`: one native call renders several
+  visibility passes and sums their RGBA8 images with the passes' weights (rounded and clamped).
+  Ray stats are summed. At most 64 passes. It replaces one render, one array and one JVM-side
+  mix per pass (menger's fractional-glass level mix, lene/menger#85).
+- `OptiXContextLostException` (extends `OptiXException`): thrown by every render after a sticky
+  CUDA error (illegal address, launch failure, ...), on any renderer, naming the first error
+  (#73).
+
+### Changed
+
+- Instance transform, visibility and material changes (`setInstanceTransform`,
+  `setInstanceVisible`, `setInstanceMaterial`, `setInstanceCoverage` and the per-instance
+  texture, procedural and frame setters) update the IAS in place and refit it instead of
+  rebuilding all instance buffers. Adding or removing
+  instances still rebuilds (#66).
+- The native library is built as Release. The host C++ had been compiled at -O0, because the
+  build's own CMake configuration replaced the tool's default build type. The shader PTX is
+  unchanged (#67).
+
+### Fixed
+
+- A sticky CUDA error is latched as a context-lost state. Before, the code called
+  `cudaGetLastError()` to "clear" it, which cannot recover the context, and renders kept
+  launching into it. The denoiser no longer swallows it (#73).
+
+### Tests
+
+- Perf gates for 64 instances, a moved instance per frame, `renderMix` vs the JVM loop, an SPI
+  custom-geometry instance and caustics (#67).
+
 ## [0.4.8] - 2026-10-16
 
 ### Security
@@ -710,6 +744,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.9]: https://github.com/lene/optix-jni/compare/0.4.8...0.4.9
 [0.4.8]: https://github.com/lene/optix-jni/compare/0.4.7...0.4.8
 [0.4.7]: https://github.com/lene/optix-jni/compare/0.4.6...0.4.7
 [0.4.6]: https://github.com/lene/optix-jni/compare/0.4.5...0.4.6

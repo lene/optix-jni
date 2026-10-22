@@ -2,6 +2,7 @@
 #define OPTIX_WRAPPER_H
 
 #include <memory>
+#include <string>
 #include <optix.h>
 #include <cuda_runtime.h>
 
@@ -69,6 +70,10 @@ public:
 
     // Test hook: the next setProjectedMesh behaves as if its readback failed (-2).
     void failNextProjectionReadbackForTest();
+    // Test hooks for the process-wide CUDA context-lost latch (optix-jni#73): a real sticky
+    // error would poison the test process for every later test.
+    static void simulateContextLostForTest(const std::string& reason);
+    static void clearContextLostForTest();
 
     // Backward-compatible quad-only alias
     int setTriangleMesh4DQuads(
@@ -224,6 +229,14 @@ public:
 
     // Rendering
     void render(int width, int height, unsigned char* output, RayStats* stats = nullptr);
+    // optix-jni#85: one image mixed from `numPasses` renders. In pass p, instance
+    // instanceIds[i] is visible iff visible[p * numInstances + i]; the passes' RGBA8 images
+    // are summed with `weights` per channel, rounded and clamped to 0..255. Stats are summed
+    // (depths: max of max, min of min). Visibility is left as the last pass set it. Returns
+    // false (nothing rendered) if an instance id is unknown.
+    bool renderMix(int width, int height, const int* instanceIds, int numInstances,
+                   const bool* visible, const double* weights, int numPasses,
+                   unsigned char* output, RayStats* stats);
 
     // Statistics
     bool getCausticsStats(CausticsStats* stats);  // Get PPM validation statistics
@@ -250,6 +263,8 @@ public:
     // True if `typeId` is a registered custom type: past the built-ins, before the end of the
     // SBT's hitgroup table (optix-jni#70).
     bool isCustomGeometryType(int typeId) const;
+    // Full IAS builds and in-place updates so far (optix-jni#66; for tests).
+    void iasUpdateCounts(unsigned long& fullBuilds, unsigned long& inPlaceUpdates) const;
     // Set PBR material on any existing instance (built-in or custom-geometry). Custom
     // instances start with a white default; registrants (e.g. menger-geometry's 4D
     // fractals) call this so their shaders read colour/PBR via getInstanceMaterialPBR
