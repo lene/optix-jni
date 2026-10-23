@@ -1104,7 +1104,11 @@ __device__ void traceFinalNonRecursiveRay(
 }
 
 /**
- * Compute Fresnel reflectance using Schlick approximation.
+ * Fresnel reflectance of a camera ray at a dielectric surface: exact and unpolarised
+ * (fresnelReflectanceExact, VectorMath.h), with total internal reflection on the way out
+ * (traceRefractedRay then reflects too). It was Schlick's
+ * approximation without its (1 - R0) factor, over-reflecting towards grazing angles by up to
+ * R0 and never reaching 1 inside the glass (found in the pbrt-v4 comparison, 2026-10-23).
  *
  * @param ray_direction Incoming ray direction
  * @param normal Surface normal (pointing toward ray origin)
@@ -1120,11 +1124,7 @@ __device__ float computeFresnelReflectance(
 ) {
     const float n1 = entering ? MaterialConstants::IOR_VACUUM : material_ior;
     const float n2 = entering ? material_ior : MaterialConstants::IOR_VACUUM;
-    const float r0 = (n1 - n2) / (n1 + n2);
-    const float R0 = r0 * r0;
-    const float cos_theta = fabsf(dot(ray_direction, normal));
-    const float one_minus_cos = 1.0f - cos_theta;
-    return R0 + one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos * one_minus_cos;
+    return fresnelReflectanceExact(fabsf(dot(normalize(ray_direction), normal)), n1, n2);
 }
 
 //==============================================================================
@@ -1668,6 +1668,26 @@ __device__ float3 payloadToFloat3(unsigned int r, unsigned int g, unsigned int b
     );
 }
 
+/**
+ * Beer-Lambert absorption of the reflected colour (0-255, in place) at a surface the ray leaves.
+ *
+ * The light reflected back into the glass crossed the same glass on its way here as the light
+ * that refracts out, so both lose the same share over `distance`. Absorbing only the refracted
+ * part let the reflected share through unabsorbed; with exact Fresnel that share is all of it
+ * under total internal reflection.
+ */
+__device__ void absorbReflectedOnExit(
+    unsigned int& r, unsigned int& g, unsigned int& b,
+    float distance, bool entering, const float4& material_color, float distance_scale = 1.0f
+) {
+    if (entering) return;
+    const float3 c = applyBeerLambertAbsorption(
+        payloadToFloat3(r, g, b), distance, entering, material_color, distance_scale);
+    r = static_cast<unsigned int>(c.x * RayTracingConstants::COLOR_BYTE_MAX + 0.5f);
+    g = static_cast<unsigned int>(c.y * RayTracingConstants::COLOR_BYTE_MAX + 0.5f);
+    b = static_cast<unsigned int>(c.z * RayTracingConstants::COLOR_BYTE_MAX + 0.5f);
+}
+
 __device__ void writeDenoiseGuides(const float4& albedo, const float3& world_normal) {
     if (!params.write_denoise_guides || optixGetPayload_3() != 0u) {
         return;
@@ -2117,12 +2137,7 @@ __device__ float surfaceTransmission(float ior) {
 // air side at cos_air (as caustics_ppm's photons get it). No total internal reflection: from air
 // light always gets in.
 __device__ float surfaceTransmissionAt(float cos_air, float ior) {
-    const float cos_i = fminf(fmaxf(cos_air, 0.0f), 1.0f);
-    const float sin_t = sqrtf(fmaxf(0.0f, 1.0f - cos_i * cos_i)) / ior;
-    const float cos_t = sqrtf(fmaxf(0.0f, 1.0f - sin_t * sin_t));
-    const float r_perp = (cos_i - ior * cos_t) / (cos_i + ior * cos_t);
-    const float r_parl = (ior * cos_i - cos_t) / (ior * cos_i + cos_t);
-    return 1.0f - 0.5f * (r_perp * r_perp + r_parl * r_parl);
+    return 1.0f - fresnelReflectanceExact(cos_air, MaterialConstants::IOR_VACUUM, ior);
 }
 
 // Beer-Lambert extinction per unit length, as applyBeerLambertAbsorption uses for camera rays.

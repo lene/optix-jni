@@ -438,7 +438,9 @@ extern "C" __global__ void __closesthit__triangle() {
         float3 refr_color = payloadToFloat3(refr_r, refr_g, refr_b);
         refr_color = applyBeerLambertAbsorption(refr_color, geom.t, geom.entering, mesh_color);
 
-        const float3 refl_color = payloadToFloat3(refl_r, refl_g, refl_b);
+        // The reflected share crossed the same glass (see absorbReflectedOnExit).
+        const float3 refl_color = applyBeerLambertAbsorption(
+            payloadToFloat3(refl_r, refl_g, refl_b), geom.t, geom.entering, mesh_color);
         float3 fresnel_color;
         if (film_thickness > 0.0f) {
             const float cos_theta = fabsf(dot(ray_direction, geom.normal));
@@ -525,6 +527,7 @@ extern "C" __global__ void __closesthit__triangle() {
 
     // Apply Beer-Lambert absorption when exiting (triangles use default distance_scale=1.0)
     refract_color = applyBeerLambertAbsorption(refract_color, geom.t, geom.entering, mesh_color);
+    absorbReflectedOnExit(reflect_r, reflect_g, reflect_b, geom.t, geom.entering, mesh_color);
 
     // Compute Fresnel reflectance (RGB for thin-film, scalar for standard)
     if (film_thickness > 0.0f) {

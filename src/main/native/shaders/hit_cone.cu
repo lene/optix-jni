@@ -241,6 +241,7 @@ extern "C" __global__ void __closesthit__cone() {
 
         float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
         refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color);
+        absorbReflectedOnExit(reflect_r, reflect_g, reflect_b, t, entering, material_color);
 
         if (film_thickness > 0.0f) {
             const float cos_theta = fabsf(dot(ray_direction, refr_normal));
