@@ -134,14 +134,14 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
       layers.flatMap(_._1).toArray, layers.flatMap(_._2).toArray, stride
     )
 
-  /** The floor under `mesh` (none: the bare floor), lit along (1, -1, 0). */
+  /** The floor under `mesh`, lit along (1, -1, 0). */
   private def renderMeshShadow(mesh: Option[TriangleMeshData], colour: Color = redGlass,
-                               intensity: Float = 1.0f): Array[Byte] =
+                               intensity: Float = 1.0f, shadows: Boolean = true): Array[Byte] =
     renderer.setCamera(
       Vector[3](2f, 4f, 4f), Vector[3](2f, Const.defaultFloorPlaneY, 0f), Vector[3](0f, 1f, 0f), 60f
     )
     renderer.setLight(Vector[3](1f, -1f, 0f), intensity)
-    renderer.setShadows(true)
+    renderer.setShadows(shadows)
     renderer.setTransparentShadows(true)
     renderer.clearAllInstances()
     renderer.clearTriangleMesh()
@@ -201,9 +201,11 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val glass = Color(0.9f, 0.5f, 0.2f, 0.2f)
     val mesh = scaledCube(2f, thickness, 2f)
     val intensity = 3.0f
-    def floor(m: Option[TriangleMeshData], c: Color) =
-      patch(renderMeshShadow(m, c, intensity), 32, 32)
-    val bare = floor(None, glass)
+    def floor(m: Option[TriangleMeshData], c: Color, shadows: Boolean = true) =
+      patch(renderMeshShadow(m, c, intensity, shadows), 32, 32)
+    // Unshadowed, not merely without the mesh: without one the renderer falls back to its default
+    // sphere, whose opaque shadow covers these pixels.
+    val bare = floor(None, glass, shadows = false)
     val opaque = floor(Some(mesh), Color(0f, 0f, 0f, 1f))
     val through = floor(Some(mesh), glass)
     def measured(pick: ((Double, Double, Double)) => Double) =

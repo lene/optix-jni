@@ -220,9 +220,8 @@ class ColoredShadowSuite
 
   it should "cast dark achromatic shadow for fully opaque" +
     " gray sphere" in:
-      // Gray sphere (equal RGB channels): with colored shadows,
-      // attenuation per channel = 1.0*(1 - 0.5) = 0.5 for each,
-      // so shadow_factor = (0.5, 0.5, 0.5) — uniform and dark.
+      // An opaque occluder blocks every channel fully (setShadowPayload), so the shadow is
+      // uniform and dark.
       val opaqueGray = Color(0.5f, 0.5f, 0.5f, 1.0f)
       setupColoredShadowScene(opaqueGray, coloredShadows = true)
       val image = renderer.render(imageSize)
@@ -242,6 +241,25 @@ class ColoredShadowSuite
       ) {
         maxSpread should be < ACHROMATIC_CHANNEL_TOLERANCE
       }
+
+  // An opaque coloured sphere's shadow is as dark with colored shadows as without: the shadow
+  // closest-hit charged alpha * (1 - colour) per channel, so an opaque cyan sphere let green and
+  // blue through (found in menger's DSL CustomMaterials scene, 2026-10-23).
+  it should "cast the same full shadow from an opaque coloured sphere with the flag on or off" in:
+    val opaqueCyan = Color(0.0f, 1.0f, 1.0f, 1.0f)
+    setupColoredShadowScene(opaqueCyan, coloredShadows = false)
+    val imageOff = renderer.render(imageSize)
+    val shadowRegion = findShadowRegion(imageOff)
+    setupColoredShadowScene(opaqueCyan, coloredShadows = true)
+    val imageOn = renderer.render(imageSize)
+
+    val (offR, offG, offB) = regionChannelAverages(imageOff, imageSize, shadowRegion)
+    val (onR, onG, onB) = regionChannelAverages(imageOn, imageSize, shadowRegion)
+    withClue(f"shadow off ($offR%.1f, $offG%.1f, $offB%.1f) vs on ($onR%.1f, $onG%.1f, $onB%.1f)") {
+      math.abs(onG - offG) should be < ACHROMATIC_CHANNEL_TOLERANCE
+      math.abs(onB - offB) should be < ACHROMATIC_CHANNEL_TOLERANCE
+      math.abs(onR - offR) should be < ACHROMATIC_CHANNEL_TOLERANCE
+    }
 
   // ========== Test 8: Fully transparent ==========
 
@@ -426,9 +444,7 @@ class ColoredShadowSuite
   // ========== Test 13: Opaque object behind transparent still casts full shadow ==========
 
   it should "cast darker shadow when opaque sphere is behind transparent sphere" in:
-    // In colored-shadow mode, setShadowPayload computes atten = alpha*(1-color).
-    // Opaque BLACK (color=0,0,0) gives atten=1.0 → shadow_factor=0 (fully dark).
-    // Opaque WHITE would give atten=0 → no shadow (by design; see test 10 note).
+    // An opaque occluder blocks every channel fully, whatever its colour (setShadowPayload).
     val transparentBlue = withAlpha(OPAQUE_BLUE, transparentAlpha)
     val opaqueBlack     = Color(0.0f, 0.0f, 0.0f, 1.0f)
 

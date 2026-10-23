@@ -115,27 +115,24 @@ __device__ float effectiveShadowAlpha(float alpha, float ior) {
 }
 
 /**
- * Set shadow ray payload with per-channel attenuation.
+ * Set a shadow ray's attenuation when it stops at an occluder (the shadow closest-hit).
  *
- * When colored shadows are enabled, each RGB channel is attenuated independently
- * based on the material color: a red object passes red light through but blocks
- * green and blue. When disabled, all channels carry uniform scalar alpha.
+ * The same in every channel: the occluder's opacity. With transparent shadows the any-hit
+ * programs pass every transparent surface on (their colour goes into the optical depth, see
+ * addShadowDepth), so a closest-hit is only ever reached for an opaque occluder, which blocks
+ * all light. Charging it (1 - colour) per channel, as this did, let an opaque cyan sphere pass
+ * green and blue and an opaque grey floor pass 31% of a light it blocks (menger, 2026-10-23).
  *
  * Attenuation semantics: 0.0 = channel passes through, 1.0 = channel fully blocked.
  *
- * @param alpha Material opacity [0,1] (0=transparent, 1=opaque)
- * @param color Material RGBA color (RGB channels used for per-wavelength attenuation)
+ * @param alpha Occluder opacity [0,1] (0=transparent, 1=opaque)
+ * @param color Unused; kept because custom-geometry shaders built against this file (menger's
+ *              4D IFS programs) call the two-argument form.
  */
-__device__ void setShadowPayload(float alpha, const float4& color) {
-    if (params.transparent_shadows_enabled) {
-        optixSetPayload_0(__float_as_uint(alpha * (1.0f - color.x)));
-        optixSetPayload_1(__float_as_uint(alpha * (1.0f - color.y)));
-        optixSetPayload_2(__float_as_uint(alpha * (1.0f - color.z)));
-    } else {
-        optixSetPayload_0(__float_as_uint(alpha));
-        optixSetPayload_1(__float_as_uint(alpha));
-        optixSetPayload_2(__float_as_uint(alpha));
-    }
+__device__ void setShadowPayload(float alpha, const float4& /* color */) {
+    optixSetPayload_0(__float_as_uint(alpha));
+    optixSetPayload_1(__float_as_uint(alpha));
+    optixSetPayload_2(__float_as_uint(alpha));
 }
 
 //==============================================================================
