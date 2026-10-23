@@ -105,19 +105,32 @@ class TransparencySuite extends AnyFlatSpec
 
     // Measure green pixel count at different alpha values
     val alphas = Seq(0, 64, 128, 191, 255)  // 0.0, 0.25, 0.5, 0.75, 1.0
-    val greenAreas = alphas.map { alpha =>
+    val images = alphas.map { alpha =>
       renderer.setSphereColor(Color(0.0f, 1.0f, 0.0f, alpha / 255.0f))
-      val imageData = renderer.render(TEST_IMAGE_SIZE)
-      ImageValidation.spherePixelArea(
-        imageData,
-        TEST_IMAGE_SIZE
-      )
+      renderer.render(TEST_IMAGE_SIZE)
     }
+    val greenAreas = images.map(ImageValidation.spherePixelArea(_, TEST_IMAGE_SIZE))
+    // Pure green glass absorbs all red and blue at any alpha above 0 and no green at any, so
+    // between 0 and 1 its alpha hardly shows. Light green glass absorbs more red and blue the
+    // higher its alpha: the image gets greener (summed over it, as single pixels are too dark).
+    val pixels = 0 until TEST_IMAGE_SIZE.width * TEST_IMAGE_SIZE.height
+    val greenExcess = alphas.map { alpha =>
+      renderer.setSphereColor(Color(0.8f, 1.0f, 0.8f, alpha / 255.0f))
+      val image = renderer.render(TEST_IMAGE_SIZE)
+      pixels.map { i =>
+        val c = ImageValidation.getRGB(image, i)
+        math.max(0, c.g - math.max(c.r, c.b))
+      }.sum
+    }
+    info(s"green areas ${greenAreas.mkString(", ")}, light green excess ${greenExcess.mkString(", ")}")
 
-    // Green pixel count should increase monotonically with alpha
     greenAreas(0) shouldBe 0  // alpha=0.0 → invisible
     greenAreas(4) should be > greenAreas(3)  // alpha=1.0 > alpha=0.75
-    greenAreas(3) should be > greenAreas(2)  // alpha=0.75 > alpha=0.5
+    // From alpha 0.25 on the whole disc counts as green, so the area cannot tell 0.75 from 0.5
+    // (with the old Schlick term's excess rim reflection, a few rim pixels did not count at 0.5).
+    greenExcess(1) should be > greenExcess(0)
+    greenExcess(2) should be > greenExcess(1)
+    greenExcess(3) should be > greenExcess(2)
 
   it should "show colored transparency with green sphere" in:
     TestScenario.default()

@@ -1082,6 +1082,12 @@ int OptiXWrapper::updateCylinderInstances(
     auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
         reinterpret_cast<void*>(d_temp), cudaFree);
 
+    // The copies are asynchronous on the builds' stream: a synchronous cudaMemcpy waited for the
+    // previous cylinder's refit to finish on the GPU, so 27,648 cylinders (menger's level-2
+    // tesseract sponge with edge tubes) refit strictly one after another, 0.5 s per frame
+    // (menger#129). From pageable memory the copy is staged before cudaMemcpyAsync returns, and
+    // stream order keeps each refit after its copy and the shared temp buffer free between
+    // builds; one synchronization after the loop, before the temp buffer goes.
     for (int i = 0; i < count; ++i) {
         auto& inst = impl->instances[instance_ids[i]];
         const auto cyl = static_cast<size_t>(inst.geometry_data_index);
@@ -1092,8 +1098,8 @@ int OptiXWrapper::updateCylinderInstances(
 
         auto& gas = impl->cylinder_gas_buffers[cyl];
         const OptixAabb aabb = cylinderAabb(p0 + 3 * i, p1 + 3 * i, radii[i]);
-        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(gas.aabb_buffer), &aabb,
-                              sizeof(OptixAabb), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(gas.aabb_buffer), &aabb,
+                                   sizeof(OptixAabb), cudaMemcpyHostToDevice, 0));
         aabb_buffer = gas.aabb_buffer;
         OPTIX_CHECK(optixAccelBuild(
             impl->optix_context.getContext(), 0, &update_options, &input, 1,
@@ -1103,6 +1109,7 @@ int OptiXWrapper::updateCylinderInstances(
         ));
         inst.gas_handle = gas.handle;  // stable across UPDATE; kept in sync regardless
     }
+    CUDA_CHECK(cudaStreamSynchronize(0));
 
     // render() only re-uploads cylinder data when the count changes, so push it here.
     if (impl->d_cylinder_data && impl->last_cylinder_count == impl->cylinder_data.size()) {

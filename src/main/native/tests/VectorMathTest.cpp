@@ -125,3 +125,38 @@ TEST(WrapFractionEdgeInclusiveTest, StaysWithinUnitRange) {
         EXPECT_LE(f, 1.0f);
     }
 }
+
+// fresnelReflectanceExact replaced the camera rays' Schlick term, which lacked its (1 - R0)
+// factor (found in the pbrt-v4 comparison, 2026-10-23). Closed-form checks for glass, n = 1.5.
+TEST(FresnelReflectanceExactTest, NormalIncidenceIsR0) {
+    const float r0 = (1.5f - 1.0f) / (1.5f + 1.0f);
+    EXPECT_NEAR(fresnelReflectanceExact(1.0f, 1.0f, 1.5f), r0 * r0, kEpsilon);
+    EXPECT_NEAR(fresnelReflectanceExact(1.0f, 1.5f, 1.0f), r0 * r0, kEpsilon);
+}
+
+TEST(FresnelReflectanceExactTest, BrewsterAngleReflectsOnlyThePerpendicularPart) {
+    // At Brewster's angle r_parallel is 0, so R = r_perp^2 / 2; r_perp = cos(2 theta_B) there.
+    const float theta_b = std::atan(1.5f);
+    const float r_perp = std::cos(2.0f * theta_b);
+    EXPECT_NEAR(fresnelReflectanceExact(std::cos(theta_b), 1.0f, 1.5f),
+                0.5f * r_perp * r_perp, 1e-4f);
+}
+
+TEST(FresnelReflectanceExactTest, GrazingIncidenceReflectsEverything) {
+    EXPECT_NEAR(fresnelReflectanceExact(0.0f, 1.0f, 1.5f), 1.0f, kEpsilon);
+}
+
+TEST(FresnelReflectanceExactTest, TotalInternalReflectionBeyondTheCriticalAngle) {
+    const float critical_cos = std::sqrt(1.0f - 1.0f / (1.5f * 1.5f));
+    EXPECT_FLOAT_EQ(fresnelReflectanceExact(critical_cos * 0.9f, 1.5f, 1.0f), 1.0f);
+    EXPECT_LT(fresnelReflectanceExact(critical_cos * 1.1f, 1.5f, 1.0f), 1.0f);
+}
+
+TEST(FresnelReflectanceExactTest, IncreasesTowardsGrazing) {
+    float previous = fresnelReflectanceExact(1.0f, 1.0f, 1.5f);
+    for (int i = 1; i <= 20; ++i) {
+        const float r = fresnelReflectanceExact(1.0f - 0.05f * static_cast<float>(i), 1.0f, 1.5f);
+        EXPECT_GE(r, previous - kEpsilon);
+        previous = r;
+    }
+}

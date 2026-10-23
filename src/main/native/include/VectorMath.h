@@ -78,6 +78,20 @@ __host__ __device__ inline float3 reflect(float3 incident, float3 normal) {
     return incident - 2.0f * dot(incident, normal) * normal;
 }
 
+// Exact unpolarised Fresnel reflectance of a dielectric interface, for light going from index
+// n1 into n2 at cos_i to the normal; 1 under total internal reflection. The one formula behind
+// helpers.cu's camera-ray Fresnel (computeFresnelReflectance) and transparent shadows
+// (surfaceTransmissionAt), as caustics_ppm's photons compute it; here so it is host-testable.
+__host__ __device__ inline float fresnelReflectanceExact(float cos_i, float n1, float n2) {
+    const float c_i = fminf(fmaxf(cos_i, 0.0f), 1.0f);
+    const float sin_t = n1 / n2 * sqrtf(fmaxf(0.0f, 1.0f - c_i * c_i));
+    if (sin_t >= 1.0f) return 1.0f;
+    const float c_t = sqrtf(1.0f - sin_t * sin_t);
+    const float r_perp = (n1 * c_i - n2 * c_t) / (n1 * c_i + n2 * c_t);
+    const float r_parl = (n2 * c_i - n1 * c_t) / (n2 * c_i + n1 * c_t);
+    return 0.5f * (r_perp * r_perp + r_parl * r_parl);
+}
+
 // Fraction of |x| in [0,1], with the top edge inclusive: an exact positive integer maps to
 // 1.0 instead of wrapping to 0.0. Plain fmodf(x, 1) wraps 1.0 -> 0.0, which is the F6 bug in
 // helpers.cu's xyzToRGB: a cube built via the common "positive octant, pos = size/2" DSL

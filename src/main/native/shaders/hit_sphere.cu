@@ -140,6 +140,7 @@ extern "C" __global__ void __closesthit__ch() {
 
     // Apply Beer-Lambert absorption when exiting (sphere uses sphere_scale for distance)
     refract_color = applyBeerLambertAbsorption(refract_color, t, entering, material_color, params.sphere_scale);
+    absorbReflectedOnExit(reflect_r, reflect_g, reflect_b, t, entering, material_color, params.sphere_scale);
 
     // Compute Fresnel reflectance (RGB for thin-film, scalar for standard)
     if (film_thickness > 0.0f) {

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-10-23
+
+### Fixed
+
+- An opaque object casts a full shadow with transparent shadows on. The shadow closest-hit
+  charged an occluder `alpha * (1 - colour)` per channel, so an opaque cyan sphere let green and
+  blue through, an opaque grey floor 31% of the light it blocks, and an opaque white object cast
+  no shadow at all. Since 0.4.10 the any-hits pass every transparent surface on, so the
+  closest-hit only sees opaque occluders; it now blocks all channels. `setShadowPayload` keeps
+  its two-argument form for custom-geometry shaders built against `helpers.cu`.
+- Camera rays use the exact unpolarised Fresnel reflectance at a dielectric surface, with total
+  internal reflection on the way out. It was Schlick's approximation without its `(1 - R0)`
+  factor, which over-reflected towards grazing angles and never reached 1 inside the glass.
+  Shadow rays (`surfaceTransmissionAt`) share the same function, `fresnelReflectanceExact` in
+  `VectorMath.h`.
+- Where a camera ray leaves coloured glass, the light reflected back inside is absorbed over the
+  glass it crossed, as the refracted light is. Only the refracted share was; with exact Fresnel
+  that would have let totally internally reflected light cross a segment of the glass
+  unabsorbed.
+
+### Changed
+
+- `updateCylinderInstances` copies each cylinder's bounding box asynchronously and synchronises
+  once after the loop, instead of waiting for each refit before the next copy. menger's level-2
+  tesseract sponge with edge tubes (27,648 cylinders) moves in 0.49 s per frame instead of
+  0.74 s (lene/menger#129).
+
 ## [0.4.10] - 2026-10-23
 
 ### Fixed
@@ -766,6 +793,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.11]: https://github.com/lene/optix-jni/compare/0.4.10...0.4.11
 [0.4.10]: https://github.com/lene/optix-jni/compare/0.4.9...0.4.10
 [0.4.9]: https://github.com/lene/optix-jni/compare/0.4.8...0.4.9
 [0.4.8]: https://github.com/lene/optix-jni/compare/0.4.7...0.4.8
