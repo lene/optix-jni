@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.10] - 2026-10-23
+
 ### Fixed
 
 - A transparent shadow through a refractive triangle mesh with an object frame charges the glass
@@ -763,6 +765,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.4.10]: https://github.com/lene/optix-jni/compare/0.4.9...0.4.10
 [0.4.9]: https://github.com/lene/optix-jni/compare/0.4.8...0.4.9
 [0.4.8]: https://github.com/lene/optix-jni/compare/0.4.7...0.4.8
 [0.4.7]: https://github.com/lene/optix-jni/compare/0.4.6...0.4.7
