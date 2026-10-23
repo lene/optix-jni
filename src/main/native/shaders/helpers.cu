@@ -57,29 +57,39 @@ namespace TraceDepth {
 //==============================================================================
 
 /**
- * Accumulate shadow attenuation through a transparent object using screen blend.
- *
- * Called from anyhit programs when a shadow ray passes through a transparent surface.
- * Each transparent hit multiplies the remaining transmission by that object's transmission.
- *
- * Formula (per channel): new_atten = 1 - (1 - old_atten) * (1 - alpha * (1 - color_ch))
- *
- * Attenuation semantics: 0.0 = channel passes through, 1.0 = channel fully blocked.
- * Payloads initialized to 0.0 by traceShadowRay().
+ * Add optical depth to a shadow ray. While the ray traverses, payloads 0-2 hold the optical
+ * depth tau per channel (transmission = exp(-tau)); __miss__shadow turns it into attenuation.
+ * A sum does not depend on the order any-hit sees the hits in, so a mesh can add -sigma * t at
+ * each entry face and +sigma * t at each exit face and get sigma times the length inside it
+ * (accumulateMeshShadowPath). A product of exp(+sigma * t) factors could overflow first.
+ */
+__device__ void addShadowDepth(float3 tau) {
+    optixSetPayload_0(__float_as_uint(__uint_as_float(optixGetPayload_0()) + tau.x));
+    optixSetPayload_1(__float_as_uint(__uint_as_float(optixGetPayload_1()) + tau.y));
+    optixSetPayload_2(__float_as_uint(__uint_as_float(optixGetPayload_2()) + tau.z));
+}
+
+/**
+ * Accumulate shadow attenuation through a transparent surface: per channel the ray keeps
+ * 1 - alpha * (1 - color_ch) of its light (the old screen blend, as optical depth).
  *
  * @param alpha Material opacity [0,1]
  * @param color Material RGBA color (RGB used for per-wavelength attenuation)
  */
+__device__ float surfaceShadowDepth(float alpha, float channel) {
+    return -logf(fmaxf(1.0f - alpha * (1.0f - channel), SHADOW_MIN_TRANSMISSION));
+}
+
 __device__ void accumulateShadowAttenuation(float alpha, const float4& color) {
-    const float old_r = __uint_as_float(optixGetPayload_0());
-    const float old_g = __uint_as_float(optixGetPayload_1());
-    const float old_b = __uint_as_float(optixGetPayload_2());
-    const float new_r = 1.0f - (1.0f - old_r) * (1.0f - alpha * (1.0f - color.x));
-    const float new_g = 1.0f - (1.0f - old_g) * (1.0f - alpha * (1.0f - color.y));
-    const float new_b = 1.0f - (1.0f - old_b) * (1.0f - alpha * (1.0f - color.z));
-    optixSetPayload_0(__float_as_uint(new_r));
-    optixSetPayload_1(__float_as_uint(new_g));
-    optixSetPayload_2(__float_as_uint(new_b));
+    addShadowDepth(make_float3(surfaceShadowDepth(alpha, color.x),
+                               surfaceShadowDepth(alpha, color.y),
+                               surfaceShadowDepth(alpha, color.z)));
+}
+
+/** The attenuation (0 = lit, 1 = blocked) a ray's accumulated optical depth leaves. A negative
+ * total only arises when the ray ends inside a mesh (a light inside glass): counted as none. */
+__device__ float shadowAttenuationFromDepth(float tau) {
+    return 1.0f - expf(-fmaxf(tau, 0.0f));
 }
 
 /**
@@ -150,8 +160,7 @@ __device__ float3 traceShadowRay(
     const float3& light_dir
 ) {
     const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
-    // p3: the instance whose absorption this ray already carries (chargeInstanceOnce).
-    unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0, shadow_p3 = 0;
+    unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0;
 
     optixTrace(
         params.handle,
@@ -165,7 +174,7 @@ __device__ float3 traceShadowRay(
         params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
         SBTConstants::STRIDE_RAY_TYPES,
         SBTConstants::MISS_SHADOW,
-        shadow_p0, shadow_p1, shadow_p2, shadow_p3
+        shadow_p0, shadow_p1, shadow_p2
     );
 
     const float3 shadow_factor = make_float3(
@@ -2084,54 +2093,92 @@ __device__ void getInstanceProceduralParams(int& proc_type, float& proc_scale) {
  * Without a frame, or for a non-refractive material, keeps the surface model:
  * accumulateShadowAttenuation(fallback_alpha, colour).
  *
+ * A triangle mesh charges the glass a ray actually crosses instead (accumulateMeshShadowPath).
+ *
  * @param color          Material colour (alpha = absorption for refractive materials)
  * @param fallback_alpha The caller's surface-model shadow alpha
  * @param ior            Index of refraction
  * @param coverage       How much of the instance is present (setInstanceCoverage)
  */
-/**
- * True the first time a shadow ray reaches the current instance, recording it in payload 3
- * (instance id + 1; 0 = none). A ray through a level-3 sponge crosses dozens of its front
- * faces; charging the whole-object chord at each made a coloured glass sponge's shadow grey
- * (usability review 2026-10, session 5, F111, menger#128). Recursive-IAS sub-instances carry
- * their object's id, so a sponge is one instance here.
- * ponytail: one id per ray -- any-hit order is arbitrary, so two transparent objects whose hits
- * interleave are charged more than once; a small id set if that shows.
- */
-__device__ bool chargeInstanceOnce() {
-    const unsigned int id = optixGetInstanceId() + 1u;
-    if (optixGetPayload_3() == id) return false;
-    optixSetPayload_3(id);
-    return true;
+__device__ float4 shadowHitColour(float4 color) {
+    int proc_type; float proc_scale;
+    getInstanceProceduralParams(proc_type, proc_scale);
+    if (proc_type == 0) return color;
+    const float3 dir = optixGetWorldRayDirection();
+    const float3 hit = optixGetWorldRayOrigin() + optixGetRayTmax() * dir;
+    return applyProceduralTexture(color, hit, make_float3(-dir.x, -dir.y, -dir.z),
+                                  proc_type, proc_scale);
+}
+
+// Fresnel transmission of one surface at normal incidence.
+__device__ float surfaceTransmission(float ior) {
+    const float f0 = (ior - 1.0f) / (ior + 1.0f);
+    return 1.0f - f0 * f0;
+}
+
+// Beer-Lambert extinction per unit length, as applyBeerLambertAbsorption uses for camera rays.
+__device__ float3 shadowExtinction(const float4& color) {
+    const float k = color.w * BEER_LAMBERT_ABSORPTION_SCALE;
+    return make_float3(-logf(fmaxf(color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k,
+                       -logf(fmaxf(color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k,
+                       -logf(fmaxf(color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k);
 }
 
 __device__ void accumulateTransparentShadow(float4 color, float fallback_alpha, float ior,
                                             float coverage) {
-    int proc_type; float proc_scale;
-    getInstanceProceduralParams(proc_type, proc_scale);
-    if (proc_type != 0) {
-        const float3 dir = optixGetWorldRayDirection();
-        const float3 hit = optixGetWorldRayOrigin() + optixGetRayTmax() * dir;
-        color = applyProceduralTexture(color, hit, make_float3(-dir.x, -dir.y, -dir.z),
-                                       proc_type, proc_scale);
-    }
+    color = shadowHitColour(color);
     const float chord = objectMeanChord();
     if (ior <= 1.0f || chord <= 0.f) {
         accumulateShadowAttenuation(fallback_alpha, color);
         return;
     }
-    // The chord stands for the whole object, so it is charged once per instance and ray.
-    if (!chargeInstanceOnce()) return;
-    const float f0 = (ior - 1.0f) / (ior + 1.0f);
-    const float surfaces = (1.0f - f0 * f0) * (1.0f - f0 * f0);
-    const float k = color.w * BEER_LAMBERT_ABSORPTION_SCALE * chord;
-    const float3 through = make_float3(
-        surfaces * expf(logf(fmaxf(color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k),
-        surfaces * expf(logf(fmaxf(color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k),
-        surfaces * expf(logf(fmaxf(color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k));
+    const float surfaces = surfaceTransmission(ior) * surfaceTransmission(ior);
+    const float3 sigma = shadowExtinction(color);
+    const float3 through = make_float3(surfaces * expf(-sigma.x * chord),
+                                       surfaces * expf(-sigma.y * chord),
+                                       surfaces * expf(-sigma.z * chord));
     // accumulateShadowAttenuation(a, c) blocks a * (1 - c) per channel; with a = coverage and
     // c = the transmitted colour that is coverage * (1 - through), the same screen blend.
     accumulateShadowAttenuation(coverage, make_float4(through.x, through.y, through.z, 1.f));
+}
+
+/**
+ * A shadow ray crossing a face of a refractive triangle mesh with an object frame (usability
+ * review 2026-10, session 5, F111, menger#128). Each face adds the Fresnel loss of its surface,
+ * and Beer-Lambert absorption over the glass between entry and exit: -sigma * t at an entry
+ * face, +sigma * t at an exit face. The sum is sigma times the length inside the glass, whatever
+ * order any-hit reports the faces in. A ray through a sponge crosses many thin walls; charging
+ * the whole-object chord at every front face over-counted them, and charging it once for the
+ * whole sponge made the shadow vanish.
+ *
+ * t is measured from where the ray passes nearest the object's centre, not from its origin: the
+ * same sum with smaller numbers. With a procedural colour sigma differs between entry and exit,
+ * and this bounds the error by sigma's change times the object's size.
+ * ponytail: an open refractive mesh (a sheet) has no inside; its crossings are charged around the
+ * centre, an approximation. A closedness flag per mesh would make it exact.
+ *
+ * @return false (nothing charged) without a frame or for a non-refractive material
+ */
+__device__ bool accumulateMeshShadowPath(float4 color, float ior, float coverage, bool entering) {
+    const float* f = instanceObjectFrame();
+    if (ior <= 1.0f || f == nullptr) return false;
+    const float3 sigma = shadowExtinction(shadowHitColour(color));
+    // The frame is local = A * world + b with A = k * R^T, so the centre, local (0.5, 0.5, 0.5),
+    // is at A^T * (0.5 - b) / k^2.
+    const float k2 = f[0] * f[0] + f[1] * f[1] + f[2] * f[2];
+    const float3 b = make_float3(0.5f - f[3], 0.5f - f[7], 0.5f - f[11]);
+    const float3 centre = make_float3((f[0] * b.x + f[4] * b.y + f[8] * b.z) / k2,
+                                      (f[1] * b.x + f[5] * b.y + f[9] * b.z) / k2,
+                                      (f[2] * b.x + f[6] * b.y + f[10] * b.z) / k2);
+    const float3 o = optixGetWorldRayOrigin();
+    const float3 d = optixGetWorldRayDirection();
+    const float t = optixGetRayTmax() - dot(centre - o, d) / dot(d, d);
+    const float signed_t = entering ? -t : t;
+    const float fresnel = -logf(surfaceTransmission(ior));
+    addShadowDepth(make_float3(coverage * (sigma.x * signed_t + fresnel),
+                               coverage * (sigma.y * signed_t + fresnel),
+                               coverage * (sigma.z * signed_t + fresnel)));
+    return true;
 }
 
 //==============================================================================

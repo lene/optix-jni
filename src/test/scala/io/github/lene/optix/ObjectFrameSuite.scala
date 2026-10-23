@@ -111,7 +111,7 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
     redToGreen(patch(renderShadow(redGlass, frame = false), 32, 32)) should be < 1.05
   }
 
-  // --- menger#128 (F111): a mesh is charged once per instance, not per front face ------------
+  // --- menger#128 (F111): a mesh charges the glass a shadow ray crosses -----------------------
 
   private val unitCubeFrame = Array(1f, 0f, 0f, 0.5f, 0f, 1f, 0f, 0.5f, 0f, 0f, 1f, 0.5f)
   private val LayerCount = 4
@@ -134,30 +134,87 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
       layers.flatMap(_._1).toArray, layers.flatMap(_._2).toArray, stride
     )
 
-  private def renderMeshShadow(mesh: TriangleMeshData): Array[Byte] =
+  /** The floor under `mesh` (none: the bare floor), lit along (1, -1, 0). */
+  private def renderMeshShadow(mesh: Option[TriangleMeshData], colour: Color = redGlass,
+                               intensity: Float = 1.0f): Array[Byte] =
     renderer.setCamera(
       Vector[3](2f, 4f, 4f), Vector[3](2f, Const.defaultFloorPlaneY, 0f), Vector[3](0f, 1f, 0f), 60f
     )
-    renderer.setLight(Vector[3](1f, -1f, 0f), 1.0f)
+    renderer.setLight(Vector[3](1f, -1f, 0f), intensity)
     renderer.setShadows(true)
     renderer.setTransparentShadows(true)
     renderer.clearAllInstances()
     renderer.clearTriangleMesh()
-    val _ = renderer.addTriangleMesh(mesh)
-    val id = renderer.addTriangleMeshInstance(
-      Array(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f), Material(redGlass, Const.iorGlass)
-    )
-    renderer.setObjectFrame(id, unitCubeFrame)
+    mesh.foreach { m =>
+      val _ = renderer.addTriangleMesh(m)
+      val id = renderer.addTriangleMeshInstance(
+        Array(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f), Material(colour, Const.iorGlass)
+      )
+      renderer.setObjectFrame(id, unitCubeFrame)
+    }
     renderImage(imgSize)
 
-  "A glass mesh crossed through many front faces" should "cast as light a shadow as one block" in {
-    // Charging the whole-object chord at every front face made a sponge's shadow grey.
-    def brightness(rgb: (Double, Double, Double)) = rgb._1 + rgb._2 + rgb._3
-    val block = patch(renderMeshShadow(TestUtilities.createUnitCubeMesh()), 32, 32)
-    val layers = patch(renderMeshShadow(layeredCube), 32, 32)
+  /** The unit cube scaled by (sx, sy, sz) about its centre. Only positions are scaled: the
+    * axis-aligned normals stay unit vectors. */
+  private def scaledCube(sx: Float, sy: Float, sz: Float): TriangleMeshData =
+    val cube = TestUtilities.createUnitCubeMesh()
+    TriangleMeshData(
+      cube.vertices.grouped(cube.vertexStride).flatMap { v =>
+        v.updated(0, v(0) * sx).updated(1, v(1) * sy).updated(2, v(2) * sz)
+      }.toArray,
+      cube.indices, cube.vertexStride
+    )
+
+  /** The unit cube flattened along y to `fraction` of its height, under the same frame. */
+  private def slab(fraction: Float): TriangleMeshData = scaledCube(1f, fraction, 1f)
+
+  private def greenToRed(rgb: (Double, Double, Double)): Double = rgb._2 / math.max(rgb._1, 1.0)
+
+  "A glass mesh crossed through several slabs" should
+    "lose light at each surface but absorb only over the glass it crosses" in {
+    // The red glass absorbs almost no red: red measures the surfaces' Fresnel loss, green the
+    // absorption. Four slabs have eight surfaces to the block's two, and 0.8 of its glass.
+    // Charging the whole-object chord at every front face over-counted the glass (green/red
+    // below the block's); charging it once per object dropped the extra surfaces (red equal).
+    val block = patch(renderMeshShadow(Some(TestUtilities.createUnitCubeMesh())), 32, 32)
+    val layers = patch(renderMeshShadow(Some(layeredCube)), 32, 32)
     info(f"block $block, layers $layers")
-    brightness(layers) should be > 0.9 * brightness(block)
-    redToGreen(layers) should be > 1.1
+    layers._1 should be < 0.95 * block._1
+    greenToRed(layers) should be > greenToRed(block) + 0.01
+  }
+
+  "A thinner glass slab under the same frame" should "absorb less than the full block" in {
+    // The mean chord is the same for both (it comes from the frame); the glass crossed is not.
+    val block = patch(renderMeshShadow(Some(TestUtilities.createUnitCubeMesh())), 32, 32)
+    val thin = patch(renderMeshShadow(Some(slab(0.5f))), 32, 32)
+    info(f"block $block, thin $thin")
+    greenToRed(thin) should be > greenToRed(block) + 0.01
+  }
+
+  "A flat glass slab" should "let through (1 - F0)^2 * exp(-sigma * L) of the direct light" in {
+    // The floor is linear in the light (no tone mapping), so on the same pixels the direct light
+    // a slab lets through is (glass - opaque) / (bare - opaque) per channel. The slab is wide in
+    // x and z, so the 45-degree shadow ray enters its top and leaves its bottom: L = h * sqrt 2.
+    val thickness = 0.25f
+    val glass = Color(0.9f, 0.5f, 0.2f, 0.2f)
+    val mesh = scaledCube(2f, thickness, 2f)
+    val intensity = 3.0f
+    def floor(m: Option[TriangleMeshData], c: Color) =
+      patch(renderMeshShadow(m, c, intensity), 32, 32)
+    val bare = floor(None, glass)
+    val opaque = floor(Some(mesh), Color(0f, 0f, 0f, 1f))
+    val through = floor(Some(mesh), glass)
+    def measured(pick: ((Double, Double, Double)) => Double) =
+      (pick(through) - pick(opaque)) / (pick(bare) - pick(opaque))
+    val f0 = math.pow((Const.iorGlass - 1.0) / (Const.iorGlass + 1.0), 2)
+    val length = thickness * math.sqrt(2.0)
+    def expected(channel: Float) =
+      math.pow(1 - f0, 2) * math.exp(math.log(channel.toDouble) * glass.a * 5.0 * length)
+    info(f"bare $bare, opaque $opaque, through $through")
+    val pairs = Seq((measured(_._1), expected(glass.r)), (measured(_._2), expected(glass.g)),
+      (measured(_._3), expected(glass.b)))
+    info(pairs.map((m, e) => f"$m%.3f vs $e%.3f").mkString(", "))
+    pairs.foreach((m, e) => m shouldBe e +- 0.03)
   }
 
   "A glass sphere coloured by XYZToRGBLocal" should "cast a shadow whose hue varies across it" in {

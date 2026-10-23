@@ -9,11 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A transparent shadow through a triangle mesh charged the object's whole Beer-Lambert chord at
-  every front face the shadow ray crossed. A coloured glass sponge, which a ray crosses at
-  dozens of faces, cast a grey shadow instead of a tinted one. The chord is now charged once per
-  instance and shadow ray (shadow payload 3 holds the instance id). A sphere already counted
-  only its entry hit and is unchanged (lene/menger#128).
+- A transparent shadow through a refractive triangle mesh with an object frame charges the glass
+  the shadow ray actually crosses: the Fresnel loss of every surface, and Beer-Lambert absorption
+  over the length between each entry and exit face. Before, it charged the whole object's mean
+  chord at every front face, so a glass sponge (many thin walls) over-absorbed: against pbrt-v4
+  its shadow's green-to-red ratio was 5.6 where the physical render has 1.7; now 1.45
+  (lene/menger#128). A flat slab's shadow lets through (1 - F0)^2 * exp(-sigma * L) of the
+  direct light, within 0.005. Spheres, cones, cylinders, curves and planes keep the mean-chord
+  model.
+- Shadow rays accumulate optical depth (payloads 0-2), turned into attenuation in the shadow
+  miss program, so the sum does not depend on the order any-hit reports hits in.
+- Triangle geometry is built with `OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL`, so a shadow
+  ray's any-hit runs once per triangle.
+- The triangle shadow any-hit takes entry and exit from the vertex normal, as the camera ray's
+  refraction does, not from the triangle's winding.
 
 ## [0.4.9] - 2026-10-22
 
