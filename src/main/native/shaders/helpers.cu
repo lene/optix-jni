@@ -2116,6 +2116,18 @@ __device__ float surfaceTransmission(float ior) {
     return 1.0f - f0 * f0;
 }
 
+// Exact unpolarised Fresnel transmission of one air-glass surface for light meeting it from the
+// air side at cos_air (as caustics_ppm's photons get it). No total internal reflection: from air
+// light always gets in.
+__device__ float surfaceTransmissionAt(float cos_air, float ior) {
+    const float cos_i = fminf(fmaxf(cos_air, 0.0f), 1.0f);
+    const float sin_t = sqrtf(fmaxf(0.0f, 1.0f - cos_i * cos_i)) / ior;
+    const float cos_t = sqrtf(fmaxf(0.0f, 1.0f - sin_t * sin_t));
+    const float r_perp = (cos_i - ior * cos_t) / (cos_i + ior * cos_t);
+    const float r_parl = (ior * cos_i - cos_t) / (ior * cos_i + cos_t);
+    return 1.0f - 0.5f * (r_perp * r_perp + r_parl * r_parl);
+}
+
 // Beer-Lambert extinction per unit length, as applyBeerLambertAbsorption uses for camera rays.
 __device__ float3 shadowExtinction(const float4& color) {
     const float k = color.w * BEER_LAMBERT_ABSORPTION_SCALE;
@@ -2157,9 +2169,16 @@ __device__ void accumulateTransparentShadow(float4 color, float fallback_alpha, 
  * ponytail: an open refractive mesh (a sheet) has no inside; its crossings are charged around the
  * centre, an approximation. A closedness flag per mesh would make it exact.
  *
+ * The Fresnel loss is exact at the ray's angle to the face, taken on the air side for an exit face
+ * too: the shadow ray is not refracted, and a parallel-sided wall turns light back to the angle it
+ * came in at, so both its surfaces lose the air-side share (at 45 degrees ~5% each against the 4%
+ * of normal incidence; a sponge's shadow ray crosses many).
+ *
+ * @param cos_air |cos| of the angle between the shadow ray and the face's normal
  * @return false (nothing charged) without a frame or for a non-refractive material
  */
-__device__ bool accumulateMeshShadowPath(float4 color, float ior, float coverage, bool entering) {
+__device__ bool accumulateMeshShadowPath(float4 color, float ior, float coverage, bool entering,
+                                         float cos_air) {
     const float* f = instanceObjectFrame();
     if (ior <= 1.0f || f == nullptr) return false;
     const float3 sigma = shadowExtinction(shadowHitColour(color));
@@ -2174,7 +2193,8 @@ __device__ bool accumulateMeshShadowPath(float4 color, float ior, float coverage
     const float3 d = optixGetWorldRayDirection();
     const float t = optixGetRayTmax() - dot(centre - o, d) / dot(d, d);
     const float signed_t = entering ? -t : t;
-    const float fresnel = -logf(surfaceTransmission(ior));
+    const float fresnel =
+        -logf(fmaxf(surfaceTransmissionAt(cos_air, ior), SHADOW_MIN_TRANSMISSION));
     addShadowDepth(make_float3(coverage * (sigma.x * signed_t + fresnel),
                                coverage * (sigma.y * signed_t + fresnel),
                                coverage * (sigma.z * signed_t + fresnel)));

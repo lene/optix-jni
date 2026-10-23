@@ -191,10 +191,12 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
     greenToRed(thin) should be > greenToRed(block) + 0.01
   }
 
-  "A flat glass slab" should "let through (1 - F0)^2 * exp(-sigma * L) of the direct light" in {
+  "A flat glass slab" should "let through T(45 deg)^2 * exp(-sigma * L) of the direct light" in {
     // The floor is linear in the light (no tone mapping), so on the same pixels the direct light
     // a slab lets through is (glass - opaque) / (bare - opaque) per channel. The slab is wide in
     // x and z, so the 45-degree shadow ray enters its top and leaves its bottom: L = h * sqrt 2.
+    // T is the exact unpolarised Fresnel transmission from air at 45 degrees, for both surfaces
+    // (a parallel-sided slab turns the light back to the angle it came in at).
     val thickness = 0.25f
     val glass = Color(0.9f, 0.5f, 0.2f, 0.2f)
     val mesh = scaledCube(2f, thickness, 2f)
@@ -206,15 +208,21 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val through = floor(Some(mesh), glass)
     def measured(pick: ((Double, Double, Double)) => Double) =
       (pick(through) - pick(opaque)) / (pick(bare) - pick(opaque))
-    val f0 = math.pow((Const.iorGlass - 1.0) / (Const.iorGlass + 1.0), 2)
+    val n = Const.iorGlass.toDouble
+    val cosI = math.sqrt(0.5)
+    val cosT = math.sqrt(1 - 0.5 / (n * n))
+    val rPerp = (cosI - n * cosT) / (cosI + n * cosT)
+    val rParl = (n * cosI - cosT) / (n * cosI + cosT)
+    val surface = 1 - 0.5 * (rPerp * rPerp + rParl * rParl)
     val length = thickness * math.sqrt(2.0)
     def expected(channel: Float) =
-      math.pow(1 - f0, 2) * math.exp(math.log(channel.toDouble) * glass.a * 5.0 * length)
+      surface * surface * math.exp(math.log(channel.toDouble) * glass.a * 5.0 * length)
     info(f"bare $bare, opaque $opaque, through $through")
     val pairs = Seq((measured(_._1), expected(glass.r)), (measured(_._2), expected(glass.g)),
       (measured(_._3), expected(glass.b)))
     info(pairs.map((m, e) => f"$m%.3f vs $e%.3f").mkString(", "))
-    pairs.foreach((m, e) => m shouldBe e +- 0.03)
+    // 0.01 separates the exact Fresnel from normal incidence (0.889 / 0.720 red / green).
+    pairs.foreach((m, e) => m shouldBe e +- 0.01)
   }
 
   "A glass sphere coloured by XYZToRGBLocal" should "cast a shadow whose hue varies across it" in {

@@ -575,8 +575,10 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     // vertex normal, as the camera ray's refraction takes them, not from the hit kind: on
     // menger's volume sponge the two disagree for some faces, and a face counted with the wrong
     // sign leaves an entry unpaired (its shadow turned the complementary colour).
-    const bool entering = currentTriangleGeometry().entering;
-    if (!accumulateMeshShadowPath(material_color, material_ior, coverage, entering) && front_face)
+    const TriangleGeometry geom = currentTriangleGeometry();
+    const float cos_air = fabsf(dot(normalize(optixGetWorldRayDirection()), geom.normal));
+    if (!accumulateMeshShadowPath(material_color, material_ior, coverage, geom.entering, cos_air)
+        && front_face)
         accumulateTransparentShadow(material_color, alpha, material_ior, coverage);
     optixIgnoreIntersection();
 }
