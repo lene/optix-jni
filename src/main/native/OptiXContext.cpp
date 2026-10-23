@@ -772,8 +772,10 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
     triangle_input.triangleArray.indexFormat = OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
     triangle_input.triangleArray.indexStrideInBytes = 3 * sizeof(unsigned int);
 
-    // Geometry flags
-    uint32_t triangle_flags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+    // One any-hit call per triangle and ray: a transparent shadow sums -sigma * t at entry faces
+    // and +sigma * t at exit faces (accumulateMeshShadowPath), and a repeated call would leave an
+    // entry unpaired (menger#128). The in-place update (OptiXWrapper) must use the same flags.
+    uint32_t triangle_flags[1] = {OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL};
     triangle_input.triangleArray.flags = triangle_flags;
     triangle_input.triangleArray.numSbtRecords = 1;
     triangle_input.triangleArray.sbtIndexOffsetBuffer = 0;

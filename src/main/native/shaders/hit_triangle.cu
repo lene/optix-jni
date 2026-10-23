@@ -537,17 +537,26 @@ extern "C" __global__ void __closesthit__triangle() {
     }
 }
 
+// The current hit's geometry, read as __closesthit__triangle reads it: from the instance's own
+// buffers in IAS mode, else from the SBT hit group.
+__device__ TriangleGeometry currentTriangleGeometry() {
+    if (params.use_ias && params.instance_materials) {
+        const InstanceMaterial& mat = params.instance_materials[optixGetInstanceId()];
+        if (mat.vertices && mat.indices)
+            return getTriangleGeometry(mat.vertices, mat.indices, mat.vertex_stride);
+    }
+    return getTriangleGeometry(
+        reinterpret_cast<const TriangleHitGroupData*>(optixGetSbtDataPointer()));
+}
+
 //==============================================================================
 // Triangle shadow ray anyhit - accumulates attenuation through transparent meshes
 //==============================================================================
 extern "C" __global__ void __anyhit__triangle_shadow() {
     if (!params.transparent_shadows_enabled) return;
 
-    // Back-face hits indicate ray exiting the mesh — ignore to count each object once.
-    if (optixGetHitKind() == OPTIX_HIT_KIND_TRIANGLE_BACK_FACE) {
-        optixIgnoreIntersection();
-        return;
-    }
+    // A back-face hit is the ray leaving the mesh.
+    const bool front_face = optixGetHitKind() != OPTIX_HIT_KIND_TRIANGLE_BACK_FACE;
 
     float4 material_color;
     float material_ior;
@@ -556,9 +565,21 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
     const float coverage = getInstanceCoverage();
     const float alpha = material_color.w * coverage;
-    if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
+    if (alpha >= 1.0f - 1e-4f) {  // Opaque: a front face is accepted, closesthit shadows fully
+        if (!front_face) optixIgnoreIntersection();
+        return;
+    }
 
-    accumulateTransparentShadow(material_color, alpha, material_ior, coverage);
+    // Refractive glass with a frame charges what lies between its entry and exit faces; any
+    // other transparent mesh its front faces' surface model. Entry and exit come from the
+    // vertex normal, as the camera ray's refraction takes them, not from the hit kind: on
+    // menger's volume sponge the two disagree for some faces, and a face counted with the wrong
+    // sign leaves an entry unpaired (its shadow turned the complementary colour).
+    const TriangleGeometry geom = currentTriangleGeometry();
+    const float cos_air = fabsf(dot(normalize(optixGetWorldRayDirection()), geom.normal));
+    if (!accumulateMeshShadowPath(material_color, material_ior, coverage, geom.entering, cos_air)
+        && front_face)
+        accumulateTransparentShadow(material_color, alpha, material_ior, coverage);
     optixIgnoreIntersection();
 }
 

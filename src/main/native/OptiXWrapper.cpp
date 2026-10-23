@@ -922,7 +922,8 @@ int OptiXWrapper::updateMesh4DProjection(
             OPTIX_INDICES_FORMAT_UNSIGNED_INT3;
         triangle_input.triangleArray.indexStrideInBytes =
             3 * sizeof(unsigned int);
-        uint32_t triangle_flags[1] = {OPTIX_GEOMETRY_FLAG_NONE};
+        // The flags of the original build (OptiXContext::buildTriangleGAS).
+        uint32_t triangle_flags[1] = {OPTIX_GEOMETRY_FLAG_REQUIRE_SINGLE_ANYHIT_CALL};
         triangle_input.triangleArray.flags = triangle_flags;
         triangle_input.triangleArray.numSbtRecords = 1;
 

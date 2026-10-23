@@ -2,8 +2,14 @@
 // Shadow ray miss shader - light is visible (no occlusion)
 //==============================================================================
 extern "C" __global__ void __miss__shadow() {
-    // Payloads pre-initialized to 0.0f by traceShadowRay().
-    // Accumulated transparent attenuation (if any) is preserved here.
+    // Transparent hits left their optical depth in payloads 0-2 (addShadowDepth; 0 when there
+    // were none): the attenuation is what that depth leaves of the light.
+    const float tau_r = __uint_as_float(optixGetPayload_0());
+    const float tau_g = __uint_as_float(optixGetPayload_1());
+    const float tau_b = __uint_as_float(optixGetPayload_2());
+    optixSetPayload_0(__float_as_uint(shadowAttenuationFromDepth(tau_r)));
+    optixSetPayload_1(__float_as_uint(shadowAttenuationFromDepth(tau_g)));
+    optixSetPayload_2(__float_as_uint(shadowAttenuationFromDepth(tau_b)));
 }
 
 //==============================================================================

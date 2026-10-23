@@ -38,6 +38,7 @@ namespace RayTracingConstants {
     constexpr float SHADOW_RAY_MAX_DISTANCE = 1e16f;   // Shadow rays use effectively infinite distance
     constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Offset to avoid self-intersection
     constexpr float SHADOW_RAY_OFFSET = 0.001f;        // Offset for shadow ray origin (avoid shadow acne)
+    constexpr float SHADOW_MIN_TRANSMISSION = 1e-6f;   // Keeps a surface's optical depth finite
 
     // Color conversion (float [0,1] to byte [0,255])
     constexpr float COLOR_SCALE_FACTOR = 255.99f;      // Slightly less than 256 to avoid overflow
