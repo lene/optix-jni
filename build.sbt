@@ -213,20 +213,13 @@ libraryDependencies ++= Seq(
   "com.tngtech.archunit" % "archunit" % "1.3.0" % Test
 )
 
-// MiMa binary compatibility — baseline against last published release.
-// From 1.0 onward, MiMa failures block release (SemVer contract).
+// MiMa binary compatibility against the last published release, run by the `mima` suite
+// (pre-push and CI; optix-jni#76: it was configured but never run). Every intentional break
+// is a filter here with its reason, and the CHANGELOG lists it.
 import com.typesafe.tools.mima.core._
 enablePlugins(MimaPlugin)
 mimaPreviousArtifacts := Set(
-  "io.github.lene" % "optix-jni" % "0.1.5"
+  "io.github.lene" % "optix-jni" % "0.4.11"
 )
-// Check both directions: forward (1.0 must be compatible with 0.1.5) and
-// backward (0.1.5 users can upgrade to 1.0 without recompilation).
 mimaBinaryIssueFilters ++= Seq(
-  // Sprint 30.4: setDenoisingEnabled/isDenoisingEnabled changed from @native to
-  // guarded Scala wrappers. Public method signatures unchanged — internal native
-  // methods renamed to *Native suffix. Backward compatible at API level.
-  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.setDenoisingEnabled"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.isDenoisingEnabled"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.setAccumulationFramesNative"),
 )

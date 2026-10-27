@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `io.github.lene.optix.testing.OptiXTestHooks`: fault injection (`failNextProjectionReadback`,
+  `simulateContextLost`, `clearContextLost`) and `iasUpdateCounts` for the tests of code built on
+  optix-jni, which no longer need to declare classes in `io.github.lene.optix` (optix-jni#76).
+- MiMa runs in the pre-push gate and CI (the `mima` suite), against the last release (0.4.11);
+  every intentional break is a filter in `build.sbt` with its reason.
+
+### Changed
+
+- The README states the API boundary: `private[optix]` members are internal.
+
 ## [0.4.11] - 2026-10-23
 
 ### Fixed

@@ -1,5 +1,6 @@
 package io.github.lene.optix
 
+import io.github.lene.optix.testing.OptiXTestHooks
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -21,7 +22,7 @@ class ProjectedMeshFailureSuite extends AnyFlatSpec with Matchers:
     try
       r.initialize() shouldBe true
       val first = upload(r)
-      r.failNextProjectionReadbackNative()
+      OptiXTestHooks.failNextProjectionReadback(r)
       intercept[IllegalArgumentException](upload(r)).getMessage should include("-2")
       upload(r) shouldBe first + 1
     finally r.dispose()

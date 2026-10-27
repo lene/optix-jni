@@ -2,6 +2,7 @@ package io.github.lene.optix
 
 import scala.util.Using
 
+import io.github.lene.optix.testing.OptiXTestHooks
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -27,21 +28,21 @@ class ContextLostSuite extends AnyFlatSpec with Matchers with BeforeAndAfterEach
     r
 
   override def afterEach(): Unit =
-    try Using.resource(new OptiXRenderer())(_.clearContextLostNative())
+    try Using.resource(new OptiXRenderer())(OptiXTestHooks.clearContextLost(_))
     finally super.afterEach()
 
   "A lost CUDA context" should "make every render throw OptiXContextLostException naming it" in:
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
     Using.resource(renderer()): r =>
       r.render(imageSize) should not be null
-      r.simulateContextLostNative("CUDA call 'x' failed: an illegal memory access (700)")
+      OptiXTestHooks.simulateContextLost(r, "CUDA call 'x' failed: an illegal memory access (700)")
       val e = the[OptiXContextLostException] thrownBy r.renderWithStats(64, 48)
       e.getMessage should include("illegal memory access (700)")
       e shouldBe an[OptiXException] // existing broad handlers keep working
 
   it should "hold for every renderer in the process, not only the one that hit it" in:
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
-    Using.resource(renderer())(_.simulateContextLostNative("launch failure (719)"))
+    Using.resource(renderer())(OptiXTestHooks.simulateContextLost(_, "launch failure (719)"))
     Using.resource(renderer()): other =>
       an[OptiXContextLostException] should be thrownBy other.renderWithStats(64, 48)
 

@@ -2,6 +2,7 @@ package io.github.lene.optix
 
 import scala.util.Using
 
+import io.github.lene.optix.testing.OptiXTestHooks
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -31,8 +32,8 @@ class IasInPlaceUpdateSuite extends AnyFlatSpec with Matchers:
     (r.addSphereInstance(at(-0.7f, 0f, 0f), red), r.addSphereInstance(at(0.7f, 0f, 0f), red))
 
   private def counts(r: OptiXRenderer): (Long, Long) =
-    val c = r.iasUpdateCountsNative()
-    (c(0), c(1))
+    val c = OptiXTestHooks.iasUpdateCounts(r)
+    (c.fullBuilds, c.inPlaceUpdates)
 
   private def maxDiff(a: Array[Byte], b: Array[Byte]): Int =
     a.length shouldBe b.length

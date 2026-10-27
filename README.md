@@ -281,6 +281,15 @@ Total image size: ~11GB (but CUDA layer shared across all NVIDIA images)
 - Performance: scene data in Params (not SBT) for fast parameter updates
 - Uses OptiXContext via composition
 
+### API boundary
+
+The public API is everything in `io.github.lene.optix` and `io.github.lene.optix.api` that is
+not `private[optix]`. The `private[optix]` members (the `*Native` methods the API traits call,
+the native handle) are internal: they compile to public bytecode, so a class declared in the
+package, or hand-written Java, can reach them, but they change without notice and MiMa does not
+guard them. Declare no classes in `io.github.lene.optix` (optix-jni#76). A caller's test that
+needs fault injection or the IAS update counters uses `io.github.lene.optix.testing.OptiXTestHooks`.
+
 ### Directory Structure
 
 ```

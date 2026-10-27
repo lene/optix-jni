@@ -23,6 +23,7 @@ suites:
   policy:         { tier: push,    requires: [] }
   preflight:      { tier: push,    requires: [] }
   lint:           { tier: push,    requires: [] }
+  mima:           { tier: push,    requires: [scala], note: "Binary compatibility against the last published release (optix-jni#76)." }
   unit:           { tier: push,    requires: [scala, native] }
   native-logging: { tier: push,    requires: [native] }
   native-checks:  { tier: push,    requires: [native] }
