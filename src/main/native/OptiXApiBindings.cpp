@@ -26,6 +26,16 @@ extern "C" {
 
 static std::unordered_map<OptixProgramGroup, OptixModule> curve_builtin_modules;
 
+// optix-jni#72/#73: a native failure throws io.github.lene.optix.OptiXException (or
+// OptiXContextLostException for a lost CUDA context) instead of only logging; the Scala side
+// also turns a 0 handle without an exception into one.
+static void throwFailure(JNIEnv* env, const std::exception& e) {
+    const bool lost = dynamic_cast<const CudaContextLost*>(&e) != nullptr;
+    jclass cls = env->FindClass(lost ? "io/github/lene/optix/OptiXContextLostException"
+                                     : "io/github/lene/optix/OptiXException");
+    if (cls) env->ThrowNew(cls, e.what());
+}
+
 static jfloatArray emptyFloatArray(JNIEnv* env) {
     return env->NewFloatArray(0);
 }
@@ -66,7 +76,7 @@ static OptixPipelineLinkOptions defaultPipelineLinkOptions(int maxTraceDepth) {
 
 // ---- Context lifecycle ----
 
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createContext(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createContextNative(
     JNIEnv* env, jobject obj) {
     try {
         auto* ctx = new OptiXContext();
@@ -78,11 +88,12 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createConte
         return reinterpret_cast<jlong>(ctx);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createContext: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
-JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyContext(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyContextNative(
     JNIEnv* env, jobject obj, jlong contextHandle) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     if (ctx) {
@@ -93,7 +104,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyConte
 
 // ---- Module lifecycle ----
 
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createModuleFromPTX(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createModuleFromPTXNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jbyteArray ptxBytes) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     if (!ctx) return 0L;
@@ -110,11 +121,12 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createModul
         return reinterpret_cast<jlong>(mod);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createModuleFromPTX: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
-JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyModule(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyModuleNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong moduleHandle) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  mod = reinterpret_cast<OptixModule>(moduleHandle);
@@ -125,7 +137,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyModul
 
 // ---- Program group lifecycle ----
 
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createRaygenGroup(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createRaygenGroupNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong moduleHandle, jstring entryPoint) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  mod = reinterpret_cast<OptixModule>(moduleHandle);
@@ -140,11 +152,12 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createRayge
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createRaygenGroup: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createMissGroup(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createMissGroupNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong moduleHandle, jstring entryPoint) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  mod = reinterpret_cast<OptixModule>(moduleHandle);
@@ -159,12 +172,13 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createMissG
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createMissGroup: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
 // Custom-primitive hitgroup with both closesthit and intersection shaders.
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createHitGroup(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createHitGroupNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong moduleHandle,
     jstring chEntry, jstring isEntry) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
@@ -187,12 +201,13 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createHitGr
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createHitGroup: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
 // Triangle hitgroup (built-in intersection — no IS shader needed).
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createTriangleHitGroup(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createTriangleHitGroupNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong moduleHandle, jstring chEntry) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  mod = reinterpret_cast<OptixModule>(moduleHandle);
@@ -207,12 +222,13 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createTrian
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createTriangleHitGroup: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
 // Curve hitgroup (built-in round cubic B-spline intersection).
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createCurveHitGroup(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createCurveHitGroupNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong moduleHandle, jstring chEntry) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  mod = reinterpret_cast<OptixModule>(moduleHandle);
@@ -238,11 +254,12 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createCurve
         return reinterpret_cast<jlong>(pg);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createCurveHitGroup: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
-JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyProgramGroup(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyProgramGroupNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong groupHandle) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  pg  = reinterpret_cast<OptixProgramGroup>(groupHandle);
@@ -262,7 +279,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyProgr
 
 // ---- Pipeline lifecycle ----
 
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createPipeline(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createPipelineNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlongArray groupHandles, jint maxTraceDepth) {
     auto* ctx = reinterpret_cast<OptiXContext*>(contextHandle);
     if (!ctx) return 0L;
@@ -287,11 +304,12 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createPipel
         return reinterpret_cast<jlong>(pipeline);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createPipeline: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
 
-JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyPipeline(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyPipelineNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jlong pipelineHandle) {
     auto* ctx      = reinterpret_cast<OptiXContext*>(contextHandle);
     auto  pipeline = reinterpret_cast<OptixPipeline>(pipelineHandle);
@@ -302,7 +320,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyPipel
 
 // ---- Denoiser lifecycle ----
 
-JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createDenoiser(
+JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createDenoiserNative(
     JNIEnv* env, jobject obj, jlong contextHandle, jboolean guideAlbedo, jboolean guideNormal) {
     const auto* ctx = reinterpret_cast<const OptiXContext*>(contextHandle);
     if (!ctx) return 0L;
@@ -315,6 +333,7 @@ JNIEXPORT jlong JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_createDenoi
         return reinterpret_cast<jlong>(denoiser);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] createDenoiser: " << e.what() << std::endl;
+        throwFailure(env, e);
         return 0L;
     }
 }
@@ -407,11 +426,12 @@ JNIEXPORT jfloatArray JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_denoi
         return result;
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[OptiXApi] denoiseFloat4: " << e.what() << std::endl;
+        throwFailure(env, e);
         return emptyFloatArray(env);
     }
 }
 
-JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyDenoiser(
+JNIEXPORT void JNICALL Java_io_github_lene_optix_api_NativeOptiXApi_destroyDenoiserNative(
     JNIEnv* env, jobject obj, jlong denoiserHandle) {
     auto* denoiser = reinterpret_cast<DenoiserManager*>(denoiserHandle);
     if (denoiser) {

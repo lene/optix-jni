@@ -2,6 +2,10 @@ package io.github.lene.optix
 
 import java.util.Optional
 
+import scala.util.Try
+
+import io.github.lene.optix.api.ContextHandle
+import io.github.lene.optix.api.DenoiserHandle
 import io.github.lene.optix.api.NativeOptiXApi
 
 /** A linear HDR RGBA float image for denoiser input/output.
@@ -41,20 +45,18 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
     extends AutoCloseable:
 
   private val api = NativeOptiXApi.api
-  private val nativeLibraryLoaded = OptiXRenderer.isLibraryLoaded
 
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  private var contextHandle: Long =
-    if nativeLibraryLoaded then api.createContext() else 0L
-
-  @SuppressWarnings(Array("org.wartremover.warts.Var"))
-  private var denoiserHandle: Long =
-    if contextHandle == 0L then 0L
-    else api.createDenoiser(contextHandle, guideAlbedo, guideNormal)
+  // No GPU, no OptiX or a failed denoiser setup leaves the denoiser unavailable, not broken.
+  private val handles: Option[(ContextHandle, DenoiserHandle)] =
+    if !OptiXRenderer.isLibraryLoaded then None
+    else Try(api.createContext()).toOption.flatMap: context =>
+      Try(api.createDenoiser(context, guideAlbedo, guideNormal)).fold(
+        _ => { context.close(); None },
+        denoiser => Some((context, denoiser)))
 
   /** Returns `true` when the OptiX context and denoiser handle are both live. */
   def isAvailable: Boolean =
-    contextHandle != 0L && denoiserHandle != 0L
+    handles.exists((context, denoiser) => context.isOpen && denoiser.isOpen)
 
   /** Denoises a linear HDR RGBA float image.
     *
@@ -63,7 +65,9 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
     *
     * @return denoised image, or [[Optional.empty]] if the denoiser is not available
     *         or the native call fails
+    * @throws OptiXContextLostException after a sticky CUDA error in this process
     */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   def denoise(
     image: DenoiseImage,
     guides: DenoiseGuides = DenoiseGuides.empty()
@@ -71,26 +75,19 @@ final class OptiXDenoiser(guideAlbedo: Boolean = false, guideNormal: Boolean = f
     validateImage(image)
     validateGuides(image, guides)
 
-    if !isAvailable then Optional.empty()
-    else
-      val result = api.denoiseFloat4(
-        denoiserHandle,
-        image.width,
-        image.height,
-        image.rgba,
-        guides.albedo,
-        guides.normal
-      )
-      if result == null || result.isEmpty then Optional.empty() // scalafix:ok DisableSyntax.null
-      else Optional.of(DenoiseImage(image.width, image.height, result))
+    handles.filter(_ => isAvailable) match
+      case None => Optional.empty()
+      case Some((_, denoiser)) =>
+        try
+          Optional.of(DenoiseImage(image.width, image.height, api.denoiseFloat4(
+            denoiser, image.width, image.height, image.rgba, guides.albedo, guides.normal)))
+        catch
+          case lost: OptiXContextLostException => throw lost // the whole process is affected
+          case _: OptiXException => Optional.empty()
 
+  /** Frees the denoiser and its context; closing again does nothing. */
   override def close(): Unit =
-    if denoiserHandle != 0L then
-      api.destroyDenoiser(denoiserHandle)
-      denoiserHandle = 0L
-    if contextHandle != 0L then
-      api.destroyContext(contextHandle)
-      contextHandle = 0L
+    handles.foreach((context, _) => context.close()) // closes the denoiser first
 
   private def validateImage(image: DenoiseImage): Unit =
     require(image.width > 0, s"width must be positive, got ${image.width}")

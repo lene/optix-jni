@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   otherwise. 46 entries logged and swallowed it, among them every setter, `removeInstance`,
   `clearAllInstances`, `getInstanceCount`, `uploadTextureFromFile` and `getCausticsStats`'s native
   part. Argument errors stay `IllegalArgumentException`.
+- `NativeOptiXApi` (optix-jni#72) returns and takes typed handles (`ContextHandle`, `ModuleHandle`,
+  `ProgramGroupHandle`, `PipelineHandle`, `DenoiserHandle`, all `AutoCloseable`) instead of raw
+  `Long`s; `close()` replaces the `destroy*` methods. A second close does nothing, a closed handle
+  is refused, a handle from another context is refused, and closing a context closes its
+  children first; a `Cleaner` frees a handle that was never closed. A failed `create*` throws
+  `OptiXException` instead of returning `0L`, and `denoiseFloat4` throws instead of returning an
+  empty array. `OptiXDenoiser` keeps its contract.
 - `PipelineManager` cleanup latches a sticky CUDA error instead of "clearing" it with
   `cudaGetLastError()`, which cannot clear one.
 

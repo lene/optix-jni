@@ -211,6 +211,20 @@ case class CheckerPattern(color1: Color, color2: Color)
   * [[renderWithStats]] or [[render]], then call [[dispose]]. Scene units are
   * application-defined world units. Angles are degrees unless a method name
   * explicitly describes a 4D rotation parameter.
+  *
+  * Usage contract (optix-jni#72):
+  *  - Initialized: [[ensureAvailable]] returns an initialized renderer or throws
+  *    [[OptiXNotAvailableException]]. Any other call on a renderer that is not initialized, or
+  *    was disposed, throws `IllegalStateException`; nothing is skipped silently.
+  *  - Failures: a native failure throws [[OptiXException]]; after a sticky CUDA error every
+  *    call, on every renderer in the process, throws [[OptiXContextLostException]]. Only a new
+  *    process recovers.
+  *  - Threads: one thread at a time per renderer. [[dispose]] may come from another thread; it
+  *    waits for the calls in flight.
+  *  - Ownership: the renderer owns its native state; dispose it (it is `AutoCloseable`). There is
+  *    no GC safety net here, unlike the low-level [[api.OptiXHandle]]s: JNI finds the native state
+  *    through this object's `nativeHandle` field, so a Cleaner, which must not reference the
+  *    object, would need a second, handle-based dispose path in native code.
   */
 class OptiXRenderer
   extends OptiXSphereApi

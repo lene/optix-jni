@@ -222,4 +222,8 @@ mimaPreviousArtifacts := Set(
   "io.github.lene" % "optix-jni" % "0.4.11"
 )
 mimaBinaryIssueFilters ++= Seq(
+  // optix-jni#72: NativeOptiXApi takes and returns typed AutoCloseable handles instead of raw
+  // Long, and close() replaces the destroy* methods (all 16 problems are in this class).
+  // Remove when mimaPreviousArtifacts moves to the release that contains it.
+  ProblemFilters.exclude[Problem]("io.github.lene.optix.api.NativeOptiXApi.*"),
 )
