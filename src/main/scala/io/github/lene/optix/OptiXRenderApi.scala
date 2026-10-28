@@ -33,10 +33,11 @@ private[optix] trait OptiXRenderApi:
 
   /** Sets temporal accumulation frame count for noisy render paths.
     *
-    * Silently no-ops when the renderer is not initialized.
+    * @throws IllegalStateException when the renderer is not initialized (optix-jni#72: this
+    *         used to be skipped silently)
     */
   def setAccumulationFrames(n: Int): Unit =
-    if isInitialized then setAccumulationFramesNative(n)
+    setAccumulationFramesNative(n)
 
   /** Applies progressive photon-mapping caustics settings. */
   def setCausticsConfig(config: CausticsConfig): Unit =
@@ -69,8 +70,10 @@ private[optix] trait OptiXRenderApi:
 
   /** Renders an RGBA8 frame and ray statistics for an [[menger.common.ImageSize]].
     *
-    * @return `java.util.Optional` containing [[RenderResult]] with elapsed
-    *         frame time, or empty on native failure
+    * @return `java.util.Optional` containing [[RenderResult]] with elapsed frame time
+    * @throws IllegalStateException when the renderer is not initialized
+    * @throws OptiXContextLostException after a sticky CUDA error earlier in this process
+    * @throws OptiXException on any other native failure
     */
   def renderWithStats(size: ImageSize): Optional[RenderResult] =
     val startNs = System.nanoTime()

@@ -158,10 +158,10 @@ class JniBoundarySuite extends AnyFlatSpec with Matchers with RendererFixture:
         Iterator.continually(disposed.get()).takeWhile(!_).foreach: _ =>
           r.renderWithStats(320, 240)
           started.countDown()
-        // After dispose every call sees a null handle and returns "not ready".
-        if Option(r.renderWithStats(320, 240)).isDefined then
-          failure.set(new AssertionError("render after dispose returned a result"))
-      catch case t: Throwable => failure.set(t)
+      catch
+        // The dispose landed between two renders: the next one sees the null handle (#72).
+        case _: IllegalStateException => ()
+        case t: Throwable => failure.set(t)
     val renderLoop = new Thread(loop)
     renderLoop.start()
     started.await()
@@ -171,3 +171,5 @@ class JniBoundarySuite extends AnyFlatSpec with Matchers with RendererFixture:
     renderLoop.join(60000)
     renderLoop.isAlive shouldBe false
     Option(failure.get()).foreach(t => fail(s"render loop failed: $t", t))
+    // After dispose every call sees the null handle and says so (optix-jni#72).
+    an[IllegalStateException] should be thrownBy r.renderWithStats(320, 240)

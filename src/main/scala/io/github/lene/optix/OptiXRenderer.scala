@@ -272,34 +272,28 @@ class OptiXRenderer
   @native private[optix] def setToneMappingNative(operatorId: Int, exposure: Float): Unit
   @native private[optix] def setIBLNative(enabled: Boolean, strength: Float, samples: Int): Unit
   @native private[optix] def setAccumulationFramesNative(n: Int): Unit
+  @native private def setDenoisingEnabledNative(enabled: Boolean): Unit
+
   /** Enables or disables the integrated OptiX HDR denoiser.
     *
     * When enabled the renderer routes the accumulated linear HDR frame through the
     * OptiX denoiser before tone mapping. Disabled by default; existing render output
     * is unchanged when off.
     *
-    * Silently no-ops when called before [[initialize]] or after [[dispose]]
-    * (checked via [[isInitialized]] guard). Use [[setDenoisingEnabled]] for the
-    * public API which includes this guard.
-    */
-  @native private def setDenoisingEnabledNative(enabled: Boolean): Unit
-
-  /** Enables or disables the integrated OptiX HDR denoiser.
-    *
-    * Safe to call at any time — silently no-ops when the renderer is not initialized.
+    * @throws IllegalStateException before [[initialize]] or after [[dispose]] (optix-jni#72:
+    *         this used to be skipped silently)
     */
   def setDenoisingEnabled(enabled: Boolean): Unit =
-    if isInitialized then setDenoisingEnabledNative(enabled)
+    setDenoisingEnabledNative(enabled)
 
-  /** Returns `true` when the integrated denoiser is currently enabled. */
   @native private def isDenoisingEnabledNative: Boolean
 
   /** Returns `true` when the integrated denoiser is currently enabled.
     *
-    * Returns `false` when the renderer is not initialized.
+    * @throws IllegalStateException before [[initialize]] or after [[dispose]]
     */
   def isDenoisingEnabled: Boolean =
-    isInitialized && isDenoisingEnabledNative
+    isDenoisingEnabledNative
 
   // ---- Custom-geometry SPI (Task 1.1d) ----
   // Register an external primitive (compiled to PTX) as a runtime geometry type,

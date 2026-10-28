@@ -19,6 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The README states the API boundary: `private[optix]` members are internal.
 
+### Breaking
+
+- A call on an `OptiXRenderer` that is not initialized, or was disposed, throws
+  `IllegalStateException` (optix-jni#72). Setters were skipped silently and the `Int`-returning
+  entries returned -1, `render` returned `null`; `setAccumulationFrames`, `setDenoisingEnabled` and
+  `isDenoisingEnabled` skipped their call. `initialize`, `reinitialize`, `dispose` and
+  `freeGpuMemoryBytes` are unchanged.
+- After a sticky CUDA error, every renderer call throws `OptiXContextLostException`, not only
+  `render` (optix-jni#73): setters and instance calls ran into the lost context.
+- Every native failure throws: `OptiXContextLostException` for a lost context, `OptiXException`
+  otherwise. 46 entries logged and swallowed it, among them every setter, `removeInstance`,
+  `clearAllInstances`, `getInstanceCount`, `uploadTextureFromFile` and `getCausticsStats`'s native
+  part. Argument errors stay `IllegalArgumentException`.
+- `PipelineManager` cleanup latches a sticky CUDA error instead of "clearing" it with
+  `cudaGetLastError()`, which cannot clear one.
+
 ## [0.4.11] - 2026-10-23
 
 ### Fixed

@@ -40,10 +40,17 @@ class ContextLostSuite extends AnyFlatSpec with Matchers with BeforeAndAfterEach
       e.getMessage should include("illegal memory access (700)")
       e shouldBe an[OptiXException] // existing broad handlers keep working
 
-  it should "hold for every renderer in the process, not only the one that hit it" in:
+  it should "hold for every renderer in the process, and every call, not only render" in:
+    // optix-jni#73: only render() checked the latch; setters ran into the lost context.
     assume(OptiXRenderer.isLibraryLoaded, "OptiX native library not loaded")
     Using.resource(renderer())(OptiXTestHooks.simulateContextLost(_, "launch failure (719)"))
-    Using.resource(renderer()): other =>
+    Using.resource(new OptiXRenderer()): other =>
+      other.initialize() shouldBe true
+      an[OptiXContextLostException] should be thrownBy
+        other.setCamera(Vector[3](0f, 0f, 4f), Vector[3](0f, 0f, 0f), Vector[3](0f, 1f, 0f), 60f)
+      an[OptiXContextLostException] should be thrownBy
+        other.addSphereInstance(Vector[3](0f, 0f, 0f), Material(Color(1f, 0f, 0f, 1f), 1.0f))
+      an[OptiXContextLostException] should be thrownBy other.setShadows(true)
       an[OptiXContextLostException] should be thrownBy other.renderWithStats(64, 48)
 
   "A context without a sticky error" should "render normally" in:

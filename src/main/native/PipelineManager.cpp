@@ -672,12 +672,9 @@ void PipelineManager::cleanup(bool includeCaustics) {
     cudaError_t sync_err = cudaDeviceSynchronize();
     if (sync_err != cudaSuccess) {
         OPTIX_LOG(ERROR) << "[PipelineManager::cleanup] CUDA synchronization error: " << cudaGetErrorString(sync_err) << std::endl;
-    }
-
-    // Clear any pending CUDA errors
-    cudaError_t final_err = cudaGetLastError();
-    if (final_err != cudaSuccess) {
-        OPTIX_LOG(ERROR) << "[PipelineManager::cleanup] CUDA error after synchronization: " << cudaGetErrorString(final_err) << std::endl;
+        // Cleanup logs and continues; a sticky error is latched so the next call reports it
+        // (cudaGetLastError() here cleared only a recoverable one, optix-jni#73).
+        noteCudaError(sync_err, "PipelineManager::cleanup synchronize");
     }
 }
 
