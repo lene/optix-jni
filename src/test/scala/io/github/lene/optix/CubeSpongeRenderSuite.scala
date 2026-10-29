@@ -84,8 +84,8 @@ class CubeSpongeRenderSuite extends AnyFlatSpec
     val shift = 1.0f / 9.0f
     val scale = 1.0f / 9.0f
 
-    // Add cubes - should stop at 64 (the default MAX_INSTANCES limit)
-    val successfulInstances = for
+    // Add cubes - the 65th exceeds the default MAX_INSTANCES limit (64)
+    val transforms = for
       xx <- -1 to 1
       yy <- -1 to 1
       zz <- -1 to 1
@@ -98,14 +98,18 @@ class CubeSpongeRenderSuite extends AnyFlatSpec
       val x = xx * shift * 3.0f + sx * shift
       val y = yy * shift * 3.0f + sy * shift
       val z = zz * shift * 3.0f + sz * shift
-      val transform = Array(
+      Array(
         scale, 0.0f, 0.0f, x,
         0.0f, scale, 0.0f, y,
         0.0f, 0.0f, scale, z
       )
-      renderer.addTriangleMeshInstance(transform, OPAQUE_BLUE, 1.0f)
 
-    // We attempted to add 400, but should have hit the default limit of 64
+    // menger#110: every add past the limit returned -1, unnoticed; now the first one throws.
+    val added = transforms.iterator
+      .map(t => scala.util.Try(renderer.addTriangleMeshInstance(t, OPAQUE_BLUE, 1.0f)))
+      .takeWhile(_.isSuccess).size
+    added shouldBe 64
+    an[OptiXException] should be thrownBy renderer.addTriangleMeshInstance(transforms(64), OPAQUE_BLUE, 1.0f)
     renderer.getInstanceCount() shouldBe 64
 
     val img = renderImage(TEST_IMAGE_SIZE)

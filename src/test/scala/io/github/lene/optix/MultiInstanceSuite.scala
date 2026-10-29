@@ -256,13 +256,13 @@ class MultiInstanceSuite extends AnyFlatSpec with Matchers with LazyLogging {
 
     renderer.nativeHandle should be (0L)
 
-    // Operations on uninitialized instance should fail gracefully
-    noException should be thrownBy renderer.setSphere(Vector[3](0, 0, 0), 1)
-    noException should be thrownBy renderer.setSphereColor(Color(1, 0, 0, 1))
-
-    // render should return null on uninitialized instance
-    val img = renderer.render(TEST_IMAGE_SIZE)
-    img shouldBe null // scalafix:ok DisableSyntax.null
+    // optix-jni#72: these were skipped silently and render returned null; every call on an
+    // uninitialized renderer now says it is one.
+    an[IllegalStateException] should be thrownBy renderer.setSphere(Vector[3](0, 0, 0), 1)
+    an[IllegalStateException] should be thrownBy renderer.setSphereColor(Color(1, 0, 0, 1))
+    an[IllegalStateException] should be thrownBy renderer.render(TEST_IMAGE_SIZE)
+    an[IllegalStateException] should be thrownBy renderer.setAccumulationFrames(4)
+    an[IllegalStateException] should be thrownBy renderer.setDenoisingEnabled(true)
   }
 
   it should "allow re-initialization check" in {

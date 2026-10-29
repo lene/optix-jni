@@ -2,6 +2,7 @@ package io.github.lene.optix
 
 import scala.util.Using
 
+import io.github.lene.optix.testing.OptiXTestHooks
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -24,15 +25,15 @@ class IasInPlaceUpdateSuite extends AnyFlatSpec with Matchers:
     Array(0.5f, 0f, 0f, x, 0f, 0.5f, 0f, y, 0f, 0f, 0.5f, z)
 
   /** Two spheres in a fresh renderer. */
-  private def scene(r: OptiXRenderer): (Int, Int) =
+  private def scene(r: OptiXRenderer): (InstanceId, InstanceId) =
     r.initialize() shouldBe true
     r.setCamera(Vector[3](0f, 0f, 4f), Vector[3](0f, 0f, 0f), Vector[3](0f, 1f, 0f), 60f)
     r.setLight(Vector[3](-0.5f, -0.5f, -1f), 1.0f)
     (r.addSphereInstance(at(-0.7f, 0f, 0f), red), r.addSphereInstance(at(0.7f, 0f, 0f), red))
 
   private def counts(r: OptiXRenderer): (Long, Long) =
-    val c = r.iasUpdateCountsNative()
-    (c(0), c(1))
+    val c = OptiXTestHooks.iasUpdateCounts(r)
+    (c.fullBuilds, c.inPlaceUpdates)
 
   private def maxDiff(a: Array[Byte], b: Array[Byte]): Int =
     a.length shouldBe b.length
@@ -40,7 +41,7 @@ class IasInPlaceUpdateSuite extends AnyFlatSpec with Matchers:
 
   /** Renders `change` applied after a first render (in place) and applied before the first
     * render (built from scratch); returns both images and the in-place renderer's counts. */
-  private def compare(change: (OptiXRenderer, (Int, Int)) => Unit)
+  private def compare(change: (OptiXRenderer, (InstanceId, InstanceId)) => Unit)
       : (Array[Byte], Array[Byte], (Long, Long)) =
     Using.resource(new OptiXRenderer()): updated =>
       val ids = scene(updated)

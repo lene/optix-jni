@@ -1,5 +1,6 @@
 package io.github.lene.optix
 
+import io.github.lene.optix.testing.OptiXTestHooks
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -12,7 +13,7 @@ class ProjectedMeshFailureSuite extends AnyFlatSpec with Matchers:
     -0.5f, -0.5f, 0f, 0f, 0.5f, -0.5f, 0f, 0f, 0.5f, 0.5f, 0f, 0f, -0.5f, 0.5f, 0f, 0f
   )
 
-  private def upload(r: OptiXRenderer): Int =
+  private def upload(r: OptiXRenderer): MeshSlot =
     r.setProjectedMesh(quad, 4, null, 3f, 1.5f, 0f, 0f, 0f) // scalafix:ok DisableSyntax.null
 
   "setProjectedMesh" should "fail with code -2 and register nothing when the readback fails" in:
@@ -21,7 +22,7 @@ class ProjectedMeshFailureSuite extends AnyFlatSpec with Matchers:
     try
       r.initialize() shouldBe true
       val first = upload(r)
-      r.failNextProjectionReadbackNative()
+      OptiXTestHooks.failNextProjectionReadback(r)
       intercept[IllegalArgumentException](upload(r)).getMessage should include("-2")
-      upload(r) shouldBe first + 1
+      upload(r).value shouldBe first.value + 1
     finally r.dispose()

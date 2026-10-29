@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
+### Added
+
+- `io.github.lene.optix.testing.OptiXTestHooks`: fault injection (`failNextProjectionReadback`,
+  `simulateContextLost`, `clearContextLost`) and `iasUpdateCounts` for the tests of code built on
+  optix-jni, which no longer need to declare classes in `io.github.lene.optix` (optix-jni#76).
+- MiMa runs in the pre-push gate and CI (the `mima` suite), against the last release (0.4.11);
+  every intentional break is a filter in `build.sbt` with its reason.
+
+### Changed
+
+- The README states the API boundary: `private[optix]` members are internal.
+
+### Breaking
+
+- A call on an `OptiXRenderer` that is not initialized, or was disposed, throws
+  `IllegalStateException` (optix-jni#72). Setters were skipped silently and the `Int`-returning
+  entries returned -1, `render` returned `null`; `setAccumulationFrames`, `setDenoisingEnabled` and
+  `isDenoisingEnabled` skipped their call. `initialize`, `reinitialize`, `dispose` and
+  `freeGpuMemoryBytes` are unchanged.
+- After a sticky CUDA error, every renderer call throws `OptiXContextLostException`, not only
+  `render` (optix-jni#73): setters and instance calls ran into the lost context.
+- Every native failure throws: `OptiXContextLostException` for a lost context, `OptiXException`
+  otherwise. 46 entries logged and swallowed it, among them every setter, `removeInstance`,
+  `clearAllInstances`, `getInstanceCount`, `uploadTextureFromFile` and `getCausticsStats`'s native
+  part. Argument errors stay `IllegalArgumentException`.
+- `NativeOptiXApi` (optix-jni#72) returns and takes typed handles (`ContextHandle`, `ModuleHandle`,
+  `ProgramGroupHandle`, `PipelineHandle`, `DenoiserHandle`, all `AutoCloseable`) instead of raw
+  `Long`s; `close()` replaces the `destroy*` methods. A second close does nothing, a closed handle
+  is refused, a handle from another context is refused, and closing a context closes its
+  children first; a `Cleaner` frees a handle that was never closed. A failed `create*` throws
+  `OptiXException` instead of returning `0L`, and `denoiseFloat4` throws instead of returning an
+  empty array. `OptiXDenoiser` keeps its contract.
+- Typed indices (menger#110): `add*Instance` returns an `InstanceId`, `addTriangleMesh` and
+  `setProjectedMesh` a `MeshSlot`, `uploadTexture` a `TextureIndex`, and the calls that take them
+  are typed to match (`TextureIndex.NoTexture` replaces `-1`). All three are opaque `Int`s:
+  Scala callers cannot mix them up, Java and Kotlin callers see `int`, and the bytecode is
+  unchanged. An `add*` that fails throws `OptiXException` instead of returning `-1`.
+- `setInstanceMaterial`, `setInstanceTransform`, `setInstanceCoverage`, `setInstanceVisible` and
+  `updateCustomGeometryInstanceData` return `Unit` and throw `IllegalArgumentException` for an
+  instance that does not exist; they returned `-1`, which callers ignored (menger#103).
+- `PipelineManager` cleanup latches a sticky CUDA error instead of "clearing" it with
+  `cudaGetLastError()`, which cannot clear one.
+
 ## [0.4.11] - 2026-10-23
 
 ### Fixed
@@ -793,6 +838,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.0]: https://github.com/lene/optix-jni/compare/0.4.11...0.5.0
 [0.4.11]: https://github.com/lene/optix-jni/compare/0.4.10...0.4.11
 [0.4.10]: https://github.com/lene/optix-jni/compare/0.4.9...0.4.10
 [0.4.9]: https://github.com/lene/optix-jni/compare/0.4.8...0.4.9

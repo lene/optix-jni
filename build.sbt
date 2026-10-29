@@ -1,7 +1,7 @@
 import com.github.sbt.jni.build.CMakeWithoutVersionBug
 
 name := "optix-jni"
-version := "0.4.11"
+version := "0.5.0"
 scalaVersion := "3.8.3"
 
 enablePlugins(JniNative, JniJavah)
@@ -213,20 +213,30 @@ libraryDependencies ++= Seq(
   "com.tngtech.archunit" % "archunit" % "1.3.0" % Test
 )
 
-// MiMa binary compatibility — baseline against last published release.
-// From 1.0 onward, MiMa failures block release (SemVer contract).
+// MiMa binary compatibility against the last published release, run by the `mima` suite
+// (pre-push and CI; optix-jni#76: it was configured but never run). Every intentional break
+// is a filter here with its reason, and the CHANGELOG lists it.
 import com.typesafe.tools.mima.core._
 enablePlugins(MimaPlugin)
 mimaPreviousArtifacts := Set(
-  "io.github.lene" % "optix-jni" % "0.1.5"
+  "io.github.lene" % "optix-jni" % "0.4.11"
 )
-// Check both directions: forward (1.0 must be compatible with 0.1.5) and
-// backward (0.1.5 users can upgrade to 1.0 without recompilation).
+// The compiled classes, not the jar: packageBin builds the native library, which a CI runner
+// without CUDA and the JDK headers cannot (the hosted `mima` job failed on a missing jni.h).
+mimaCurrentClassfiles := {
+  (Compile / compile).value
+  (Compile / classDirectory).value
+}
 mimaBinaryIssueFilters ++= Seq(
-  // Sprint 30.4: setDenoisingEnabled/isDenoisingEnabled changed from @native to
-  // guarded Scala wrappers. Public method signatures unchanged — internal native
-  // methods renamed to *Native suffix. Backward compatible at API level.
-  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.setDenoisingEnabled"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.isDenoisingEnabled"),
-  ProblemFilters.exclude[DirectMissingMethodProblem]("io.github.lene.optix.OptiXRenderer.setAccumulationFramesNative"),
+  // optix-jni#72: NativeOptiXApi takes and returns typed AutoCloseable handles instead of raw
+  // Long, and close() replaces the destroy* methods (all 16 problems are in this class).
+  // Remove when mimaPreviousArtifacts moves to the release that contains it.
+  ProblemFilters.exclude[Problem]("io.github.lene.optix.api.NativeOptiXApi.*"),
+  // menger#110/#103: a per-instance update returns Unit and throws for an unknown id; it returned
+  // -1, which callers ignored. (InstanceId/MeshSlot/TextureIndex are opaque Ints: no binary change.)
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceMaterial"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceTransform"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceCoverage"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceVisible"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.updateCustomGeometryInstanceData"),
 )

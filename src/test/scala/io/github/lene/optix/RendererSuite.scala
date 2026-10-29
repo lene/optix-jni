@@ -345,10 +345,12 @@ class RendererTest extends AnyFlatSpec
     initialize() shouldBe true
     dispose()
 
-  it should "handle dispose() before render()" in new OptiXRenderer:
+  it should "refuse render() after dispose()" in new OptiXRenderer:
+    // optix-jni#72: it returned null; a call on a disposed renderer is a caller bug, said so.
     initialize()
     dispose()
-    noException should be thrownBy { render(100, 100) }
+    the[IllegalStateException] thrownBy render(100, 100) should have message
+      "OptiXRenderer is not initialized: call initialize() first, and nothing after dispose()"
 
   it should "handle different render sizes" in:
     TestScenario.default().applyTo(renderer)

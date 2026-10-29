@@ -44,12 +44,34 @@ static OptiXWrapper* getWrapper(JNIEnv* env, jobject obj) {
     jclass cls = env->GetObjectClass(obj);
     jfieldID fid = env->GetFieldID(cls, "nativeHandle", "J");
     if (fid == nullptr) {
+        // GetFieldID left a NoSuchFieldError pending; the caller returns and the JVM throws it.
         OPTIX_LOG(ERROR) << "[JNI] Failed to get nativeHandle field" << std::endl;
-        env->ExceptionClear();  // GetFieldID sets a pending NoSuchFieldError; clear it so
-        return nullptr;         // returning nullptr to the caller doesn't trigger JNI UB.
+        return nullptr;
     }
     jlong handle = env->GetLongField(obj, fid);
     return reinterpret_cast<OptiXWrapper*>(handle);
+}
+
+static void throwException(JNIEnv* env, const char* className, const char* msg);
+
+/**
+ * The wrapper of an initialized renderer, for every entry but the lifecycle ones (optix-jni#72,
+ * #73). A call before initialize() or after dispose() used to be skipped silently, or return -1
+ * or null; it throws IllegalStateException, and the entry returns its default. After a sticky
+ * CUDA error it throws CudaContextLost, which the entry's catch turns into
+ * OptiXContextLostException: no call runs into the lost context.
+ */
+static OptiXWrapper* liveWrapper(JNIEnv* env, jobject obj) {
+    OptiXWrapper* wrapper = getWrapper(env, obj);
+    if (wrapper == nullptr) {
+        if (!env->ExceptionCheck()) {
+            throwException(env, "java/lang/IllegalStateException",
+                           "OptiXRenderer is not initialized: call initialize() first, and nothing after dispose()");
+        }
+        return nullptr;
+    }
+    throwIfContextLost();
+    return wrapper;
 }
 
 /**
@@ -165,67 +187,71 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphere(
     JNIEnv* env, jobject obj, jfloat x, jfloat y, jfloat z, jfloat radius) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setSphere(x, y, z, radius);
         } else {
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setSphere: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setSphereColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b, jfloat a) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setSphereColor(r, g, b, a);
         } else {
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setSphereColor: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIOR(
     JNIEnv* env, jobject obj, jfloat ior) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setIOR(ior);
         } else {
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setIOR: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setScale(
     JNIEnv* env, jobject obj, jfloat scale) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setScale(scale);
         } else {
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setScale: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
     JNIEnv* env, jobject obj, jfloatArray eye, jfloatArray lookAt, jfloatArray up, jfloat horizontalFovDegrees) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             // CR-4: guard the array fetches — a null or short eye/lookAt/up would otherwise reach
             // GetFloatArrayElements(null)/setCamera and SEGV from this public JNI entry point.
@@ -249,29 +275,31 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCameraNative(
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setCamera: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_updateImageDimensions(
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->updateImageDimensions(width, height);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in updateImageDimensions: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLight(
     JNIEnv* env, jobject obj, jfloatArray direction, jfloat intensity) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         // A null or short direction reached setLight, which reads three floats (optix-jni#69).
         if (wrapper != nullptr && jni_checks::requireMinLength(env, direction, "direction", 3)) {
             jfloat* dirArr = env->GetFloatArrayElements(direction, nullptr);
@@ -281,15 +309,16 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLight(
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setLight: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setLights(
     JNIEnv* env, jobject obj, jobjectArray lightsArray) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr || !jni_checks::requireNonNull(env, lightsArray, "lights")) {
             return;
         }
@@ -404,42 +433,45 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setShadows(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setShadows(enabled == JNI_TRUE);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setShadows: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTransparentShadowsNative(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setTransparentShadows(enabled == JNI_TRUE);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setTransparentShadows: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setBackgroundColorNative(
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setBackgroundColor(r, g, b);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setBackgroundColor: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setFogNative(
@@ -447,49 +479,52 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setFogNative(
 {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setFog(density, r, g, b);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setFog: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setEnvironmentMapNative(
     JNIEnv* env, jobject obj, jint textureIndex) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setEnvironmentMap((int)textureIndex);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setEnvironmentMap: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setToneMappingNative(
     JNIEnv* env, jobject obj, jint operatorId, jfloat exposure) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setToneMapping((int)operatorId, (float)exposure);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setToneMapping: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
     JNIEnv* env, jobject obj, jboolean enabled, jfloat strength, jint samples) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         // Range checks here and below: optix-jni#70 (loop counts and depths reached the device
         // unchecked).
         if (wrapper != nullptr &&
@@ -498,80 +533,86 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
             wrapper->setIBL((bool)enabled, (float)strength, (int)samples);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setIBL: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFramesNative(
     JNIEnv* env, jobject obj, jint n) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr &&
             jni_checks::requireRange<jint>(env, n, 1, jni_checks::kMaxAccumulationFrames,
                                            "accumulation frames"))
             wrapper->setAccumulationFrames((int)n);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setAccumulationFrames: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setDenoisingEnabledNative(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr)
             wrapper->setDenoisingEnabled(enabled == JNI_TRUE);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setDenoisingEnabledNative: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isDenoisingEnabledNative(
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        const OptiXWrapper* wrapper = getWrapper(env, obj);
+        const OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr)
             return wrapper->isDenoisingEnabled() ? JNI_TRUE : JNI_FALSE;
         return JNI_FALSE;
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in isDenoisingEnabledNative: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
         return JNI_FALSE;
     }
-    JNI_CATCH_UNKNOWN_LOG_RET(JNI_FALSE)
+    JNI_CATCH_UNKNOWN_THROW_RET(JNI_FALSE)
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setProceduralTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint proceduralType, jfloat proceduralScale) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setProceduralTexture((int)instanceId, (int)proceduralType, (float)proceduralScale);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setProceduralTexture: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setObjectFrameNative(
     JNIEnv* env, jobject obj, jint instanceId, jfloatArray worldToLocal) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr || worldToLocal == nullptr || env->GetArrayLength(worldToLocal) != 12) return;
         float frame[12];
         env->GetFloatArrayRegion(worldToLocal, 0, 12, frame);
         wrapper->setObjectFrame((int)instanceId, frame);
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setObjectFrame: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMapTexturesNative(
@@ -579,36 +620,38 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMapTexturesNat
     jint metallicTextureIndex, jint aoTextureIndex, jint heightTextureIndex) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setMapTextures((int)instanceId, (int)normalTextureIndex, (int)roughnessTextureIndex,
                 (int)metallicTextureIndex, (int)aoTextureIndex, (int)heightTextureIndex);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setMapTextures: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setImageTextureNative(
     JNIEnv* env, jobject obj, jint instanceId, jint imageTextureIndex) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setImageTexture((int)instanceId, (int)imageTextureIndex);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setImageTexture: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAntialiasing(
     JNIEnv* env, jobject obj, jboolean enabled, jint maxDepth, jfloat threshold) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr &&
             (enabled != JNI_TRUE ||
              (jni_checks::requireRange<jint>(env, maxDepth, 1,
@@ -618,15 +661,16 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAntialiasing(
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setAntialiasing: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMaxRayDepth(
     JNIEnv* env, jobject obj, jint depth) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr &&
             jni_checks::requireRange<jint>(env, depth, 1, static_cast<jint>(MAX_TRACE_DEPTH),
                                            "max ray depth")) {
@@ -634,8 +678,9 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMaxRayDepth(
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setMaxRayDepth: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCaustics(
@@ -643,7 +688,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCaustics(
     jfloat initialRadius, jfloat alpha) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr &&
             (enabled != JNI_TRUE ||
              (jni_checks::requireRange<jint>(env, photonsPerIter, 1,
@@ -654,36 +699,39 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCaustics(
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setCaustics: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearPlanesNative(
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->clearPlanes();
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in clearPlanes: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneNative(
     JNIEnv* env, jobject obj, jint axis, jboolean positive, jfloat value) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr && jni_checks::requireRange<jint>(env, axis, 0, 2, "plane axis")) {
             wrapper->addPlane(axis, positive == JNI_TRUE, value);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in addPlane: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColorNative(
@@ -691,14 +739,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColo
     jfloat r, jfloat g, jfloat b) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr && jni_checks::requireRange<jint>(env, axis, 0, 2, "plane axis")) {
             wrapper->addPlaneSolidColor(axis, positive == JNI_TRUE, value, r, g, b);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in addPlaneSolidColor: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerColorsNative(
@@ -706,14 +755,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerCo
     jfloat r1, jfloat g1, jfloat b1, jfloat r2, jfloat g2, jfloat b2) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr && jni_checks::requireRange<jint>(env, axis, 0, 2, "plane axis")) {
             wrapper->addPlaneCheckerColors(axis, positive == JNI_TRUE, value, r1, g1, b1, r2, g2, b2);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in addPlaneCheckerColors: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColorWithMaterialNative(
@@ -723,7 +773,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColo
     jint textureIndex) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr && jni_checks::requireRange<jint>(env, axis, 0, 2, "plane axis")) {
             wrapper->addPlaneSolidColorWithMaterial(
                 axis, positive == JNI_TRUE, value, r, g, b,
@@ -731,8 +781,9 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneSolidColo
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in addPlaneSolidColorWithMaterial: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerColorsWithMaterialNative(
@@ -742,7 +793,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerCo
     jint textureIndex) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr && jni_checks::requireRange<jint>(env, axis, 0, 2, "plane axis")) {
             wrapper->addPlaneCheckerColorsWithMaterial(
                 axis, positive == JNI_TRUE, value,
@@ -751,8 +802,9 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneCheckerCo
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in addPlaneCheckerColorsWithMaterial: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**
@@ -772,7 +824,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshNa
     jint* indexArr = nullptr;
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -874,7 +926,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setProjectedMeshN
     jfloat centerX, jfloat centerY, jfloat centerZ) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -938,7 +990,7 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextProjectio
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) wrapper->failNextProjectionReadbackForTest();
     }
     JNI_CATCH_UNKNOWN_THROW
@@ -978,7 +1030,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateMesh4DProje
     jfloat centerX, jfloat centerY, jfloat centerZ) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1008,7 +1060,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCpuTriangle
     jint vertexStride) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1069,7 +1121,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCylinderIns
     jintArray ids, jfloatArray p0s, jfloatArray p1s, jfloatArray radii) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr || ids == nullptr || p0s == nullptr || p1s == nullptr
             || radii == nullptr) {
             return -1;
@@ -1107,14 +1159,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshCo
     JNIEnv* env, jobject obj, jfloat r, jfloat g, jfloat b, jfloat a) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setTriangleMeshColor(r, g, b, a);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setTriangleMeshColor: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**
@@ -1124,14 +1177,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setTriangleMeshIO
     JNIEnv* env, jobject obj, jfloat ior) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setTriangleMeshIOR(ior);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setTriangleMeshIOR: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**
@@ -1141,14 +1195,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearTriangleMesh
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->clearTriangleMesh();
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in clearTriangleMesh: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**
@@ -1158,16 +1213,17 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_hasTriangleMe
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        const OptiXWrapper* wrapper = getWrapper(env, obj);
+        const OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             return wrapper->hasTriangleMesh() ? JNI_TRUE : JNI_FALSE;
         }
         return JNI_FALSE;
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in hasTriangleMesh: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
         return JNI_FALSE;
     }
-    JNI_CATCH_UNKNOWN_LOG_RET(JNI_FALSE)
+    JNI_CATCH_UNKNOWN_THROW_RET(JNI_FALSE)
 }
 
 // The RenderResult (image + ray stats) for a finished render; nullptr with a pending Java
@@ -1209,7 +1265,7 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderWithStat
     JNIEnv* env, jobject obj, jint width, jint height) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             // A disposed / not-yet-initialized renderer is a "not ready" signal, not a GPU
             // render failure — return null so the Scala side maps it to None. (1.6 stops
@@ -1266,7 +1322,7 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderMixNativ
     jintArray instanceIds, jbooleanArray visible, jdoubleArray weights) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return nullptr;
         const int64_t size = jni_checks::rgbaBytes(env, width, height);
         if (size < 0) return nullptr;
@@ -1317,7 +1373,7 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_renderMixNativ
 JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsStatsNative(JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return nullptr;
         }
@@ -1382,9 +1438,10 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsSta
         return result;
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in getCausticsStats: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
         return nullptr;
     }
-    JNI_CATCH_UNKNOWN_LOG_RET(nullptr)
+    JNI_CATCH_UNKNOWN_THROW_RET(nullptr)
 }
 
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_disposeNative(JNIEnv* env, jobject obj) {
@@ -1447,7 +1504,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addSphereInstance
     jfloatArray transform, jfloatArray material) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1495,7 +1552,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_registerCustomGeo
     jstring shadowChEntry, jstring shadowAhEntry, jstring photonChEntry) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return -1;
         // The PTX and the two required entry names; the other three may be null (optix-jni#69).
         if (!jni_checks::requireNonNull(env, ptxBytes, "ptxBytes") ||
@@ -1544,7 +1601,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCustomGeometry
     jbyteArray customData) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return -1;
         // Null-checked lengths (optix-jni#69; GetArrayLength(null) aborts the JVM) and a typeId
         // that names a registered type (#70: one past the end pointed the SBT offset past the
@@ -1587,7 +1644,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceMateri
     jint instanceId, jfloatArray material) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return -1;
         MaterialPayload mat;
         if (!readMaterialPayload(env, material, mat)) {
@@ -1610,7 +1667,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceTransf
     jint instanceId, jfloatArray transform) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return -1;
         if (transform == nullptr || env->GetArrayLength(transform) != 12) {
             env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
@@ -1633,7 +1690,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceVisibl
     jint instanceId, jboolean visible) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return -1;
         return wrapper->setInstanceVisible(instanceId, visible == JNI_TRUE);
     } catch (const std::exception& e) {
@@ -1649,7 +1706,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_setInstanceCovera
     jint instanceId, jfloat coverage) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return -1;
         return wrapper->setInstanceCoverage(instanceId, coverage);
     } catch (const std::exception& e) {
@@ -1665,7 +1722,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCustomGeome
     jint instanceId, jbyteArray customData) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) return -1;
         if (customData == nullptr) {
             env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
@@ -1697,7 +1754,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addTriangleMeshIn
     jfloatArray transform, jfloatArray material, jint textureIndex) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1750,7 +1807,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addRecursiveIASSp
     jfloatArray transform, jfloatArray material, jint textureIndex) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1810,7 +1867,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCylinderInstan
     jfloatArray material) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1847,7 +1904,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addConeInstanceNa
     jfloatArray material) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1882,7 +1939,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addCurveInstanceN
     jfloatArray material) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1959,7 +2016,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_addPlaneInstanceN
     jint solid_color, jfloat checker_size) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -1997,14 +2054,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_removeInstance(
     JNIEnv* env, jobject obj, jint instanceId) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->removeInstance(instanceId);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in removeInstance: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**
@@ -2014,14 +2072,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_clearAllInstances
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->clearAllInstances();
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in clearAllInstances: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 /**
@@ -2031,16 +2090,17 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_getInstanceCount(
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        const OptiXWrapper* wrapper = getWrapper(env, obj);
+        const OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             return wrapper->getInstanceCount();
         }
         return 0;
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in getInstanceCount: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
         return 0;
     }
-    JNI_CATCH_UNKNOWN_LOG_RET(0)
+    JNI_CATCH_UNKNOWN_THROW_RET(0)
 }
 
 /**
@@ -2074,16 +2134,17 @@ JNIEXPORT jboolean JNICALL Java_io_github_lene_optix_OptiXRenderer_isIASMode(
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        const OptiXWrapper* wrapper = getWrapper(env, obj);
+        const OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             return wrapper->isIASMode() ? JNI_TRUE : JNI_FALSE;
         }
         return JNI_FALSE;
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in isIASMode: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
         return JNI_FALSE;
     }
-    JNI_CATCH_UNKNOWN_LOG_RET(JNI_FALSE)
+    JNI_CATCH_UNKNOWN_THROW_RET(JNI_FALSE)
 }
 
 /**
@@ -2093,14 +2154,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIASMode(
     JNIEnv* env, jobject obj, jboolean enabled) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->setIASMode(enabled == JNI_TRUE);
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setIASMode: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 //==============================================================================
@@ -2120,7 +2182,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureNati
     jstring name, jbyteArray imageData, jint width, jint height) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -2184,7 +2246,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateTextureNati
     jint textureIndex, jbyteArray imageData, jint width, jint height) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr) {
             return -1;
         }
@@ -2236,7 +2298,7 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureFrom
     JNIEnv* env, jobject obj, jstring jpath) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper == nullptr || !jni_checks::requireNonNull(env, jpath, "path")) return -1;
 
         const char* path = env->GetStringUTFChars(jpath, nullptr);
@@ -2248,9 +2310,10 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_uploadTextureFrom
 
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in uploadTextureFromFile: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
         return -1;
     }
-    JNI_CATCH_UNKNOWN_LOG_RET(-1)
+    JNI_CATCH_UNKNOWN_THROW_RET(-1)
 }
 
 /**
@@ -2260,14 +2323,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_releaseTexturesNa
     JNIEnv* env, jobject obj) {
     try {
         LifecycleShared lifecycle(g_lifecycle);
-        OptiXWrapper* wrapper = getWrapper(env, obj);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) {
             wrapper->releaseTextures();
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in releaseTextures: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
     }
-    JNI_CATCH_UNKNOWN_LOG
+    JNI_CATCH_UNKNOWN_THROW
 }
 
 } // extern "C"

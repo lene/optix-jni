@@ -20,19 +20,19 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val apex = Vector[3](0.0f, 1.0f, 0.0f)
     val base = Vector[3](0.0f, -1.0f, 0.0f)
     val result = renderer.addConeInstance(apex, base, 0.5f, Material.Chrome)
-    result should be >= 0
+    result.value should be >= 0
 
   it should "return a valid instance ID with Material parameter" in:
     val apex = Vector[3](0.0f, 0.0f, 1.0f)
     val base = Vector[3](0.0f, 0.0f, -1.0f)
     val result = renderer.addConeInstance(apex, base, 0.3f, Material.Glass)
-    result should be >= 0
+    result.value should be >= 0
 
   it should "return a valid instance ID with color and IOR parameters" in:
     val apex = Vector[3](0.0f, 1.0f, 0.0f)
     val base = Vector[3](0.0f, 0.0f, 0.0f)
     val result = renderer.addConeInstance(apex, base, 0.4f, OPAQUE_GREEN, 1.0f)
-    result should be >= 0
+    result.value should be >= 0
 
   it should "support various orientations" in:
     // Cone along X axis
@@ -41,7 +41,7 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](-1.0f, 0.0f, 0.0f),
       0.4f, Material.Chrome
     )
-    xCone should be >= 0
+    xCone.value should be >= 0
 
     // Cone along Y axis
     val yCone = renderer.addConeInstance(
@@ -49,7 +49,7 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, -1.0f, 0.0f),
       0.4f, Material.Chrome
     )
-    yCone should be >= 0
+    yCone.value should be >= 0
 
     // Cone along Z axis
     val zCone = renderer.addConeInstance(
@@ -57,7 +57,7 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, 0.0f, -1.0f),
       0.4f, Material.Chrome
     )
-    zCone should be >= 0
+    zCone.value should be >= 0
 
   // ========== Multiple Cones ==========
 
@@ -69,7 +69,7 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
         Vector[3](x, -0.5f, 0.0f),
         0.2f, Material.Chrome
       )
-    ids.foreach(_ should be >= 0)
+    ids.foreach(_.value should be >= 0)
     ids.distinct.size shouldBe 3
 
   // ========== Cone Rendering ==========
@@ -109,7 +109,7 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.9f, -0.8f, 0.0f),
       0.4f,
       Material(menger.common.Color(1.0f, 1.0f, 1.0f, alpha), ior = 1.5f)
-    ) should be >= 0
+    ).value should be >= 0
     renderImage(TEST_IMAGE_SIZE)
 
   "A transparent cone" should "not render identically to an opaque one" in:

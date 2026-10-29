@@ -2,26 +2,26 @@ package io.github.lene.optix
 
 /** Texture and environment-map helpers exposed through [[OptiXRenderer]].
   *
-  * Texture indices are native slots returned by upload methods. `-1` disables
-  * optional per-instance maps unless a method requires a non-negative index.
+  * A [[TextureIndex]] is a native slot returned by an upload method;
+  * [[TextureIndex.NoTexture]] leaves an optional per-instance map off.
   */
 private[optix] trait OptiXTextureApi:
   this: OptiXRenderer =>
 
   /** Uses an uploaded texture as the environment map. */
-  def setEnvironmentMap(textureIndex: Int): Unit =
-    require(textureIndex >= 0, "textureIndex must be >= 0")
-    setEnvironmentMapNative(textureIndex)
+  def setEnvironmentMap(textureIndex: TextureIndex): Unit =
+    require(textureIndex.value >= 0, "the environment map needs a texture, not NoTexture")
+    setEnvironmentMapNative(textureIndex.value)
 
   /** Assigns a procedural texture to an IAS instance.
     *
     * `proceduralType` must be one of [[ProceduralType]] ids. Scale is in
     * world-space texture units and must be positive.
     */
-  def setProceduralTexture(instanceId: Int, proceduralType: Int, proceduralScale: Float = 1.0f): Unit =
+  def setProceduralTexture(instanceId: InstanceId, proceduralType: Int, proceduralScale: Float = 1.0f): Unit =
     require(proceduralType >= 0 && proceduralType <= 11, "proceduralType must be 0–11")
     require(proceduralScale > 0f, "proceduralScale must be positive")
-    setProceduralTextureNative(instanceId, proceduralType, proceduralScale)
+    setProceduralTextureNative(instanceId.value, proceduralType, proceduralScale)
 
   /** Gives an IAS instance its object frame: a row-major 3x4 world -> object-local transform
     * that maps the object's bounding box onto [0,1]^3 and follows its position, size and
@@ -30,16 +30,20 @@ private[optix] trait OptiXTextureApi:
     * (Beer-Lambert over its mean chord, 2/3 of the box extent). Without a frame, the local
     * colouring falls back to world coordinates and shadows keep the surface model.
     */
-  def setObjectFrame(instanceId: Int, worldToLocal: Array[Float]): Unit =
+  def setObjectFrame(instanceId: InstanceId, worldToLocal: Array[Float]): Unit =
     require(worldToLocal.length == 12, "worldToLocal must be a 3x4 matrix (12 floats, row-major)")
     require(worldToLocal.forall(v => !v.isNaN && !v.isInfinite), "worldToLocal must be finite")
-    setObjectFrameNative(instanceId, worldToLocal)
+    setObjectFrameNative(instanceId.value, worldToLocal)
 
   /** Assigns optional normal and roughness texture maps to an IAS instance. */
-  def setMapTextures(instanceId: Int, normalTextureIndex: Int = -1, roughnessTextureIndex: Int = -1,
-      metallicTextureIndex: Int = -1, aoTextureIndex: Int = -1, heightTextureIndex: Int = -1): Unit =
-    setMapTexturesNative(instanceId, normalTextureIndex, roughnessTextureIndex,
-      metallicTextureIndex, aoTextureIndex, heightTextureIndex)
+  def setMapTextures(instanceId: InstanceId,
+      normalTextureIndex: TextureIndex = TextureIndex.NoTexture,
+      roughnessTextureIndex: TextureIndex = TextureIndex.NoTexture,
+      metallicTextureIndex: TextureIndex = TextureIndex.NoTexture,
+      aoTextureIndex: TextureIndex = TextureIndex.NoTexture,
+      heightTextureIndex: TextureIndex = TextureIndex.NoTexture): Unit =
+    setMapTexturesNative(instanceId.value, normalTextureIndex.value, roughnessTextureIndex.value,
+      metallicTextureIndex.value, aoTextureIndex.value, heightTextureIndex.value)
 
   /** Sets the image texture slot for cone and plane instances.
     *
@@ -47,8 +51,8 @@ private[optix] trait OptiXTextureApi:
     * indexing and image texture indexing. Task 26.5 tracks completing that
     * separation in native naming.
     */
-  def setImageTexture(instanceId: Int, imageTextureIndex: Int): Unit =
-    setImageTextureNative(instanceId, imageTextureIndex)
+  def setImageTexture(instanceId: InstanceId, imageTextureIndex: TextureIndex): Unit =
+    setImageTextureNative(instanceId.value, imageTextureIndex.value)
 
   /** Dimensions positive and bounded, size computed in `Long` (optix-jni#68): `width * height * 4`
     * in `Int` wrapped, so a far too short array passed. The native entry checks the same. */
@@ -71,7 +75,7 @@ private[optix] trait OptiXTextureApi:
     * @throws TextureUploadException when native upload returns a negative code
     */
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): Int =
+  def uploadTexture(name: String, imageData: Array[Byte], width: Int, height: Int): TextureIndex =
     // JNI boundary validation - null checks required for native method safety
     require(name != null && name.nonEmpty, "Texture name must not be null or empty") // scalafix:ok DisableSyntax.null
     require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
@@ -80,7 +84,7 @@ private[optix] trait OptiXTextureApi:
     if index < 0 then
       throw TextureUploadException(s"Failed to upload texture '$name': error code $index")
     else
-      index
+      TextureIndex(index)
 
   /** Updates an existing RGBA8 native texture slot in place.
     *
@@ -90,13 +94,13 @@ private[optix] trait OptiXTextureApi:
     * @throws TextureUploadException when native update returns a negative code
     */
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  def updateTexture(textureIndex: Int, imageData: Array[Byte], width: Int, height: Int): Unit =
-    require(textureIndex >= 0, "textureIndex must be >= 0")
+  def updateTexture(textureIndex: TextureIndex, imageData: Array[Byte], width: Int, height: Int): Unit =
+    require(textureIndex.value >= 0, "updateTexture needs a texture, not NoTexture")
     require(imageData != null, "Image data must not be null") // scalafix:ok DisableSyntax.null
     requireRgbaImage(imageData, width, height)
-    val result = updateTextureNative(textureIndex, imageData, width, height)
+    val result = updateTextureNative(textureIndex.value, imageData, width, height)
     if result < 0 then
-      throw TextureUploadException(s"Failed to update texture $textureIndex: error code $result")
+      throw TextureUploadException(s"Failed to update texture ${textureIndex.value}: error code $result")
 
   /** Uploads a texture from a native-readable file path.
     *
@@ -104,13 +108,13 @@ private[optix] trait OptiXTextureApi:
     * @throws TextureUploadException when native upload returns a negative code
     */
   @SuppressWarnings(Array("org.wartremover.warts.Throw"))
-  def uploadTextureFromFile(path: String): Int =
+  def uploadTextureFromFile(path: String): TextureIndex =
     require(path != null && path.nonEmpty, "Path must not be null or empty") // scalafix:ok DisableSyntax.null
     val index = uploadTextureFromFileNative(path)
     if index < 0 then
       throw TextureUploadException(s"Failed to upload texture from file '$path': error code $index")
     else
-      index
+      TextureIndex(index)
 
   /** Releases all native texture objects owned by this renderer. */
   def releaseTextures(): Unit =

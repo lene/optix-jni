@@ -72,7 +72,7 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
       Array(-0.6f, -0.6f, -0.6f),
       Array(0.6f, 0.6f, 0.6f),
       identityTransform)
-    instanceId should be >= 0
+    instanceId.value should be >= 0
 
     val image = renderImage(TEST_IMAGE_SIZE)
     val magenta = magentaPixelCount(image)
@@ -91,8 +91,8 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
     val green = Array[Byte](0, 255.toByte, 0)
     val red   = Array[Byte](255.toByte, 0, 0)
 
-    renderer.addCustomGeometryInstance(typeId, aabbMin, aabbMax, xform(-0.9f), green) should be >= 0
-    renderer.addCustomGeometryInstance(typeId, aabbMin, aabbMax, xform(0.9f), red) should be >= 0
+    renderer.addCustomGeometryInstance(typeId, aabbMin, aabbMax, xform(-0.9f), green).value should be >= 0
+    renderer.addCustomGeometryInstance(typeId, aabbMin, aabbMax, xform(0.9f), red).value should be >= 0
 
     val image = renderImage(TEST_IMAGE_SIZE)
     val greenPixels = countColor(image, (r, g, b) => g > 150 && r < 100 && b < 100)
@@ -107,9 +107,9 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
     val typeId = registerMaterialStub()
     val instanceId = renderer.addCustomGeometryInstance(
       typeId, Array(-0.6f, -0.6f, -0.6f), Array(0.6f, 0.6f, 0.6f), identityTransform)
-    instanceId should be >= 0
+    instanceId.value should be >= 0
     // No per-instance blob: the shader must fall back to the InstanceMaterial colour.
-    renderer.setInstanceMaterial(instanceId, 0f, 1f, 0f, 1f, 1.5f) shouldBe 0
+    noException should be thrownBy renderer.setInstanceMaterial(instanceId, 0f, 1f, 0f, 1f, 1.5f)
 
     val image = renderImage(TEST_IMAGE_SIZE)
     val greenPixels = countColor(image, (r, g, b) => g > 150 && r < 100 && b < 100)
@@ -122,13 +122,13 @@ class CustomGeometrySpiSuite extends AnyFlatSpec
     val red   = Array[Byte](255.toByte, 0, 0)
     val instanceId = renderer.addCustomGeometryInstance(
       typeId, Array(-0.6f, -0.6f, -0.6f), Array(0.6f, 0.6f, 0.6f), identityTransform, green)
-    instanceId should be >= 0
+    instanceId.value should be >= 0
 
     val before = renderImage(TEST_IMAGE_SIZE)
     countColor(before, (r, g, b) => g > 150 && r < 100 && b < 100) should be > 100
 
     // In-place update (no rebuild): the same instance must now render red.
-    renderer.updateCustomGeometryInstanceData(instanceId, red) shouldBe 0
+    noException should be thrownBy renderer.updateCustomGeometryInstanceData(instanceId, red)
     val after = renderImage(TEST_IMAGE_SIZE)
     val redPixels = countColor(after, (r, g, b) => r > 150 && g < 100 && b < 100)
     logger.info(s"blob update: red=$redPixels px")

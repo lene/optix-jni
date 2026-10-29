@@ -51,7 +51,7 @@ class InstanceCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
     val _ = renderer.addTriangleMeshInstance(wallTransform, matteGrey)
     material.foreach { m =>
       val id = renderer.addTriangleMeshInstance(identity, m)
-      coverage.foreach(c => renderer.setInstanceCoverage(id, c) shouldBe 0)
+      coverage.foreach(c => noException should be thrownBy renderer.setInstanceCoverage(id, c))
     }
     TestUtilities.regionBrightness(renderImage(TEST_IMAGE_SIZE), TEST_IMAGE_SIZE, centre)
 
@@ -79,7 +79,7 @@ class InstanceCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
       val _ = renderer.addTriangleMesh(quad)
       val _ = renderer.addTriangleMeshInstance(wallTransform, matteGrey)
       val id = renderer.addTriangleMeshInstance(identity, material)
-      coverage.foreach(c => renderer.setInstanceCoverage(id, c) shouldBe 0)
+      coverage.foreach(c => noException should be thrownBy renderer.setInstanceCoverage(id, c))
       renderImage(TEST_IMAGE_SIZE)
     val blue = Color(0.1f, 0.1f, 0.9f, 1f)
     val byAlpha = image(matteGrey.copy(color = blue.copy(a = 0.4f)), None)
@@ -95,8 +95,8 @@ class InstanceCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
     centreBrightness(Some(Material.Diamond), Some(1f)) shouldBe (default +- 1.0)
 
   it should "return -1 for an unknown instance id" in:
-    renderer.setInstanceCoverage(7, 0.5f) shouldBe -1
-    renderer.setInstanceCoverage(-1, 0.5f) shouldBe -1
+    an[IllegalArgumentException] should be thrownBy renderer.setInstanceCoverage(InstanceId(7), 0.5f)
+    an[IllegalArgumentException] should be thrownBy InstanceId(-1)
 
   it should "reject a coverage outside [0, 1]" in:
     val _ = renderer.addTriangleMesh(quad)

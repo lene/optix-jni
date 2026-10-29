@@ -72,7 +72,8 @@ private[optix] trait OptiXPlaneApi:
     * @param distance signed distance from origin in world units
     * @param checkerColor second checker color, or `null` for a solid-color plane
     * @param checkerSize checker tile size in world units
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addPlaneInstance(
     normal: Vector[3],
@@ -80,25 +81,26 @@ private[optix] trait OptiXPlaneApi:
     material: Material,
     checkerColor: Color = null, // scalafix:ok DisableSyntax.null
     checkerSize: Float = 1.0f
-  ): Int =
+  ): InstanceId =
     val (r2, g2, b2, solidColor) =
       if checkerColor != null then (checkerColor.r, checkerColor.g, checkerColor.b, 0) // scalafix:ok DisableSyntax.null
       else (0f, 0f, 0f, 1)
-    addPlaneInstanceNative(
+    instanceOf("addPlaneInstance", addPlaneInstanceNative(
       normal.x, normal.y, normal.z,
       distance,
       MaterialPayload.pack(material),
       r2, g2, b2, solidColor, checkerSize
-    )
+    ))
 
   /** Adds a solid-color plane IAS instance from color and IOR.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addPlaneInstance(
     normal: Vector[3],
     distance: Float,
     color: Color,
     ior: Float
-  ): Int =
+  ): InstanceId =
     addPlaneInstance(normal, distance, Material(color, ior), null, 1.0f) // scalafix:ok DisableSyntax.null

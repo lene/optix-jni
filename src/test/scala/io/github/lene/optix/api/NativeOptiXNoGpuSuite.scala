@@ -18,25 +18,12 @@ class NativeOptiXNoGpuSuite extends AnyFlatSpec with Matchers:
     assumeNativeLibraryLoaded()
     OptiXRenderer.isLibraryLoaded shouldBe true
 
-  "NativeOptiXApi zero handles" should "be safe to destroy without a GPU context" in:
+  "NativeOptiXApi.createContext" should "give a context or throw OptiXException, without a GPU too" in:
+    // optix-jni#72: it returned 0L for "no GPU", which every caller had to check by hand.
     assumeNativeLibraryLoaded()
-    noException should be thrownBy
-      api.destroyContext(0L)
-    noException should be thrownBy
-      api.destroyModule(0L, 0L)
-    noException should be thrownBy
-      api.destroyPipeline(0L, 0L)
-    noException should be thrownBy
-      api.destroyDenoiser(0L)
-
-  it should "handle createContext returning no context without requiring a GPU" in:
-    assumeNativeLibraryLoaded()
-    val context = api.createContext()
-    if context == 0L then
-      succeed
-    else
-      noException should be thrownBy
-        api.destroyContext(context)
+    scala.util.Try(api.createContext()) match
+      case scala.util.Success(context) => noException should be thrownBy context.close()
+      case scala.util.Failure(e) => e shouldBe an[io.github.lene.optix.OptiXException]
 
   "OptiXRenderer initialization" should "return the same result when called twice" in:
     assumeNativeLibraryLoaded()

@@ -35,29 +35,8 @@ inline bool isStickyCudaError(cudaError_t err) {
     }
 }
 
-namespace cuda_state {
-inline std::mutex& lostMutex() { static std::mutex m; return m; }
-inline std::string& lostReason() { static std::string reason; return reason; }
-}  // namespace cuda_state
-
-/** Records `reason` as the context loss, unless one is recorded already (the first wins). */
-inline void latchContextLost(const std::string& reason) {
-    std::lock_guard<std::mutex> lock(cuda_state::lostMutex());
-    if (cuda_state::lostReason().empty()) cuda_state::lostReason() = reason;
-}
-
-/** The latched context loss, or "" while the context is fine. */
-inline std::string contextLostReason() {
-    std::lock_guard<std::mutex> lock(cuda_state::lostMutex());
-    return cuda_state::lostReason();
-}
-
-inline void throwIfContextLost() {
-    const std::string reason = contextLostReason();
-    if (!reason.empty()) {
-        throw CudaContextLost("CUDA context lost earlier in this process (restart it): " + reason);
-    }
-}
+// The latch itself (latchContextLost, contextLostReason, throwIfContextLost) is in
+// CudaContextLost.h, which the JNI layer includes without the CUDA headers.
 
 /** Throws `message`: as CudaContextLost (and latched) when `cuda` is a sticky error. */
 [[noreturn]] inline void throwCudaFailure(const std::string& message, cudaError_t cuda) {

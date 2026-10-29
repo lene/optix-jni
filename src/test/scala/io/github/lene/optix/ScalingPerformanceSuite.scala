@@ -42,7 +42,7 @@ class ScalingPerformanceSuite extends AnyFlatSpec with Matchers with PerfGate:
     r
 
   /** `n` small spheres on a grid; returns their ids. */
-  private def grid(r: OptiXRenderer, n: Int): scala.Vector[Int] =
+  private def grid(r: OptiXRenderer, n: Int): scala.Vector[InstanceId] =
     val side = math.ceil(math.sqrt(n.toDouble)).toInt
     scala.Vector.tabulate(n)(i =>
       r.addSphereInstance(at(-1.5f + 3f * (i % side) / side, -1f + 2f * (i / side) / side, 0f), red))
@@ -103,7 +103,7 @@ class ScalingPerformanceSuite extends AnyFlatSpec with Matchers with PerfGate:
         val typeId = custom.registerCustomGeometry(
           CustomGeometryStub.ptx(), "__intersection__spi_stub", "__closesthit__spi_stub")
         custom.addCustomGeometryInstance(typeId, Array(-0.6f, -0.6f, -0.6f), Array(0.6f, 0.6f, 0.6f),
-          Array(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f)) should be >= 0
+          Array(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f)).value should be >= 0
         gate(Side("built-in sphere", frame(builtIn)), Side("SPI stub instance", frame(custom)),
           MAX_SLOWDOWN_CUSTOM_GEOMETRY)
 
