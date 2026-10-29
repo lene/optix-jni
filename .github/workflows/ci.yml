@@ -172,7 +172,7 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: 'sbt'
-      - uses: sbt/setup-sbt@v1
+      - uses: sbt/setup-sbt@ecad189dd245444b9ae0a0cd5922fd938b88906f  # v1.5.12 (pinned to a commit SHA, Sonar S7637)
       - run: ./scripts/suites/mima.sh
 
   archunit:

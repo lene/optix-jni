@@ -221,6 +221,12 @@ enablePlugins(MimaPlugin)
 mimaPreviousArtifacts := Set(
   "io.github.lene" % "optix-jni" % "0.4.11"
 )
+// The compiled classes, not the jar: packageBin builds the native library, which a CI runner
+// without CUDA and the JDK headers cannot (the hosted `mima` job failed on a missing jni.h).
+mimaCurrentClassfiles := {
+  (Compile / compile).value
+  (Compile / classDirectory).value
+}
 mimaBinaryIssueFilters ++= Seq(
   // optix-jni#72: NativeOptiXApi takes and returns typed AutoCloseable handles instead of raw
   // Long, and close() replaces the destroy* methods (all 16 problems are in this class).
