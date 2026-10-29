@@ -39,6 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   children first; a `Cleaner` frees a handle that was never closed. A failed `create*` throws
   `OptiXException` instead of returning `0L`, and `denoiseFloat4` throws instead of returning an
   empty array. `OptiXDenoiser` keeps its contract.
+- Typed indices (menger#110): `add*Instance` returns an `InstanceId`, `addTriangleMesh` and
+  `setProjectedMesh` a `MeshSlot`, `uploadTexture` a `TextureIndex`, and the calls that take them
+  are typed to match (`TextureIndex.NoTexture` replaces `-1`). All three are opaque `Int`s:
+  Scala callers cannot mix them up, Java and Kotlin callers see `int`, and the bytecode is
+  unchanged. An `add*` that fails throws `OptiXException` instead of returning `-1`.
+- `setInstanceMaterial`, `setInstanceTransform`, `setInstanceCoverage`, `setInstanceVisible` and
+  `updateCustomGeometryInstanceData` return `Unit` and throw `IllegalArgumentException` for an
+  instance that does not exist; they returned `-1`, which callers ignored (menger#103).
 - `PipelineManager` cleanup latches a sticky CUDA error instead of "clearing" it with
   `cudaGetLastError()`, which cannot clear one.
 

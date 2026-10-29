@@ -41,7 +41,7 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val imageData = createTestTexture(width, height)
 
     val result = renderer.uploadTexture("test_texture", imageData, width, height)
-    result should be >= 0
+    result.value should be >= 0
     
 
   it should "return same index for same texture name" in:
@@ -52,8 +52,8 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val result1 = renderer.uploadTexture("same_name", imageData, width, height)
     val result2 = renderer.uploadTexture("same_name", imageData, width, height)
 
-    result1 should be >= 0
-    result2 should be >= 0
+    result1.value should be >= 0
+    result2.value should be >= 0
     result1 shouldBe result2
 
   it should "return different indices for different texture names" in:
@@ -64,8 +64,8 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val result1 = renderer.uploadTexture("texture_a", imageData, width, height)
     val result2 = renderer.uploadTexture("texture_b", imageData, width, height)
 
-    result1 should be >= 0
-    result2 should be >= 0
+    result1.value should be >= 0
+    result2.value should be >= 0
     result1 should not equal result2
 
   it should "handle various texture sizes" in:
@@ -74,13 +74,13 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     sizes.zipWithIndex.foreach { case ((w, h), idx) =>
       val imageData = createTestTexture(w, h)
       val result = renderer.uploadTexture(s"size_test_$idx", imageData, w, h)
-      result should be >= 0
+      result.value should be >= 0
     }
 
   it should "handle non-square textures" in:
     val imageData = createTestTexture(128, 64)
     val result = renderer.uploadTexture("non_square", imageData, 128, 64)
-    result should be >= 0
+    result.value should be >= 0
 
   "Texture update" should "update an existing texture slot repeatedly" in:
     val width = 32
@@ -90,7 +90,7 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val secondUpdateData = createTestTexture(width, height)
 
     val textureIndex = renderer.uploadTexture("update_reuse", originalData, width, height)
-    textureIndex should be >= 0
+    textureIndex.value should be >= 0
 
     noException should be thrownBy:
       renderer.updateTexture(textureIndex, updatedData, width, height)
@@ -103,34 +103,34 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "reject a negative texture index" in:
     val imageData = createTestTexture(32, 32)
     an[IllegalArgumentException] should be thrownBy:
-      renderer.updateTexture(-1, imageData, 32, 32)
+      renderer.updateTexture(TextureIndex.NoTexture, imageData, 32, 32)
 
   it should "reject null image data" in:
     an[IllegalArgumentException] should be thrownBy:
       // scalafix:off DisableSyntax.null
       // Note: Testing null parameter handling for Java interop boundary
-      renderer.updateTexture(0, null, 32, 32)
+      renderer.updateTexture(TextureIndex(0), null, 32, 32)
       // scalafix:on DisableSyntax.null
 
   it should "reject zero width" in:
     val imageData = new Array[Byte](0)
     an[IllegalArgumentException] should be thrownBy:
-      renderer.updateTexture(0, imageData, 0, 32)
+      renderer.updateTexture(TextureIndex(0), imageData, 0, 32)
 
   it should "reject zero height" in:
     val imageData = new Array[Byte](0)
     an[IllegalArgumentException] should be thrownBy:
-      renderer.updateTexture(0, imageData, 32, 0)
+      renderer.updateTexture(TextureIndex(0), imageData, 32, 0)
 
   it should "reject image data size mismatch" in:
     val smallData = new Array[Byte](100)  // Not 64*64*4
     an[IllegalArgumentException] should be thrownBy:
-      renderer.updateTexture(0, smallData, 64, 64)
+      renderer.updateTexture(TextureIndex(0), smallData, 64, 64)
 
   it should "reject an unknown native texture index" in:
     val imageData = createTestTexture(32, 32)
     a[TextureUploadException] should be thrownBy:
-      renderer.updateTexture(999, imageData, 32, 32)
+      renderer.updateTexture(TextureIndex(999), imageData, 32, 32)
 
   it should "reject dimension changes for an existing texture slot" in:
     val textureIndex =
@@ -145,7 +145,7 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     try
       writeMinimalHdr(tmp, 4, 4)
       val textureIndex = renderer.uploadTextureFromFile(tmp.toString)
-      textureIndex should be >= 0
+      textureIndex.value should be >= 0
       val imageData = createTestTexture(4, 4)
 
       a[TextureUploadException] should be thrownBy:
@@ -196,21 +196,21 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "allow new uploads after release" in:
     val imageData = createTestTexture(32, 32)
 
-    renderer.uploadTexture("before_release", imageData, 32, 32) should be >= 0
+    renderer.uploadTexture("before_release", imageData, 32, 32).value should be >= 0
     renderer.releaseTextures()
-    renderer.uploadTexture("after_release", imageData, 32, 32) should be >= 0
+    renderer.uploadTexture("after_release", imageData, 32, 32).value should be >= 0
 
   it should "reset texture indices after release" in:
     val imageData = createTestTexture(32, 32)
 
     val before = renderer.uploadTexture("reset_test", imageData, 32, 32)
-    before should be >= 0
+    before.value should be >= 0
     val beforeIdx = before
 
     renderer.releaseTextures()
 
     val after = renderer.uploadTexture("reset_test", imageData, 32, 32)
-    after should be >= 0
+    after.value should be >= 0
     // After release, indices start fresh (typically from 0)
     after shouldBe beforeIdx
 
@@ -229,7 +229,7 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     try
       writeMinimalHdr(tmp, 4, 4)
       val idx = renderer.uploadTextureFromFile(tmp.toString)
-      idx should be >= 0
+      idx.value should be >= 0
     finally java.nio.file.Files.deleteIfExists(tmp)
 
   it should "reject null path" in:
@@ -245,20 +245,20 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     try
       writeMinimalHdr(tmp, 4, 4)
       val idx = renderer.uploadTextureFromFile(tmp.toString)
-      idx should be >= 0
+      idx.value should be >= 0
       noException should be thrownBy renderer.setEnvironmentMap(idx)
     finally java.nio.file.Files.deleteIfExists(tmp)
 
   it should "reject negative index" in:
     an[IllegalArgumentException] should be thrownBy:
-      renderer.setEnvironmentMap(-1)
+      renderer.setEnvironmentMap(TextureIndex.NoTexture)
 
   // ========== Task 21.6: Cone and Plane Image Texture (image_texture_index) ==========
 
   "Cone with image texture" should "accept a valid texture index and return instance ID" in:
     val imageData = createTestTexture(32, 32)
     val texIdx = renderer.uploadTexture("cone_tex_21_6", imageData, 32, 32)
-    texIdx should be >= 0
+    texIdx.value should be >= 0
     
     val coneId = renderer.addConeInstance(
       menger.common.Vector[3](0.0f, 1.0f, 0.0f),
@@ -266,7 +266,7 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.5f,
       Material.Chrome
     )
-    coneId should be >= 0
+    coneId.value should be >= 0
     noException should be thrownBy renderer.setImageTexture(coneId, texIdx)
 
   it should "work without image texture (regression: imageTextureIndex = -1)" in:
@@ -276,20 +276,20 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.5f,
       Material.Chrome
     )
-    coneId should be >= 0
+    coneId.value should be >= 0
     
 
   "Plane with image texture" should "accept a valid texture index and return instance ID" in:
     val imageData = createTestTexture(32, 32)
     val texIdx = renderer.uploadTexture("plane_tex_21_6", imageData, 32, 32)
-    texIdx should be >= 0
+    texIdx.value should be >= 0
     
     val planeId = renderer.addPlaneInstance(
       menger.common.Vector[3](0.0f, 1.0f, 0.0f),
       -1.0f,
       Material.Chrome
     )
-    planeId should be >= 0
+    planeId.value should be >= 0
     noException should be thrownBy renderer.setImageTexture(planeId, texIdx)
 
   it should "work without image texture (regression: imageTextureIndex = -1)" in:
@@ -298,5 +298,5 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
       -1.0f,
       Material.Chrome
     )
-    planeId should be >= 0
+    planeId.value should be >= 0
     

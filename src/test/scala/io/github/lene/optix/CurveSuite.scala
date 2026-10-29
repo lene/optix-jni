@@ -92,7 +92,7 @@ class CurveSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Material(OPAQUE_GREEN, ior = 1.0f)
     )
 
-    result should be >= 0
+    result.value should be >= 0
 
   "Curve rendering" should "produce non-empty image data" in:
     renderer.addCurveInstance(
@@ -126,8 +126,8 @@ class CurveSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Material(OPAQUE_GREEN, ior = 1.0f)
     )
 
-    sphereId should be >= 0
-    curveId should be >= 0
+    sphereId.value should be >= 0
+    curveId.value should be >= 0
 
     val imageData = renderImage(TEST_IMAGE_SIZE)
     val ratio = ImageValidation.colorChannelRatio(imageData, TEST_IMAGE_SIZE)

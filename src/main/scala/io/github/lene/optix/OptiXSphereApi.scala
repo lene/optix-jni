@@ -30,24 +30,27 @@ private[optix] trait OptiXSphereApi:
 
   /** Adds a sphere IAS instance with an explicit 4x3 row-major transform.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
-  def addSphereInstance(transform: Array[Float], material: Material): Int =
+  def addSphereInstance(transform: Array[Float], material: Material): InstanceId =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    addSphereInstanceNative(transform, MaterialPayload.pack(material))
+    instanceOf("addSphereInstance", addSphereInstanceNative(transform, MaterialPayload.pack(material)))
 
   /** Adds a sphere IAS instance from color and index of refraction.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
-  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): Int =
+  def addSphereInstance(transform: Array[Float], color: Color, ior: Float): InstanceId =
     addSphereInstance(transform, Material(color, ior))
 
   /** Adds a unit-scale translated sphere IAS instance.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
-  def addSphereInstance(position: Vector[3], material: Material): Int =
+  def addSphereInstance(position: Vector[3], material: Material): InstanceId =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
@@ -57,7 +60,8 @@ private[optix] trait OptiXSphereApi:
 
   /** Adds a unit-scale translated sphere IAS instance from color and IOR.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
-  def addSphereInstance(position: Vector[3], color: Color, ior: Float): Int =
+  def addSphereInstance(position: Vector[3], color: Color, ior: Float): InstanceId =
     addSphereInstance(position, Material(color, ior))

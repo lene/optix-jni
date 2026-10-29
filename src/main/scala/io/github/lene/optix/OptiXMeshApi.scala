@@ -11,8 +11,9 @@ import menger.common.z
 /** Mesh, primitive-instance, and 4D GPU-projection helpers exposed through [[OptiXRenderer]].
   *
   * Transform arrays are row-major 4x3 affine matrices with
-  * [[menger.common.Const.Renderer.transformMatrixSize]] elements. Methods that
-  * return an instance id return `-1` on native failure. Update methods throw
+  * [[menger.common.Const.Renderer.transformMatrixSize]] elements. An `add*` method returns
+  * the new [[InstanceId]] or [[MeshSlot]] and throws [[OptiXException]] on native failure
+  * (menger#110: it returned -1, which callers passed on as an index). Update methods throw
   * when native code reports an invalid id or failed projection update.
   */
 private[optix] trait OptiXMeshApi:
@@ -21,14 +22,17 @@ private[optix] trait OptiXMeshApi:
   /** Uploads a triangle mesh to native scene state. Appends — does not replace an
     * already-uploaded mesh — and returns the new mesh's index.
     */
-  def addTriangleMesh(mesh: TriangleMeshData): Int =
-    setTriangleMeshNative(
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def addTriangleMesh(mesh: TriangleMeshData): MeshSlot =
+    val slot = setTriangleMeshNative(
       mesh.vertices,
       mesh.numVertices,
       mesh.indices,
       mesh.numTriangles,
       mesh.vertexStride
     )
+    if slot < 0 then throw new OptiXException(s"addTriangleMesh failed with code $slot")
+    MeshSlot(slot)
 
   /** @deprecated Use [[addTriangleMesh]]; the name "set" was misleading — this appends. */
   @deprecated("use addTriangleMesh; it appends and returns the new mesh's index", "0.4.1")
@@ -54,7 +58,7 @@ private[optix] trait OptiXMeshApi:
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
-  ): Int =
+  ): MeshSlot =
     require(facesData != null, "facesData must not be null")  // scalafix:ok DisableSyntax.null
     require(vertsPerFace >= 3, s"vertsPerFace must be >= 3, got $vertsPerFace")
     val stride = vertsPerFace * 4
@@ -72,7 +76,7 @@ private[optix] trait OptiXMeshApi:
     )
     // -2: the projected vertices couldn't be synchronized or read back; nothing was registered.
     require(result >= 0, s"setProjectedMesh failed with code $result")
-    result
+    MeshSlot(result)
 
   /** Backward-compatible quad-specific alias for [[setProjectedMesh]].
     *
@@ -86,7 +90,7 @@ private[optix] trait OptiXMeshApi:
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
-  ): Int =
+  ): MeshSlot =
     setProjectedMesh(quads4D, 4, uvs, eyeW, screenW, rotXW, rotYW, rotZW,
       centerX, centerY, centerZ)
 
@@ -96,14 +100,13 @@ private[optix] trait OptiXMeshApi:
     * error: invalid index, non-4D mesh slot, or projection kernel failure.
     */
   def updateMesh4DProjection(
-    meshIndex: Int,
+    meshIndex: MeshSlot,
     eyeW: Float, screenW: Float,
     rotXW: Float, rotYW: Float, rotZW: Float,
     centerX: Float = 0f, centerY: Float = 0f, centerZ: Float = 0f
   ): Unit =
-    require(meshIndex >= 0, s"meshIndex must be non-negative, got $meshIndex")
     val rc = updateMesh4DProjectionNative(
-      meshIndex, eyeW, screenW, rotXW, rotYW, rotZW,
+      meshIndex.value, eyeW, screenW, rotXW, rotYW, rotZW,
       centerX, centerY, centerZ
     )
     require(rc == 0, s"updateMesh4DProjection failed with code $rc (meshIndex=$meshIndex)")
@@ -115,12 +118,11 @@ private[optix] trait OptiXMeshApi:
     * mesh.
     */
   def updateCpuTriangleMesh(
-    meshIndex: Int,
+    meshIndex: MeshSlot,
     mesh: menger.common.TriangleMeshData
   ): Unit =
-    require(meshIndex >= 0, s"meshIndex must be non-negative, got $meshIndex")
     val rc = updateCpuTriangleMeshNative(
-      meshIndex,
+      meshIndex.value,
       mesh.vertices, mesh.numVertices,
       mesh.indices, mesh.numTriangles,
       mesh.vertexStride
@@ -137,48 +139,53 @@ private[optix] trait OptiXMeshApi:
 
   /** Adds a triangle-mesh IAS instance with an explicit transform.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addTriangleMeshInstance(
     transform: Array[Float],
     material: Material,
-    textureIndex: Int = -1
-  ): Int =
+    textureIndex: TextureIndex = TextureIndex.NoTexture
+  ): InstanceId =
     require(transform.length == Const.Renderer.transformMatrixSize, s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    addTriangleMeshInstanceNative(transform, MaterialPayload.pack(material), textureIndex)
+    instanceOf("addTriangleMeshInstance",
+      addTriangleMeshInstanceNative(transform, MaterialPayload.pack(material), textureIndex.value))
 
   /** Adds a triangle-mesh IAS instance from color, IOR, and texture index.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addTriangleMeshInstance(
     transform: Array[Float],
     color: Color,
     ior: Float,
-    textureIndex: Int
-  ): Int =
+    textureIndex: TextureIndex
+  ): InstanceId =
     addTriangleMeshInstance(transform, Material(color, ior), textureIndex)
 
   /** Adds a triangle-mesh IAS instance from color and IOR.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addTriangleMeshInstance(
     transform: Array[Float],
     color: Color,
     ior: Float
-  ): Int =
-    addTriangleMeshInstance(transform, Material(color, ior), -1)
+  ): InstanceId =
+    addTriangleMeshInstance(transform, Material(color, ior), TextureIndex.NoTexture)
 
   /** Adds a translated triangle-mesh IAS instance with a texture index.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addTriangleMeshInstance(
     position: Vector[3],
     material: Material,
-    textureIndex: Int
-  ): Int =
+    textureIndex: TextureIndex
+  ): InstanceId =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
@@ -188,22 +195,24 @@ private[optix] trait OptiXMeshApi:
 
   /** Adds a translated triangle-mesh IAS instance from color, IOR, and texture index.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addTriangleMeshInstance(
     position: Vector[3],
     color: Color,
     ior: Float,
-    textureIndex: Int
-  ): Int =
+    textureIndex: TextureIndex
+  ): InstanceId =
     addTriangleMeshInstance(position, Material(color, ior), textureIndex)
 
   /** Adds a translated triangle-mesh IAS instance from color and IOR.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
-  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): Int =
-    addTriangleMeshInstance(position, Material(color, ior), -1)
+  def addTriangleMeshInstance(position: Vector[3], color: Color, ior: Float): InstanceId =
+    addTriangleMeshInstance(position, Material(color, ior), TextureIndex.NoTexture)
 
   /** Adds a recursive-IAS Menger sponge instance with an explicit transform.
     *
@@ -217,29 +226,32 @@ private[optix] trait OptiXMeshApi:
     * that becomes stale if the active-instance list shifts.
     *
     * @param level recursion depth; must be in [1, 14]
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addRecursiveIASSpongeInstance(
     level: Int,
     transform: Array[Float],
     material: Material,
-    textureIndex: Int = -1
-  ): Int =
+    textureIndex: TextureIndex = TextureIndex.NoTexture
+  ): InstanceId =
     require(level >= 1 && level <= 14, s"Recursive IAS sponge level must be in [1, 14], got $level")
     require(transform.length == Const.Renderer.transformMatrixSize,
       s"Transform must have ${Const.Renderer.transformMatrixSize} elements (4x3 matrix), got ${transform.length}")
-    addRecursiveIASSpongeInstanceNative(level, transform, MaterialPayload.pack(material), textureIndex)
+    instanceOf("addRecursiveIASSpongeInstance",
+      addRecursiveIASSpongeInstanceNative(level, transform, MaterialPayload.pack(material), textureIndex.value))
 
   /** Adds a recursive-IAS sponge from a translated unit transform.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addRecursiveIASSpongeInstance(
     level: Int,
     position: Vector[3],
     material: Material,
-    textureIndex: Int
-  ): Int =
+    textureIndex: TextureIndex
+  ): InstanceId =
     val transform = Array(
       1.0f, 0.0f, 0.0f, position.x,
       0.0f, 1.0f, 0.0f, position.y,
@@ -249,28 +261,30 @@ private[optix] trait OptiXMeshApi:
 
   /** Adds a recursive-IAS sponge from translated color and IOR.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
-  def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): Int =
-    addRecursiveIASSpongeInstance(level, position, Material(color, ior), -1)
+  def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): InstanceId =
+    addRecursiveIASSpongeInstance(level, position, Material(color, ior), TextureIndex.NoTexture)
 
   /** Adds a cylinder IAS instance between two endpoints.
     *
     * @param radius cylinder radius in world units
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addCylinderInstance(
     p0: Vector[3],
     p1: Vector[3],
     radius: Float,
     material: Material
-  ): Int =
-    addCylinderInstanceNative(
+  ): InstanceId =
+    instanceOf("addCylinderInstance", addCylinderInstanceNative(
       p0.x, p0.y, p0.z,
       p1.x, p1.y, p1.z,
       radius,
       MaterialPayload.pack(material)
-    )
+    ))
 
   /** Moves existing cylinder instances in place: new endpoints and radius per instance.
     *
@@ -281,7 +295,7 @@ private[optix] trait OptiXMeshApi:
     * native failure.
     */
   def updateCylinderInstances(
-    ids: Array[Int],
+    ids: Array[InstanceId],
     p0s: Array[Float],
     p1s: Array[Float],
     radii: Array[Float]
@@ -291,12 +305,13 @@ private[optix] trait OptiXMeshApi:
       s"updateCylinderInstances: expected ${ids.length} ids, ${3 * ids.length} floats per endpoint " +
         s"array and ${ids.length} radii, got ${p0s.length}/${p1s.length}/${radii.length}"
     )
-    val rc = updateCylinderInstancesNative(ids, p0s, p1s, radii)
+    val rc = updateCylinderInstancesNative(ids.values, p0s, p1s, radii)
     require(rc == 0, s"updateCylinderInstances failed with code $rc")
 
   /** Adds a cylinder IAS instance from color and IOR.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addCylinderInstance(
     p0: Vector[3],
@@ -304,30 +319,32 @@ private[optix] trait OptiXMeshApi:
     radius: Float,
     color: Color,
     ior: Float
-  ): Int =
+  ): InstanceId =
     addCylinderInstance(p0, p1, radius, Material(color, ior))
 
   /** Adds a cone IAS instance from apex to base center.
     *
     * @param radius base radius in world units
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addConeInstance(
     apex: Vector[3],
     base: Vector[3],
     radius: Float,
     material: Material
-  ): Int =
-    addConeInstanceNative(
+  ): InstanceId =
+    instanceOf("addConeInstance", addConeInstanceNative(
       apex.x, apex.y, apex.z,
       base.x, base.y, base.z,
       radius,
       MaterialPayload.pack(material)
-    )
+    ))
 
   /** Adds a cone IAS instance from color and IOR.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addConeInstance(
     apex: Vector[3],
@@ -335,7 +352,7 @@ private[optix] trait OptiXMeshApi:
     radius: Float,
     color: Color,
     ior: Float
-  ): Int =
+  ): InstanceId =
     addConeInstance(apex, base, radius, Material(color, ior))
 
   /** Adds a round cubic B-spline curve IAS instance.
@@ -343,13 +360,14 @@ private[optix] trait OptiXMeshApi:
     * Points are dense xyz control points in world space. Widths are OptiX curve
     * radii, one per control point.
     *
-    * @return instance id `>= 0`, or `-1` on native failure
+    * @return the new instance
+    * @throws OptiXException on native failure
     */
   def addCurveInstance(
     points: Array[Float],
     widths: Array[Float],
     material: Material
-  ): Int =
+  ): InstanceId =
     require(points != null, "points must not be null") // scalafix:ok DisableSyntax.null
     require(widths != null, "widths must not be null") // scalafix:ok DisableSyntax.null
     require(points.length % 3 == 0, s"points length must be a multiple of 3, got ${points.length}")
@@ -360,12 +378,12 @@ private[optix] trait OptiXMeshApi:
     require(points.forall(java.lang.Float.isFinite), "points must all be finite")
     require(widths.forall(width => java.lang.Float.isFinite(width) && width > 0.0f),
       "widths must all be finite and > 0")
-    addCurveInstanceNative(
+    instanceOf("addCurveInstance", addCurveInstanceNative(
       points,
       widths,
       numPoints,
       MaterialPayload.pack(material)
-    )
+    ))
 
   // 4D fractal instances (Menger/Sierpinski/Hexadecachoron) were removed from
   // optix-jni in Sprint 35 Task 1.2 — they now live in menger-geometry, registered

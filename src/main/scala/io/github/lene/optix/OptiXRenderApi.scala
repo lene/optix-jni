@@ -89,12 +89,12 @@ private[optix] trait OptiXRenderApi:
     *
     * @return the mixed frame, or empty when the renderer is not initialized
     */
-  def renderMix(size: ImageSize, instanceIds: Array[Int], passes: Array[MixPass]): Optional[RenderResult] =
+  def renderMix(size: ImageSize, instanceIds: Array[InstanceId], passes: Array[MixPass]): Optional[RenderResult] =
     require(passes.nonEmpty, "renderMix needs at least one pass")
     require(passes.forall(_.visible.length == instanceIds.length),
       "every pass names the visibility of every instance")
     val startNs = System.nanoTime()
-    val raw = renderMixNative(size.width, size.height, instanceIds,
+    val raw = renderMixNative(size.width, size.height, instanceIds.values,
       passes.flatMap(_.visible), passes.map(_.weight))
     val elapsedMs = (System.nanoTime() - startNs).toFloat / 1_000_000f
     Optional.ofNullable(raw).map((r: RenderResult) => r.copy(frameMs = elapsedMs))

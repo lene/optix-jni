@@ -15,7 +15,7 @@ class RenderMixSuite extends AnyFlatSpec with Matchers:
 
   private val imageSize = ImageSize(96, 72)
 
-  private def renderer(): (OptiXRenderer, Array[Int]) =
+  private def renderer(): (OptiXRenderer, Array[InstanceId]) =
     val r = new OptiXRenderer()
     r.initialize() shouldBe true
     r.setCamera(Vector[3](0f, 0f, 4f), Vector[3](0f, 0f, 0f), Vector[3](0f, 1f, 0f), 60f)
@@ -52,6 +52,6 @@ class RenderMixSuite extends AnyFlatSpec with Matchers:
       an[IllegalArgumentException] should be thrownBy
         r.renderMix(imageSize, ids, Array(MixPass(Array(true), 1.0)))
       an[IllegalArgumentException] should be thrownBy
-        r.renderMix(imageSize, Array(ids(0), 9999), Array(MixPass(Array(true, true), 1.0)))
+        r.renderMix(imageSize, Array(ids(0), InstanceId(9999)), Array(MixPass(Array(true, true), 1.0)))
       an[IllegalArgumentException] should be thrownBy
         r.renderMix(imageSize, ids, Array.fill(65)(MixPass(Array(true, true), 1.0 / 65)))

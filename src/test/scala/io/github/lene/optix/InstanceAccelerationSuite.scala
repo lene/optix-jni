@@ -36,7 +36,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
 
   it should "increase when sphere instances are added" in:
     val id = renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
-    id should be >= 0
+    id.value should be >= 0
     renderer.getInstanceCount() shouldBe 1
 
   it should "increase for each added instance" in:
@@ -50,9 +50,9 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     val id1 = renderer.addSphereInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
     val id2 = renderer.addSphereInstance(Vector[3](-1.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
 
-    id0 shouldBe 0
-    id1 shouldBe 1
-    id2 shouldBe 2
+    id0.value shouldBe 0
+    id1.value shouldBe 1
+    id2.value shouldBe 2
 
   it should "enable IAS mode automatically" in:
     renderer.isIASMode() shouldBe false
@@ -66,7 +66,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
       0.0f, 0.0f, 2.0f, 0.0f   // scale Z by 2
     )
     val id = renderer.addSphereInstance(transform, OPAQUE_RED, 1.5f)
-    id should be >= 0
+    id.value should be >= 0
 
   it should "reject transform arrays with wrong size" in:
     val wrongSize = Array(1.0f, 0.0f, 0.0f)  // Only 3 elements
@@ -83,7 +83,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
 
   it should "not crash when removing non-existent instance" in:
     noException should be thrownBy:
-      renderer.removeInstance(999)
+      renderer.removeInstance(InstanceId(999))
 
   "clearAllInstances" should "reset instance count to zero" in:
     renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
@@ -153,9 +153,9 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     val id1 = renderer.addTriangleMeshInstance(Vector[3](1.0f, 0.0f, 0.0f), OPAQUE_GREEN, 1.5f)
     val id2 = renderer.addTriangleMeshInstance(Vector[3](-1.0f, 0.0f, 0.0f), OPAQUE_BLUE, 1.5f)
 
-    id0 shouldBe 0
-    id1 shouldBe 1
-    id2 shouldBe 2
+    id0.value shouldBe 0
+    id1.value shouldBe 1
+    id2.value shouldBe 2
 
   it should "enable IAS mode automatically" in:
     val mesh = TestUtilities.createUnitCubeMesh()
@@ -174,8 +174,9 @@ class InstanceAccelerationSuite extends AnyFlatSpec
     renderer.getInstanceCount() shouldBe 2
 
   it should "fail if no triangle mesh is set" in:
-    val result = renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
-    result should be < 0
+    // menger#110: it returned -1, which a caller could pass on as an id.
+    an[OptiXException] should be thrownBy
+      renderer.addTriangleMeshInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
 
   "Triangle mesh IAS rendering" should "render a single cube instance" taggedAs (Slow) in:
     val mesh = TestUtilities.createUnitCubeMesh()
@@ -350,7 +351,7 @@ class InstanceAccelerationSuite extends AnyFlatSpec
 
     val id = renderer.addSphereInstance(sphereTransform(-1.0f, 0f, 0f, 0.5f), OPAQUE_GREEN, 1.0f)
     val before = greenCenter()
-    renderer.setInstanceTransform(id, target) shouldBe 0
+    noException should be thrownBy renderer.setInstanceTransform(id, target)
     val after = greenCenter()
 
     math.abs(after.x - before.x) should be > TEST_IMAGE_SIZE.width / 4
@@ -360,8 +361,8 @@ class InstanceAccelerationSuite extends AnyFlatSpec
 
   it should "return -1 for an unknown instance id" in:
     renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)
-    renderer.setInstanceTransform(7, sphereTransform(0f, 0f, 0f, 1f)) shouldBe -1
-    renderer.setInstanceTransform(-1, sphereTransform(0f, 0f, 0f, 1f)) shouldBe -1
+    an[IllegalArgumentException] should be thrownBy renderer.setInstanceTransform(InstanceId(7), sphereTransform(0f, 0f, 0f, 1f))
+    an[IllegalArgumentException] should be thrownBy InstanceId(-1)
 
   it should "reject transform arrays with wrong size" in:
     val id = renderer.addSphereInstance(Vector[3](0.0f, 0.0f, 0.0f), OPAQUE_RED, 1.5f)

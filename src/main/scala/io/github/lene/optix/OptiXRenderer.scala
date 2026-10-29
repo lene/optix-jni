@@ -336,54 +336,70 @@ class OptiXRenderer
       aabbMin: Array[Float],
       aabbMax: Array[Float],
       transform: Array[Float],
-      customData: Array[Byte] = Array.emptyByteArray): Int =
-    addCustomGeometryInstanceNative(typeId, aabbMin, aabbMax, transform, customData)
+      customData: Array[Byte] = Array.emptyByteArray): InstanceId =
+    instanceOf("addCustomGeometryInstance",
+      addCustomGeometryInstanceNative(typeId, aabbMin, aabbMax, transform, customData))
 
   // Set PBR material on any instance (built-in or custom). Custom instances start
   // white; a registrant calls this so its shader reads colour/PBR via
-  // getInstanceMaterialPBR exactly like built-ins. Returns 0 on success.
+  // getInstanceMaterialPBR exactly like built-ins. Throws IllegalArgumentException for an
+  // instance that does not exist.
   def setInstanceMaterial(
-      instanceId: Int,
+      instanceId: InstanceId,
       r: Float, g: Float, b: Float, a: Float, ior: Float,
       roughness: Float = 0.5f, metallic: Float = 0.0f, specular: Float = 0.5f,
       emission: Float = 0.0f, filmThickness: Float = 0.0f,
-      cauchyA: Float = 0.0f, cauchyB: Float = 0.0f): Int =
-    setInstanceMaterialNative(
-      instanceId,
+      cauchyA: Float = 0.0f, cauchyB: Float = 0.0f): Unit =
+    requireKnown("setInstanceMaterial", instanceId, setInstanceMaterialNative(
+      instanceId.value,
       MaterialPayload.of(r, g, b, a, ior, roughness, metallic, specular, emission,
-        filmThickness, cauchyA, cauchyB))
+        filmThickness, cauchyA, cauchyB)))
 
   // Replace an instance's 4x3 row-major transform (same layout as add*Instance).
   // Cheap: the next render copies the instance records into the existing buffers and refits the
   // top-level IAS -- no rebuild, no reallocation, no GAS (optix-jni#66). Use it to
-  // move/rotate an existing object per frame instead of re-adding it. Returns 0, or
-  // -1 for an unknown instance id; throws IllegalArgumentException unless length 12.
-  def setInstanceTransform(instanceId: Int, transform: Array[Float]): Int =
-    setInstanceTransformNative(instanceId, transform)
+  // move/rotate an existing object per frame instead of re-adding it. Throws
+  // IllegalArgumentException for an unknown instance id, or unless the length is 12.
+  def setInstanceTransform(instanceId: InstanceId, transform: Array[Float]): Unit =
+    requireKnown("setInstanceTransform", instanceId, setInstanceTransformNative(instanceId.value, transform))
 
   // Set how much of a triangle instance is present, 0..1 (default 1), separate from its
   // material's alpha: coverage c renders c * the instance + (1 - c) * what lies behind it, for
   // every material. Fades an instance in or out; for a refractive material alpha is absorption
-  // and can't do that. Cheap like setInstanceTransform. Returns 0, or -1 for an unknown
-  // instance id; throws IllegalArgumentException outside [0, 1].
-  def setInstanceCoverage(instanceId: Int, coverage: Float): Int =
+  // and can't do that. Cheap like setInstanceTransform. Throws IllegalArgumentException for an
+  // unknown instance id, or outside [0, 1].
+  def setInstanceCoverage(instanceId: InstanceId, coverage: Float): Unit =
     require(coverage >= 0f && coverage <= 1f, s"coverage must be in [0, 1], got $coverage")
-    setInstanceCoverageNative(instanceId, coverage)
+    requireKnown("setInstanceCoverage", instanceId, setInstanceCoverageNative(instanceId.value, coverage))
 
   // Show or hide an instance (default visible). A hidden instance stays in the scene but no ray
   // hits it -- camera, shadow or caustics photon -- and no photon is aimed at it; it can be
   // shown again, and other instances keep their ids (unlike removeInstance). Cheap like
   // setInstanceTransform. Renders a scene in alternative versions without rebuilding it, e.g.
-  // the two levels of a fractional sponge, mixed afterwards. Returns 0, or -1 for an unknown
-  // instance id.
-  def setInstanceVisible(instanceId: Int, visible: Boolean): Int =
-    setInstanceVisibleNative(instanceId, visible)
+  // the two levels of a fractional sponge, mixed afterwards. Throws IllegalArgumentException for
+  // an unknown instance id.
+  def setInstanceVisible(instanceId: InstanceId, visible: Boolean): Unit =
+    requireKnown("setInstanceVisible", instanceId, setInstanceVisibleNative(instanceId.value, visible))
 
   // Overwrite a custom instance's per-instance blob in place (Task 1.1c update path).
   // Cheap: no GAS/IAS rebuild when the blob size is unchanged. Used for per-frame
-  // updates such as a 4D fractal's projection (eye/screen/rotation). Returns 0 on ok.
-  def updateCustomGeometryInstanceData(instanceId: Int, customData: Array[Byte]): Int =
-    updateCustomGeometryInstanceDataNative(instanceId, customData)
+  // updates such as a 4D fractal's projection (eye/screen/rotation). Throws
+  // IllegalArgumentException for an unknown instance or a blob of another size.
+  def updateCustomGeometryInstanceData(instanceId: InstanceId, customData: Array[Byte]): Unit =
+    requireKnown("updateCustomGeometryInstanceData", instanceId,
+      updateCustomGeometryInstanceDataNative(instanceId.value, customData))
+
+  // An add*Instance call's native result: the new instance, or -1 on a native failure that
+  // threw nothing itself (menger#110: callers passed -1 on as an id).
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  private[optix] def instanceOf(what: String, raw: Int): InstanceId =
+    if raw < 0 then throw new OptiXException(s"$what failed with code $raw")
+    InstanceId(raw)
+
+  // A per-instance update's native result: -1 means the instance does not exist (removed, or
+  // from another renderer). It was returned and ignored (menger#103).
+  private def requireKnown(what: String, instanceId: InstanceId, rc: Int): Unit =
+    require(rc >= 0, s"$what: no such instance ${instanceId.value} (code $rc)")
 
   @native private def registerCustomGeometryNative(
       ptxBytes: Array[Byte], isEntry: String, chEntry: String,
@@ -604,7 +620,7 @@ class OptiXRenderer
   ): Int
 
   /** Removes one IAS instance by id. Invalid ids are ignored by native code. */
-  @native def removeInstance(instanceId: Int): Unit
+  @native def removeInstance(instanceId: InstanceId): Unit
 
   /** Removes all IAS instances from native scene state. A plain method around the native call,
     * so a subclass that keeps per-instance state of its own can override it and call `super`

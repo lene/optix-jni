@@ -54,7 +54,7 @@ class InstanceVisibilitySuite extends AnyFlatSpec with Matchers with RendererFix
 
   /** The wall, and the square in front of it unless `square` is None; the square's id goes to
     * `square` so a test can hide or show it before rendering. */
-  private def render(square: Option[Int => Unit]): Array[Byte] =
+  private def render(square: Option[InstanceId => Unit]): Array[Byte] =
     renderer.setLight(Vector[3](0.3f, -0.3f, -1f), 1.0f)
     renderer.clearAllInstances()
     renderer.clearTriangleMesh()
@@ -66,23 +66,25 @@ class InstanceVisibilitySuite extends AnyFlatSpec with Matchers with RendererFix
   "setInstanceVisible" should "render a hidden instance as if it were absent, shadow included" taggedAs Slow in:
     val absent = render(None)
     val shown = render(Some(_ => ()))
-    val hidden = render(Some(id => renderer.setInstanceVisible(id, visible = false) shouldBe 0))
+    val hidden = render(Some(id => noException should be thrownBy renderer.setInstanceVisible(id, visible = false)))
     meanDifference(shown, absent) should be > MinVisibleChange
     meanDifference(hidden, absent) should be < SameImage
 
   it should "render an instance shown again exactly as before it was hidden" taggedAs Slow in:
     val shown = render(Some(_ => ()))
     val again = render(Some { id =>
-      renderer.setInstanceVisible(id, visible = false) shouldBe 0
+      noException should be thrownBy renderer.setInstanceVisible(id, visible = false)
       val _ = renderImage(TEST_IMAGE_SIZE)
-      renderer.setInstanceVisible(id, visible = true) shouldBe 0
+      noException should be thrownBy renderer.setInstanceVisible(id, visible = true)
     })
     meanDifference(again, shown) should be < SameImage
 
   it should "return -1 for an unknown instance id" in:
     renderer.clearAllInstances()
-    renderer.setInstanceVisible(12345, visible = false) shouldBe -1
-    renderer.setInstanceVisible(-1, visible = true) shouldBe -1
+    // menger#103: -1 was returned and ignored; an unknown id is a caller error. A negative id is
+    // no InstanceId at all.
+    an[IllegalArgumentException] should be thrownBy renderer.setInstanceVisible(InstanceId(12345), visible = false)
+    an[IllegalArgumentException] should be thrownBy InstanceId(-1)
 
   // A recursive-IAS sponge predicts its material slot from the instances added before it. A
   // hidden instance keeps its slot (removeInstance would drop it and shift the sponge's).
@@ -93,12 +95,12 @@ class InstanceVisibilitySuite extends AnyFlatSpec with Matchers with RendererFix
       renderer.clearTriangleMesh()
       val _ = renderer.addTriangleMesh(quad)
       val square = renderer.addTriangleMeshInstance(identity, blue)
-      if hideEarlier then renderer.setInstanceVisible(square, visible = false) shouldBe 0
+      if hideEarlier then noException should be thrownBy renderer.setInstanceVisible(square, visible = false)
       renderer.setTriangleMesh(TestUtilities.createUnitCubeMesh())
       val sponge = renderer.addRecursiveIASSpongeInstance(
         level = 1, position = Vector[3](0f, 0f, 0f), color = OPAQUE_RED, ior = 1.0f)
-      sponge should be >= 0
-      if !hideEarlier then renderer.setInstanceVisible(square, visible = false) shouldBe 0
+      sponge.value should be >= 0
+      if !hideEarlier then noException should be thrownBy renderer.setInstanceVisible(square, visible = false)
       centreColour(renderImage(TEST_IMAGE_SIZE))
     val (r, g, b) = spongeCentre(hideEarlier = true)
     info(f"sponge centre: r $r%.1f, g $g%.1f, b $b%.1f")

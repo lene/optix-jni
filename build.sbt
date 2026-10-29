@@ -226,4 +226,11 @@ mimaBinaryIssueFilters ++= Seq(
   // Long, and close() replaces the destroy* methods (all 16 problems are in this class).
   // Remove when mimaPreviousArtifacts moves to the release that contains it.
   ProblemFilters.exclude[Problem]("io.github.lene.optix.api.NativeOptiXApi.*"),
+  // menger#110/#103: a per-instance update returns Unit and throws for an unknown id; it returned
+  // -1, which callers ignored. (InstanceId/MeshSlot/TextureIndex are opaque Ints: no binary change.)
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceMaterial"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceTransform"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceCoverage"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.setInstanceVisible"),
+  ProblemFilters.exclude[IncompatibleResultTypeProblem]("io.github.lene.optix.OptiXRenderer.updateCustomGeometryInstanceData"),
 )

@@ -26,19 +26,19 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val p0 = Vector[3](-0.5f, 0.0f, 0.0f)
     val p1 = Vector[3](0.5f, 0.0f, 0.0f)
     val result = renderer.addCylinderInstance(p0, p1, 0.1f, Material.Chrome)
-    result should be >= 0
+    result.value should be >= 0
 
   it should "return a valid instance ID with Material parameter" in:
     val p0 = Vector[3](0.0f, -0.5f, 0.0f)
     val p1 = Vector[3](0.0f, 0.5f, 0.0f)
     val result = renderer.addCylinderInstance(p0, p1, 0.1f, Material.Glass)
-    result should be >= 0
+    result.value should be >= 0
 
   it should "return a valid instance ID with color and IOR parameters" in:
     val p0 = Vector[3](0.0f, 0.0f, -0.5f)
     val p1 = Vector[3](0.0f, 0.0f, 0.5f)
     val result = renderer.addCylinderInstance(p0, p1, 0.05f, OPAQUE_GREEN, 1.0f)
-    result should be >= 0
+    result.value should be >= 0
 
   it should "support different cylinder radii" in:
     val p0 = Vector[3](0.0f, 0.0f, 0.0f)
@@ -46,11 +46,11 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
     // Thin cylinder
     val thin = renderer.addCylinderInstance(p0, p1, 0.01f, Material.Chrome)
-    thin should be >= 0
+    thin.value should be >= 0
 
     // Thick cylinder
     val thick = renderer.addCylinderInstance(p0, p1, 0.5f, Material.Chrome)
-    thick should be >= 0
+    thick.value should be >= 0
 
   it should "support various orientations" in:
     // X-aligned
@@ -59,7 +59,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](1.0f, 0.0f, 0.0f),
       0.1f, Material.Chrome
     )
-    xAligned should be >= 0
+    xAligned.value should be >= 0
 
     // Y-aligned (vertical)
     val yAligned = renderer.addCylinderInstance(
@@ -67,7 +67,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, 1.0f, 0.0f),
       0.1f, Material.Chrome
     )
-    yAligned should be >= 0
+    yAligned.value should be >= 0
 
     // Z-aligned
     val zAligned = renderer.addCylinderInstance(
@@ -75,7 +75,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, 0.0f, 1.0f),
       0.1f, Material.Chrome
     )
-    zAligned should be >= 0
+    zAligned.value should be >= 0
 
     // Diagonal
     val diagonal = renderer.addCylinderInstance(
@@ -83,7 +83,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](1.0f, 1.0f, 1.0f),
       0.1f, Material.Chrome
     )
-    diagonal should be >= 0
+    diagonal.value should be >= 0
 
   // ========== Multiple Cylinders ==========
 
@@ -97,7 +97,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
         Material.Chrome
       )
 
-    ids.foreach(_ should be >= 0)
+    ids.foreach(_.value should be >= 0)
     ids.distinct.size shouldBe 5  // All unique IDs
 
   it should "work with mixed geometry (spheres and cylinders)" in:
@@ -106,7 +106,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       Vector[3](0.0f, 0.0f, 0.0f),
       Material.Glass
     )
-    sphereId should be >= 0
+    sphereId.value should be >= 0
 
     // Then add cylinders
     val cylinder1 = renderer.addCylinderInstance(
@@ -115,7 +115,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.05f,
       Material.Chrome
     )
-    cylinder1 should be >= 0
+    cylinder1.value should be >= 0
 
     val cylinder2 = renderer.addCylinderInstance(
       Vector[3](0.5f, 0.0f, 0.0f),
@@ -123,7 +123,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.05f,
       Material.Chrome
     )
-    cylinder2 should be >= 0
+    cylinder2.value should be >= 0
 
   // ========== Cylinder Materials ==========
 
@@ -134,7 +134,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.1f,
       Material.Film
     )
-    result should be >= 0
+    result.value should be >= 0
 
   it should "support parchment preset (semi-translucent)" in:
     val result = renderer.addCylinderInstance(
@@ -143,7 +143,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.1f,
       Material.Parchment
     )
-    result should be >= 0
+    result.value should be >= 0
 
   it should "support emissive materials" in:
     val emissiveMaterial = Material.Film.copy(emission = 5.0f)
@@ -153,7 +153,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.1f,
       emissiveMaterial
     )
-    result should be >= 0
+    result.value should be >= 0
 
   it should "support custom colors with emission" in:
     val cyanEmissive = Material(
@@ -170,7 +170,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.1f,
       cyanEmissive
     )
-    result should be >= 0
+    result.value should be >= 0
 
   // ========== Cylinder Rendering ==========
 
@@ -183,7 +183,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val StartRadius = 0.15f
   private val MovedRadius = 0.25f
 
-  private def moveTo(id: Int, p0: Vector[3], p1: Vector[3], radius: Float): Unit =
+  private def moveTo(id: InstanceId, p0: Vector[3], p1: Vector[3], radius: Float): Unit =
     renderer.updateCylinderInstances(
       Array(id), Array(p0.x, p0.y, p0.z), Array(p1.x, p1.y, p1.z), Array(radius)
     )
@@ -215,7 +215,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   it should "reject an out-of-range instance id and a non-positive radius" in:
     val id = renderer.addCylinderInstance(Start0, Start1, StartRadius, Material.Chrome)
-    an[IllegalArgumentException] should be thrownBy moveTo(id + 100, Moved0, Moved1, MovedRadius)
+    an[IllegalArgumentException] should be thrownBy moveTo(InstanceId(id.value + 100), Moved0, Moved1, MovedRadius)
     an[IllegalArgumentException] should be thrownBy moveTo(id, Moved0, Moved1, 0.0f)
 
   it should "reject endpoint arrays that don't match the id count" in:
@@ -308,7 +308,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.1f,
       Material.Chrome
     )
-    result should be >= 0
+    result.value should be >= 0
 
   it should "handle very thin cylinders" in:
     val result = renderer.addCylinderInstance(
@@ -317,7 +317,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.001f,  // Very thin
       Material.Chrome
     )
-    result should be >= 0
+    result.value should be >= 0
 
   it should "handle cylinders at various distances from camera" in:
     // Close cylinder
@@ -327,7 +327,7 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.1f,
       Material.Chrome
     )
-    close should be >= 0
+    close.value should be >= 0
 
     // Far cylinder
     val far = renderer.addCylinderInstance(
@@ -336,4 +336,4 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
       0.1f,
       Material.Chrome
     )
-    far should be >= 0
+    far.value should be >= 0
