@@ -37,6 +37,10 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check changelog entry exists and is dated
+        # The title goes in as data, never into the script text: written into `run:` as an
+        # expression, a PR title could run its own commands (optix-jni#93).
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           . ./standards/hooks/lib.sh
           VERSION=$(grep 'version :=' build.sbt | cut -d'"' -f2)
@@ -53,7 +57,7 @@ jobs:
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ "$VERSION" != "$MAIN_VERSION" ] && \
              [ "${LATEST_TAG#v}" != "$VERSION" ] && \
-             ! echo "${{ github.event.pull_request.title }}" | grep -q '^Draft:'; then
+             ! printf '%s\n' "$PR_TITLE" | grep -q '^Draft:'; then
             grep -F "## [$VERSION] - $(TZ=UTC date +%Y-%m-%d)" CHANGELOG.md
           fi
 
