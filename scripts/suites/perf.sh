@@ -8,7 +8,7 @@ set -u
 . ./standards/hooks/lib.sh
 
 # A busy GPU makes timings meaningless: skip, in CI too (`unit` still enforces the GPU there).
-gpu_preflight_or_skip perf --skip-in-ci || exit 0
+gpu_preflight_or_skip perf --skip-in-ci || { [ $? -eq 2 ] && exit 0; exit 1; }
 
 LOG=$(mktemp)
 echo "=== Performance gates ==="
