@@ -1,0 +1,12 @@
+optix-jni
+Copyright 2025-2026 Lene Preuss
+
+The source code is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Rendered images and videos produced with this software and committed to this repository (for
+example test reference images) are licensed under the Creative Commons Attribution 4.0
+International licence (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/).
+Third-party assets keep their own licences.
+
+NVIDIA OptiX and CUDA are not part of this repository; they are proprietary NVIDIA software
+under NVIDIA's own licence terms and must be obtained from NVIDIA.
