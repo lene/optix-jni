@@ -440,7 +440,8 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
  * @param hit_point Surface position to light
  * @param normal Surface normal (normalized)
  * @param double_sided If true, use absolute value of NdotL (for planes)
- * @param skip_shadows If true, skip shadow ray tracing (for cylinder fallback to avoid recursion)
+ * @param skip_shadows If true, skip shadow ray tracing (only the cone's diffuse shading still
+ *                     does; shadow rays never recurse, so it is a shading choice, not a guard)
  * @return Total lighting color (RGB) including ambient term, range [0, ∞)
  */
 __device__ float3 calculateLighting(

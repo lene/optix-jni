@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A cylinder receives shadows. Its diffuse shading skipped shadow rays, documented as a guard
+  against recursion, but a shadow ray never recurses and `TraceDepth` keeps a nesting level free
+  for it; a sphere above a cylinder's top cap cast no shadow on it (menger#156). Edge tubes
+  (cylinders) now show the shadows that fall on them. Cones still skip them.
+
 ## [0.5.0] - 2026-10-29
 
 ### Added

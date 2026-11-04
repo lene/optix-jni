@@ -299,6 +299,61 @@ class CylinderSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val stdDev = ImageValidation.brightnessStdDev(imageData, TEST_IMAGE_SIZE)
     stdDev should be > 10.0
 
+  // ========== Cylinder receiving shadows ==========
+
+  // Top-down view of a wide, flat cylinder (a plinth) with a sphere hovering above its top cap.
+  // The light comes in at an angle, so the sphere's shadow falls on one side of the cap, beside
+  // the sphere rather than under it; the mirror-image spot on the other side stays lit.
+  private val PlinthRadius = 1.5f
+  private val PlinthTop = 0.0f
+  private val PlinthBottom = -0.2f
+  private val HoverHeight = 1.0f
+  private val HoverRadius = 0.3f
+  private val CameraHeight = 4.0f
+  private val CameraFov = 60.0f
+  private val ObliqueLight = Vector[3](-0.5f, -1.0f, 0.0f)
+  // World x of the shadow centre on the cap: the light shifts the shadow by 0.5 per unit drop.
+  private val ShadowOffsetWorld = 0.6f
+  private val SampleRadiusPixels = 8
+  private val MaxShadowedToLitRatio = 0.7
+  private val MaxUnshadowedAsymmetry = 0.05
+
+  private def renderPlinthTopDown(shadows: Boolean): (Double, Double) =
+    renderer.setShadows(shadows)
+    renderer.setCamera(
+      Vector[3](0.0f, CameraHeight, 0.0f),
+      Vector[3](0.0f, PlinthTop, 0.0f),
+      Vector[3](0.0f, 0.0f, -1.0f),
+      CameraFov
+    )
+    renderer.setLight(ObliqueLight, 1.0f)
+    renderer.addCylinderInstance(
+      Vector[3](0.0f, PlinthBottom, 0.0f),
+      Vector[3](0.0f, PlinthTop, 0.0f),
+      PlinthRadius,
+      Material(OPAQUE_WHITE, ior = 1.0f)
+    )
+    renderer.addSphereInstance(
+      sphereTransform(0.0f, HoverHeight, 0.0f, HoverRadius),
+      Material(OPAQUE_WHITE, ior = 1.0f)
+    )
+    val image = renderImage(TEST_IMAGE_SIZE)
+    val halfWidthWorld = (CameraHeight - PlinthTop) * math.tan(math.toRadians(CameraFov / 2.0))
+    val offsetPixels = (ShadowOffsetWorld / halfWidthWorld * TEST_IMAGE_SIZE.width / 2.0).toInt
+    val (cx, cy) = (TEST_IMAGE_SIZE.width / 2, TEST_IMAGE_SIZE.height / 2)
+    def sample(x: Int) = TestUtilities.regionBrightness(
+      image, TEST_IMAGE_SIZE, TestUtilities.Region.centered(x, cy, SampleRadiusPixels)
+    )
+    (sample(cx - offsetPixels), sample(cx + offsetPixels))
+
+  "A cylinder's top cap" should "receive the shadow of a sphere above it" in:
+    val (left, right) = renderPlinthTopDown(shadows = true)
+    math.min(left, right) should be < MaxShadowedToLitRatio * math.max(left, right)
+
+  it should "be evenly lit when shadows are off" in:
+    val (left, right) = renderPlinthTopDown(shadows = false)
+    math.abs(left - right) should be < MaxUnshadowedAsymmetry * math.max(left, right)
+
   // ========== Edge Cases ==========
 
   "Cylinder edge cases" should "handle very short cylinders" in:

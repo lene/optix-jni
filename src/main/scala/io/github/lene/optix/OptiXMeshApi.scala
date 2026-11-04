@@ -267,7 +267,10 @@ private[optix] trait OptiXMeshApi:
   def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): InstanceId =
     addRecursiveIASSpongeInstance(level, position, Material(color, ior), TextureIndex.NoTexture)
 
-  /** Adds a cylinder IAS instance between two endpoints.
+  /** Adds a capped cylinder IAS instance between two endpoints.
+    *
+    * The cylinder casts and receives shadows. It is shaded opaque (diffuse, or one metallic
+    * bounce): a material's transparency and refraction are not rendered.
     *
     * @param radius cylinder radius in world units
     * @return the new instance
