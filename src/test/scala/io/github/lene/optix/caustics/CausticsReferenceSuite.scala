@@ -186,26 +186,31 @@ class CausticsReferenceSuite extends AnyFlatSpec with Matchers with RendererFixt
   it should "produce brighter caustics than background floor" taggedAs (Slow) in:
     if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
 
-    setupReferenceScene()
-    renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
+    // optix-jni#111: the scene is lit ~350x past white and the detection lands on the image
+    // corner, so this compared wrapped pixel values until the legacy plane clamped its colour.
+    pendingUntilFixed:
+      setupReferenceScene()
+      renderer.enableCaustics(photonsPerIter = 10000, iterations = 1)
 
-    val result = renderer.renderWithStats(ReferenceScene.imageSize).get
+      val result = renderer.renderWithStats(ReferenceScene.imageSize).get
 
-    // Sample caustic region (detected)
-    val (causticX, causticY, causticW, causticH) =
-      detectCausticRegion(result.image, ReferenceScene.imageSize)
-    val causticBrightness =
-      regionBrightness(result.image, ReferenceScene.imageSize, causticX, causticY, causticW, causticH)
+      // Sample caustic region (detected)
+      val (causticX, causticY, causticW, causticH) =
+        detectCausticRegion(result.image, ReferenceScene.imageSize)
+      val causticBrightness = regionBrightness(
+        result.image, ReferenceScene.imageSize, causticX, causticY, causticW, causticH
+      )
 
-    // Sample background floor (left edge, away from caustic)
-    val bgX = 10
-    val bgY = (ReferenceScene.imageSize.height * 0.8).toInt
-    val bgBrightness = regionBrightness(result.image, ReferenceScene.imageSize, bgX, bgY, 100, 100)
+      // Sample background floor (left edge, away from caustic)
+      val bgX = 10
+      val bgY = (ReferenceScene.imageSize.height * 0.8).toInt
+      val bgBrightness =
+        regionBrightness(result.image, ReferenceScene.imageSize, bgX, bgY, 100, 100)
 
-    info(s"Caustic brightness: $causticBrightness")
-    info(s"Background brightness: $bgBrightness")
+      info(s"Caustic brightness: $causticBrightness")
+      info(s"Background brightness: $bgBrightness")
 
-    causticBrightness should be > bgBrightness
+      causticBrightness should be > bgBrightness
 
   // ===========================================================================
   // Reference Comparison Tests - Compare against PBRT ground truth
