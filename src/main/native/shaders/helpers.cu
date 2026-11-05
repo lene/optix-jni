@@ -390,10 +390,9 @@ __device__ SpecularLobe noSpecularLobe() {
  * lit by pi * E. The specular BRDF is lit by the same pi * E, so the highlight keeps the
  * proportion to the diffuse the two BRDFs give it.
  *
- * Fresnel: F0 = 0.08 * specular (Disney); the grazing reflectance is F90 = min(1, 50 * F0)
- * (Schlick's "specular occlusion", as in Filament) instead of 1. Specular 0 then reflects
- * nothing at any angle -- with F90 = 1 every matte surface would get a rim at grazing angles --
- * and from specular 0.25 up F90 is 1, plain Schlick.
+ * Fresnel: plain Schlick, F = F0 + (1 - F0) * (1 - V.H)^5 with F0 = 0.08 * specular (Disney).
+ * With F90 = 1 even F0 = 0 would reflect at grazing angles, so a specular-0 surface must not
+ * evaluate this: calculateSurfaceLighting skips the lobe then (has_specular).
  *
  * @param normal    Unit surface normal on the viewer's side
  * @param to_light  Unit direction from the surface to the light
@@ -420,10 +419,9 @@ __device__ float ggxSpecular(
     const float visibility = 0.5f / (smith_v + smith_l);
 
     const float f0 = DIELECTRIC_F0_PER_SPECULAR * lobe.specular;
-    const float f90 = fminf(1.0f, SCHLICK_F90_PER_F0 * f0);
     const float grazing = 1.0f - v_dot_h;
     const float grazing_sq = grazing * grazing;
-    const float fresnel = f0 + (f90 - f0) * grazing_sq * grazing_sq * grazing;
+    const float fresnel = f0 + (1.0f - f0) * grazing_sq * grazing_sq * grazing;
 
     return M_PIf * distribution * visibility * fresnel * n_dot_l;
 }
@@ -544,8 +542,12 @@ struct SurfaceLighting {
  * @param lobe Specular lobe of the surface (noSpecularLobe() for diffuse only)
  * @param double_sided If true, use absolute value of NdotL (for planes); the highlight still
  *                     shows only where the viewer and the light are on the same side
- * @param skip_shadows If true, skip shadow ray tracing (only the cone's diffuse shading still
- *                     does; shadow rays never recurse, so it is a shading choice, not a guard)
+ * @param skip_shadows If true, skip shadow ray tracing (no built-in shader does any more; shadow
+ *                     rays never recurse, so it is a shading choice, not a guard)
+ * @return Diffuse light (ambient + direct + IBL) and the untinted highlight, each in [0, ∞)
+ *
+ * Limit: an area light's highlight is evaluated toward the disk centre only (its shadow is
+ * sampled over the disk), so a large disk mirrors as a dot, not as the disk's shape.
  */
 __device__ SurfaceLighting calculateSurfaceLighting(
     const float3& hit_point,
@@ -575,7 +577,8 @@ __device__ SurfaceLighting calculateSurfaceLighting(
         } else if (light.type == LightType::POINT) {
             getPointLightParams(light, hit_point, light_dir, attenuation);
         } else if (light.type == LightType::AREA) {
-            // Direction and attenuation use disk center (N·L diffuse term only).
+            // Direction and attenuation use disk center (N·L diffuse term, and the highlight:
+            // it is a single GGX lobe toward the centre, so a large disk mirrors as a dot).
             // The actual shadow sampling is stratified over the disk surface below.
             const float3 to_center = make_float3(
                 light.position[0], light.position[1], light.position[2]
@@ -661,8 +664,9 @@ __device__ SurfaceLighting calculateSurfaceLighting(
     // Add ambient lighting (prevents pure black shadows)
     const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
 
-    // Combine: ambient + diffuse (energy conserving). The highlight is direct light too, so it
-    // takes the same share of it.
+    // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1).
+    // Not energy conserving against the highlight: the diffuse is not reduced by (1 - F), so a
+    // strong highlight adds light on top of it. The highlight takes the same direct-light share.
     return SurfaceLighting{
         ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR,
         total_specular * RenderingConstants::DIFFUSE_BLEND_FACTOR
@@ -1118,6 +1122,13 @@ __device__ void computeOpaqueColor(
 /**
  * Compute diffuse lighting color for opaque surface (computeOpaqueColor without a highlight).
  * Used for blending metallic and diffuse contributions.
+ *
+ * @param hit_point Surface intersection point
+ * @param normal Surface normal (pointing toward ray origin)
+ * @param material_color RGBA material color
+ * @param diffuse_r Output: Red component (0-255)
+ * @param diffuse_g Output: Green component (0-255)
+ * @param diffuse_b Output: Blue component (0-255)
  */
 __device__ void computeDiffuseColor(
     const float3& hit_point,

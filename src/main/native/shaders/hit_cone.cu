@@ -270,8 +270,10 @@ extern "C" __global__ void __closesthit__cone() {
         return;
     }
 
+    // With shadows, like the cylinder (menger#156): a shadow ray cannot recurse, and the
+    // highlight must not show where the light is occluded (optix-jni#109).
     const float3 lit_color = litSurfaceColor(material_color, calculateSurfaceLighting(
-        hit_point, normal, specularLobe(ray_direction, specular, roughness, metallic), false, true));
+        hit_point, normal, specularLobe(ray_direction, specular, roughness, metallic)));
 
     const float final_r = lit_color.x * RayTracingConstants::COLOR_SCALE_FACTOR;
     const float final_g = lit_color.y * RayTracingConstants::COLOR_SCALE_FACTOR;

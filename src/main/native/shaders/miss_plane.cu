@@ -199,9 +199,11 @@ extern "C" __global__ void __miss__ms() {
 
         total_color = total_color + base_color * plane.emission;
 
-        r = static_cast<unsigned int>(total_color.x * COLOR_BYTE_MAX);
-        g = static_cast<unsigned int>(total_color.y * COLOR_BYTE_MAX);
-        b = static_cast<unsigned int>(total_color.z * COLOR_BYTE_MAX);
+        // Clamped like computeOpaqueColor: a highlight can exceed 1.0, and the byte cast in
+        // raygen would wrap it to a dark ring.
+        r = static_cast<unsigned int>(fminf(total_color.x * COLOR_BYTE_MAX, COLOR_BYTE_MAX));
+        g = static_cast<unsigned int>(fminf(total_color.y * COLOR_BYTE_MAX, COLOR_BYTE_MAX));
+        b = static_cast<unsigned int>(fminf(total_color.z * COLOR_BYTE_MAX, COLOR_BYTE_MAX));
         applyFogInPlace(r, g, b, best_t);  // fog only when plane hit, not background
     } else {
         if (params.env_map_enabled)

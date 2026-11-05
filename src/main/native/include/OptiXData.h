@@ -61,7 +61,6 @@ namespace RayTracingConstants {
 
     // Direct-light specular of opaque dielectrics (helpers.cu: ggxSpecular, optix-jni#105)
     constexpr float DIELECTRIC_F0_PER_SPECULAR = 0.08f;  // Disney: F0 = 0.08 * specular
-    constexpr float SCHLICK_F90_PER_F0 = 50.0f;          // Grazing reflectance min(1, 50 * F0)
     constexpr float MIN_SPECULAR_ROUGHNESS = 0.045f;     // Keeps the GGX lobe finite at 0
 
     // Plane rendering (checkered pattern)

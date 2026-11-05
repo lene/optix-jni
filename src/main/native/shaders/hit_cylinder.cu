@@ -280,12 +280,16 @@ extern "C" __global__ void __closesthit__cylinder() {
         return;  // Early exit - handleMetallicOpaque sets payload
     }
 
-    // FALLBACK: Diffuse shading (and a dielectric's highlight) for depth > 0 or non-metallic,
-    // with shadows. A shadow ray
-    // cannot recurse (the shadow programs trace nothing), and TraceDepth keeps one nesting
-    // level free for exactly this ray, so it fits within the pipeline's maxTraceDepth.
-    const float3 lit_color = litSurfaceColor(material_color, calculateSurfaceLighting(
-        hit_point, normal, specularLobe(ray_direction, specular, roughness, metallic)));
+    // FALLBACK: Diffuse shading (and an opaque dielectric's highlight) for depth > 0 or
+    // non-metallic, with shadows. A shadow ray cannot recurse (the shadow programs trace
+    // nothing), and TraceDepth keeps one nesting level free for exactly this ray, so it fits
+    // within the pipeline's maxTraceDepth. This shader has no alpha branch: every alpha is
+    // shaded here, but only an opaque one gets the highlight.
+    const SpecularLobe lobe = material_color.w >= ALPHA_FULLY_OPAQUE_THRESHOLD
+        ? specularLobe(ray_direction, specular, roughness, metallic)
+        : noSpecularLobe();
+    const float3 lit_color = litSurfaceColor(
+        material_color, calculateSurfaceLighting(hit_point, normal, lobe));
 
     const float final_r = lit_color.x * RayTracingConstants::COLOR_SCALE_FACTOR;
     const float final_g = lit_color.y * RayTracingConstants::COLOR_SCALE_FACTOR;

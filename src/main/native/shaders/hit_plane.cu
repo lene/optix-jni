@@ -164,8 +164,11 @@ extern "C" __global__ void __closesthit__plane() {
     }
     // Use geometric_normal (pre-flip) with double_sided=true to match legacy miss-shader lighting:
     // planes are lit from both sides using fabsf(NdotL) regardless of view direction.
-    handleFullyOpaque(hit_point, geometric_normal, material_color,
-                      specularLobe(ray_direction, specular, roughness, metallic), emission, true);
+    // Only an opaque plane has a highlight: a transparent one reaches here at the nesting limit.
+    const SpecularLobe lobe = material_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD
+        ? specularLobe(ray_direction, specular, roughness, metallic)
+        : noSpecularLobe();
+    handleFullyOpaque(hit_point, geometric_normal, material_color, lobe, emission, true);
 }
 
 //==============================================================================

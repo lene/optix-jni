@@ -16,7 +16,8 @@ import menger.common.{Material => CommonMaterial}
   * `Material.matte` shades as before; ambient and environment (IBL) light give none. Metals and
   * refractive or transparent materials keep their own reflection model, except that a triangle
   * mesh face faded by a non-refractive alpha below 1 (Parchment) is shaded as opaque, highlight
-  * included, before it is blended with what lies behind it.
+  * included, before it is blended with what lies behind it. An area light's highlight is
+  * evaluated toward the disk centre only, so a large disk mirrors as a dot.
   */
 type Material = CommonMaterial
 
