@@ -95,7 +95,8 @@ extern "C" __global__ void __closesthit__curve() {
             );
             return;
         }
-        handleFullyOpaque(hit_point, normal, material_color, emission);
+        handleFullyOpaque(hit_point, normal, material_color,
+                          specularLobe(ray_direction, specular, roughness, metallic), emission);
         return;
     }
 

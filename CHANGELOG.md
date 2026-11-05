@@ -9,10 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An opaque dielectric's `specular` and `roughness` take effect (optix-jni#105): each direct
+  light leaves a highlight on it, a GGX microfacet lobe (Cook-Torrance, height-correlated Smith
+  visibility) with Schlick Fresnel, normal-incidence reflectance `F0 = 0.08 * specular` (Disney)
+  and GGX alpha `roughness`². Plastic rendered pixel-identical to Matte, and flat faces had no
+  highlight. The highlight follows the light's shadow, is untinted, and on a double-sided plane
+  shows only where viewer and light are on the same side. `specular` 0 gives none at any angle
+  (the grazing reflectance is `min(1, 50 * F0)`), so Matte renders exactly as before. Every
+  primitive shades through it (sphere, triangle mesh, cylinder, cone, curve, plane instance,
+  legacy plane), as does a triangle-mesh face faded by a non-refractive alpha (Parchment) before
+  it is blended; metallic, refractive and transparent shading (including their depth and nesting
+  fallbacks), ambient and IBL light, and the caustics photon pass are unchanged. Cones keep
+  skipping shadow rays, highlight included.
 - A cylinder receives shadows. Its diffuse shading skipped shadow rays, documented as a guard
   against recursion, but a shadow ray never recurses and `TraceDepth` keeps a nesting level free
   for it; a sphere above a cylinder's top cap cast no shadow on it (menger#156). Edge tubes
   (cylinders) now show the shadows that fall on them. Cones still skip them.
+
+### Changed
+
+- A surface given no material has `specular` 0, so it keeps its diffuse-only look:
+  `MaterialDefaults::DEFAULT_SPECULAR` (single-object mode, the C++ `add*Instance` default
+  arguments), a custom-geometry instance before `setInstanceMaterial`, and a legacy plane added
+  without a material (`addPlane`, `addPlaneSolidColor`, `addPlaneCheckerColors`). A
+  `Material(color, ior)` keeps `menger.common.Material`'s defaults, specular 0.5 and roughness
+  0.5, and so does `setInstanceMaterial`: such surfaces now show a highlight.
+- A legacy (miss-shader) plane with a material uses the shared highlight; its own Phong term lit
+  only the first light, ignored shadows, and was off from roughness 0.95 up.
+- Shader API for custom-geometry registrants (`helpers.cu`): `handleFullyOpaque` takes a
+  `SpecularLobe` (`specularLobe(ray_direction, specular, roughness, metallic)`) to shade the
+  highlight; the old signature remains and shades diffuse only. `alphaFromRoughness` moved here
+  from `caustics_ppm.cu`.
 
 ## [0.5.0] - 2026-10-29
 

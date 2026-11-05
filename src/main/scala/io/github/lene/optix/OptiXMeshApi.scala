@@ -15,6 +15,10 @@ import menger.common.z
   * the new [[InstanceId]] or [[MeshSlot]] and throws [[OptiXException]] on native failure
   * (menger#110: it returned -1, which callers passed on as an index). Update methods throw
   * when native code reports an invalid id or failed projection update.
+  *
+  * A [[Material]]'s `specular` and `roughness` give an opaque dielectric (`metallic` 0) its
+  * highlight from each direct light: see [[Material]]. The `(color, ior)` overloads build
+  * `Material(color, ior)`, whose defaults (specular 0.5, roughness 0.5) give one too.
   */
 private[optix] trait OptiXMeshApi:
   this: OptiXRenderer =>

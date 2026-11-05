@@ -338,6 +338,96 @@ __device__ float calculateDiffuseTerm(
     }
 }
 
+//==============================================================================
+// Direct-light specular of opaque dielectrics (optix-jni#105)
+//==============================================================================
+
+/**
+ * Map perceptual roughness [0,1] to GGX alpha (Disney/UE4 remap: alpha = roughness^2).
+ * Keeps roughness perceptually linear -- roughness=0.3 vs 0.5 are visibly, not marginally,
+ * different. Shared by the opaque-dielectric highlight (ggxSpecular) and the caustics photon
+ * pass's GGX sampling (caustics_ppm.cu), so `roughness` reads the same in both.
+ */
+__device__ float alphaFromRoughness(float roughness) {
+    return roughness * roughness;
+}
+
+/**
+ * The specular lobe of an opaque dielectric: everything its direct-light highlight needs
+ * besides the light. A lobe with specular 0 reflects nothing at any angle, so a surface shaded
+ * with it looks exactly as it did before this term existed.
+ */
+struct SpecularLobe {
+    float3 to_viewer;  // unit vector from the hit point back along the incoming ray
+    float specular;    // 0..1; normal-incidence reflectance DIELECTRIC_F0_PER_SPECULAR * specular
+    float roughness;   // perceptual 0..1; GGX alpha = alphaFromRoughness(roughness)
+};
+
+/**
+ * The lobe a material is shaded with. Only a dielectric has one: a metal (metallic > 0) keeps
+ * the reflection-only look of handleMetallicOpaque wherever a shader falls back to diffuse
+ * shading for it (max depth, a cone or cylinder seen in a reflection).
+ */
+__device__ SpecularLobe specularLobe(
+    const float3& ray_direction, float specular, float roughness, float metallic
+) {
+    const float dielectric_specular = metallic > 0.0f ? 0.0f : specular;
+    return SpecularLobe{normalize(ray_direction) * -1.0f, dielectric_specular, roughness};
+}
+
+/** The lobe of a surface shaded diffuse only (metals' diffuse share, custom callers). */
+__device__ SpecularLobe noSpecularLobe() {
+    return SpecularLobe{make_float3(0.0f, 0.0f, 0.0f), 0.0f, 1.0f};
+}
+
+/**
+ * GGX (Trowbridge-Reitz) microfacet highlight of one light on an opaque dielectric: the
+ * Cook-Torrance BRDF with the height-correlated Smith visibility term (Heitz 2014) and Schlick
+ * Fresnel, times N.L -- the factor the light's radiance (colour * intensity * attenuation *
+ * shadow) is multiplied by. 0 for a light or a viewer below the surface.
+ *
+ * Units: calculateSurfaceLighting shades diffuse as albedo * E, i.e. the Lambert BRDF albedo/pi
+ * lit by pi * E. The specular BRDF is lit by the same pi * E, so the highlight keeps the
+ * proportion to the diffuse the two BRDFs give it.
+ *
+ * Fresnel: F0 = 0.08 * specular (Disney); the grazing reflectance is F90 = min(1, 50 * F0)
+ * (Schlick's "specular occlusion", as in Filament) instead of 1. Specular 0 then reflects
+ * nothing at any angle -- with F90 = 1 every matte surface would get a rim at grazing angles --
+ * and from specular 0.25 up F90 is 1, plain Schlick.
+ *
+ * @param normal    Unit surface normal on the viewer's side
+ * @param to_light  Unit direction from the surface to the light
+ */
+__device__ float ggxSpecular(
+    const float3& normal, const float3& to_light, const SpecularLobe& lobe
+) {
+    const float n_dot_l = dot(normal, to_light);
+    const float n_dot_v = dot(normal, lobe.to_viewer);
+    if (n_dot_l <= 0.0f || n_dot_v <= 0.0f) return 0.0f;
+
+    const float3 half_vector = normalize(to_light + lobe.to_viewer);
+    const float n_dot_h = fmaxf(dot(normal, half_vector), 0.0f);
+    const float v_dot_h = fmaxf(dot(lobe.to_viewer, half_vector), 0.0f);
+
+    const float alpha = alphaFromRoughness(fmaxf(lobe.roughness, MIN_SPECULAR_ROUGHNESS));
+    const float alpha_sq = alpha * alpha;
+
+    const float d_denom = n_dot_h * n_dot_h * (alpha_sq - 1.0f) + 1.0f;
+    const float distribution = alpha_sq / (M_PIf * d_denom * d_denom);
+
+    const float smith_v = n_dot_l * sqrtf(n_dot_v * n_dot_v * (1.0f - alpha_sq) + alpha_sq);
+    const float smith_l = n_dot_v * sqrtf(n_dot_l * n_dot_l * (1.0f - alpha_sq) + alpha_sq);
+    const float visibility = 0.5f / (smith_v + smith_l);
+
+    const float f0 = DIELECTRIC_F0_PER_SPECULAR * lobe.specular;
+    const float f90 = fminf(1.0f, SCHLICK_F90_PER_F0 * f0);
+    const float grazing = 1.0f - v_dot_h;
+    const float grazing_sq = grazing * grazing;
+    const float fresnel = f0 + (f90 - f0) * grazing_sq * grazing_sq * grazing;
+
+    return M_PIf * distribution * visibility * fresnel * n_dot_l;
+}
+
 // ---------------------------------------------------------------------------
 // Pseudo-random number generation (tea4 + LCG from NVIDIA OptiX samples)
 // ---------------------------------------------------------------------------
@@ -432,25 +522,45 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
 }
 
 /**
+ * Light reaching a surface point, split by how it is applied to the surface: `diffuse`
+ * multiplies the surface colour, `specular` (an opaque dielectric's highlight) is added to it
+ * untinted.
+ */
+struct SurfaceLighting {
+    float3 diffuse;   // ambient + direct + IBL, range [0, ∞)
+    float3 specular;  // direct-light highlight, range [0, ∞); 0 for a lobe with specular 0
+};
+
+/**
  * Calculate total lighting contribution from all lights in scene.
  *
- * Accumulates lighting from multiple light sources (directional and point),
- * with support for shadows, distance attenuation, and ambient lighting.
+ * Accumulates lighting from multiple light sources (directional, point and area),
+ * with support for shadows, distance attenuation, and ambient lighting. Each direct light also
+ * gives the lobe's highlight (ggxSpecular), under the same shadow and attenuation as its
+ * diffuse share; ambient and IBL light give none.
  *
  * @param hit_point Surface position to light
  * @param normal Surface normal (normalized)
- * @param double_sided If true, use absolute value of NdotL (for planes)
+ * @param lobe Specular lobe of the surface (noSpecularLobe() for diffuse only)
+ * @param double_sided If true, use absolute value of NdotL (for planes); the highlight still
+ *                     shows only where the viewer and the light are on the same side
  * @param skip_shadows If true, skip shadow ray tracing (only the cone's diffuse shading still
  *                     does; shadow rays never recurse, so it is a shading choice, not a guard)
- * @return Total lighting color (RGB) including ambient term, range [0, ∞)
  */
-__device__ float3 calculateLighting(
+__device__ SurfaceLighting calculateSurfaceLighting(
     const float3& hit_point,
     const float3& normal,
+    const SpecularLobe& lobe,
     bool double_sided = false,
     bool skip_shadows = false
 ) {
     float3 total_lighting = make_float3(0.f, 0.f, 0.f);
+    float3 total_specular = make_float3(0.f, 0.f, 0.f);
+    const bool has_specular = lobe.specular > 0.0f;
+    // A double-sided surface may be given the normal facing away from the viewer.
+    const float3 specular_normal = double_sided && dot(normal, lobe.to_viewer) < 0.0f
+        ? normal * -1.0f
+        : normal;
 
     // Accumulate contribution from each light
     for (int light_idx = 0; light_idx < params.num_lights; ++light_idx) {
@@ -508,6 +618,12 @@ __device__ float3 calculateLighting(
             light_color.z * light.intensity * attenuation * ndotl * shadow_factor.z
         );
         total_lighting = total_lighting + shadowed_contribution;
+
+        if (has_specular) {
+            const float highlight = light.intensity * attenuation
+                * ggxSpecular(specular_normal, light_dir, lobe);
+            total_specular = total_specular + light_color * shadow_factor * highlight;
+        }
     }
 
     // IBL contribution (importance-sampled env map lighting)
@@ -544,9 +660,24 @@ __device__ float3 calculateLighting(
 
     // Add ambient lighting (prevents pure black shadows)
     const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
-    
-    // Combine: ambient + diffuse (energy conserving)
-    return ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR;
+
+    // Combine: ambient + diffuse (energy conserving). The highlight is direct light too, so it
+    // takes the same share of it.
+    return SurfaceLighting{
+        ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR,
+        total_specular * RenderingConstants::DIFFUSE_BLEND_FACTOR
+    };
+}
+
+/** Diffuse-only lighting (calculateSurfaceLighting without a highlight), range [0, ∞). */
+__device__ float3 calculateLighting(
+    const float3& hit_point,
+    const float3& normal,
+    bool double_sided = false,
+    bool skip_shadows = false
+) {
+    return calculateSurfaceLighting(hit_point, normal, noSpecularLobe(), double_sided, skip_shadows)
+        .diffuse;
 }
 
 //==============================================================================
@@ -945,17 +1076,48 @@ __device__ bool traceContinuationRay(
     return true;
 }
 
+/** A surface colour lit by `lighting`: colour * diffuse light + the untinted highlight. */
+__device__ float3 litSurfaceColor(const float4& material_color, const SurfaceLighting& lighting) {
+    return make_float3(
+        material_color.x * lighting.diffuse.x + lighting.specular.x,
+        material_color.y * lighting.diffuse.y + lighting.specular.y,
+        material_color.z * lighting.diffuse.z + lighting.specular.z
+    );
+}
+
 /**
- * Compute diffuse lighting color for opaque surface.
+ * Compute the lit colour of an opaque surface: diffuse plus the lobe's direct-light highlight.
  * Returns RGB color values (0-255 range) without setting payload.
- * Used for blending metallic and diffuse contributions.
  *
  * @param hit_point Surface intersection point
  * @param normal Surface normal (pointing toward ray origin)
  * @param material_color RGBA material color
- * @param diffuse_r Output: Red component (0-255)
- * @param diffuse_g Output: Green component (0-255)
- * @param diffuse_b Output: Blue component (0-255)
+ * @param lobe Specular lobe (noSpecularLobe() for diffuse only)
+ * @param r Output: Red component (0-255)
+ * @param g Output: Green component (0-255)
+ * @param b Output: Blue component (0-255)
+ */
+__device__ void computeOpaqueColor(
+    const float3& hit_point,
+    const float3& normal,
+    const float4& material_color,
+    const SpecularLobe& lobe,
+    unsigned int& r,
+    unsigned int& g,
+    unsigned int& b,
+    bool double_sided = false
+) {
+    const float3 lit_color = litSurfaceColor(
+        material_color, calculateSurfaceLighting(hit_point, normal, lobe, double_sided));
+
+    r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+}
+
+/**
+ * Compute diffuse lighting color for opaque surface (computeOpaqueColor without a highlight).
+ * Used for blending metallic and diffuse contributions.
  */
 __device__ void computeDiffuseColor(
     const float3& hit_point,
@@ -966,23 +1128,8 @@ __device__ void computeDiffuseColor(
     unsigned int& diffuse_b,
     bool double_sided = false
 ) {
-    const float3 lighting = calculateLighting(hit_point, normal, double_sided);
-
-    const float3 surface_color = make_float3(
-        material_color.x,
-        material_color.y,
-        material_color.z
-    );
-
-    const float3 lit_color = make_float3(
-        surface_color.x * lighting.x,
-        surface_color.y * lighting.y,
-        surface_color.z * lighting.z
-    );
-
-    diffuse_r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    diffuse_g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    diffuse_b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    computeOpaqueColor(hit_point, normal, material_color, noSpecularLobe(),
+                       diffuse_r, diffuse_g, diffuse_b, double_sided);
 }
 
 /**
@@ -1028,12 +1175,36 @@ __device__ inline void applyFogInPlace(unsigned int& r, unsigned int& g, unsigne
 
 /**
  * Handle fully opaque surface (alpha >= threshold).
- * Solid surface with diffuse shading.
+ * Solid surface with diffuse shading and the lobe's direct-light highlight.
  *
  * @param hit_point Surface intersection point
  * @param normal Surface normal (pointing toward ray origin)
  * @param material_color RGBA material color
+ * @param lobe Specular lobe of the material (specularLobe(ray_direction, specular, roughness,
+ *             metallic))
  * @param emission Emission intensity (0.0-10.0)
+ */
+__device__ void handleFullyOpaque(
+    const float3& hit_point,
+    const float3& normal,
+    const float4& material_color,
+    const SpecularLobe& lobe,
+    float emission = 0.0f,
+    bool double_sided = false
+) {
+    unsigned int r, g, b;
+    computeOpaqueColor(hit_point, normal, material_color, lobe, r, g, b, double_sided);
+    addEmissionToColor(r, g, b, material_color, emission);
+    applyFogInPlace(r, g, b, optixGetRayTmax());
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
+}
+
+/**
+ * Handle fully opaque surface with diffuse shading only: the overload above with no highlight.
+ * Kept with this signature for shaders compiled against it, e.g. menger-geometry's 4D
+ * programs built against optix-jni 0.5.0's helpers.cu.
  */
 __device__ void handleFullyOpaque(
     const float3& hit_point,
@@ -1042,13 +1213,7 @@ __device__ void handleFullyOpaque(
     float emission = 0.0f,
     bool double_sided = false
 ) {
-    unsigned int r, g, b;
-    computeDiffuseColor(hit_point, normal, material_color, r, g, b, double_sided);
-    addEmissionToColor(r, g, b, material_color, emission);
-    applyFogInPlace(r, g, b, optixGetRayTmax());
-    optixSetPayload_0(r);
-    optixSetPayload_1(g);
-    optixSetPayload_2(b);
+    handleFullyOpaque(hit_point, normal, material_color, noSpecularLobe(), emission, double_sided);
 }
 
 /**

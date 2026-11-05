@@ -164,7 +164,8 @@ extern "C" __global__ void __closesthit__plane() {
     }
     // Use geometric_normal (pre-flip) with double_sided=true to match legacy miss-shader lighting:
     // planes are lit from both sides using fabsf(NdotL) regardless of view direction.
-    handleFullyOpaque(hit_point, geometric_normal, material_color, emission, true);
+    handleFullyOpaque(hit_point, geometric_normal, material_color,
+                      specularLobe(ray_direction, specular, roughness, metallic), emission, true);
 }
 
 //==============================================================================

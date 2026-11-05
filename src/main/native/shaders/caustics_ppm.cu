@@ -70,16 +70,6 @@ __device__ float2 sampleDisk(float u1, float u2) {
 }
 
 /**
- * Map perceptual roughness [0,1] to GGX alpha (Disney/UE4 remap: alpha = roughness^2).
- * Keeps roughness perceptually linear -- roughness=0.3 vs 0.5 are visibly, not marginally,
- * different, matching how `roughness` already reads for primary-ray PBR shading elsewhere
- * in this codebase (helpers.cu/hit_*.cu), even though those paths don't do GGX sampling.
- */
-__device__ float alphaFromRoughness(float roughness) {
-    return roughness * roughness;
-}
-
-/**
  * Sample a visible microfacet normal via GGX-VNDF importance sampling
  * (Heitz 2018, "Sampling the GGX Distribution of Visible Normals", isotropic case).
  *

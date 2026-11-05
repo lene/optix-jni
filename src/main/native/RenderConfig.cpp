@@ -39,7 +39,7 @@ void RenderConfig::clearPlanes() {
 // because planes historically used Lambertian shading (fully diffuse, no specularity).
 static constexpr float PLANE_DEFAULT_ROUGHNESS     = 1.0f;
 static constexpr float PLANE_DEFAULT_METALLIC      = 0.0f;
-static constexpr float PLANE_DEFAULT_SPECULAR      = 0.5f;
+static constexpr float PLANE_DEFAULT_SPECULAR      = MaterialDefaults::DEFAULT_SPECULAR;
 static constexpr float PLANE_DEFAULT_EMISSION      = 0.0f;
 static constexpr int   PLANE_DEFAULT_TEXTURE_INDEX = -1;
 

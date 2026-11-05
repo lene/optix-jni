@@ -280,15 +280,16 @@ extern "C" __global__ void __closesthit__cylinder() {
         return;  // Early exit - handleMetallicOpaque sets payload
     }
 
-    // FALLBACK: Diffuse shading for depth > 0 or non-metallic, with shadows. A shadow ray
+    // FALLBACK: Diffuse shading (and a dielectric's highlight) for depth > 0 or non-metallic,
+    // with shadows. A shadow ray
     // cannot recurse (the shadow programs trace nothing), and TraceDepth keeps one nesting
     // level free for exactly this ray, so it fits within the pipeline's maxTraceDepth.
-    const float3 final_lighting = calculateLighting(hit_point, normal);
+    const float3 lit_color = litSurfaceColor(material_color, calculateSurfaceLighting(
+        hit_point, normal, specularLobe(ray_direction, specular, roughness, metallic)));
 
-    // Apply to material color
-    const float final_r = material_color.x * final_lighting.x * RayTracingConstants::COLOR_SCALE_FACTOR;
-    const float final_g = material_color.y * final_lighting.y * RayTracingConstants::COLOR_SCALE_FACTOR;
-    const float final_b = material_color.z * final_lighting.z * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_r = lit_color.x * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_g = lit_color.y * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_b = lit_color.z * RayTracingConstants::COLOR_SCALE_FACTOR;
 
     // Add emission
     const float emissive_r = fminf(final_r + emission * material_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX);

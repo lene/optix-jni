@@ -59,6 +59,11 @@ namespace RayTracingConstants {
     constexpr float AMBIENT_LIGHT_FACTOR = 0.3f;       // Ambient light contribution (30%)
     constexpr float MIN_LIGHTING_THRESHOLD = 1.0f / 255.0f;  // Minimum NdotL to contribute (sub-pixel)
 
+    // Direct-light specular of opaque dielectrics (helpers.cu: ggxSpecular, optix-jni#105)
+    constexpr float DIELECTRIC_F0_PER_SPECULAR = 0.08f;  // Disney: F0 = 0.08 * specular
+    constexpr float SCHLICK_F90_PER_F0 = 50.0f;          // Grazing reflectance min(1, 50 * F0)
+    constexpr float MIN_SPECULAR_ROUGHNESS = 0.045f;     // Keeps the GGX lobe finite at 0
+
     // Plane rendering (checkered pattern)
     constexpr float PLANE_CHECKER_SIZE = 1.0f;            // Size of checker squares
     constexpr unsigned int PLANE_CHECKER_LIGHT_GRAY = 120;  // Light gray checker RGB value
@@ -136,11 +141,13 @@ namespace MaterialConstants {
     constexpr float IOR_DIAMOND = 2.42f;   // Diamond (high dispersion)
 }
 
-// Default PBR material values
+// Default PBR material values, for surfaces given no material
 namespace MaterialDefaults {
     constexpr float DEFAULT_ROUGHNESS = 0.5f;  // Default middle roughness (0=mirror, 1=diffuse)
     constexpr float DEFAULT_METALLIC = 0.0f;    // Default non-metallic (dielectric)
-    constexpr float DEFAULT_SPECULAR = 0.5f;    // Default specular intensity
+    // No specular highlight: such a surface shades plain diffuse, as it did before opaque
+    // dielectrics had a specular term (optix-jni#105)
+    constexpr float DEFAULT_SPECULAR = 0.0f;
 }
 
 // Rendering and physics constants for ray tracing
@@ -195,7 +202,7 @@ struct InstanceMaterial {
     float ior;                  // Index of refraction
     float roughness;            // 0=mirror, 1=diffuse (default: 0.5)
     float metallic;             // 0=dielectric, 1=metal (default: 0.0)
-    float specular;             // Specular intensity (default: 0.5)
+    float specular;             // Opaque dielectric highlight, 0..1: F0 = 0.08 * specular (0 = none)
     float emission;             // Emission intensity (0.0-10.0, default: 0.0)
     unsigned int geometry_type; // GeometryType enum value
     int geometry_data_index;    // Index into geometry-specific data buffer (cone_data, plane_data, etc.; -1 = unused)

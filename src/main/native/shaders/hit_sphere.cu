@@ -97,8 +97,9 @@ extern "C" __global__ void __closesthit__ch() {
             handleMetallicOpaque(hit_point, ray_direction, normal, material_color, metallic, depth, emission);
             return;
         } else {
-            // Fully non-metallic, just diffuse shading
-            handleFullyOpaque(hit_point, normal, material_color, emission);
+            // Fully non-metallic: diffuse shading and the dielectric highlight
+            handleFullyOpaque(hit_point, normal, material_color,
+                              specularLobe(ray_direction, specular, roughness, metallic), emission);
             return;
         }
     }

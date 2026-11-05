@@ -270,11 +270,12 @@ extern "C" __global__ void __closesthit__cone() {
         return;
     }
 
-    const float3 final_lighting = calculateLighting(hit_point, normal, false, true);
+    const float3 lit_color = litSurfaceColor(material_color, calculateSurfaceLighting(
+        hit_point, normal, specularLobe(ray_direction, specular, roughness, metallic), false, true));
 
-    const float final_r = material_color.x * final_lighting.x * RayTracingConstants::COLOR_SCALE_FACTOR;
-    const float final_g = material_color.y * final_lighting.y * RayTracingConstants::COLOR_SCALE_FACTOR;
-    const float final_b = material_color.z * final_lighting.z * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_r = lit_color.x * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_g = lit_color.y * RayTracingConstants::COLOR_SCALE_FACTOR;
+    const float final_b = lit_color.z * RayTracingConstants::COLOR_SCALE_FACTOR;
 
     unsigned int cone_r = static_cast<unsigned int>(fminf(final_r + emission * material_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
     unsigned int cone_g = static_cast<unsigned int>(fminf(final_g + emission * material_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));

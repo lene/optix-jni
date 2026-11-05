@@ -2448,7 +2448,10 @@ int OptiXWrapper::addCustomGeometryInstance(
     inst.gas_handle = gas_data.handle;
     std::memcpy(inst.transform, transform, 12 * sizeof(float));
     inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f; inst.color[3] = 1.0f;
-    inst.ior = 1.0f; inst.roughness = 0.5f; inst.metallic = 0.0f; inst.specular = 0.5f;
+    inst.ior = 1.0f;
+    inst.roughness = MaterialDefaults::DEFAULT_ROUGHNESS;
+    inst.metallic = MaterialDefaults::DEFAULT_METALLIC;
+    inst.specular = MaterialDefaults::DEFAULT_SPECULAR;
     inst.emission = 0.0f; inst.film_thickness = 0.0f; inst.cauchy_a = 0.0f; inst.cauchy_b = 0.0f;
     // Task 1.1c: stash the per-instance blob (if any) and index it via
     // geometry_data_index; buildIAS packs it into params.custom_geometry_data.

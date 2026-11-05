@@ -190,32 +190,11 @@ extern "C" __global__ void __miss__ms() {
             const float3 diffuse  = base_color * lighting;
             total_color = tinted * plane.metallic + diffuse * (1.0f - plane.metallic);
         } else {
-            const float3 lighting = calculateLighting(hit_point, plane_normal, true);
-            total_color = base_color * lighting;
-
-            if (plane.specular > 0.0f && plane.roughness < 0.95f && params.num_lights > 0) {
-                const Light& light = params.lights[0];
-                float3 light_dir_normalized;
-                float  attenuation;
-                if (light.type == LightType::DIRECTIONAL) {
-                    getDirectionalLightParams(light, light_dir_normalized, attenuation);
-                } else {
-                    getPointLightParams(light, hit_point, light_dir_normalized, attenuation);
-                }
-                const float3 view_dir   = normalize(ray_origin - hit_point);
-                const float3 neg_light  = make_float3(-light_dir_normalized.x,
-                                                      -light_dir_normalized.y,
-                                                      -light_dir_normalized.z);
-                const float  ndotl2     = 2.0f * dot(neg_light, plane_normal);
-                const float3 refl_dir   = make_float3(
-                    neg_light.x - ndotl2 * plane_normal.x,
-                    neg_light.y - ndotl2 * plane_normal.y,
-                    neg_light.z - ndotl2 * plane_normal.z);
-                const float  spec_power = 2.0f / (plane.roughness * plane.roughness + 0.001f);
-                const float  spec       = powf(fmaxf(0.0f, dot(view_dir, refl_dir)), spec_power)
-                                          * plane.specular;
-                total_color = total_color + make_float3(spec, spec, spec);
-            }
+            const SurfaceLighting lighting = calculateSurfaceLighting(
+                hit_point, plane_normal,
+                specularLobe(ray_direction, plane.specular, plane.roughness, plane.metallic), true);
+            total_color = litSurfaceColor(make_float4(base_color.x, base_color.y, base_color.z, 1.0f),
+                                          lighting);
         }
 
         total_color = total_color + base_color * plane.emission;

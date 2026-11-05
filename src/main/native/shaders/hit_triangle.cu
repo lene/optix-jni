@@ -314,6 +314,7 @@ extern "C" __global__ void __closesthit__triangle() {
     roughness   = applyRoughnessMap(roughness, geom.uv_coords, getInstanceRoughnessTextureIndex());
     metallic   = applyMetallicMap(metallic, geom.uv_coords, getInstanceMetallicTextureIndex());
     applyAOMap(mesh_color, geom.uv_coords, getInstanceAoTextureIndex());
+    const SpecularLobe lobe = specularLobe(ray_direction, specular, roughness, metallic);
 
     writeDenoiseGuides(mesh_color, geom.normal);
 
@@ -337,8 +338,8 @@ extern "C" __global__ void __closesthit__triangle() {
             handleMetallicOpaque(geom.hit_point, ray_direction, geom.normal, mesh_color, metallic, depth);
             return;
         } else {
-            // Fully non-metallic, just diffuse shading
-            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
+            // Fully non-metallic: diffuse shading and the dielectric highlight
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, lobe);
             return;
         }
     }
@@ -387,7 +388,7 @@ extern "C" __global__ void __closesthit__triangle() {
     if (use_coverage_blend) {
         if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
             // At max depth, just render as opaque to avoid black cutoff
-            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, lobe);
             return;
         }
 
@@ -398,7 +399,8 @@ extern "C" __global__ void __closesthit__triangle() {
             computeMetallicColor(geom.hit_point, ray_direction, geom.normal, mesh_color, metallic,
                                  depth, diffuse_r, diffuse_g, diffuse_b);
         else
-            computeDiffuseColor(geom.hit_point, geom.normal, mesh_color, diffuse_r, diffuse_g, diffuse_b);
+            computeOpaqueColor(geom.hit_point, geom.normal, mesh_color, lobe,
+                               diffuse_r, diffuse_g, diffuse_b);
 
         // Trace continuation ray through the face to get what lies behind
         unsigned int through_r = diffuse_r, through_g = diffuse_g, through_b = diffuse_b;
