@@ -3,6 +3,7 @@ package io.github.lene.optix
 import io.github.lene.optix.ColorConstants.OPAQUE_BLUE
 import io.github.lene.optix.ColorConstants.OPAQUE_GREEN
 import io.github.lene.optix.ColorConstants.OPAQUE_RED
+import io.github.lene.optix.ColorConstants.OPAQUE_WHITE
 import io.github.lene.optix.ThresholdConstants.QUICK_TEST_SIZE
 import io.github.lene.optix.ThresholdConstants.TEST_IMAGE_SIZE
 import menger.common.Vector
@@ -155,3 +156,66 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
     ratio.r should be > 0.1
     ratio.g should be > 0.1
     ratio.b should be > 0.1
+
+  // ========== Cone receiving shadows (optix-jni#109) ==========
+
+  // A matte (diffuse-only) cone, lit from straight above, so that its shading is the same all
+  // around the axis. A sphere hovers beside the cone over the front flank at azimuth +45 degrees;
+  // its shadow falls on that flank, and the flank at azimuth -45 degrees, the mirror image
+  // across the x = 0 plane, stays lit. A highlight would not show here: this measures the
+  // diffuse darkening of the flank.
+  private val ConeApex = Vector[3](0.0f, 1.0f, 0.0f)
+  private val ConeBase = Vector[3](0.0f, -1.0f, 0.0f)
+  private val ConeBaseRadius = 1.0f
+  private val ConeLight = Vector[3](0.0f, -1.0f, 0.0f)
+  private val CameraDistance = 3.0f
+  private val CameraFov = 60.0f
+  // Half-way down the cone (y = 0) its radius is half the base's; 45 degrees towards the camera.
+  private val SpotHeight = 0.0f
+  private val SpotRadius = ConeBaseRadius * 0.5f
+  private val SpotOffset = (SpotRadius * math.sqrt(0.5)).toFloat
+  // Over the spot, clear of the flank (it is 0.31 from the sphere's centre) and out of the
+  // spot's line of sight; its shadow (radius 0.2) covers the sampled spot (8 px, about 0.1).
+  private val OccluderHeight = 0.7f
+  private val OccluderRadius = 0.2f
+  private val SampleRadiusPixels = 8
+  private val MaxShadowedToLitRatio = 0.7
+  private val MaxUnshadowedAsymmetry = 0.05
+
+  /** Brightness of the front flank at world (x, SpotHeight, SpotOffset). The image is mirrored
+    * horizontally, so world +x is on its left, as in CylinderSuite. */
+  private def flankBrightness(image: Array[Byte], x: Float): Double =
+    val depth = CameraDistance - SpotOffset
+    val halfWidthWorld = depth * math.tan(math.toRadians(CameraFov / 2.0))
+    val halfWidthPixels = TEST_IMAGE_SIZE.width / 2
+    val column = halfWidthPixels - (x / halfWidthWorld * halfWidthPixels).toInt
+    val row = TEST_IMAGE_SIZE.height / 2 - (SpotHeight / halfWidthWorld * halfWidthPixels).toInt
+    TestUtilities.regionBrightness(
+      image, TEST_IMAGE_SIZE, TestUtilities.Region.centered(column, row, SampleRadiusPixels)
+    )
+
+  /** (shadow side, lit side) of the flank. */
+  private def renderConeUnderOccluder(shadows: Boolean): (Double, Double) =
+    renderer.setShadows(shadows)
+    renderer.setCamera(
+      Vector[3](0.0f, 0.0f, CameraDistance), Vector[3](0.0f, 0.0f, 0.0f),
+      Vector[3](0.0f, 1.0f, 0.0f), CameraFov
+    )
+    renderer.setLight(ConeLight, 1.0f)
+    renderer.addConeInstance(
+      ConeApex, ConeBase, ConeBaseRadius, Material.matte(OPAQUE_WHITE)
+    ).value should be >= 0
+    renderer.addSphereInstance(
+      sphereTransform(SpotOffset, OccluderHeight, SpotOffset, OccluderRadius),
+      Material.matte(OPAQUE_WHITE)
+    ).value should be >= 0
+    val image = renderImage(TEST_IMAGE_SIZE)
+    (flankBrightness(image, SpotOffset), flankBrightness(image, -SpotOffset))
+
+  "A cone's flank" should "receive the shadow of a sphere above it" in:
+    val (shadowSide, litSide) = renderConeUnderOccluder(shadows = true)
+    shadowSide should be < MaxShadowedToLitRatio * litSide
+
+  it should "be evenly lit when shadows are off" in:
+    val (shadowSide, litSide) = renderConeUnderOccluder(shadows = false)
+    math.abs(shadowSide - litSide) should be < MaxUnshadowedAsymmetry * litSide
