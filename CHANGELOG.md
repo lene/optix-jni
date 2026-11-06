@@ -13,13 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   times the colour) that every surface gets is computed.
   - `AmbientModel.Occlusion(samples = 16, radius = Float.PositiveInfinity)`, the default,
     weights the fill by ambient occlusion: the share of cosine-weighted hemisphere rays from the
-    hit that escape within `radius`. Samples are stratified (a 4x4 grid for 16) with a random
-    rotation per hit, decorrelated across pixels, antialiasing subsamples and accumulation
+    hit that escape within `radius`. Samples are stratified over a grid (4x4 for 16; a
+    prime count has one column, so the elevation follows a golden-ratio sequence) shifted at
+    random per hit, decorrelated across pixels, antialiasing subsamples and accumulation
     frames, and the same every time the same frame is rendered. `samples` is 1 to 64 and `radius`
     at least 0.01 (infinity: every occluder counts, at any distance); an out-of-range value is
     rejected with an `IllegalArgumentException` naming the value and the range.
-  - `AmbientModel.Constant` keeps the old fill; a render with it is byte-identical to 0.5.0's
-    (checked on a sponge, a backlit sponge and a glass/metal/cylinder scene).
+  - `AmbientModel.Constant` keeps the old fill; a render with it is byte-identical to the build before
+    this change (b13c283, which already has #105's highlights, so Plastic differs from 0.5.0), checked
+    on a sponge, a backlit sponge and a glass/gold/cylinder scene by `AmbientOcclusionSuite`
+    (on the GPU of the committed references).
   - Occlusion rays are shadow-type rays: a transparent occluder darkens by its shadow
     attenuation, not fully. They count in `RayStats.totalRays` but not in `shadowRays`.
   - Checks: an open floor gets exactly the constant fill; the floor of a square shaft gets the
@@ -34,7 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   constant fill as the inside of a cavity, so an unlit face and a hole were identical under the
   default light and when backlit. With the default occlusion ambient, a hole is darker than the
   face around it.
-
 - An opaque dielectric's `specular` and `roughness` take effect (optix-jni#105): each direct
   light leaves a highlight on it. Plastic rendered pixel-identical to Matte, and flat faces had
   no highlight.

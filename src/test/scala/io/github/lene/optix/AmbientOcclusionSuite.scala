@@ -3,6 +3,10 @@ package io.github.lene.optix
 import java.io.File
 import javax.imageio.ImageIO
 
+import scala.io.Source
+import scala.util.Try
+
+import io.github.lene.optix.ConstantAmbientScenes.SpongeScene
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -80,9 +84,21 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
     val m = vs.sum / vs.size
     math.sqrt(vs.map(v => (v - m) * (v - m)).sum / vs.size)
 
+  /** The GPU the committed constant-ambient references were rendered on (README line `GPU: ...`). */
+  private def referenceGpuName(): String =
+    val readme = Source.fromFile("test-resources/ambient-constant/README.md")
+    try readme.getLines().collectFirst { case l if l.startsWith("GPU: ") => l.drop(5).trim }
+      .getOrElse(fail("test-resources/ambient-constant/README.md has no 'GPU: <name>' line"))
+    finally readme.close()
+
+  private def currentGpuName(): Option[String] =
+    Try(scala.sys.process.Process(Seq("nvidia-smi", "--query-gpu=name", "--format=csv,noheader")).!!)
+      .toOption.flatMap(_.linesIterator.map(_.trim).find(_.nonEmpty))
+
   /** An image file as RGBA bytes, the layout of a render. */
   private def readRgba(file: File): Array[Byte] =
-    val png = ImageIO.read(file)
+    if !file.isFile then fail(s"missing reference image: ${file.getAbsolutePath}")
+    val png = Option(ImageIO.read(file)).getOrElse(fail(s"not a readable image: ${file.getAbsolutePath}"))
     (for y <- 0 until png.getHeight; x <- 0 until png.getWidth; argb = png.getRGB(x, y);
          byte <- Seq(argb >> 16, argb >> 8, argb, argb >>> 24) yield byte.toByte).toArray
 
@@ -108,13 +124,13 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
   private val slabCam = Cam(P3(-3, 1, 0), P3(1, 0, 0), 60f)
   private val underSlab = P3(1, 0, 0)
 
-  private def slabScene(slab: Material): Unit =
-    lookAt(slabCam)
+  private def slabScene(slab: Material, cam: Cam = slabCam, slabY: Float = 1.1f): Unit =
+    lookAt(cam)
     renderer.setLight(Vector[3](0f, -1f, 0f), 0.0f)
     addFloor(0f)
     renderer.setTriangleMesh(TestUtilities.createUnitCubeMesh())
     renderer.addTriangleMeshInstance(
-      Array(8f, 0f, 0f, 4f, 0f, 0.2f, 0f, 1.1f, 0f, 0f, 8f, 0f), slab, TextureIndex.NoTexture)
+      Array(8f, 0f, 0f, 4f, 0f, 0.2f, 0f, slabY, 0f, 0f, 8f, 0f), slab, TextureIndex.NoTexture)
 
   /** Not refractive, so only its surface model attenuates: half its light is passed. */
   private val translucent = Material(Color(0.3f, 0.3f, 0.3f, 0.5f), 1.0f)
@@ -201,20 +217,16 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
     math.abs(estimated - analytic) should be < 0.01
 
   // ---- the sponge ----
-  private val spongeCam = Cam(P3(-1.6, 1.4, 2.2), P3(0, -0.1, 0), 60f)
-  private val floorY = -0.5f
+  private val spongeCam = Cam(
+    P3(SpongeScene.eyeXyz._1, SpongeScene.eyeXyz._2, SpongeScene.eyeXyz._3),
+    P3(SpongeScene.targetXyz._1, SpongeScene.targetXyz._2, SpongeScene.targetXyz._3), SpongeScene.fov)
 
   private def spongeScene(lightTravel: P3): Unit =
     lookAt(spongeCam)
     renderer.setLight(lightTravel.norm.v3, 1.0f)
     renderer.setShadows(true)
-    addFloor(floorY)
-    renderer.setTriangleMesh(TestUtilities.createUnitCubeMesh())
-    val cube = 1f / 3f
-    for xx <- -1 to 1; yy <- -1 to 1; zz <- -1 to 1 if math.abs(xx) + math.abs(yy) + math.abs(zz) > 1 do
-      renderer.addTriangleMeshInstance(
-        Array(cube, 0f, 0f, xx * cube, 0f, cube, 0f, yy * cube, 0f, 0f, cube, zz * cube),
-        Material.plastic(Color(0.6f, 0.6f, 0.6f)), TextureIndex.NoTexture)
+    SpongeScene.addFloor(renderer, Material.matte(Color(floorAlbedo, floorAlbedo, floorAlbedo)))
+    SpongeScene.addSponge(renderer, Material.plastic(Color(0.6f, 0.6f, 0.6f)))
 
   /** Mean brightness of a solid cell of the +z face, minus that of the through-hole at its centre. */
   private def faceMinusHole(img: Array[Byte]): Double =
@@ -239,6 +251,10 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
     contrast should be > 10.0
 
   "The constant model" should "render the scenes of optix-jni b13c283 byte for byte" in:
+    val referenceGpu = referenceGpuName()
+    val currentGpu = currentGpuName()
+    assume(currentGpu.contains(referenceGpu),
+      s"the references were rendered on '$referenceGpu'; this GPU is '${currentGpu.getOrElse("unknown")}'")
     ConstantAmbientScenes.all.foreach { case (name, build) =>
       renderer.clearAllInstances()
       build(renderer)
@@ -263,6 +279,42 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
     val accumulated = stddev(render(model, accumulate = 16), patch)
     info(f"std-dev in the patch: one frame $single%.2f, 16 frames $accumulated%.2f")
     accumulated should be < single * 0.7
+
+  "Antialiasing subsamples" should "get decorrelated samples, so the noise falls" in:
+    slabScene(opaqueSlab)
+    val patch = patchAround(slabCam, underSlab)
+    val model = AmbientModel.Occlusion(samples = 2)
+    renderer.setAntialiasing(enabled = false, maxDepth = 1, threshold = 1f)
+    val plain = stddev(render(model), patch)
+    renderer.setAntialiasing(enabled = true, maxDepth = 1, threshold = 1f)  // nine rays a pixel
+    val antialiased = stddev(render(model), patch)
+    info(f"std-dev in the patch: no antialiasing $plain%.2f, antialiasing $antialiased%.2f")
+    antialiased should be < plain * 0.7
+
+  // ---- ray statistics ----
+  "Occlusion rays" should "count in the total but not as shadow rays" in:
+    slabScene(opaqueSlab)
+    val samples = 16
+    renderer.setAmbient(AmbientModel.Constant)
+    val constant = renderer.renderWithStats(imageSize).get()
+    renderer.setAmbient(AmbientModel.Occlusion(samples = samples))
+    val occluded = renderer.renderWithStats(imageSize).get()
+    val extra = occluded.totalRays - constant.totalRays
+    info(s"extra rays: $extra for ${extra / samples} shaded hits")
+    occluded.shadowRays shouldBe constant.shadowRays
+    extra % samples shouldBe 0L                          // `samples` rays per shaded hit
+    extra should be >= samples.toLong * imageSize.width * imageSize.height / 4  // floor and slab cover most of the image
+
+  // ---- double-sided surfaces ----
+  "The underside of a plane" should "be occluded by what lies between it and the viewer" in:
+    // The slab scene turned upside down: the camera is below the plane, the slab between them.
+    val below = Cam(P3(-3, -1, 0), P3(1, 0, 0), 60f)
+    slabScene(opaqueSlab, below, slabY = -1.1f)
+    val patch = patchAround(below, underSlab)
+    val constant = mean(render(AmbientModel.Constant), patch)
+    val occluded = mean(render(AmbientModel.Occlusion()), patch)
+    info(f"plane seen from below: constant $constant%.1f, occlusion $occluded%.1f")
+    occluded should be < constant - 5
 
   // ---- settings ----
   "Ambient settings out of range" should "be rejected naming the value and the range" in:

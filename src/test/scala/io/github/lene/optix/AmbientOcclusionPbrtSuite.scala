@@ -7,6 +7,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.zip.GZIPInputStream
 
+import io.github.lene.optix.ConstantAmbientScenes.SpongeScene
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -64,17 +65,13 @@ class AmbientOcclusionPbrtSuite extends AnyFlatSpec with Matchers with RendererF
       data.getFloat(headerEnd + 1 + ((imageSize.height - 1 - y) * rowFloats + x * 3) * 4))
 
   private def renderFactors(): Factors =
-    val cx = 1f / 3f
     renderer.clearPlanes()
     renderer.updateImageDimensions(imageSize)
-    renderer.setCamera(Vector[3](-1.6f, 1.4f, 2.2f), Vector[3](0f, -0.1f, 0f), Vector[3](0f, 1f, 0f), 60f)
+    SpongeScene.lookAt(renderer)
     renderer.setLight(Vector[3](0f, -1f, 0f), 0.0f)
     val white = Material.matte(Color(1f, 1f, 1f))
-    renderer.addPlaneInstance(Vector[3](0f, 1f, 0f), -0.5f, white)
-    renderer.setTriangleMesh(TestUtilities.createUnitCubeMesh())
-    for i <- -1 to 1; j <- -1 to 1; k <- -1 to 1 if math.abs(i) + math.abs(j) + math.abs(k) > 1 do
-      renderer.addTriangleMeshInstance(
-        Array(cx, 0f, 0f, i * cx, 0f, cx, 0f, j * cx, 0f, 0f, cx, k * cx), white, TextureIndex.NoTexture)
+    SpongeScene.addFloor(renderer, white)
+    SpongeScene.addSponge(renderer, white)
     renderer.setAmbient(AmbientModel.Occlusion(samples = 16))
     renderer.setAccumulationFrames(128)  // averages the frames' sampling noise away
     val img = renderer.renderWithStats(imageSize).get().image
@@ -93,6 +90,7 @@ class AmbientOcclusionPbrtSuite extends AnyFlatSpec with Matchers with RendererF
       y <- 2 until imageSize.height - 2; x <- 2 until imageSize.width - 2
       if isInterior(pbrt, x, y) && isInterior(optix, x, y)
     yield (x, y)).toVector
+    interior.size should be > imageSize.width * imageSize.height / 2
     val errors = interior.map { case (x, y) => optix.at(x, y) - pbrt.at(x, y) }
     val absolute = errors.map(e => math.abs(e.toDouble)).sorted
     val mean = absolute.sum / absolute.size
@@ -102,7 +100,6 @@ class AmbientOcclusionPbrtSuite extends AnyFlatSpec with Matchers with RendererF
       f"mean |error| $mean%.4f, 95th percentile $p95%.4f, bias (optix - pbrt) $bias%+.4f"
     info(summary)
     writeErrorMap(pbrt, optix, summary)
-    interior.size should be > imageSize.width * imageSize.height / 2
     mean should be < maxMeanError
     p95 should be < max95thError
     math.abs(bias) should be < maxBias

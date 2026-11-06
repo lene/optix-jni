@@ -31,10 +31,11 @@ private[optix] trait OptiXRenderApi:
   def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
     setIBLNative(enabled, strength, samples)
 
-  /** Chooses how the ambient fill that unlit and shadowed surfaces get is computed; occlusion
-    * ([[AmbientModel.Occlusion]] with its defaults) unless set.
+  /** Chooses how the ambient fill that every surface gets is computed; occlusion
+    * ([[AmbientModel.Occlusion]] with its defaults) unless set. Independent of `setShadows`.
     *
     * @throws IllegalArgumentException when the sample count or radius is out of range
+    * @throws IllegalStateException when the renderer is not initialized
     */
   def setAmbient(model: AmbientModel): Unit = model match
     case AmbientModel.Constant => setAmbientNative(false, 0, Float.PositiveInfinity)

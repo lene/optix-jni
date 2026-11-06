@@ -4,7 +4,8 @@ package io.github.lene.optix
   * its colour), is computed.
   *
   * Open surfaces get the same fill from every model; the models differ in what they do to
-  * surfaces that other geometry covers (optix-jni#106).
+  * surfaces that other geometry covers (optix-jni#106). Neither depends on `setShadows`: the
+  * fill is the same whether direct-light shadows are on or off.
   */
 enum AmbientModel:
 
@@ -16,8 +17,8 @@ enum AmbientModel:
     * it keeps exactly the constant fill.
     *
     * Visibility is estimated with `samples` rays, cosine-weighted and stratified (4x4 strata for
-    * 16 samples) with a rotation per pixel; accumulating frames or more samples reduce the
-    * noise. A transparent occluder darkens by its shadow attenuation, not fully.
+    * 16 samples; a prime count spreads the elevation by a golden-ratio sequence) shifted at random
+    * per surface point; accumulating frames or more samples reduce the noise. A transparent occluder darkens by its shadow attenuation, not fully.
     *
     * @param samples occlusion rays per surface point, 1 to 64
     * @param radius how far from the surface an occluder still darkens (world units, at least

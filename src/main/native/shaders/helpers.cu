@@ -527,6 +527,7 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
 // stride between accumulation frames.
 constexpr unsigned int AO_SEED_KEY = 0xA0A0A0A0u;
 constexpr unsigned int AO_FRAME_SEED_STRIDE = 7919u;
+constexpr float AO_GOLDEN_RATIO_CONJUGATE = 0.6180339887f;  // low-discrepancy step in [0, 1)
 
 // Hashes the position bits. A hit point differs between antialiasing subsamples, bounces and
 // objects, so the pixel index alone would give them all the same samples.
@@ -545,7 +546,8 @@ static __device__ unsigned int ambientSeed(const float3& hit_point) {
 }
 
 // Columns of the strata grid for n samples: the largest divisor of n up to sqrt(n), so that
-// columns * rows == n and the grid is as square as n allows (16 gives 4x4).
+// columns * rows == n (16 gives 4x4). A prime n has one column; ambientOcclusion then spreads
+// the first coordinate by a golden-ratio sequence instead of giving every ray one elevation.
 static __forceinline__ __device__ int aoStrataColumns(int n) {
     int columns = static_cast<int>(sqrtf(static_cast<float>(n)));
     while (n % columns != 0) --columns;
@@ -594,7 +596,9 @@ static __device__ float ambientOcclusion(const float3& hit_point, const float3& 
     const float tmax = fminf(params.ambient_ao_radius, SHADOW_RAY_MAX_DISTANCE);
     float visible = 0.0f;
     for (int s = 0; s < samples; ++s) {
-        const float u1 = fractionalPart((static_cast<float>(s % columns) + 0.5f) / columns + shift_u);
+        const float u1 = (columns == 1 && samples > 1)
+            ? fractionalPart(shift_u + static_cast<float>(s) * AO_GOLDEN_RATIO_CONJUGATE)
+            : fractionalPart((static_cast<float>(s % columns) + 0.5f) / columns + shift_u);
         const float u2 = fractionalPart((static_cast<float>(s / columns) + 0.5f) / rows + shift_v);
         visible += traceOcclusionRay(origin, cosineHemisphereDir(normal, u1, u2), tmax);
     }
