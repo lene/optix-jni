@@ -168,6 +168,9 @@ public:
 
     // IBL configuration
     void setIBL(bool enabled, float strength, int samples);
+
+    // Ambient light: samples > 0 weights the fill by occlusion within radius, 0 = constant fill
+    void setAmbient(int samples, float radius);
     void setAccumulationFrames(int n);
     void setDenoisingEnabled(bool enabled);
     bool isDenoisingEnabled() const;

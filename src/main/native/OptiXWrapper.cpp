@@ -369,6 +369,10 @@ void OptiXWrapper::setToneMapping(int operatorId, float exposure) {
     impl->config.setToneMapping(operatorId, exposure);
 }
 
+void OptiXWrapper::setAmbient(int samples, float radius) {
+    impl->config.setAmbient(samples, radius);
+}
+
 void OptiXWrapper::setIBL(bool enabled, float strength, int samples) {
     impl->config.setIBL(enabled, strength, samples);
 }
@@ -1916,6 +1920,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.ibl_enabled       = impl->config.getIBLEnabled();
         params.ibl_strength      = impl->config.getIBLStrength();
         params.ibl_samples       = impl->config.getIBLSamples();
+        params.ambient_ao_samples = impl->config.getAmbientAoSamples();
+        params.ambient_ao_radius  = impl->config.getAmbientAoRadius();
         params.env_width         = impl->m_env_width;
         params.env_height        = impl->m_env_height;
         params.frame_seed_offset = 0u;   // overridden per-frame during accumulation

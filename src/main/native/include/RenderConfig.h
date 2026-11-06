@@ -7,6 +7,8 @@
 #define __align__(n)  alignas(n)
 #endif
 
+#include <limits>
+
 #include "OptiXData.h"
 #include "OptiXConstants.h"
 
@@ -82,6 +84,15 @@ public:
         ibl_strength = strength;
         ibl_samples  = samples;
     }
+    // Ambient light (optix-jni#106): samples > 0 weights the fill by ambient occlusion within
+    // radius, 0 keeps the constant fill.
+    void setAmbient(int samples, float radius) {
+        ambient_ao_samples = samples;
+        ambient_ao_radius  = radius;
+    }
+    int   getAmbientAoSamples() const { return ambient_ao_samples; }
+    float getAmbientAoRadius()  const { return ambient_ao_radius;  }
+
     bool  getIBLEnabled()  const { return ibl_enabled;  }
     float getIBLStrength() const { return ibl_strength; }
     int   getIBLSamples()  const { return ibl_samples;  }
@@ -156,6 +167,10 @@ private:
     float ibl_strength        = 1.0f;
     int   ibl_samples         = 1;
     int   accumulation_frames = 1;
+
+    // Ambient light: occlusion-weighted by default, every occluder counts (sky visibility)
+    int   ambient_ao_samples  = RayTracingConstants::DEFAULT_AMBIENT_AO_SAMPLES;
+    float ambient_ao_radius   = std::numeric_limits<float>::infinity();
 
     // Plane appearance
     PlaneParams planes[RayTracingConstants::MAX_PLANES] = {};

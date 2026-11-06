@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `AmbientModel` and `OptiXRenderer.setAmbient(model)` (optix-jni#106): how the ambient fill (0.3
+  times the colour) that every surface gets is computed.
+  - `AmbientModel.Occlusion(samples = 16, radius = Float.PositiveInfinity)`, the default,
+    weights the fill by ambient occlusion: the share of cosine-weighted hemisphere rays from the
+    hit that escape within `radius`. Samples are stratified (a 4x4 grid for 16) with a random
+    rotation per hit, decorrelated across pixels, antialiasing subsamples and accumulation
+    frames, and the same every time the same frame is rendered. `samples` is 1 to 64 and `radius`
+    at least 0.01 (infinity: every occluder counts, at any distance); an out-of-range value is
+    rejected with an `IllegalArgumentException` naming the value and the range.
+  - `AmbientModel.Constant` keeps the old fill; a render with it is byte-identical to 0.5.0's
+    (checked on a sponge, a backlit sponge and a glass/metal/cylinder scene).
+  - Occlusion rays are shadow-type rays: a transparent occluder darkens by its shadow
+    attenuation, not fully. They count in `RayStats.totalRays` but not in `shadowRays`.
+  - Checks: an open floor gets exactly the constant fill; the floor of a square shaft gets the
+    analytic cosine-weighted visibility (0.2394 rendered against 0.2386); the per-pixel factor
+    on a level-1 sponge on a floor matches pbrt-v4's `ambientocclusion` integrator (mean absolute
+    error 0.0135, 95th percentile 0.034, bias -0.002; twin scene and reference in
+    `test-resources/ambient-occlusion-pbrt/`).
+
 ### Fixed
+
+- The holes of a Menger sponge show (optix-jni#106): a surface the lights miss got the same
+  constant fill as the inside of a cavity, so an unlit face and a hole were identical under the
+  default light and when backlit. With the default occlusion ambient, a hole is darker than the
+  face around it.
 
 - An opaque dielectric's `specular` and `roughness` take effect (optix-jni#105): each direct
   light leaves a highlight on it. Plastic rendered pixel-identical to Matte, and flat faces had
@@ -31,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Visual change: cavities and contact areas are darker than before, as the default ambient is
+  now occluded (see Added); a surface with nothing above it renders as before. Cost: each
+  shaded hit casts 16 more rays by default; `AmbientModel.Constant` or fewer samples lower it.
 - Visual change: every surface with `specular` > 0 now shows a highlight, including those built
   from `Material(color, ior)` and set through `setInstanceMaterial`, whose defaults are specular
   0.5 and roughness 0.5. `specular = 0` keeps the old look.

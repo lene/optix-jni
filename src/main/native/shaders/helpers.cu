@@ -519,6 +519,100 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
     return make_float3(texel.x, texel.y, texel.z) * params.ibl_strength;
 }
 
+// ---------------------------------------------------------------------------
+// Ambient occlusion (optix-jni#106): weights the ambient fill by sky visibility
+// ---------------------------------------------------------------------------
+
+// Seed key distinct from the IBL sampler's (which keys on frame and sample index) and the
+// stride between accumulation frames.
+constexpr unsigned int AO_SEED_KEY = 0xA0A0A0A0u;
+constexpr unsigned int AO_FRAME_SEED_STRIDE = 7919u;
+
+// Hashes the position bits. A hit point differs between antialiasing subsamples, bounces and
+// objects, so the pixel index alone would give them all the same samples.
+static __forceinline__ __device__ unsigned int hashPosition(const float3& p) {
+    return (__float_as_uint(p.x) * 73856093u) ^ (__float_as_uint(p.y) * 19349663u)
+         ^ (__float_as_uint(p.z) * 83492791u);
+}
+
+// Seed for one hit's samples: varies per pixel, per hit point and per accumulation frame, and is
+// the same every time the same frame is rendered.
+static __device__ unsigned int ambientSeed(const float3& hit_point) {
+    const uint3 idx = optixGetLaunchIndex();
+    return tea4(idx.x + idx.y * static_cast<unsigned int>(params.image_width),
+                hashPosition(hit_point) + params.frame_seed_offset * AO_FRAME_SEED_STRIDE
+                    + AO_SEED_KEY);
+}
+
+// Columns of the strata grid for n samples: the largest divisor of n up to sqrt(n), so that
+// columns * rows == n and the grid is as square as n allows (16 gives 4x4).
+static __forceinline__ __device__ int aoStrataColumns(int n) {
+    int columns = static_cast<int>(sqrtf(static_cast<float>(n)));
+    while (n % columns != 0) --columns;
+    return columns;
+}
+
+static __forceinline__ __device__ float fractionalPart(float x) { return x - floorf(x); }
+
+// Cosine-weighted direction around n for the unit-square point (u1, u2).
+static __device__ float3 cosineHemisphereDir(const float3& n, float u1, float u2) {
+    const float r = sqrtf(u1), phi = 2.0f * M_PIf * u2;
+    float3 t, b;
+    createONBFromNormal(n, t, b);
+    return normalize(t * (r * cosf(phi)) + b * (r * sinf(phi)) + n * sqrtf(fmaxf(0.0f, 1.0f - u1)));
+}
+
+// Visibility (0..1) of the sky within tmax along dir: a shadow ray, ended by the first opaque
+// hit; transparent hits attenuate it by their shadow attenuation.
+static __device__ float traceOcclusionRay(const float3& origin, const float3& dir, float tmax) {
+    unsigned int p0 = 0, p1 = 0, p2 = 0;
+    optixTrace(params.handle, origin, dir, SHADOW_RAY_OFFSET, tmax, 0.0f, OptixVisibilityMask(255),
+               OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+               params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
+               SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_SHADOW, p0, p1, p2);
+    // Counted in the total only: these are not rays toward a light, and shadow_rays is zero
+    // when shadows are off.
+    if (params.stats) {
+        atomicAdd(&params.stats->total_rays, 1ULL);
+    }
+    const float attenuation = (__uint_as_float(p0) + __uint_as_float(p1) + __uint_as_float(p2))
+                            / 3.0f;
+    return SBTConstants::SHADOW_FACTOR_FULLY_LIT - attenuation;
+}
+
+// Share of the cosine-weighted hemisphere above the surface that is open within ao_radius.
+// Stratified over a grid of strata shifted by a random offset per hit (a Cranley-Patterson
+// rotation): every direction is still uniformly distributed, so the estimate is unbiased, and
+// the pattern does not repeat from pixel to pixel. 1.0 exactly when nothing is in the way.
+static __device__ float ambientOcclusion(const float3& hit_point, const float3& normal) {
+    unsigned int seed = ambientSeed(hit_point);
+    const float shift_u = lcg(seed), shift_v = lcg(seed);
+    const int samples = params.ambient_ao_samples;
+    const int columns = aoStrataColumns(samples);
+    const int rows = samples / columns;
+    const float3 origin = hit_point + normal * SHADOW_RAY_OFFSET;
+    const float tmax = fminf(params.ambient_ao_radius, SHADOW_RAY_MAX_DISTANCE);
+    float visible = 0.0f;
+    for (int s = 0; s < samples; ++s) {
+        const float u1 = fractionalPart((static_cast<float>(s % columns) + 0.5f) / columns + shift_u);
+        const float u2 = fractionalPart((static_cast<float>(s / columns) + 0.5f) / rows + shift_v);
+        visible += traceOcclusionRay(origin, cosineHemisphereDir(normal, u1, u2), tmax);
+    }
+    return visible / static_cast<float>(samples);
+}
+
+// The ambient fill of a surface point: the constant fill, weighted by its occlusion unless the
+// constant model is selected or shadow rays are skipped.
+static __device__ float3 ambientLight(const float3& hit_point, const float3& normal,
+                                      bool double_sided, bool skip_shadows) {
+    const float3 fill = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
+    if (params.ambient_ao_samples == 0 || skip_shadows) return fill;
+    // A double-sided surface (a plane) is lit on the side the ray came from.
+    const float3 open_side = double_sided && dot(normal, optixGetWorldRayDirection()) > 0.0f
+        ? normal * -1.0f : normal;
+    return fill * ambientOcclusion(hit_point, open_side);
+}
+
 /**
  * Light reaching a surface point, split by how it is applied to the surface: `diffuse`
  * multiplies the surface colour, `specular` (an opaque dielectric's highlight) is added to it
@@ -662,7 +756,7 @@ __device__ SurfaceLighting calculateSurfaceLighting(
     }
 
     // Add ambient lighting (prevents pure black shadows)
-    const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
+    const float3 ambient = ambientLight(hit_point, normal, double_sided, skip_shadows);
 
     // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1).
     // Not energy conserving against the highlight: the diffuse is not reduced by (1 - F), so a

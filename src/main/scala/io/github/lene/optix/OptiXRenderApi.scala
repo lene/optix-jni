@@ -31,6 +31,15 @@ private[optix] trait OptiXRenderApi:
   def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
     setIBLNative(enabled, strength, samples)
 
+  /** Chooses how the ambient fill that unlit and shadowed surfaces get is computed; occlusion
+    * ([[AmbientModel.Occlusion]] with its defaults) unless set.
+    *
+    * @throws IllegalArgumentException when the sample count or radius is out of range
+    */
+  def setAmbient(model: AmbientModel): Unit = model match
+    case AmbientModel.Constant => setAmbientNative(false, 0, Float.PositiveInfinity)
+    case AmbientModel.Occlusion(samples, radius) => setAmbientNative(true, samples, radius)
+
   /** Sets temporal accumulation frame count for noisy render paths.
     *
     * @throws IllegalStateException when the renderer is not initialized (optix-jni#72: this

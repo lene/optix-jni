@@ -57,6 +57,7 @@ namespace RayTracingConstants {
 
     // Lighting model
     constexpr float AMBIENT_LIGHT_FACTOR = 0.3f;       // Ambient light contribution (30%)
+    constexpr int   DEFAULT_AMBIENT_AO_SAMPLES = 16;   // Occlusion rays per ambient term (4x4 strata)
     constexpr float MIN_LIGHTING_THRESHOLD = 1.0f / 255.0f;  // Minimum NdotL to contribute (sub-pixel)
 
     // Direct-light specular of opaque dielectrics (helpers.cu: ggxSpecular, optix-jni#105)
@@ -591,6 +592,8 @@ struct BaseParams {
     bool                ibl_enabled;
     float               ibl_strength;
     int                 ibl_samples;
+    int                 ambient_ao_samples;  // occlusion rays per ambient term; 0 = constant fill
+    float               ambient_ao_radius;   // an occluder beyond this does not darken (optix-jni#106)
     int                 env_width;           // HDR env map pixel width
     int                 env_height;          // HDR env map pixel height
     unsigned int        frame_seed_offset;   // varies per accumulation frame

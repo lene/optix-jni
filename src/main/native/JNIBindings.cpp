@@ -538,6 +538,30 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
     JNI_CATCH_UNKNOWN_THROW
 }
 
+// Without occlusion the constant fill is used and samples and radius are ignored; with it the
+// radius may be infinite (every occluder counts) but not NaN, zero or negative.
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAmbientNative(
+    JNIEnv* env, jobject obj, jboolean occlusion, jint samples, jfloat radius) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
+        if (wrapper == nullptr) return;
+        if (!occlusion) {
+            wrapper->setAmbient(0, radius);
+        } else if (jni_checks::requireRange<jint>(env, samples, 1, jni_checks::kMaxAmbientSamples,
+                                                  "ambient samples") &&
+                   jni_checks::requireRange<jfloat>(env, radius, jni_checks::kMinAmbientRadius,
+                                                    std::numeric_limits<jfloat>::infinity(),
+                                                    "ambient occlusion radius")) {
+            wrapper->setAmbient((int)samples, (float)radius);
+        }
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setAmbient: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
+    }
+    JNI_CATCH_UNKNOWN_THROW
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFramesNative(
     JNIEnv* env, jobject obj, jint n) {
     try {
