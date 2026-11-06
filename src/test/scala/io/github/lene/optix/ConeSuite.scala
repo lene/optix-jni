@@ -181,6 +181,9 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val SampleRadiusPixels = 8
   private val MaxShadowedToLitRatio = 0.7
   private val MaxUnshadowedAsymmetry = 0.05
+  // How much brighter (0..255 levels) the lit flank must be than with the light off, so that the
+  // comparisons never run on near-black pixels.
+  private val MinLitGain = 20.0
 
   /** Brightness of the front flank at world (x, SpotHeight, SpotOffset). The image is mirrored
     * horizontally, so world +x is on its left, as in CylinderSuite. */
@@ -195,13 +198,16 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
     )
 
   /** (shadow side, lit side) of the flank. */
-  private def renderConeUnderOccluder(shadows: Boolean): (Double, Double) =
+  private def renderConeUnderOccluder(
+      shadows: Boolean, intensity: Float = 1.0f
+  ): (Double, Double) =
+    renderer.clearAllInstances()
     renderer.setShadows(shadows)
     renderer.setCamera(
       Vector[3](0.0f, 0.0f, CameraDistance), Vector[3](0.0f, 0.0f, 0.0f),
       Vector[3](0.0f, 1.0f, 0.0f), CameraFov
     )
-    renderer.setLight(ConeLight, 1.0f)
+    renderer.setLight(ConeLight, intensity)
     renderer.addConeInstance(
       ConeApex, ConeBase, ConeBaseRadius, Material.matte(OPAQUE_WHITE)
     ).value should be >= 0
@@ -212,10 +218,16 @@ class ConeSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val image = renderImage(TEST_IMAGE_SIZE)
     (flankBrightness(image, SpotOffset), flankBrightness(image, -SpotOffset))
 
+  private def litAboveAmbient(litSide: Double): Unit =
+    val (_, ambientOnly) = renderConeUnderOccluder(shadows = true, intensity = 0.0f)
+    litSide should be > ambientOnly + MinLitGain
+
   "A cone's flank" should "receive the shadow of a sphere above it" in:
     val (shadowSide, litSide) = renderConeUnderOccluder(shadows = true)
+    litAboveAmbient(litSide)
     shadowSide should be < MaxShadowedToLitRatio * litSide
 
   it should "be evenly lit when shadows are off" in:
     val (shadowSide, litSide) = renderConeUnderOccluder(shadows = false)
+    litAboveAmbient(litSide)
     math.abs(shadowSide - litSide) should be < MaxUnshadowedAsymmetry * litSide

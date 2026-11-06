@@ -130,6 +130,8 @@ extern "C" __global__ void __closesthit__cone() {
                 const ConeData& cone = params.cone_data[cone_idx];
                 const float3 apex_pt = make_float3(cone.apex[0], cone.apex[1], cone.apex[2]);
                 const float3 base_pt = make_float3(cone.base[0], cone.base[1], cone.base[2]);
+                // Base to apex, the reverse of __intersection__cone's `axis` (apex to base) on
+                // purpose: v = 0 at the base and 1 at the apex for the texture coordinates.
                 const float3 axis_vec = make_float3(apex_pt.x - base_pt.x,
                                                      apex_pt.y - base_pt.y,
                                                      apex_pt.z - base_pt.z);

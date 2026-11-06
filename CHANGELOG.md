@@ -58,8 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   highlight skipped shadow rays.
 - A cone's side normal points outward and toward the apex (`__intersection__cone`,
   optix-jni#108). It tilted toward the base, so the cone's diffuse light and highlight came from
-  the wrong side. Visual change: every cone, including its metallic reflections, normal maps
-  and denoiser guides, which use that normal.
+  the wrong side. Visual change: every cone, including its metallic reflections, glass and
+  other transparent cones (refraction and Fresnel use the normal), triplanar procedural
+  textures, normal maps and denoiser guides, which all use that normal.
 
 ### Changed
 
@@ -84,6 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An area light's highlight is evaluated toward the disk centre only (its shadow is sampled over
   the disk), so a large disk mirrors as a dot.
+- A cone has no base cap (its base is open), and a hit on its inside is shaded with the outward
+  normal.
 
 ## [0.5.0] - 2026-10-29
 

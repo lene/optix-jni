@@ -330,7 +330,8 @@ class OpaqueSpecularSuite extends AnyFlatSpec with Matchers with RendererFixture
 
   // The cone takes shadows (optix-jni#109). A plate above the cone, between it and the light that
   // mirrors on the flank, shadows all of it: the plate's radius covers the shadow of the base rim
-  // (front rim 0.6 from the axis, light 0.85 across per unit of rise, 1.6 up to the plate).
+  // (front rim 0.6 from the axis, light 0.85 across per unit of rise, 1.6 up to the plate: 1.96)
+  // with a margin of 0.5.
   private def renderConeUnderPlate(material: Material, plate: Boolean): Array[Byte] =
     render:
       renderer.setShadows(true)
@@ -344,7 +345,7 @@ class OpaqueSpecularSuite extends AnyFlatSpec with Matchers with RendererFixture
       Vector[3](0.0f, 1.0f, 0.0f), Vector[3](0.0f, 1.1f, 0.0f), PlateRadius, Matte
     )
 
-  private val PlateRadius = 2.0f
+  private val PlateRadius = 2.5f
 
   it should "show no highlight where the light is shadowed" in:
     def gain(plate: Boolean) =
