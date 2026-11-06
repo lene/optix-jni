@@ -1,5 +1,8 @@
 package io.github.lene.optix
 
+import java.io.File
+import javax.imageio.ImageIO
+
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -77,6 +80,12 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
     val m = vs.sum / vs.size
     math.sqrt(vs.map(v => (v - m) * (v - m)).sum / vs.size)
 
+  /** An image file as RGBA bytes, the layout of a render. */
+  private def readRgba(file: File): Array[Byte] =
+    val png = ImageIO.read(file)
+    (for y <- 0 until png.getHeight; x <- 0 until png.getWidth; argb = png.getRGB(x, y);
+         byte <- Seq(argb >> 16, argb >> 8, argb, argb >>> 24) yield byte.toByte).toArray
+
   // ---- scenes ----
   private val floorAlbedo = 0.7f
 
@@ -88,10 +97,11 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
     renderer.updateImageDimensions(imageSize)
     renderer.setCamera(cam.eye.v3, cam.at.v3, Vector[3](0f, 1f, 0f), cam.fov)
 
-  private def render(model: AmbientModel, accumulate: Int = 1): Array[Byte] =
+  private def render(
+      model: AmbientModel, accumulate: Int = 1, size: ImageSize = imageSize): Array[Byte] =
     renderer.setAmbient(model)
     renderer.setAccumulationFrames(accumulate)
-    renderer.renderWithStats(imageSize).get().image
+    renderer.renderWithStats(size).get().image
 
   /** A slab 1 above a floor at y = 0 (x from 0 to 8); the camera sees the floor at x = 1, under
     * the slab, past the slab's front edge. The direct light is off. */
@@ -228,7 +238,15 @@ class AmbientOcclusionSuite extends AnyFlatSpec with Matchers with RendererFixtu
     info(f"face - hole: $contrast%.1f levels")
     contrast should be > 10.0
 
-  "The constant model" should "keep the holes as bright as the face, as before" in:
+  "The constant model" should "render the scenes of optix-jni b13c283 byte for byte" in:
+    ConstantAmbientScenes.all.foreach { case (name, build) =>
+      renderer.clearAllInstances()
+      build(renderer)
+      val reference = readRgba(new File(s"test-resources/ambient-constant/$name.png"))
+      withClue(s"$name: ") { render(AmbientModel.Constant, size = ConstantAmbientScenes.imageSize) shouldBe reference }
+    }
+
+  it should "keep the holes as bright as the face, as before" in:
     spongeScene(defaultLight)
     math.abs(faceMinusHole(render(AmbientModel.Constant))) should be < 3.0
 
