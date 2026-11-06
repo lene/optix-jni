@@ -1,6 +1,6 @@
 //==============================================================================
 // Cone Ray Intersection Shader
-// Implements ray-cone intersection with base cap
+// Implements ray-cone intersection (lateral surface only; the base is open)
 //==============================================================================
 // This file is included by optix_shaders.cu - do not compile separately
 
@@ -63,29 +63,18 @@ extern "C" __global__ void __intersection__cone() {
 
         if (t_hit < 0.0f || t < t_hit) {
             t_hit = t;
-            // Cone surface normal: n = normalize(hv - s*axis - cos2*(-axis)*len(hv))
-            // Simpler: gradient of (dot(hv,axis))^2 - cos2*dot(hv,hv) = 0
+            // Outward flank normal, the gradient of dot(hv,axis)^2 - cos2*dot(hv,hv):
+            // n = r_hat*cos(a) - axis*sin(a) with r_hat the radial direction (axis points
+            // apex to base, so -axis tilts the normal toward the apex), which is
+            // normalize(cos2*hv - s*axis). It is undefined only at the apex itself.
             const float3 n_raw = make_float3(
-                2.0f*(hv.x*axis.x*s - cos2*hv.x),  // approximation; correct below
-                2.0f*(hv.y*axis.y*s - cos2*hv.y),
-                2.0f*(hv.z*axis.z*s - cos2*hv.z)
+                cos2*hv.x - s*axis.x,
+                cos2*hv.y - s*axis.y,
+                cos2*hv.z - s*axis.z
             );
-            // Proper cone normal: n = hv/|hv| * cos(theta) - axis * sin(theta)
-            // sin^2 = 1-cos2, cos2 = cos^2(half-angle)
-            const float hv_len = sqrtf(hv.x*hv.x + hv.y*hv.y + hv.z*hv.z);
-            if (hv_len > 1e-8f) {
-                const float3 hv_n = make_float3(hv.x/hv_len, hv.y/hv_len, hv.z/hv_len);
-                const float cos_a = sqrtf(cos2);
-                const float sin_a = sqrtf(1.0f - cos2);
-                normal = make_float3(
-                    hv_n.x*cos_a - axis.x*sin_a,
-                    hv_n.y*cos_a - axis.y*sin_a,
-                    hv_n.z*cos_a - axis.z*sin_a
-                );
-                const float n_len = sqrtf(normal.x*normal.x + normal.y*normal.y + normal.z*normal.z);
-                if (n_len > 1e-8f) {
-                    normal = make_float3(normal.x/n_len, normal.y/n_len, normal.z/n_len);
-                }
+            const float n_len = sqrtf(n_raw.x*n_raw.x + n_raw.y*n_raw.y + n_raw.z*n_raw.z);
+            if (n_len > 1e-8f) {
+                normal = make_float3(n_raw.x/n_len, n_raw.y/n_len, n_raw.z/n_len);
             }
         }
     }

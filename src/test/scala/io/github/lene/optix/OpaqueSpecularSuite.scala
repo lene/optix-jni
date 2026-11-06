@@ -322,32 +322,29 @@ class OpaqueSpecularSuite extends AnyFlatSpec with Matchers with RendererFixture
     renderCone(Plastic, FromCamera) should not equal matte
     renderCone(Matte.copy(roughness = SmoothRoughness), FromCamera) shouldEqual matte
 
-  // optix-jni#108: __intersection__cone reports a flank normal tilted toward the base instead of
-  // the apex (hv/|hv| * cos - axis * sin uses the apex-to-hit direction where the radial one
-  // belongs), so the highlight shows under a light from below, not from this one.
+  // optix-jni#108: the flank normal tilts toward the apex (r_hat * cos - axis * sin), so the
+  // highlight sits where the flank mirrors this light.
   it should "show the highlight where its flank mirrors the light" in:
-    pendingUntilFixed:
-      val gain = excess(renderCone(Plastic, ConeFlankLight), renderCone(Matte, ConeFlankLight))
-      highlight(gain).peak.toDouble should be > MinHighlightGain
+    val gain = excess(renderCone(Plastic, ConeFlankLight), renderCone(Matte, ConeFlankLight))
+    highlight(gain).peak.toDouble should be > MinHighlightGain
 
-  // The cone takes shadows (optix-jni#109). With #108 only a light from below makes it show a
-  // highlight, so the light shines up and a plate under the cone shadows all of it.
-  private val ConeLightFromBelow = Vector[3](0.0f, 0.997f, 0.064f)
-
+  // The cone takes shadows (optix-jni#109). A plate above the cone, between it and the light that
+  // mirrors on the flank, shadows all of it: the plate's radius covers the shadow of the base rim
+  // (front rim 0.6 from the axis, light 0.85 across per unit of rise, 1.6 up to the plate).
   private def renderConeUnderPlate(material: Material, plate: Boolean): Array[Byte] =
     render:
       renderer.setShadows(true)
       renderer.setCamera(FrontCamera, Origin, YUp, CameraFov)
-      renderer.setLight(ConeLightFromBelow, 1.0f)
+      renderer.setLight(ConeFlankLight, 1.0f)
       val _ = renderer.addConeInstance(ConeApex, ConeBase, ConeRadius, material)
       if plate then addPlate()
 
   private def addPlate(): Unit =
     val _ = renderer.addCylinderInstance(
-      Vector[3](0.0f, -0.8f, -0.1f), Vector[3](0.0f, -0.7f, -0.1f), PlateRadius, Matte
+      Vector[3](0.0f, 1.0f, 0.0f), Vector[3](0.0f, 1.1f, 0.0f), PlateRadius, Matte
     )
 
-  private val PlateRadius = 1.5f
+  private val PlateRadius = 2.0f
 
   it should "show no highlight where the light is shadowed" in:
     def gain(plate: Boolean) =

@@ -56,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (cylinders) now show the shadows that fall on them.
 - A cone receives shadows too (optix-jni#109), for the same reason: its diffuse shading and
   highlight skipped shadow rays.
+- A cone's side normal points outward and toward the apex (`__intersection__cone`,
+  optix-jni#108). It tilted toward the base, so the cone's diffuse light and highlight came from
+  the wrong side. Visual change: every cone, including its metallic reflections, normal maps
+  and denoiser guides, which use that normal.
 
 ### Changed
 
@@ -80,8 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An area light's highlight is evaluated toward the disk centre only (its shadow is sampled over
   the disk), so a large disk mirrors as a dot.
-- A cone's side normal tilts toward the base instead of the apex (`__intersection__cone`,
-  optix-jni#108), so its diffuse light and highlight come from the wrong side.
 
 ## [0.5.0] - 2026-10-29
 
