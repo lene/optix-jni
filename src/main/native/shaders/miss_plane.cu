@@ -115,9 +115,8 @@ __device__ float3 applyToneMapping(float3 c) {
 
 __device__ void sampleEnvMap(unsigned int& r, unsigned int& g, unsigned int& b) {
     float3 dir = normalize(optixGetWorldRayDirection());
-    float u = 0.5f + atan2f(dir.z, dir.x) * (0.5f * M_1_PIf);
-    float v = 0.5f - asinf(fmaxf(-1.f, fminf(1.f, dir.y))) * M_1_PIf;
-    float4 c = tex2D<float4>(params.env_map_texture, u, v);
+    const float2 uv = envDirToUv(dir);
+    float4 c = tex2D<float4>(params.env_map_texture, uv.x, uv.y);
     float3 mapped = applyToneMapping(make_float3(c.x, c.y, c.z));
     r = static_cast<unsigned int>(mapped.x * COLOR_SCALE_FACTOR);
     g = static_cast<unsigned int>(mapped.y * COLOR_SCALE_FACTOR);

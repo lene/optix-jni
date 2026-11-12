@@ -494,14 +494,10 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
     const float u   = (static_cast<float>(col) + 0.5f)
                     / static_cast<float>(params.env_width);
 
-    // 3. Convert (u,v) → equirectangular world-space direction
-    const float theta     = v * M_PIf;
-    const float phi       = u * 2.0f * M_PIf;
-    const float sin_theta = sinf(theta);
-    light_dir_out = make_float3(
-        sin_theta * cosf(phi),
-        cosf(theta),
-        sin_theta * sinf(phi));
+    // 3. Convert (u,v) → world-space direction. Must be the exact inverse of the
+    // background's mapping (envDirToUv in miss_plane.cu) — optix-jni#112.
+    light_dir_out = envUvToDir(u, v);
+    const float sin_theta = sinf(v * M_PIf);  // pdf Jacobian
 
     // 4. Env map radiance at (u,v)
     const float4 texel   = tex2D<float4>(params.env_map_texture, u, v);
