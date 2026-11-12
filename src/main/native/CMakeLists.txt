@@ -313,6 +313,7 @@ if(BUILD_OPTIX_TESTS)
         tests/CustomGeometryRegistryTest.cpp  # SPI (Task 1.1a) runtime type-id allocator
         tests/MaterialPayloadTest.cpp  # F2 packed-material layout fitness (Sprint 35 Task 3.1)
         tests/VectorMathTest.cpp  # reflect() formula, host-testable (Sprint 36 H3.2)
+        tests/EnvMapMappingTest.cpp  # env-map uv <-> direction shared by background and IBL (optix-jni#112)
         tests/LaunchFailureFormatTest.cpp  # launch-failure messages, host-testable
         tests/ContextLostTest.cpp  # sticky CUDA error latch (optix-jni#73), host-testable
         tests/optix_function_table.cpp  # Define optix function table for tests

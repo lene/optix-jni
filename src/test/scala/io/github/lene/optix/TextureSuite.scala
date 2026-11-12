@@ -215,14 +215,7 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
     after shouldBe beforeIdx
 
   private def writeMinimalHdr(path: java.nio.file.Path, width: Int, height: Int): Unit =
-    val header = s"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y $height +X $width\n"
-    val fos = new java.io.FileOutputStream(path.toFile)
-    try
-      fos.write(header.getBytes("ASCII"))
-      // RGBE encoding of (1.0, 1.0, 1.0): mantissa=0.5 exp=1 → E=129, R=G=B=128
-      val pixel = Array[Byte](128.toByte, 128.toByte, 128.toByte, 129.toByte)
-      for _ <- 0 until width * height do fos.write(pixel)
-    finally fos.close()
+    TestUtilities.writeHdr(path, width, height, (_, _) => (1.0f, 1.0f, 1.0f))
 
   "uploadTextureFromFile" should "load HDR texture and return valid index" in:
     val tmp = java.nio.file.Files.createTempFile("test_hdr_", ".hdr")
