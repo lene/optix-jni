@@ -1,7 +1,6 @@
 #include <optix.h>
 #include "../include/OptiXData.h"
 #include "../include/VectorMath.h"
-#include "../include/EnvMapMapping.h"
 
 extern "C" {
     __constant__ BaseParams params;

@@ -46,6 +46,50 @@ TEST(EnvMapMappingTest, OneQuarterIsMinusZ) {
 }
 
 TEST(EnvMapMappingTest, TopRowApproachesPlusY) {
-    const float3 d = envUvToDir(0.3f, 1e-4f);
+    const float3 d = envUvToDir(0.3f, 1e-5f);
     EXPECT_NEAR(d.y, 1.0f, 1e-5f);
+    EXPECT_NEAR(d.x, 0.0f, kEpsilon);
+    EXPECT_NEAR(d.z, 0.0f, kEpsilon);
+}
+
+TEST(EnvMapMappingTest, BottomRowIsMinusY) {
+    EXPECT_TRUE(DirNear(envUvToDir(0.3f, 1.0f), 0.0f, -1.0f, 0.0f));
+}
+
+namespace {
+::testing::AssertionResult UvNear(float2 actual, float u, float v) {
+    if (std::fabs(actual.x - u) <= kEpsilon && std::fabs(actual.y - v) <= kEpsilon) {
+        return ::testing::AssertionSuccess();
+    }
+    return ::testing::AssertionFailure()
+        << "expected (" << u << ", " << v << ") but got (" << actual.x << ", " << actual.y << ")";
+}
+}  // namespace
+
+TEST(EnvMapMappingTest, DirToUvAxes) {
+    EXPECT_TRUE(UvNear(envDirToUv(make_float3(1.f, 0.f, 0.f)), 0.5f, 0.5f));
+    EXPECT_TRUE(UvNear(envDirToUv(make_float3(0.f, 0.f, 1.f)), 0.75f, 0.5f));
+    EXPECT_TRUE(UvNear(envDirToUv(make_float3(0.f, 0.f, -1.f)), 0.25f, 0.5f));
+    EXPECT_TRUE(UvNear(envDirToUv(make_float3(0.f, 1.f, 0.f)), 0.5f, 0.0f));
+    EXPECT_TRUE(UvNear(envDirToUv(make_float3(0.f, -1.f, 0.f)), 0.5f, 1.0f));
+}
+
+TEST(EnvMapMappingTest, MinusXIsTheSeam) {
+    // -x lies on the u = 0 / u = 1 seam; either side is correct.
+    const float u = envDirToUv(make_float3(-1.f, 0.f, 0.f)).x;
+    EXPECT_TRUE(u < kEpsilon || u > 1.0f - kEpsilon) << "u=" << u;
+}
+
+TEST(EnvMapMappingTest, DirToUvClampsYJustAboveOne) {
+    // A unit-ish vector whose y rounded just past 1 must not make asin return NaN.
+    const float2 uv = envDirToUv(make_float3(0.f, 1.0000001f, 0.f));
+    EXPECT_TRUE(std::isfinite(uv.x));
+    EXPECT_TRUE(std::isfinite(uv.y));
+    EXPECT_NEAR(uv.y, 0.0f, kEpsilon);
+}
+
+TEST(EnvMapMappingTest, SinThetaIsOneAtTheEquatorAndZeroAtThePoles) {
+    EXPECT_NEAR(envUvSinTheta(0.5f), 1.0f, kEpsilon);
+    EXPECT_NEAR(envUvSinTheta(0.0f), 0.0f, kEpsilon);
+    EXPECT_NEAR(envUvSinTheta(1.0f), 0.0f, kEpsilon);
 }

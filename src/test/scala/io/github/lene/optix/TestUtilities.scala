@@ -76,13 +76,15 @@ object TestUtilities extends LazyLogging:
       body.foreach(p => out.write(p))
     finally out.close()
 
-  /** Shared-exponent RGBE encoding. A pixel never starts with the bytes 2,2 (the RLE marker). */
-  private def rgbe(rgb: (Float, Float, Float)): Array[Byte] =
+  /** Shared-exponent RGBE encoding of non-negative finite channels. A pixel never starts with the
+    * bytes 2,2 (the RLE marker): the guard nudges red from 2 to 3.
+    */
+  private[optix] def rgbe(rgb: (Float, Float, Float)): Array[Byte] =
     val (r, g, b) = rgb
     val m = math.max(r, math.max(g, b))
     if m < 1e-32f then Array[Byte](0, 0, 0, 0)
     else
-      val exponent = math.floor(math.log(m.toDouble) / math.log(2.0)).toInt + 1
+      val exponent = java.lang.Math.getExponent(m) + 1
       val scale = 256.0 / math.pow(2.0, exponent.toDouble)
       def mantissa(c: Float): Int = math.min(255, (c * scale).toInt)
       val (mr, mg) = (mantissa(r), mantissa(g))

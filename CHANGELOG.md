@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Image-based lighting lights from the azimuth the background shows (optix-jni#112): the IBL
+  sampler turned a texel's u back into azimuth 2*pi*u while the background maps
+  u = 0.5 + atan2(z, x) / 2pi, so IBL was rotated by 180 degrees against the visible sky. Both now
+  share `EnvMapMapping.h`. Every IBL render changes; menger's IBL reference images move at its
+  next pin bump (menger-toplevel#115).
 - The holes of a Menger sponge show (optix-jni#106): a surface the lights miss got the same
   constant fill as the inside of a cavity, so an unlit face and a hole were identical under the
   default light and when backlit. With the default occlusion ambient, a hole is darker than the

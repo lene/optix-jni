@@ -30,22 +30,38 @@ class IblAzimuthSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val leftHalf = TestUtilities.Region(centre._1 - 50, centre._2 - 20, centre._1 - 5, centre._2 + 20)
   private val rightHalf = TestUtilities.Region(centre._1 + 5, centre._2 - 20, centre._1 + 50, centre._2 + 20)
   private val centreRegion = TestUtilities.Region.centered(centre._1, centre._2, 20)
+  private val leftEdge = TestUtilities.Region(0, centre._2 - 20, 20, centre._2 + 20)
 
-  /** Renders the default sphere lit only by an env map that is black except for a bright band
-    * of columns around texture coordinate `bandU`. */
-  private def renderLitFromBand(bandU: Double): Array[Byte] =
+  /** Uploads an env map that is black except for a bright band of columns around texture
+    * coordinate `bandU` and makes it the environment map. */
+  private def useBandMap(bandU: Double): Unit =
     val tmp = Files.createTempFile("ibl_azimuth_", ".hdr")
     try
       TestUtilities.writeHdr(tmp, mapWidth, mapHeight, (x, _) =>
         val u = (x + 0.5) / mapWidth
         if math.abs(u - bandU) <= bandHalfWidth then (bandRadiance, bandRadiance, bandRadiance)
         else (0.0f, 0.0f, 0.0f))
-      renderer.clearPlanes()
-      renderer.setLight(Vector[3](0f, -1f, 0f), 0f)
       renderer.setEnvironmentMap(renderer.uploadTextureFromFile(tmp.toString))
-      renderer.setIBL(true, 1.0f, 8)
-      renderImage(imageSize)
     finally Files.deleteIfExists(tmp)
+
+  /** Renders the default sphere lit only by the band map (IBL on, direct light off). */
+  private def renderLitFromBand(bandU: Double): Array[Byte] =
+    renderer.clearPlanes()
+    renderer.setLight(Vector[3](0f, -1f, 0f), 0f)
+    useBandMap(bandU)
+    renderer.setIBL(true, 1.0f, 8)
+    renderImage(imageSize)
+
+  /** Renders the background alone: no objects in view, IBL off, camera looking down -z, so the
+    * image centre shows u = 0.25 (-z) and the edges show other azimuths. */
+  private def renderBackground(bandU: Double): Array[Byte] =
+    renderer.clearPlanes()
+    renderer.setSphere(Vector[3](0f, 100f, 0f), 0.5f)
+    renderer.setCamera(
+      Vector[3](0f, 0f, 3f), Vector[3](0f, 0f, 0f), Vector[3](0f, 1f, 0f), 60f)
+    useBandMap(bandU)
+    renderer.setIBL(false, 1.0f, 8)
+    renderImage(imageSize)
 
   private def brightness(image: Array[Byte], region: TestUtilities.Region): Double =
     TestUtilities.regionBrightness(image, imageSize, region)
@@ -61,3 +77,15 @@ class IblAzimuthSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val behindSphere = brightness(renderLitFromBand(0.25), centreRegion)
     info(s"+z band = $towardCamera, -z band = $behindSphere")
     towardCamera should be > minRatio * behindSphere
+
+  "The background" should "show a u = 0.25 band straight ahead, down -z, and not at the edges" in:
+    val image = renderBackground(0.25)
+    val (ahead, edge) = (brightness(image, centreRegion), brightness(image, leftEdge))
+    info(s"centre = $ahead, edge = $edge")
+    ahead should be > minRatio * edge
+
+  it should "show a u = 0.75 band behind the camera, not ahead" in:
+    val behind = brightness(renderBackground(0.75), centreRegion)
+    val ahead = brightness(renderBackground(0.25), centreRegion)
+    info(s"+z band: centre = $behind, -z band: centre = $ahead")
+    ahead should be > minRatio * behind

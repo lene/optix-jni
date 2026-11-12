@@ -6,6 +6,7 @@
 // the --plane CLI flag and existing tests. It will be removed in a future sprint.
 //==============================================================================
 // This file is included by optix_shaders.cu - do not compile separately
+#include "../include/EnvMapMapping.h"
 
 //==============================================================================
 // Plane helper functions (used by caustics and legacy miss shader)

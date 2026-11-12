@@ -1,3 +1,5 @@
+#include "../include/EnvMapMapping.h"
+
 // Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
 // Where:
 //   I₀ = initial intensity
@@ -495,9 +497,9 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
                     / static_cast<float>(params.env_width);
 
     // 3. Convert (u,v) → world-space direction. Must be the exact inverse of the
-    // background's mapping (envDirToUv in miss_plane.cu) — optix-jni#112.
+    // background's mapping (envDirToUv, EnvMapMapping.h) — optix-jni#112.
     light_dir_out = envUvToDir(u, v);
-    const float sin_theta = sinf(v * M_PIf);  // pdf Jacobian
+    const float sin_theta = envUvSinTheta(v);  // pdf Jacobian
 
     // 4. Env map radiance at (u,v)
     const float4 texel   = tex2D<float4>(params.env_map_texture, u, v);
