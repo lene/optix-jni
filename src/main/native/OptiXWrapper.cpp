@@ -3692,10 +3692,10 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
                       << "': " << error << std::endl;
             return -1;
         }
-        int idx = uploadTextureFloat(path, image->rgba.data(),
+        int idx = uploadTextureFloat(path, image->rgba.get(),
                                      static_cast<unsigned int>(image->width),
                                      static_cast<unsigned int>(image->height));
-        impl->computeAndUploadEnvMapCDF(image->rgba.data(), image->width, image->height);
+        impl->computeAndUploadEnvMapCDF(image->rgba.get(), image->width, image->height);
         return idx;
     }
 

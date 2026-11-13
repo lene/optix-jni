@@ -2,8 +2,14 @@
 
 #include "stb_image.h"
 
+#include <sys/stat.h>
+
+#include <algorithm>
 #include <cstdio>
-#include <memory>
+
+void StbImageFree::operator()(float* pixels) const {
+    stbi_image_free(pixels);
+}
 
 namespace {
 
@@ -39,7 +45,53 @@ int eofCallback(void* user) {
 
 const stbi_io_callbacks FILE_CALLBACKS = {readCallback, skipCallback, eofCallback};
 
+constexpr int RLE_MIN_WIDTH = 8;
+constexpr int RLE_MAX_WIDTH = 32767;
+constexpr long long RLE_PIXELS_PER_RUN = 127;
+constexpr long long RLE_SCANLINE_HEADER_BYTES = 4;
+constexpr long long RLE_RUN_BYTES = 2;
+constexpr long long CHANNELS = 4;
+
+long long fileSize(FILE* file) {
+    struct stat info {};
+    return fstat(fileno(file), &info) == 0 ? static_cast<long long>(info.st_size) : -1;
+}
+
+// Reads width and height from the header without decoding. False if stb_image cannot tell.
+bool readDimensions(FileSource& source, int& width, int& height) {
+    int components = 0;
+    const bool known =
+        stbi_info_from_callbacks(&FILE_CALLBACKS, &source, &width, &height, &components) != 0;
+    rewind(source.file);
+    source.starved = false;
+    return known;
+}
+
+// A message if the header's size cannot be right, empty if it can. Costs no allocation.
+std::string rejectBeforeDecoding(FileSource& source) {
+    int width = 0, height = 0;
+    if (!readDimensions(source, width, height)) return "";  // decoding gives stb_image's reason
+
+    const std::string size = std::to_string(width) + "x" + std::to_string(height);
+    if (width > HDR_MAX_DIMENSION || height > HDR_MAX_DIMENSION) {
+        return "image too large: " + size + ", at most " + std::to_string(HDR_MAX_DIMENSION);
+    }
+    const long long bytes = fileSize(source.file);
+    if (bytes >= 0 && bytes < minimumHdrDataBytes(width, height)) {
+        return "file too small for " + size + " pixels: " + std::to_string(bytes) + " bytes";
+    }
+    return "";
+}
+
 }  // namespace
+
+long long minimumHdrDataBytes(long long width, long long height) {
+    const long long flatScanline = CHANNELS * width;
+    if (width < RLE_MIN_WIDTH || width > RLE_MAX_WIDTH) return flatScanline * height;
+    const long long runsPerChannel = (width + RLE_PIXELS_PER_RUN - 1) / RLE_PIXELS_PER_RUN;
+    const long long rleScanline = RLE_SCANLINE_HEADER_BYTES + CHANNELS * RLE_RUN_BYTES * runsPerChannel;
+    return std::min(flatScanline, rleScanline) * height;
+}
 
 std::optional<HdrImage> loadHdr(const char* path, std::string& error) {
     if (!path) {
@@ -53,22 +105,20 @@ std::optional<HdrImage> loadHdr(const char* path, std::string& error) {
     }
 
     FileSource source{file.get()};
-    int w = 0, h = 0, c = 0;
-    float* data = stbi_loadf_from_callbacks(&FILE_CALLBACKS, &source, &w, &h, &c, 4);
-    if (!data) {
+    // RED-STATE-STUB
+
+    HdrImage image;
+    int components = 0;
+    image.rgba.reset(stbi_loadf_from_callbacks(&FILE_CALLBACKS, &source, &image.width, &image.height,
+                                               &components, 4));
+    if (!image.rgba) {
         const char* reason = stbi_failure_reason();
         error = reason ? reason : "unknown error";
         return std::nullopt;
     }
-    std::unique_ptr<float, decltype(&stbi_image_free)> pixels(data, stbi_image_free);
     if (source.starved) {
         error = "truncated file: the pixel data ends before the header's size";
         return std::nullopt;
     }
-
-    HdrImage image;
-    image.width = w;
-    image.height = h;
-    image.rgba.assign(data, data + static_cast<size_t>(w) * static_cast<size_t>(h) * 4);
     return image;
 }
