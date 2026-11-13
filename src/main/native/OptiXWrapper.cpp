@@ -36,6 +36,29 @@ constexpr unsigned int FLOAT_RGBA_BYTES_PER_PIXEL = 4 * sizeof(float);
 // Instance visibility masks; every optixTrace call passes OptixVisibilityMask(255).
 constexpr unsigned int VISIBILITY_MASK_ALL = 255;
 constexpr unsigned int VISIBILITY_MASK_NONE = 0;
+
+// Device memory that is freed on every way out, until release() hands it over. The data that is
+// in use (a mesh's buffers, the IAS) is rebuilt into these first and swapped in last, so a failed
+// allocation or build leaves what was live untouched (optix-jni#87, #81).
+using DeviceBuffer = std::unique_ptr<void, decltype(&cudaFree)>;
+
+DeviceBuffer allocateDevice(size_t bytes) {
+    void* ptr = nullptr;
+    cudaMallocChecked(&ptr, bytes);
+    return DeviceBuffer(ptr, cudaFree);
+}
+
+DeviceBuffer uploadToDevice(const void* host, size_t bytes) {
+    DeviceBuffer buffer = allocateDevice(bytes);
+    CUDA_CHECK(cudaMemcpy(buffer.get(), host, bytes, cudaMemcpyHostToDevice));
+    return buffer;
+}
+
+// Frees `current` (if any) and takes over `replacement`.
+void replaceDevice(CUdeviceptr& current, DeviceBuffer& replacement) {
+    if (current) cudaFree(reinterpret_cast<void*>(current));
+    current = reinterpret_cast<CUdeviceptr>(replacement.release());
+}
 }  // namespace
 
 /**
@@ -1163,23 +1186,13 @@ int OptiXWrapper::updateCpuTriangleMesh(
     // allocate and upload the replacements first, free the old ones only after the swap
     // (optix-jni#87). A failure before the swap leaves the slot as it was; the guards free the
     // new buffers on the way out.
-    using DeviceGuard = std::unique_ptr<void, decltype(&cudaFree)>;
-    const size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
-    void* new_vertices = nullptr;
-    cudaMallocChecked(&new_vertices, vertex_size);
-    DeviceGuard vertices_guard(new_vertices, cudaFree);
-    CUDA_CHECK(cudaMemcpy(new_vertices, vertices, vertex_size, cudaMemcpyHostToDevice));
+    DeviceBuffer new_vertices = uploadToDevice(
+        vertices, num_vertices * vertex_stride * sizeof(float));
+    DeviceBuffer new_indices = uploadToDevice(
+        indices, num_triangles * 3 * sizeof(unsigned int));
 
-    const size_t index_size = num_triangles * 3 * sizeof(unsigned int);
-    void* new_indices = nullptr;
-    cudaMallocChecked(&new_indices, index_size);
-    DeviceGuard indices_guard(new_indices, cudaFree);
-    CUDA_CHECK(cudaMemcpy(new_indices, indices, index_size, cudaMemcpyHostToDevice));
-
-    if (mesh.d_vertices) cudaFree(reinterpret_cast<void*>(mesh.d_vertices));
-    if (mesh.d_indices) cudaFree(reinterpret_cast<void*>(mesh.d_indices));
-    mesh.d_vertices = reinterpret_cast<CUdeviceptr>(vertices_guard.release());
-    mesh.d_indices = reinterpret_cast<CUdeviceptr>(indices_guard.release());
+    replaceDevice(mesh.d_vertices, new_vertices);
+    replaceDevice(mesh.d_indices, new_indices);
     mesh.num_vertices = num_vertices;
     mesh.num_triangles = num_triangles;
     mesh.vertex_stride = vertex_stride;
@@ -1456,68 +1469,38 @@ void OptiXWrapper::buildIAS() {
         return;
     }
 
-    // Free existing IAS buffers
-    if (impl->d_ias_output_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
-        impl->d_ias_output_buffer = 0;
-    }
-    if (impl->d_instances_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instances_buffer));
-        impl->d_instances_buffer = 0;
-    }
-    if (impl->d_instance_materials) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
-        impl->d_instance_materials = 0;
-    }
-
-    // Upload instances to GPU
-    size_t instances_size = optix_instances.size() * sizeof(OptixInstance);
-    cudaMallocChecked(reinterpret_cast<void**>(&impl->d_instances_buffer), instances_size);
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(impl->d_instances_buffer),
-        optix_instances.data(),
-        instances_size,
-        cudaMemcpyHostToDevice
-    ));
-
-    // Upload materials to GPU
-    size_t materials_size = materials.size() * sizeof(InstanceMaterial);
-    cudaMallocChecked(reinterpret_cast<void**>(&impl->d_instance_materials), materials_size);
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(impl->d_instance_materials),
-        materials.data(),
-        materials_size,
-        cudaMemcpyHostToDevice
-    ));
+    // Full rebuild. The live IAS stays in use until its replacement exists (a render that fails
+    // here is retried on the next one, and nothing may have freed what the old IAS points at):
+    // everything new is built into guarded locals and swapped in only after optixAccelBuild
+    // succeeded and the device is synchronized (optix-jni#81). A throw leaves the live IAS as it was.
+    DeviceBuffer new_instances = uploadToDevice(
+        optix_instances.data(), optix_instances.size() * sizeof(OptixInstance));
+    DeviceBuffer new_materials = uploadToDevice(
+        materials.data(), materials.size() * sizeof(InstanceMaterial));
 
     // Task 1.1c: pack per-instance custom-geometry blobs (uniform stride = the
     // largest blob) and upload for the registrants' intersection shaders. Indexed
     // by ObjectInstance.geometry_data_index (== position in custom_geometry_blobs).
-    if (impl->d_custom_geometry_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_custom_geometry_data));
-        impl->d_custom_geometry_data = 0;
-    }
-    impl->custom_geometry_stride = 0;
+    size_t new_custom_stride = 0;
+    DeviceBuffer new_custom_data(nullptr, cudaFree);
     if (!impl->custom_geometry_blobs.empty()) {
         for (const auto& blob : impl->custom_geometry_blobs) {
-            impl->custom_geometry_stride = std::max(impl->custom_geometry_stride, blob.size());
+            new_custom_stride = std::max(new_custom_stride, blob.size());
         }
         const size_t n = impl->custom_geometry_blobs.size();
-        std::vector<char> packed(n * impl->custom_geometry_stride, 0);
+        std::vector<char> packed(n * new_custom_stride, 0);
         for (size_t i = 0; i < n; ++i) {
-            std::memcpy(packed.data() + i * impl->custom_geometry_stride,
+            std::memcpy(packed.data() + i * new_custom_stride,
                         impl->custom_geometry_blobs[i].data(),
                         impl->custom_geometry_blobs[i].size());
         }
-        cudaMallocChecked(reinterpret_cast<void**>(&impl->d_custom_geometry_data), packed.size());
-        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_custom_geometry_data),
-                              packed.data(), packed.size(), cudaMemcpyHostToDevice));
+        new_custom_data = uploadToDevice(packed.data(), packed.size());
     }
 
     // Build IAS input
     OptixBuildInput ias_input = {};
     ias_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-    ias_input.instanceArray.instances = impl->d_instances_buffer;
+    ias_input.instanceArray.instances = reinterpret_cast<CUdeviceptr>(new_instances.get());
     ias_input.instanceArray.numInstances = static_cast<unsigned int>(optix_instances.size());
 
     OptixAccelBuildOptions accel_options = {};
@@ -1535,35 +1518,39 @@ void OptiXWrapper::buildIAS() {
     ));
 
     // Allocate temp and output buffers
-    CUdeviceptr d_temp_buffer;
-    cudaMallocChecked(reinterpret_cast<void**>(&d_temp_buffer), ias_buffer_sizes.tempSizeInBytes);
-    // CR-5(d): free the build-temp even if a later CUDA_CHECK/OPTIX_CHECK throws; .release() on success.
-    auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
-        reinterpret_cast<void*>(d_temp_buffer), cudaFree);
-    cudaMallocChecked(reinterpret_cast<void**>(&impl->d_ias_output_buffer), ias_buffer_sizes.outputSizeInBytes);
+    DeviceBuffer d_temp = allocateDevice(ias_buffer_sizes.tempSizeInBytes);
+    DeviceBuffer new_output = allocateDevice(ias_buffer_sizes.outputSizeInBytes);
 
     // Build IAS
+    OptixTraversableHandle new_handle = 0;
     OPTIX_CHECK(optixAccelBuild(
         impl->optix_context.getContext(),
         0,  // CUDA stream
         &accel_options,
         &ias_input,
         1,
-        d_temp_buffer,
+        reinterpret_cast<CUdeviceptr>(d_temp.get()),
         ias_buffer_sizes.tempSizeInBytes,
-        impl->d_ias_output_buffer,
+        reinterpret_cast<CUdeviceptr>(new_output.get()),
         ias_buffer_sizes.outputSizeInBytes,
-        &impl->ias_handle,
+        &new_handle,
         nullptr,
         0
     ));
 
     // Free temp buffer
-    d_temp_guard.release();
-    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
+    CUDA_CHECK(cudaFree(d_temp.release()));
 
     // Synchronize to ensure IAS build is complete before rendering
     CUDA_CHECK(cudaDeviceSynchronize());
+
+    // The build is complete: swap everything in together, then free what the old IAS held.
+    replaceDevice(impl->d_ias_output_buffer, new_output);
+    replaceDevice(impl->d_instances_buffer, new_instances);
+    replaceDevice(impl->d_instance_materials, new_materials);
+    replaceDevice(impl->d_custom_geometry_data, new_custom_data);
+    impl->custom_geometry_stride = new_custom_stride;
+    impl->ias_handle = new_handle;
 
     impl->use_ias = true;
     impl->ias_dirty = false;
