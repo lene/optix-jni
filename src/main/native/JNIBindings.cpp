@@ -1142,14 +1142,22 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCpuTriangle
             env->ReleaseIntArrayElements(indices, idxs, JNI_ABORT);
             return -1;
         }
-        int rc = wrapper->updateCpuTriangleMesh(
-            static_cast<int>(meshIndex),
-            reinterpret_cast<const float*>(verts),
-            static_cast<unsigned int>(numVertices),
-            reinterpret_cast<const unsigned int*>(idxs),
-            static_cast<unsigned int>(numTriangles),
-            static_cast<unsigned int>(vertexStride)
-        );
+        int rc;
+        try {
+            rc = wrapper->updateCpuTriangleMesh(
+                static_cast<int>(meshIndex),
+                reinterpret_cast<const float*>(verts),
+                static_cast<unsigned int>(numVertices),
+                reinterpret_cast<const unsigned int*>(idxs),
+                static_cast<unsigned int>(numTriangles),
+                static_cast<unsigned int>(vertexStride)
+            );
+        } catch (...) {
+            // The update can fail (an allocation, a GAS build): release the pinned arrays first.
+            env->ReleaseFloatArrayElements(vertices, verts, JNI_ABORT);
+            env->ReleaseIntArrayElements(indices, idxs, JNI_ABORT);
+            throw;
+        }
         env->ReleaseFloatArrayElements(vertices, verts, JNI_ABORT);
         env->ReleaseIntArrayElements(indices, idxs, JNI_ABORT);
         return static_cast<jint>(rc);
