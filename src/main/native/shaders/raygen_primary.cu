@@ -1,4 +1,26 @@
 //==============================================================================
+// Sub-pixel jitter of the primary ray (optix-jni#116)
+//==============================================================================
+
+// Seed key distinct from the other per-frame seeds (hero wavelength, ambient occlusion), and the
+// stride between accumulation frames.
+constexpr unsigned int JITTER_SEED_KEY = 0x51BE51BEu;
+constexpr unsigned int JITTER_FRAME_SEED_STRIDE = 104729u;
+
+// Where inside the pixel the primary ray goes, as an offset from the pixel centre in pixels, in
+// [-0.5, 0.5) on both axes. Frame 0 stays at the centre, so a single-frame render is unchanged;
+// later accumulation frames sample other points of the pixel, and averaging them smooths edges.
+// Deterministic: the same pixel in the same frame always gets the same offset.
+static __device__ float2 subPixelJitter(const uint3& idx) {
+    if (params.frame_seed_offset == 0u) return make_float2(0.0f, 0.0f);
+    unsigned int seed = tea4(idx.x + idx.y * static_cast<unsigned int>(params.image_width),
+                             params.frame_seed_offset * JITTER_FRAME_SEED_STRIDE + JITTER_SEED_KEY);
+    const float jitter_x = lcg(seed) - RenderingConstants::PIXEL_CENTER_OFFSET;
+    const float jitter_y = lcg(seed) - RenderingConstants::PIXEL_CENTER_OFFSET;
+    return make_float2(jitter_x, jitter_y);
+}
+
+//==============================================================================
 // Ray generation shader - generates primary rays from camera
 //==============================================================================
 extern "C" __global__ void __raygen__rg() {
@@ -14,8 +36,10 @@ extern "C" __global__ void __raygen__rg() {
     // For floor at bottom: top screen should look up (positive v), bottom should look down (negative v)
     // Since idx.y increases downward but v should increase upward, we need to flip:
     // idx.y=0 → v=+1 (top of screen looks up), idx.y=height → v=-1 (bottom looks down)
-    const float u = (static_cast<float>(idx.x) + RenderingConstants::PIXEL_CENTER_OFFSET) / static_cast<float>(dim.x) * RenderingConstants::NDC_SCALE - RenderingConstants::NDC_OFFSET;
-    const float v = RenderingConstants::NDC_OFFSET - (static_cast<float>(idx.y) + RenderingConstants::PIXEL_CENTER_OFFSET) / static_cast<float>(dim.y) * RenderingConstants::NDC_SCALE;
+    // Antialiasing subdivides the pixel itself; without it, accumulated frames jitter the ray.
+    const float2 jitter = params.aa_enabled ? make_float2(0.0f, 0.0f) : subPixelJitter(idx);
+    const float u = (static_cast<float>(idx.x) + RenderingConstants::PIXEL_CENTER_OFFSET + jitter.x) / static_cast<float>(dim.x) * RenderingConstants::NDC_SCALE - RenderingConstants::NDC_OFFSET;
+    const float v = RenderingConstants::NDC_OFFSET - (static_cast<float>(idx.y) + RenderingConstants::PIXEL_CENTER_OFFSET + jitter.y) / static_cast<float>(dim.y) * RenderingConstants::NDC_SCALE;
 
     // Construct ray direction from camera basis vectors
     const float3 ray_origin = make_float3(
