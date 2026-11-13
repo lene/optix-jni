@@ -133,7 +133,9 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
         renderer.removeInstance(extra)
         maxDiff(renders(small), before) shouldBe 0
     // the injection of allocation failures+1 did not fail: the update went through
-    withClue("the update must make at least two allocations (vertices, indices): ")(failures should be >= 2)
+    withClue("the update must make at least four allocations (vertices, indices, GAS temp, GAS output): ")(
+      failures should be >= 4
+    )
     val updated = renders(small)
     withClue("the new mesh must show: ")(maxDiff(updated, before) should be > 40)
     maxDiff(renders(small), updated) shouldBe 0
@@ -172,6 +174,11 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
     val _ = renderer.addSphereInstance(at(-1.0f), red)
     val _ = renderer.addSphereInstance(at(0.0f), red)
 
+  // This shows recovery: after a failed rebuild at every allocation of the rebuild, the next render
+  // succeeds and shows every instance. It does not show atomicity (the live IAS surviving the
+  // failure): the unfixed code recovered too, because ias_dirty stayed set and the freed output
+  // buffer was zeroed, so the next render rebuilt from scratch. No cheap render observable
+  // distinguishes the two.
   "A failed IAS rebuild" should "leave the renderer able to render every instance" in:
     twoSpheres()
     val two = renders(small)
@@ -199,17 +206,28 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
       case Array(p, mib) if p == pid => mib.toLong * 1024 * 1024
     }.getOrElse(0L)
 
-  /** A cycle of failures: image buffer, a large mesh update, an IAS of many instances. */
-  private def failureCycle(slot: MeshSlot, big: TriangleMeshData, other: TriangleMeshData): Unit =
+  /** A cycle of failures. The mesh slot holds the small mesh; updates to the big one fail at the
+    * 2nd allocation (the big vertex buffer is uploaded, the index buffer fails) and at the next two
+    * (the GAS temp and output buffers), so a missing guard leaks megabytes per cycle. Then a
+    * successful round trip big -> small frees the old buffers (a leak on the swap shows too).
+    * The IAS rebuild's failure leaks at most a few hundred bytes, below what nvidia-smi resolves:
+    * it is exercised but not measured.
+    */
+  private def failureCycle(slot: MeshSlot, big: TriangleMeshData, small0: TriangleMeshData): Unit =
     failNext(1)
     an[OptiXException] should be thrownBy renderer.render(large)
     renders(small)
     renders(large)
     renders(small)
-    failNext(1)
-    an[OptiXException] should be thrownBy renderer.updateCpuTriangleMesh(slot, other)
-    renderer.updateCpuTriangleMesh(slot, big)
+    withClue("the big update must fail at its 2nd allocation: ")(
+      failsAt(2, renderer.updateCpuTriangleMesh(slot, big)) shouldBe true
+    )
+    val _ = failsAt(3, renderer.updateCpuTriangleMesh(slot, big))
+    val _ = failsAt(4, renderer.updateCpuTriangleMesh(slot, big))
+    renderer.updateCpuTriangleMesh(slot, small0)
     renders(small)
+    renderer.updateCpuTriangleMesh(slot, big)
+    renderer.updateCpuTriangleMesh(slot, small0)
     val extra = renderer.addSphereInstance(at(1.5f), red)
     failNext(2)
     an[OptiXException] should be thrownBy renderer.render(small)
@@ -239,7 +257,6 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
     val slot = renderer.addTriangleMesh(other)
     val _ = renderer.addTriangleMeshInstance(identity, red)
     val _ = renderer.addSphereInstance(at(-1.0f), red)
-    renderer.updateCpuTriangleMesh(slot, big)
     failureCycle(slot, big, other)
     val baseline = processGpuMemoryBytes()
     (1 to 10).foreach(_ => failureCycle(slot, big, other))

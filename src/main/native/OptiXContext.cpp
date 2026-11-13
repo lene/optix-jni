@@ -3,6 +3,7 @@
 #include "include/OptiXData.h"
 #include "include/OptiXDiagnostics.h"
 #include "include/OptiXErrorChecking.h"
+#include "include/AllocationFaults.h"
 
 #include <iostream>
 #include "include/OptixLogging.h"
@@ -794,19 +795,19 @@ OptiXContext::GASBuildResult OptiXContext::buildTriangleGAS(
 
     // Allocate temporary buffer
     CUdeviceptr d_temp_buffer;
-    CUDA_CHECK(cudaMalloc(
+    cudaMallocChecked(
         reinterpret_cast<void**>(&d_temp_buffer),
         gas_buffer_sizes.tempSizeInBytes
-    ));
+    );
     auto d_temp_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
         reinterpret_cast<void*>(d_temp_buffer), cudaFree);
 
     // Allocate output buffer
     CUdeviceptr d_gas_output_buffer;
-    CUDA_CHECK(cudaMalloc(
+    cudaMallocChecked(
         reinterpret_cast<void**>(&d_gas_output_buffer),
         gas_buffer_sizes.outputSizeInBytes
-    ));
+    );
     auto d_gas_output_buffer_guard = std::unique_ptr<void, decltype(&cudaFree)>(
         reinterpret_cast<void*>(d_gas_output_buffer), cudaFree);
 
