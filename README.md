@@ -164,6 +164,21 @@ The denoiser allocates OptiX state, scratch, HDR intensity, and image buffers.
 Expect roughly 100-400 MB of additional GPU memory depending on resolution and
 guide usage.
 
+### Texture files and untrusted input
+
+`uploadTextureFromFile` (textures, and `.hdr` environment maps) parses the file with the vendored
+`stb_image` C library, inside the JVM process. A malformed file is therefore a memory-safety risk
+in the host process, not only a failed load. Mitigations in place:
+
+- Images wider or taller than 8192 pixels are rejected before any pixel memory is allocated, for
+  every format (HDR, PNG, JPEG, ...). 8192 is the width of an 8K environment map; an 8192x4096
+  RGBA float image is 537 MB.
+- A truncated `.hdr` file is rejected. `stb_image` alone would decode the missing bytes as zeros.
+- A failed load returns an error (`TextureUploadException`) and leaves the renderer usable.
+
+These reduce the exposure but do not make `stb_image` a sandbox: load only files you trust, or
+have pinned by hash.
+
 ---
 
 ## CI Configuration
