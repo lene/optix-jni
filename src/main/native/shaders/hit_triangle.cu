@@ -245,6 +245,22 @@ __device__ void getTriangleMaterial(
     color.w *= vertex_alpha;
 }
 
+// The shares of a ray's light that the reflected and the refracted ray of a face can carry, as
+// upper bounds, to decide whether tracing them is worth it (TraceDepth::worthTracing). For a thin
+// film the reflectance differs per colour channel: the reflected ray takes the largest channel,
+// the refracted ray the largest transmitted channel, 1 - the smallest reflectance.
+__device__ float2 fresnelShares(
+    const float3& ray_direction, const float3& normal, bool entering, float ior, float film_thickness
+) {
+    if (film_thickness > 0.0f) {
+        const float cos_theta = fabsf(dot(ray_direction, normal));
+        const float3 rgb = computeThinFilmReflectance(cos_theta, ior, film_thickness);
+        return make_float2(fmaxf(rgb.x, fmaxf(rgb.y, rgb.z)), 1.0f - fminf(rgb.x, fminf(rgb.y, rgb.z)));
+    }
+    const float fresnel = computeFresnelReflectance(ray_direction, normal, entering, ior);
+    return make_float2(fresnel, 1.0f - fresnel);
+}
+
 //==============================================================================
 // Triangle closest hit shader - handles triangle mesh geometry
 //==============================================================================
@@ -335,7 +351,9 @@ extern "C" __global__ void __closesthit__triangle() {
         && instance_coverage >= ALPHA_FULLY_OPAQUE_THRESHOLD) {
         // Check if material has any metallic component
         if (metallic > 0.0f) {
-            handleMetallicOpaque(geom.hit_point, ray_direction, geom.normal, mesh_color, metallic, depth);
+            // the reflection carries `metallic` of this ray's light
+            handleMetallicOpaque(geom.hit_point, ray_direction, geom.normal, mesh_color, metallic, depth,
+                                 0.0f, metallic);
             return;
         } else {
             // Fully non-metallic: diffuse shading and the dielectric highlight
@@ -394,18 +412,25 @@ extern "C" __global__ void __closesthit__triangle() {
 
         // Shade this face as if fully opaque, metallic included: plain diffuse made the fading
         // hole caps of a gold sponge brighter than the opaque metal around them.
+        // The reflection ray carries coverage_alpha * metallic of this ray's light; a face whose
+        // reflection would be too faint to matter shades as non-metallic (optix-jni#118).
         unsigned int diffuse_r = 0, diffuse_g = 0, diffuse_b = 0;
-        if (metallic > 0.0f)
+        const float reflection_weight = coverage_alpha * metallic;
+        if (metallic > 0.0f && TraceDepth::worthTracing(reflection_weight))
             computeMetallicColor(geom.hit_point, ray_direction, geom.normal, mesh_color, metallic,
-                                 depth, diffuse_r, diffuse_g, diffuse_b);
+                                 depth, diffuse_r, diffuse_g, diffuse_b, reflection_weight);
         else
             computeOpaqueColor(geom.hit_point, geom.normal, mesh_color, lobe,
                                diffuse_r, diffuse_g, diffuse_b);
 
         // Trace continuation ray through the face to get what lies behind
         unsigned int through_r = diffuse_r, through_g = diffuse_g, through_b = diffuse_b;
-        // Not traced at the nesting limit: through stays = diffuse, i.e. the face is opaque.
-        traceContinuationRay(geom.hit_point, ray_direction, depth, through_r, through_g, through_b);
+        // Not traced at the nesting limit, nor when it carries too little light to matter
+        // (optix-jni#118): through stays = diffuse, i.e. the face is opaque.
+        const float through_weight = 1.0f - coverage_alpha;
+        if (TraceDepth::worthTracing(through_weight))
+            traceContinuationRay(geom.hit_point, ray_direction, depth, through_r, through_g, through_b,
+                                 through_weight);
 
         // Coverage blend: coverage_alpha * diffuse + (1 - coverage_alpha) * through
         const float a = coverage_alpha;
@@ -425,15 +450,24 @@ extern "C" __global__ void __closesthit__triangle() {
             return;
         }
 
-        // Compute full Fresnel/refraction result for this face
+        // Compute full Fresnel/refraction result for this face. Each ray carries its Fresnel
+        // share of the coverage's share of this ray's light; one too faint to matter is not
+        // traced and contributes no light (optix-jni#118).
+        const float2 shares = fresnelShares(
+            ray_direction, geom.normal, geom.entering, mesh_ior, film_thickness);
+        const float reflected_weight = shares.x * refractive_coverage;
+        const float refracted_weight = shares.y * refractive_coverage;
+
         unsigned int refl_r = 0, refl_g = 0, refl_b = 0;
-        traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, refl_r, refl_g, refl_b);
+        if (TraceDepth::worthTracing(reflected_weight))
+            traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, refl_r, refl_g, refl_b,
+                              reflected_weight);
 
         unsigned int refr_r = 0, refr_g = 0, refr_b = 0;
-        const bool refr_ok = traceRefractedRay(
+        const bool refr_ok = !TraceDepth::worthTracing(refracted_weight) || traceRefractedRay(
             geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
             cauchy_a, cauchy_b,
-            refr_r, refr_g, refr_b
+            refr_r, refr_g, refr_b, refracted_weight
         );
         if (!refr_ok) { refr_r = refl_r; refr_g = refl_g; refr_b = refl_b; }
 
@@ -469,11 +503,13 @@ extern "C" __global__ void __closesthit__triangle() {
 
         // Trace continuation ray (straight through — what lies behind the face)
         unsigned int thru_r = 0, thru_g = 0, thru_b = 0;
-        // Not traced at the nesting limit: through = the face's own colour, i.e. opaque.
-        const float3 thru_color =
-            traceContinuationRay(geom.hit_point, ray_direction, depth, thru_r, thru_g, thru_b)
-                ? payloadToFloat3(thru_r, thru_g, thru_b)
-                : fresnel_color;
+        // Not traced at the nesting limit, nor when it carries too little light to matter:
+        // through = the face's own colour, i.e. opaque.
+        const float through_weight = 1.0f - refractive_coverage;
+        const bool through_traced = TraceDepth::worthTracing(through_weight) &&
+            traceContinuationRay(geom.hit_point, ray_direction, depth, thru_r, thru_g, thru_b,
+                                 through_weight);
+        const float3 thru_color = through_traced ? payloadToFloat3(thru_r, thru_g, thru_b) : fresnel_color;
 
         // Blend: coverage * fresnel + (1 - coverage) * through
         const float a = refractive_coverage;
@@ -505,16 +541,23 @@ extern "C" __global__ void __closesthit__triangle() {
         return;
     }
 
+    // Each ray carries its Fresnel share of this ray's light; one too faint to matter is not
+    // traced and contributes no light (optix-jni#118).
+    const float2 shares = fresnelShares(
+        ray_direction, geom.normal, geom.entering, mesh_ior, film_thickness);
+
     // Trace reflected ray
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, reflect_r, reflect_g, reflect_b);
+    if (TraceDepth::worthTracing(shares.x))
+        traceReflectedRay(geom.hit_point, ray_direction, geom.normal, depth, reflect_r, reflect_g, reflect_b,
+                          shares.x);
 
     // Trace refracted ray
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
-    const bool refraction_occurred = traceRefractedRay(
+    const bool refraction_occurred = !TraceDepth::worthTracing(shares.y) || traceRefractedRay(
         geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
         cauchy_a, cauchy_b,
-        refract_r, refract_g, refract_b
+        refract_r, refract_g, refract_b, shares.y
     );
 
     // Handle total internal reflection

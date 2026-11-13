@@ -1,4 +1,5 @@
 #include "../include/EnvMapMapping.h"
+#include "../include/TraceDepthPacking.h"
 
 // Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
 // Where:
@@ -19,38 +20,34 @@
 // Trace depth payload (payload 3)
 //==============================================================================
 
-// Payload 3 of a radiance ray carries two counters. Bits 0-7: the bounce depth that
-// params.max_ray_depth budgets (reflections/refractions). Bits 8+: how many optixTrace calls
-// are nested on the stack for this ray, including its own. Pass-through rays (transparent and
-// coverage-blended faces) deliberately don't spend bounces, so only the nesting count bounds
-// them; before this, nothing did, and a ray crossing enough see-through faces (a fractional
-// sponge) nested past the pipeline's compiled maxTraceDepth -- undefined behaviour, observed as
-// intermittent CUDA 700/719 (usability review 2026-09, F11). Every radiance trace from a hit or
-// miss program now goes through canNest()/child(), and one level is kept free for the child
-// hit's shadow ray. Hit programs read the bounce depth with bounce(optixGetPayload_3()).
+// Payload 3 of a radiance ray carries three values, laid out by include/TraceDepthPacking.h
+// (host-testable): the bounce depth that params.max_ray_depth budgets (reflections/refractions),
+// how many optixTrace calls are nested on the stack for this ray (including its own), and the
+// ray's weight. Pass-through rays (transparent and coverage-blended faces) deliberately don't
+// spend bounces, so only the nesting count bounds them; before this, nothing did, and a ray
+// crossing enough see-through faces (a fractional sponge) nested past the pipeline's compiled
+// maxTraceDepth -- undefined behaviour, observed as intermittent CUDA 700/719 (usability review
+// 2026-09, F11). Every radiance trace from a hit or miss program now goes through
+// canNest()/child(), and one level is kept free for the child hit's shadow ray. Hit programs
+// read the bounce depth with bounce(optixGetPayload_3()).
+//
+// The weight is the product of the blend factors of all branches above the ray (1.0 for a primary
+// ray). A branch whose weight would fall below params.min_ray_weight is not traced
+// (worthTracing): without that, a stack of L semi-transparent metallic faces cost rays in the
+// order of L^max_ray_depth, because each face traces a reflection ray AND a pass-through ray
+// (optix-jni#118).
 namespace TraceDepth {
-    constexpr unsigned int BOUNCE_BITS = 8u;
-    constexpr unsigned int BOUNCE_MASK = (1u << BOUNCE_BITS) - 1u;
-
-    __forceinline__ __device__ unsigned int bounce(unsigned int payload) {
-        return payload & BOUNCE_MASK;
-    }
-    __forceinline__ __device__ unsigned int nesting(unsigned int payload) {
-        return payload >> BOUNCE_BITS;
-    }
-    __forceinline__ __device__ unsigned int pack(unsigned int bounce_depth, unsigned int nest) {
-        return bounce_depth | (nest << BOUNCE_BITS);
-    }
-    // For the radiance ray a raygen program traces: no bounces yet, one trace on the stack.
-    __forceinline__ __device__ unsigned int primary() {
-        return pack(0u, 1u);
-    }
     // Only valid inside the closest-hit / miss program of a radiance ray.
     __forceinline__ __device__ bool canNest() {
         return nesting(optixGetPayload_3()) + 2u <= PIPELINE_MAX_TRACE_DEPTH;
     }
-    __forceinline__ __device__ unsigned int child(unsigned int bounce_depth) {
-        return pack(bounce_depth, nesting(optixGetPayload_3()) + 1u);
+    // The payload of a ray traced from this hit, carrying `weight_factor` of this ray's weight.
+    __forceinline__ __device__ unsigned int child(unsigned int bounce_depth, float weight_factor = 1.0f) {
+        return childOf(optixGetPayload_3(), bounce_depth, weight_factor);
+    }
+    // Whether a branch carrying `weight_factor` of this ray's weight is heavy enough to trace.
+    __forceinline__ __device__ bool worthTracing(float weight_factor) {
+        return weight(optixGetPayload_3()) * weight_factor >= params.min_ray_weight;
     }
 }
 
@@ -1097,18 +1094,20 @@ __device__ void subdividePixel(
  * @param hit_point Surface intersection point
  * @param ray_direction Incoming ray direction
  * @param depth Current bounce depth (not incremented for pass-through)
+ * @param weight_factor Share of this ray's weight the continuation ray carries (see TraceDepth)
  * @return false, without tracing, when the nesting limit is reached (see TraceDepth); the
  *         caller then shades the face as opaque instead
  */
 __device__ bool handleFullyTransparent(
     const float3& hit_point,
     const float3& ray_direction,
-    unsigned int depth
+    unsigned int depth,
+    float weight_factor = 1.0f
 ) {
     if (!TraceDepth::canNest()) return false;
     const float3 continue_origin = hit_point + ray_direction * CONTINUATION_RAY_OFFSET;
     unsigned int continue_r = 0, continue_g = 0, continue_b = 0;
-    unsigned int next_depth = TraceDepth::child(depth);  // pass-through: no bounce spent
+    unsigned int next_depth = TraceDepth::child(depth, weight_factor);  // pass-through: no bounce spent
 
     optixTrace(
         params.handle,
@@ -1139,6 +1138,7 @@ __device__ bool handleFullyTransparent(
  * @param ray_direction Incoming ray direction
  * @param depth Current bounce depth (not incremented for pass-through)
  * @param r/g/b Output: color from continuation ray (0-255); untouched when not traced
+ * @param weight_factor Share of this ray's weight the continuation ray carries (see TraceDepth)
  * @return false, without tracing, when the nesting limit is reached (see TraceDepth); the
  *         caller then treats the face as opaque
  */
@@ -1155,11 +1155,12 @@ __device__ bool traceContinuationRay(
     unsigned int depth,
     unsigned int& r,
     unsigned int& g,
-    unsigned int& b
+    unsigned int& b,
+    float weight_factor = 1.0f
 ) {
     if (!TraceDepth::canNest()) return false;
     const float3 continue_origin = hit_point + ray_direction * COVERAGE_CONTINUATION_OFFSET;
-    unsigned int next_depth = TraceDepth::child(depth);  // pass-through: no bounce spent
+    unsigned int next_depth = TraceDepth::child(depth, weight_factor);  // pass-through: no bounce spent
 
     optixTrace(
         params.handle,
@@ -1587,6 +1588,7 @@ __device__ void blendFresnelColorsRGBAndSetPayload(
  * @param normal Surface normal (pointing toward ray origin)
  * @param depth Current recursion depth
  * @param reflect_r/g/b Output: reflected ray color (0-255)
+ * @param weight_factor Share of this ray's weight the reflected ray carries (see TraceDepth)
  */
 __device__ void traceReflectedRay(
     const float3& hit_point,
@@ -1595,7 +1597,8 @@ __device__ void traceReflectedRay(
     unsigned int depth,
     unsigned int& reflect_r,
     unsigned int& reflect_g,
-    unsigned int& reflect_b
+    unsigned int& reflect_b,
+    float weight_factor = 1.0f
 ) {
     const float3 reflect_dir = reflect(ray_direction, normal);
 
@@ -1609,7 +1612,7 @@ __device__ void traceReflectedRay(
         return;
     }
     const float3 reflect_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = TraceDepth::child(depth + 1);
+    unsigned int next_depth = TraceDepth::child(depth + 1, weight_factor);
     unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
     unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 
@@ -1641,6 +1644,7 @@ __device__ void traceReflectedRay(
  * @param cauchy_a Cauchy A coefficient (0 = no dispersion)
  * @param cauchy_b Cauchy B coefficient (0 = no dispersion)
  * @param refract_r/g/b Output: refracted ray color (0-255)
+ * @param weight_factor Share of this ray's weight the refracted ray carries (see TraceDepth)
  * @return True if refraction occurred, false if total internal reflection
  */
 __device__ bool traceRefractedRay(
@@ -1654,7 +1658,8 @@ __device__ bool traceRefractedRay(
     float cauchy_b,
     unsigned int& refract_r,
     unsigned int& refract_g,
-    unsigned int& refract_b
+    unsigned int& refract_b,
+    float weight_factor = 1.0f
 ) {
     // Compute IOR — with spectral dispersion if cauchy_b != 0
     float n_mat;
@@ -1701,7 +1706,7 @@ __device__ bool traceRefractedRay(
         return true;
     }
     const float3 refract_origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = TraceDepth::child(depth + 1);
+    unsigned int next_depth = TraceDepth::child(depth + 1, weight_factor);
     unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
     unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 
@@ -1750,6 +1755,9 @@ __device__ bool traceRefractedRay(
  * @param metallic Metallic value [0,1] (0=fully diffuse, 1=fully metallic)
  * @param depth Current ray depth
  * @param r,g,b Output colour, 0..255 per channel
+ * @param weight_factor Share of this ray's weight the reflection ray carries (see TraceDepth);
+ *        callers pass what the reflection contributes to the final colour, `metallic` times
+ *        any coverage
  */
 __device__ void computeMetallicColor(
     const float3& hit_point,
@@ -1758,11 +1766,13 @@ __device__ void computeMetallicColor(
     const float4& material_color,
     float metallic,
     unsigned int depth,
-    unsigned int& r, unsigned int& g, unsigned int& b
+    unsigned int& r, unsigned int& g, unsigned int& b,
+    float weight_factor = 1.0f
 ) {
     // Trace reflection ray (metallic component)
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
+    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b,
+                      weight_factor);
 
     // Tint reflected color by material color (colored metals like gold, copper)
     const float3 tint = make_float3(material_color.x, material_color.y, material_color.z);
@@ -1785,6 +1795,7 @@ __device__ void computeMetallicColor(
  * payload; at the max ray depth it falls back to the final non-recursive ray.
  *
  * @param emission Emission intensity (0.0-10.0)
+ * @param weight_factor Share of this ray's weight the reflection ray carries (see TraceDepth)
  */
 __device__ void handleMetallicOpaque(
     const float3& hit_point,
@@ -1793,7 +1804,8 @@ __device__ void handleMetallicOpaque(
     const float4& material_color,
     float metallic,
     unsigned int depth,
-    float emission = 0.0f
+    float emission = 0.0f,
+    float weight_factor = 1.0f
 ) {
     // Already the result of a bailout bounce (traceFinalNonRecursiveRay) — terminate here with
     // plain diffuse shading rather than tracing again, or a metal-on-metal cavity chains nested
@@ -1810,7 +1822,8 @@ __device__ void handleMetallicOpaque(
     }
 
     unsigned int r = 0, g = 0, b = 0;
-    computeMetallicColor(hit_point, ray_direction, normal, material_color, metallic, depth, r, g, b);
+    computeMetallicColor(hit_point, ray_direction, normal, material_color, metallic, depth, r, g, b,
+                         weight_factor);
 
     // Add emission
     addEmissionToColor(r, g, b, material_color, emission);
