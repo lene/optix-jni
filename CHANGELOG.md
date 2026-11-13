@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `OptiXTestHooks.failNextDeviceAllocations(renderer, n)` (tests only): the n-th device allocation
+  of the image, denoise, caustics, mesh-update and IAS-rebuild buffers from now on fails once with
+  a plain `OptiXException`, as if the GPU were out of memory (`n = 0` disarms). Thrown before any
+  CUDA call, so it never latches the context as lost. The counter is process-wide.
 - `AmbientModel` and `OptiXRenderer.setAmbient(model)` (optix-jni#106): how the ambient fill (0.3
   times the colour) that every surface gets is computed.
   - `AmbientModel.Occlusion(samples = 16, radius = Float.PositiveInfinity)`, the default,
@@ -33,6 +37,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A failed device allocation no longer poisons the renderer (optix-jni#96, #87, #81). Buffers that
+  are in use are replaced allocate-first, and a size is asked of the buffer, never cached:
+  - Image, denoise and caustics buffers (#96, High): after a failed allocation the next render
+    at the old size skipped the allocation (the cached size said "allocated") and launched with a
+    null image pointer; the illegal address latched the CUDA context as lost, so every later call
+    in the process threw `OptiXContextLostException`. The three cached sizes are gone; each buffer
+    is checked against its own size, so the next call allocates again.
+  - Denoiser (#96): a failure between reallocating the state buffer and `optixDenoiserSetup`
+    left the old setup size in place, and a later request at or below it denoised with a state
+    buffer that was never set up. The setup size is reset first and set after the setup succeeded.
+  - `updateCpuTriangleMesh` (#87): it freed the slot's vertex and index buffers before allocating
+    new ones, so a failure left the IAS materials pointing at freed memory. The new buffers are
+    allocated and uploaded first, then swapped in.
+  - `buildIAS` full rebuild (#81): it freed the live IAS before building the new one. The
+    replacement is now built into guarded locals and swapped in after the build succeeded.
 - Image-based lighting lights from the azimuth the background shows (optix-jni#112): the IBL
   sampler turned a texel's u back into azimuth 2*pi*u while the background maps
   u = 0.5 + atan2(z, x) / 2pi, so IBL was rotated by 180 degrees against the visible sky. Both now
