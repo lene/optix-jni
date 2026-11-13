@@ -1,0 +1,37 @@
+# Where the third-party and generated assets of this repository came from.
+# Format and checker: shared/standards/README.md, section "Provenance".
+entries:
+  - path: src/main/native/stb_image.h
+    source: https://github.com/nothings/stb
+    licence: MIT OR Unlicense
+    author: Sean Barrett
+    kind: algorithm
+    note: header-only image loader, fetched at build time by FetchContent (src/main/native/CMakeLists.txt, GIT_TAG master), not tracked; only src/main/native/stb_image_impl.cpp is tracked. Its header says v2.32, public domain, dual-licensed MIT or Unlicense (alternatives A and B at the end of the header; the repository LICENSE file says MIT, copyright 2017 Sean Barrett).
+
+  - path: test-resources/caustics-references/appleseed/glass_sphere.obj
+    source: https://github.com/appleseedhq/appleseed/blob/master/sandbox/tests/test%20scenes/sppm/glass_sphere.obj
+    licence: MIT
+    author: The appleseedhq Organization
+    kind: reference
+    note: byte-identical to appleseed's sandbox/tests/test scenes/sppm/glass_sphere.obj (git blob 7e8c111932333839012565c1cba36f60db00e4c1; same blob under light tracing/). Licence is that of the appleseed repository (LICENSE.txt, MIT, copyright Francois Beaune, Jupiter Jazz Limited, and the appleseedhq Organization); no separate licence for the test scene.
+
+  - path: test-resources/caustics-references/pbrt-reference.png
+    source: this repository; rendered with pbrt-v4 (bdpt integrator, 1024 samples) from test-resources/caustics-references/reference-scene.pbrt
+    licence: Apache-2.0
+    author: optix-jni contributors
+    kind: generated
+    note: renderer and parameters as documented in test-resources/caustics-references/README.md; the repository is Apache-2.0 (LICENSE).
+
+  - path: src/test/resources/caustics-reference.png
+    source: this repository; reference render of the canonical caustics scene (test-resources/caustics-references/renders/canonical-caustics.pbrt) by an external renderer
+    licence: Apache-2.0
+    author: optix-jni contributors
+    kind: generated
+    note: the README says it is copied from the pbrt render output; which renderer produced the committed bytes is not recorded (commit 00747ab).
+
+  - path: test-resources/ambient-constant/*.png
+    source: this repository; rendered by optix-jni at commit b13c283 from ConstantAmbientScenes (see test-resources/ambient-constant/README.md)
+    licence: Apache-2.0
+    author: optix-jni contributors
+    kind: generated
+    note: 320x240 byte-exact references of the constant ambient path, rendered on an NVIDIA RTX A1000 6GB Laptop GPU.
