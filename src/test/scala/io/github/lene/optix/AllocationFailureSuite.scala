@@ -76,9 +76,9 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
   "A failed denoiser setup" should "force a full setup before the denoiser is used again" in:
     renderer.setDenoisingEnabled(true)
     val denoisedSmall = renders(small)
-    // image buffer (1), five denoise buffers (2-6), the denoiser's state (7) and scratch (8): the
+    // image buffer (1), five denoise buffers (2-6), then the denoiser's state buffer (7): the
     // denoiser catches the failure and the frame comes back undenoised
-    failNext(8)
+    failNext(7)
     val undenoisedLarge = renders(large)
     // The state buffer is at the new size, but was never set up for it: the old setup size must not count.
     maxDiff(renders(small), denoisedSmall) shouldBe 0
@@ -89,6 +89,7 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
   // --- #87: mesh update --------------------------------------------------------------------------
 
   private val identity = Array(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f)
+  private val shifted = Array(1f, 0f, 0f, 1.2f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f)
   private val red = Material(Color(0.9f, 0.1f, 0.1f, 1f), 1.0f)
 
   private def quad(half: Float, z: Float): TriangleMeshData =
@@ -112,6 +113,12 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
     val replacement = quad(0.3f, 0.5f)
     val failures = failingAllocations((), renderer.updateCpuTriangleMesh(slot, replacement)): k =>
       withClue(s"after the update failed at allocation $k: "):
+        maxDiff(renders(small), before) shouldBe 0
+        // A freed buffer keeps its content for a while, so the render above proves little. Adding an
+        // instance rebuilds the IAS from the slot's buffers, which must still be there.
+        val extra = renderer.addTriangleMeshInstance(shifted, red)
+        maxDiff(renders(small), before) should be > 40
+        renderer.removeInstance(extra)
         maxDiff(renders(small), before) shouldBe 0
     // the injection of allocation failures+1 did not fail: the update went through
     withClue("the update must make at least two allocations (vertices, indices): ")(failures should be >= 2)
