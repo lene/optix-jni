@@ -60,6 +60,11 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
 
   // --- #96: denoise buffers ----------------------------------------------------------------------
 
+  /** A new renderer in the default scene: the reference for what a clean run renders. */
+  private def restartRenderer(): Unit =
+    afterEach()
+    beforeEach()
+
   "A failed denoise-buffer allocation" should "leave the renderer usable at the old and the new size" in:
     renderer.setDenoisingEnabled(true)
     val before = renders(small)
@@ -69,7 +74,14 @@ class AllocationFailureSuite extends AnyFlatSpec with Matchers with RendererFixt
     maxDiff(renders(small), before) shouldBe 0
     val first = renders(large)
     maxDiff(renders(large), first) shouldBe 0
+    // The denoiser stays set up for the larger size, so a denoised small frame after a large one
+    // is only comparable to the same step of a clean run, not to the first small frame.
+    val afterLarge = renders(small)
+    restartRenderer()
+    renderer.setDenoisingEnabled(true)
     maxDiff(renders(small), before) shouldBe 0
+    maxDiff(renders(large), first) shouldBe 0
+    maxDiff(renders(small), afterLarge) shouldBe 0
 
   // --- #96: denoiser setup -----------------------------------------------------------------------
 
