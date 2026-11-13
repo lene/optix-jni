@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `OptiXTestHooks.failNextDeviceAllocations(renderer, n)` (tests only): the n-th device allocation
-  of the image, denoise, caustics, mesh-update and IAS-rebuild buffers from now on fails once with
-  a plain `OptiXException`, as if the GPU were out of memory (`n = 0` disarms). Thrown before any
-  CUDA call, so it never latches the context as lost. The counter is process-wide.
+  from now on fails once with a plain `OptiXException`, as if the GPU were out of memory (`n = 1` is
+  the next one, `0` disarms). It counts every allocation made through `CudaBuffer::allocate` (the
+  image, denoise, caustics, params, stats and denoiser buffers, and any other `CudaBuffer`), the
+  mesh-update and IAS-rebuild buffers, and the temp and output buffers of a triangle-mesh GAS build,
+  and nothing else; a test that fixes `n` depends on the allocations of the path it exercises.
+  Thrown before any CUDA call, so it never latches the context as lost. The counter is process-wide.
 - `AmbientModel` and `OptiXRenderer.setAmbient(model)` (optix-jni#106): how the ambient fill (0.3
   times the colour) that every surface gets is computed.
   - `AmbientModel.Occlusion(samples = 16, radius = Float.PositiveInfinity)`, the default,
@@ -48,8 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     left the old setup size in place, and a later request at or below it denoised with a state
     buffer that was never set up. The setup size is reset first and set after the setup succeeded.
   - `updateCpuTriangleMesh` (#87): it freed the slot's vertex and index buffers before allocating
-    new ones, so a failure left the IAS materials pointing at freed memory. The new buffers are
-    allocated and uploaded first, then swapped in.
+    new ones, so a failure left the IAS materials pointing at freed memory, and a failing GAS build
+    left the slot with a freed GAS and stale handles. The new buffers are uploaded and the new GAS
+    is built from them first; vertices, indices and GAS are then swapped in together.
+    `buildTriangleMeshGAS` builds before it frees the old GAS.
   - `buildIAS` full rebuild (#81): it freed the live IAS before building the new one. The
     replacement is now built into guarded locals and swapped in after the build succeeded.
 - Image-based lighting lights from the azimuth the background shows (optix-jni#112): the IBL
