@@ -237,6 +237,7 @@ add_library(optixjni SHARED
     BufferManager.cpp
     DenoiserManager.cpp
     CausticsRenderer.cpp
+    HdrLoader.cpp
     JNIBindings.cpp
     OptiXApiBindings.cpp
     project4d.cu
@@ -310,6 +311,7 @@ if(BUILD_OPTIX_TESTS)
     add_executable(optixcontext_test
         tests/OptiXContextTest.cpp
         tests/EnvMapCDFTest.cpp
+        tests/HdrLoaderTest.cpp  # Radiance .hdr loader: size cap and truncation (optix-jni#103), host-only
         tests/CustomGeometryRegistryTest.cpp  # SPI (Task 1.1a) runtime type-id allocator
         tests/MaterialPayloadTest.cpp  # F2 packed-material layout fitness (Sprint 35 Task 3.1)
         tests/VectorMathTest.cpp  # reflect() formula, host-testable (Sprint 36 H3.2)
@@ -318,10 +320,13 @@ if(BUILD_OPTIX_TESTS)
         tests/ContextLostTest.cpp  # sticky CUDA error latch (optix-jni#73), host-testable
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
+        HdrLoader.cpp  # Under test by HdrLoaderTest
+        stb_image_impl.cpp  # stb_image, with the dimension cap HdrLoaderTest checks
     )
 
     target_include_directories(optixcontext_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${stb_SOURCE_DIR}
         ${CUDAToolkit_INCLUDE_DIRS}
         ${OptiX_INCLUDE_DIR}
     )

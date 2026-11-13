@@ -1,5 +1,6 @@
 #include "include/OptiXWrapper.h"
 #include "include/EnvMapCDF.h"
+#include "include/HdrLoader.h"
 #include "include/SceneParameters.h"
 #include "include/RenderConfig.h"
 #include "include/PipelineManager.h"
@@ -3684,15 +3685,17 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
     int w = 0, h = 0, c = 0;
 
     if (ext && strcasecmp(ext, ".hdr") == 0) {
-        float* data = stbi_loadf(path, &w, &h, &c, 4);
-        if (!data) {
+        std::string error;
+        auto image = loadHdr(path, error);
+        if (!image) {
             OPTIX_LOG(ERROR) << "[OptiX] Failed to load HDR texture '" << path
-                      << "': " << stbi_failure_reason() << std::endl;
+                      << "': " << error << std::endl;
             return -1;
         }
-        int idx = uploadTextureFloat(path, data, static_cast<unsigned int>(w), static_cast<unsigned int>(h));
-        impl->computeAndUploadEnvMapCDF(data, w, h);
-        stbi_image_free(data);
+        int idx = uploadTextureFloat(path, image->rgba.data(),
+                                     static_cast<unsigned int>(image->width),
+                                     static_cast<unsigned int>(image->height));
+        impl->computeAndUploadEnvMapCDF(image->rgba.data(), image->width, image->height);
         return idx;
     }
 
