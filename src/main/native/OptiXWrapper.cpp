@@ -1159,46 +1159,43 @@ int OptiXWrapper::updateCpuTriangleMesh(
         return -1;
     }
 
-    // Free existing GPU vertex and index buffers, then re-upload.
-    if (mesh.d_vertices) {
-        cudaFree(reinterpret_cast<void*>(mesh.d_vertices));
-        mesh.d_vertices = 0;
-    }
-    if (mesh.d_indices) {
-        cudaFree(reinterpret_cast<void*>(mesh.d_indices));
-        mesh.d_indices = 0;
-    }
+    // The mesh's buffers are in use (the IAS materials point at them) until the new ones exist:
+    // allocate and upload the replacements first, free the old ones only after the swap
+    // (optix-jni#87). A failure before the swap leaves the slot as it was; the guards free the
+    // new buffers on the way out.
+    using DeviceGuard = std::unique_ptr<void, decltype(&cudaFree)>;
+    const size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
+    void* new_vertices = nullptr;
+    cudaMallocChecked(&new_vertices, vertex_size);
+    DeviceGuard vertices_guard(new_vertices, cudaFree);
+    CUDA_CHECK(cudaMemcpy(new_vertices, vertices, vertex_size, cudaMemcpyHostToDevice));
 
-    size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
-    cudaMallocChecked(
-        reinterpret_cast<void**>(&mesh.d_vertices), vertex_size
-    );
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(mesh.d_vertices),
-        vertices, vertex_size, cudaMemcpyHostToDevice
-    ));
+    const size_t index_size = num_triangles * 3 * sizeof(unsigned int);
+    void* new_indices = nullptr;
+    cudaMallocChecked(&new_indices, index_size);
+    DeviceGuard indices_guard(new_indices, cudaFree);
+    CUDA_CHECK(cudaMemcpy(new_indices, indices, index_size, cudaMemcpyHostToDevice));
 
-    size_t index_size = num_triangles * 3 * sizeof(unsigned int);
-    cudaMallocChecked(
-        reinterpret_cast<void**>(&mesh.d_indices), index_size
-    );
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(mesh.d_indices),
-        indices, index_size, cudaMemcpyHostToDevice
-    ));
-
+    if (mesh.d_vertices) cudaFree(reinterpret_cast<void*>(mesh.d_vertices));
+    if (mesh.d_indices) cudaFree(reinterpret_cast<void*>(mesh.d_indices));
+    mesh.d_vertices = reinterpret_cast<CUdeviceptr>(vertices_guard.release());
+    mesh.d_indices = reinterpret_cast<CUdeviceptr>(indices_guard.release());
     mesh.num_vertices = num_vertices;
     mesh.num_triangles = num_triangles;
     mesh.vertex_stride = vertex_stride;
     mesh.gas_built = false;
 
-    // Rebuild the GAS for this mesh slot only.
-    buildTriangleMeshGAS(static_cast<size_t>(mesh_index));
-
     // Update the scene parameters so the IAS material pointer stays valid.
     impl->scene.getTriangleMeshMutable().d_vertices = mesh.d_vertices;
     impl->scene.getTriangleMeshMutable().d_indices  = mesh.d_indices;
     impl->scene.getTriangleMeshMutable().vertex_stride = vertex_stride;
+
+    // The IAS must be rebuilt on the next render() (new buffers, new GAS handle). Marked before
+    // the GAS build, so that a failing build still leaves the IAS marked, with valid pointers.
+    impl->ias_dirty = true;
+
+    // Rebuild the GAS for this mesh slot only.
+    buildTriangleMeshGAS(static_cast<size_t>(mesh_index));
 
     // Re-link the instance's gas_handle to the freshly built GAS.
     for (auto& inst : impl->instances) {
@@ -1208,9 +1205,6 @@ int OptiXWrapper::updateCpuTriangleMesh(
             inst.gas_handle = mesh.gas_handle;
         }
     }
-
-    // IAS must be rebuilt on the next render() to pick up the new GAS handle.
-    impl->ias_dirty = true;
 
     return 0;
 }
