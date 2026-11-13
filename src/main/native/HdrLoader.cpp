@@ -105,7 +105,8 @@ std::optional<HdrImage> loadHdr(const char* path, std::string& error) {
     }
 
     FileSource source{file.get()};
-    // RED-STATE-STUB
+    error = rejectBeforeDecoding(source);
+    if (!error.empty()) return std::nullopt;
 
     HdrImage image;
     int components = 0;
