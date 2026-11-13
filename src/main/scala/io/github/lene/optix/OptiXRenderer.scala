@@ -445,6 +445,21 @@ class OptiXRenderer
   /** Sets the maximum recursive reflection/refraction ray depth. */
   @native def setMaxRayDepth(depth: Int): Unit
 
+  /** Sets the smallest weight a radiance ray may have and still be traced.
+    *
+    * A ray's weight is the product of the blend factors of all branches above it: the share of a
+    * coverage-blended face that its pass-through ray carries, a reflection's metallic share, the
+    * Fresnel share of a reflected or refracted ray. A branch that would fall below `weight` is
+    * not traced; its colour is taken as zero (or, for a pass-through, the face's own colour). The
+    * default is 1/256: such a branch changes an 8-bit pixel by less than one step, and a stack of
+    * semi-transparent metallic layers otherwise costs rays in the order of layers to the power
+    * of the ray depth (optix-jni#118).
+    *
+    * @param weight cutoff in [0, 1]; 0 switches the cutoff off (every branch is traced)
+    * @throws IllegalArgumentException when `weight` is outside [0, 1] or NaN
+    */
+  @native def setMinRayWeight(weight: Float): Unit
+
   /** Configures progressive photon-mapping caustics.
     *
     * @param photonsPerIter photons emitted per iteration

@@ -67,7 +67,85 @@ class LayeredTransparencySuite extends AnyFlatSpec with Matchers with RendererFi
     info(f"alpha ${row.alpha}%.2f metallic ${row.metallic}%.2f: totalRays ${r.totalRays}%d " +
       f"reflectedRays ${r.reflectedRays}%d maxDepthReached ${r.maxDepthReached}%d ${r.frameMs}%.0f ms")
 
-  "30 layered quads" should "show the ray cost of each material (A1 diagnosis table)" taggedAs Slow in:
+  // The table of the diagnosis (optix-jni#118) without the cutoff: the rays of 10 layers at 64x36.
+  private val OpaqueRaysWithoutCutoff = 41472L
+  private val NearlyOpaqueMetalRaysWithoutCutoff = 735118848L
+  private val HalfMetalRaysWithoutCutoff = 735118848L
+  private val ThinDielectricRaysWithoutCutoff = 370944L
+
+  private def rays(row: Row, minRayWeight: Option[Float]): Long =
+    minRayWeight.foreach(renderer.setMinRayWeight)
+    val r = render(row)
+    logRow(row, r)
+    r.totalRays
+
+  "Ten layered quads with the default cutoff" should
+    "need at most 10 times the rays of the opaque stack at alpha 0.98, metallic 0.98" taggedAs Slow in:
+    val opaque = rays(Opaque, None)
+    rays(NearlyOpaqueMetal, None) should be <= 10 * opaque
+
+  it should "need at most 100 times the rays of the opaque stack at alpha 0.5, metallic 0.5" taggedAs Slow in:
+    val opaque = rays(Opaque, None)
+    rays(HalfMetal, None) should be <= 100 * opaque
+
+  "With the cutoff switched off, ten layered quads" should
+    "reproduce the ray counts measured before the cutoff existed (within 1 %)" taggedAs Slow in:
+    List(
+      Opaque -> OpaqueRaysWithoutCutoff,
+      NearlyOpaqueMetal -> NearlyOpaqueMetalRaysWithoutCutoff,
+      HalfMetal -> HalfMetalRaysWithoutCutoff,
+      ThinDielectric -> ThinDielectricRaysWithoutCutoff
+    ).foreach: (row, expected) =>
+      withClue(s"$row: "):
+        rays(row, Some(0f)).toDouble shouldBe (expected.toDouble +- expected * 0.01)
+
+  // A glass sphere and a glass cube on a checker floor.
+  private def glassScene(): Unit =
+    TestScenario.glassSphere().withSpherePosition(Vector[3](-0.8f, 0f, 0f)).applyTo(renderer)
+    renderer.clearPlanes()
+    renderer.addPlaneCheckerColors(1, true, -1f, 0.9f, 0.9f, 0.9f, 0.1f, 0.1f, 0.1f)
+    val _ = renderer.addTriangleMesh(cube)
+    val _ = renderer.addTriangleMeshInstance(
+      Vector[3](0.8f, 0f, 0f),
+      Material(Color(0.9f, 1.0f, 0.9f, 0.3f), 1.5f),
+      TextureIndex.NoTexture
+    )
+
+  private def cube: TriangleMeshData =
+    val h = 0.5f
+    val faces = Seq(
+      (Seq((-1, -1, 1), (1, -1, 1), (1, 1, 1), (-1, 1, 1)), (0f, 0f, 1f)),
+      (Seq((1, -1, -1), (-1, -1, -1), (-1, 1, -1), (1, 1, -1)), (0f, 0f, -1f)),
+      (Seq((1, -1, 1), (1, -1, -1), (1, 1, -1), (1, 1, 1)), (1f, 0f, 0f)),
+      (Seq((-1, -1, -1), (-1, -1, 1), (-1, 1, 1), (-1, 1, -1)), (-1f, 0f, 0f)),
+      (Seq((-1, 1, 1), (1, 1, 1), (1, 1, -1), (-1, 1, -1)), (0f, 1f, 0f)),
+      (Seq((-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1)), (0f, -1f, 0f))
+    )
+    val vertices = faces.flatMap((corners, n) =>
+      corners.flatMap((x, y, z) => Seq(x * h, y * h, z * h, n._1, n._2, n._3)))
+    val indices = faces.indices.flatMap(f => Seq(0, 1, 2, 0, 2, 3).map(_ + 4 * f))
+    TriangleMeshData(vertices.toArray, indices.toArray, 6)
+
+  "The default cutoff" should "change no channel of a glass sphere and a glass cube by more than 3 of 255" taggedAs Slow in:
+    glassScene()
+    val withCutoff = renderImage(ImageSize(320, 240))
+    renderer.setMinRayWeight(0f)
+    val withoutCutoff = renderImage(ImageSize(320, 240))
+    val largestDifference = withCutoff.zip(withoutCutoff).map((a, b) => math.abs((a & 0xff) - (b & 0xff))).max
+    info(s"largest channel difference: $largestDifference")
+    largestDifference should be <= 3
+
+  "setMinRayWeight" should "reject a weight outside [0, 1]" in:
+    an[IllegalArgumentException] should be thrownBy renderer.setMinRayWeight(-0.1f)
+    an[IllegalArgumentException] should be thrownBy renderer.setMinRayWeight(1.5f)
+    an[IllegalArgumentException] should be thrownBy renderer.setMinRayWeight(Float.NaN)
+
+  it should "accept the ends of the range" in:
+    noException should be thrownBy renderer.setMinRayWeight(0f)
+    noException should be thrownBy renderer.setMinRayWeight(1f)
+
+  "Layered quads" should "show the ray cost of each material (diagnosis table, cutoff switched off)" taggedAs Slow in:
+    renderer.setMinRayWeight(0f)
     val results = List(Opaque, NearlyOpaqueMetal, HalfMetal, ThinDielectric).map(row => row -> render(row))
     results.foreach((row, r) => logRow(row, r))
     val opaqueRays = results.head._2.totalRays.toDouble

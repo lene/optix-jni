@@ -147,6 +147,7 @@ public:
 
     // Ray depth configuration
     void setMaxRayDepth(int depth);
+    void setMinRayWeight(float weight);
 
     // Caustics (Progressive Photon Mapping) configuration
     void setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha);

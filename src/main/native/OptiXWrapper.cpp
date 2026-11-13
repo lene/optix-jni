@@ -470,6 +470,10 @@ void OptiXWrapper::setMaxRayDepth(int depth) {
     impl->config.setMaxRayDepth(depth);
 }
 
+void OptiXWrapper::setMinRayWeight(float weight) {
+    impl->config.setMinRayWeight(weight);
+}
+
 void OptiXWrapper::setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha) {
     impl->config.setCaustics(enabled, photonsPerIter, iterations, initialRadius, alpha);
 }
@@ -1952,6 +1956,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         // Ray depth
         params.max_ray_depth = impl->config.getMaxRayDepth();
+        params.min_ray_weight = impl->config.getMinRayWeight();
 
         // Caustics (Progressive Photon Mapping) parameters
         params.caustics.enabled = impl->config.getCausticsEnabled();

@@ -707,6 +707,22 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMaxRayDepth(
     JNI_CATCH_UNKNOWN_THROW
 }
 
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMinRayWeight(
+    JNIEnv* env, jobject obj, jfloat weight) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
+        if (wrapper != nullptr &&
+            jni_checks::requireRange<jfloat>(env, weight, 0.0f, 1.0f, "min ray weight")) {
+            wrapper->setMinRayWeight(weight);
+        }
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setMinRayWeight: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
+    }
+    JNI_CATCH_UNKNOWN_THROW
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setCaustics(
     JNIEnv* env, jobject obj, jboolean enabled, jint photonsPerIter, jint iterations,
     jfloat initialRadius, jfloat alpha) {

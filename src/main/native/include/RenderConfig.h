@@ -45,6 +45,8 @@ public:
     // Ray depth configuration
     void setMaxRayDepth(int depth) { max_ray_depth = depth; }
     int getMaxRayDepth() const { return max_ray_depth; }
+    void setMinRayWeight(float weight) { min_ray_weight = weight; }
+    float getMinRayWeight() const { return min_ray_weight; }
 
     // Caustics (Progressive Photon Mapping) configuration
     void setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha);
@@ -138,6 +140,7 @@ private:
 
     // Ray depth
     int max_ray_depth = MAX_TRACE_DEPTH;
+    float min_ray_weight = DEFAULT_MIN_RAY_WEIGHT;
 
     // Caustics configuration
     bool caustics_enabled = false;

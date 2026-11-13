@@ -15,6 +15,11 @@
 // This constant is used by both the C++ pipeline setup and CUDA shaders
 constexpr unsigned int MAX_TRACE_DEPTH = 5;  // Allow internal reflections in glass (entry + exit + reflections)
 
+// A radiance ray whose weight (the product of the blend factors of all branches above it) would
+// fall below this is not traced: it changes an 8-bit pixel by less than one step (optix-jni#118).
+// 0 switches the cutoff off.
+constexpr float DEFAULT_MIN_RAY_WEIGHT = 1.0f / 256.0f;
+
 // OptiX's own hard, compile-time recursion ceiling (OptixPipelineLinkOptions::maxTraceDepth).
 // Deliberately larger than MAX_TRACE_DEPTH: reaching a bounce at payload depth D requires D+1
 // native optixTrace calls (the raygen's own call counts as the first), and the depth-cutoff
@@ -628,6 +633,7 @@ struct BaseParams {
 
     // Ray depth
     int   max_ray_depth;        // Maximum ray bounce depth (must be <= MAX_TRACE_DEPTH)
+    float min_ray_weight;       // Radiance rays lighter than this are not traced (0 = always trace)
 
     // Progressive Photon Mapping (Caustics)
     CausticsParams caustics;    // Caustics rendering parameters and GPU buffers
