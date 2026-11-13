@@ -1,5 +1,6 @@
 package io.github.lene.optix
 
+import menger.common.ImageSize
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -232,6 +233,25 @@ class TextureSuite extends AnyFlatSpec with Matchers with RendererFixture:
   it should "reject empty path" in:
     an[IllegalArgumentException] should be thrownBy:
       renderer.uploadTextureFromFile("")
+
+  it should "reject a truncated HDR file with -1 and keep rendering (optix-jni#103)" in:
+    val dir = java.nio.file.Files.createTempDirectory("test_truncated_hdr_")
+    val whole = dir.resolve("whole.hdr")
+    val truncated = dir.resolve("truncated.hdr")
+    try
+      writeMinimalHdr(whole, 32, 16)
+      val bytes = java.nio.file.Files.readAllBytes(whole)
+      java.nio.file.Files.write(truncated, bytes.take(bytes.length / 2))
+
+      renderer.uploadTextureFromFileNative(truncated.toString) shouldBe -1
+      a[TextureUploadException] should be thrownBy renderer.uploadTextureFromFile(truncated.toString)
+
+      renderImage(ImageSize(64, 64)).length shouldBe 64 * 64 * 4
+      renderer.uploadTextureFromFile(whole.toString).value should be >= 0
+    finally
+      java.nio.file.Files.deleteIfExists(whole)
+      java.nio.file.Files.deleteIfExists(truncated)
+      java.nio.file.Files.deleteIfExists(dir)
 
   "setEnvironmentMap" should "accept a valid texture index after upload" in:
     val tmp = java.nio.file.Files.createTempFile("test_envmap_", ".hdr")
