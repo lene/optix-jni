@@ -337,6 +337,30 @@ if(BUILD_OPTIX_TESTS)
         CUDA::cudart
     )
 
+    # Host-only target for the Radiance loader: no CUDA or OptiX, so it can run under the
+    # sanitizers. HdrLoaderTest also runs inside optixcontext_test above; this target exists for
+    #   cmake -S src/main/native -B build-asan -DOPTIX_SANITIZE=ON
+    #   cmake --build build-asan --target hdr_loader_test ; ./build-asan/hdr_loader_test
+    option(OPTIX_SANITIZE "Build hdr_loader_test with AddressSanitizer and UBSan" OFF)
+    add_executable(hdr_loader_test
+        tests/HdrLoaderTest.cpp
+        HdrLoader.cpp
+        stb_image_impl.cpp
+    )
+    target_include_directories(hdr_loader_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${stb_SOURCE_DIR}
+    )
+    target_link_libraries(hdr_loader_test PRIVATE gtest gtest_main)
+    if(OPTIX_SANITIZE)
+        set(OPTIX_SANITIZER_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_compile_options(hdr_loader_test PRIVATE ${OPTIX_SANITIZER_FLAGS})
+        target_link_options(hdr_loader_test PRIVATE ${OPTIX_SANITIZER_FLAGS})
+        target_compile_definitions(hdr_loader_test PRIVATE OPTIX_SANITIZE)  # the test skips timing
+    endif()
+    # One CTest entry: gtest_discover_tests would clash with optixcontext_test's HdrLoaderTest.*
+    add_test(NAME hdr_loader_test COMMAND hdr_loader_test)
+
     # Discover and register tests with CTest
     # PRE_TEST defers test discovery to run time, avoiding failures on hosts
     # where libcuda.so.1 is absent (e.g. non-GPU CI runners).
