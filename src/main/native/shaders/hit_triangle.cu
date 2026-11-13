@@ -319,6 +319,17 @@ extern "C" __global__ void __closesthit__triangle() {
         mesh_color, mesh_ior, roughness, metallic,
         specular, film_thickness, mesh_emission, cauchy_a, cauchy_b
     );
+    // A thin film is an open sheet, not a solid (optix-jni#113): it has no inside, so every hit is
+    // a hit from outside, whatever the winding or normals of the triangle say, and the light that
+    // passes it goes straight on (the two surfaces of a film cancel each other's bend) and is not
+    // absorbed (a film has no thickness to absorb in). The shading below reads `entering` and the
+    // transmission parameters instead of geom.entering and the material's IOR.
+    const bool is_film = film_thickness > 0.0f;
+    const bool entering = is_film || geom.entering;
+    const float transmission_ior = is_film ? MaterialConstants::IOR_VACUUM : mesh_ior;
+    const float transmission_cauchy_a = is_film ? MaterialConstants::IOR_VACUUM : cauchy_a;
+    const float transmission_cauchy_b = is_film ? 0.0f : cauchy_b;
+
     // Apply procedural texture modulation
     int proc_type; float proc_scale;
     getInstanceProceduralParams(proc_type, proc_scale);
@@ -465,20 +476,20 @@ extern "C" __global__ void __closesthit__triangle() {
 
         unsigned int refr_r = 0, refr_g = 0, refr_b = 0;
         const bool refr_ok = !TraceDepth::worthTracing(refracted_weight) || traceRefractedRay(
-            geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
-            cauchy_a, cauchy_b,
+            geom.hit_point, ray_direction, geom.normal, entering, depth, transmission_ior,
+            transmission_cauchy_a, transmission_cauchy_b,
             refr_r, refr_g, refr_b, refracted_weight
         );
         if (!refr_ok) { refr_r = refl_r; refr_g = refl_g; refr_b = refl_b; }
 
         float3 refr_color = payloadToFloat3(refr_r, refr_g, refr_b);
-        refr_color = applyBeerLambertAbsorption(refr_color, geom.t, geom.entering, mesh_color);
+        refr_color = applyBeerLambertAbsorption(refr_color, geom.t, entering, mesh_color);
 
         // The reflected share crossed the same glass (see absorbReflectedOnExit).
         const float3 refl_color = applyBeerLambertAbsorption(
-            payloadToFloat3(refl_r, refl_g, refl_b), geom.t, geom.entering, mesh_color);
+            payloadToFloat3(refl_r, refl_g, refl_b), geom.t, entering, mesh_color);
         float3 fresnel_color;
-        if (film_thickness > 0.0f) {
+        if (is_film) {
             const float cos_theta = fabsf(dot(ray_direction, geom.normal));
             const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, mesh_ior, film_thickness);
             fresnel_color = make_float3(
@@ -555,8 +566,8 @@ extern "C" __global__ void __closesthit__triangle() {
     // Trace refracted ray
     unsigned int refract_r = 0, refract_g = 0, refract_b = 0;
     const bool refraction_occurred = !TraceDepth::worthTracing(shares.y) || traceRefractedRay(
-        geom.hit_point, ray_direction, geom.normal, geom.entering, depth, mesh_ior,
-        cauchy_a, cauchy_b,
+        geom.hit_point, ray_direction, geom.normal, entering, depth, transmission_ior,
+        transmission_cauchy_a, transmission_cauchy_b,
         refract_r, refract_g, refract_b, shares.y
     );
 
@@ -571,11 +582,11 @@ extern "C" __global__ void __closesthit__triangle() {
     float3 refract_color = payloadToFloat3(refract_r, refract_g, refract_b);
 
     // Apply Beer-Lambert absorption when exiting (triangles use default distance_scale=1.0)
-    refract_color = applyBeerLambertAbsorption(refract_color, geom.t, geom.entering, mesh_color);
-    absorbReflectedOnExit(reflect_r, reflect_g, reflect_b, geom.t, geom.entering, mesh_color);
+    refract_color = applyBeerLambertAbsorption(refract_color, geom.t, entering, mesh_color);
+    absorbReflectedOnExit(reflect_r, reflect_g, reflect_b, geom.t, entering, mesh_color);
 
     // Compute Fresnel reflectance (RGB for thin-film, scalar for standard)
-    if (film_thickness > 0.0f) {
+    if (is_film) {
         const float cos_theta = fabsf(dot(ray_direction, geom.normal));
         const float3 fresnel_rgb = computeThinFilmReflectance(cos_theta, mesh_ior, film_thickness);
         blendFresnelColorsRGBAndSetPayload(fresnel_rgb, reflect_r, reflect_g, reflect_b, refract_color, mesh_color, mesh_emission);
