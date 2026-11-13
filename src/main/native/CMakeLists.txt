@@ -319,6 +319,7 @@ if(BUILD_OPTIX_TESTS)
         tests/TraceDepthPackingTest.cpp  # payload 3 layout: bounce, nesting, ray weight (optix-jni#118), host-testable
         tests/LaunchFailureFormatTest.cpp  # launch-failure messages, host-testable
         tests/ContextLostTest.cpp  # sticky CUDA error latch (optix-jni#73), host-testable
+        tests/AllocationFaultsTest.cpp  # allocation fault-injection counter, host-testable
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
         HdrLoader.cpp  # Under test by HdrLoaderTest

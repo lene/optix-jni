@@ -541,6 +541,9 @@ class OptiXRenderer
   // Test hook (#41): the next setProjectedMesh fails as if its readback had (-2).
   @native private[optix] def failNextProjectionReadbackNative(): Unit
 
+  // Test hook: the n-th device allocation from now on fails (process-wide; 0 disarms).
+  @native private[optix] def failNextDeviceAllocationsNative(n: Int): Unit
+
   // Test hooks for the process-wide CUDA context-lost latch (optix-jni#73).
   @native private[optix] def simulateContextLostNative(reason: String): Unit
   @native private[optix] def clearContextLostNative(): Unit

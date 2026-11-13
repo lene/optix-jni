@@ -4,6 +4,7 @@
 #include "include/OptiXFileUtils.h"
 #include "include/JniChecks.h"
 #include "include/CudaContextLost.h"
+#include "include/AllocationFaults.h"
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <cstring>
@@ -1032,6 +1033,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextProjectio
         LifecycleShared lifecycle(g_lifecycle);
         OptiXWrapper* wrapper = liveWrapper(env, obj);
         if (wrapper != nullptr) wrapper->failNextProjectionReadbackForTest();
+    }
+    JNI_CATCH_UNKNOWN_THROW
+}
+
+// Test hook: the n-th device allocation from now on fails. Process-wide, like the counter.
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextDeviceAllocationsNative(
+    JNIEnv* env, jobject, jint n) {
+    try {
+        AllocationFaults::failNext(static_cast<int>(n));
     }
     JNI_CATCH_UNKNOWN_THROW
 }
