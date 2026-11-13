@@ -12,6 +12,7 @@
 #include "include/OptiXContext.h"
 #include "include/OptiXConstants.h"
 #include "include/OptiXErrorChecking.h"
+#include "include/AllocationFaults.h"
 #include "include/VectorMath.h"
 #include <iostream>
 #include "include/OptixLogging.h"
@@ -1169,18 +1170,18 @@ int OptiXWrapper::updateCpuTriangleMesh(
     }
 
     size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
-    CUDA_CHECK(cudaMalloc(
+    cudaMallocChecked(
         reinterpret_cast<void**>(&mesh.d_vertices), vertex_size
-    ));
+    );
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<void*>(mesh.d_vertices),
         vertices, vertex_size, cudaMemcpyHostToDevice
     ));
 
     size_t index_size = num_triangles * 3 * sizeof(unsigned int);
-    CUDA_CHECK(cudaMalloc(
+    cudaMallocChecked(
         reinterpret_cast<void**>(&mesh.d_indices), index_size
-    ));
+    );
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<void*>(mesh.d_indices),
         indices, index_size, cudaMemcpyHostToDevice
@@ -1477,7 +1478,7 @@ void OptiXWrapper::buildIAS() {
 
     // Upload instances to GPU
     size_t instances_size = optix_instances.size() * sizeof(OptixInstance);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_instances_buffer), instances_size));
+    cudaMallocChecked(reinterpret_cast<void**>(&impl->d_instances_buffer), instances_size);
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<void*>(impl->d_instances_buffer),
         optix_instances.data(),
@@ -1487,7 +1488,7 @@ void OptiXWrapper::buildIAS() {
 
     // Upload materials to GPU
     size_t materials_size = materials.size() * sizeof(InstanceMaterial);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_instance_materials), materials_size));
+    cudaMallocChecked(reinterpret_cast<void**>(&impl->d_instance_materials), materials_size);
     CUDA_CHECK(cudaMemcpy(
         reinterpret_cast<void*>(impl->d_instance_materials),
         materials.data(),
@@ -1514,7 +1515,7 @@ void OptiXWrapper::buildIAS() {
                         impl->custom_geometry_blobs[i].data(),
                         impl->custom_geometry_blobs[i].size());
         }
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_custom_geometry_data), packed.size()));
+        cudaMallocChecked(reinterpret_cast<void**>(&impl->d_custom_geometry_data), packed.size());
         CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_custom_geometry_data),
                               packed.data(), packed.size(), cudaMemcpyHostToDevice));
     }
@@ -1541,11 +1542,11 @@ void OptiXWrapper::buildIAS() {
 
     // Allocate temp and output buffers
     CUdeviceptr d_temp_buffer;
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp_buffer), ias_buffer_sizes.tempSizeInBytes));
+    cudaMallocChecked(reinterpret_cast<void**>(&d_temp_buffer), ias_buffer_sizes.tempSizeInBytes);
     // CR-5(d): free the build-temp even if a later CUDA_CHECK/OPTIX_CHECK throws; .release() on success.
     auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
         reinterpret_cast<void*>(d_temp_buffer), cudaFree);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_ias_output_buffer), ias_buffer_sizes.outputSizeInBytes));
+    cudaMallocChecked(reinterpret_cast<void**>(&impl->d_ias_output_buffer), ias_buffer_sizes.outputSizeInBytes);
 
     // Build IAS
     OPTIX_CHECK(optixAccelBuild(
