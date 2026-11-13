@@ -59,6 +59,31 @@ void replaceDevice(CUdeviceptr& current, DeviceBuffer& replacement) {
     if (current) cudaFree(reinterpret_cast<void*>(current));
     current = reinterpret_cast<CUdeviceptr>(replacement.release());
 }
+
+CUdeviceptr devicePointer(const DeviceBuffer& buffer) {
+    return reinterpret_cast<CUdeviceptr>(buffer.get());
+}
+
+// The GAS of a triangle mesh built from the given buffers. It touches nothing but what it
+// returns (the caller owns the output buffer), so a failure leaves every mesh slot as it was.
+OptiXContext::GASBuildResult buildMeshGAS(
+    OptiXContext& context,
+    CUdeviceptr d_vertices, unsigned int num_vertices,
+    CUdeviceptr d_indices, unsigned int num_triangles,
+    unsigned int vertex_stride, bool allow_update
+) {
+    // PREFER_FAST_TRACE: optimizes the BVH for ray traversal speed; ALLOW_COMPACTION: enables
+    // memory compaction. 4D-projected meshes (Sprint 18.3) also need ALLOW_UPDATE so
+    // updateMesh4DProjection can refit the GAS via OPERATION_UPDATE after re-launching the
+    // projection kernel into the same buffer.
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags =
+        OPTIX_BUILD_FLAG_PREFER_FAST_TRACE | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    if (allow_update) accel_options.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+    return context.buildTriangleGAS(
+        d_vertices, num_vertices, d_indices, num_triangles, accel_options, vertex_stride);
+}
 }  // namespace
 
 /**
@@ -1182,33 +1207,42 @@ int OptiXWrapper::updateCpuTriangleMesh(
         return -1;
     }
 
-    // The mesh's buffers are in use (the IAS materials point at them) until the new ones exist:
-    // allocate and upload the replacements first, free the old ones only after the swap
-    // (optix-jni#87). A failure before the swap leaves the slot as it was; the guards free the
-    // new buffers on the way out.
+    // The mesh's buffers and GAS are in use (the IAS materials and the instances point at them)
+    // until the new ones exist: upload the replacements, build the new GAS from the new buffers,
+    // and only then swap all three and free the old ones (optix-jni#87). A failure before the
+    // swap leaves the slot exactly as it was; the guards free the new buffers on the way out.
     DeviceBuffer new_vertices = uploadToDevice(
         vertices, num_vertices * vertex_stride * sizeof(float));
     DeviceBuffer new_indices = uploadToDevice(
         indices, num_triangles * 3 * sizeof(unsigned int));
+    DeviceBuffer new_gas(nullptr, cudaFree);
+    OptixTraversableHandle new_gas_handle = 0;
+    if (num_triangles > 0) {  // no triangles: no GAS, handle 0 (as buildTriangleMeshGAS does)
+        const OptiXContext::GASBuildResult built = buildMeshGAS(
+            impl->optix_context,
+            devicePointer(new_vertices), num_vertices,
+            devicePointer(new_indices), num_triangles,
+            vertex_stride, false);
+        new_gas.reset(reinterpret_cast<void*>(built.gas_buffer));
+        new_gas_handle = built.handle;
+    }
 
     replaceDevice(mesh.d_vertices, new_vertices);
     replaceDevice(mesh.d_indices, new_indices);
+    replaceDevice(mesh.d_gas_output_buffer, new_gas);
+    mesh.gas_handle = new_gas_handle;
     mesh.num_vertices = num_vertices;
     mesh.num_triangles = num_triangles;
     mesh.vertex_stride = vertex_stride;
-    mesh.gas_built = false;
+    mesh.gas_built = num_triangles > 0;
 
     // Update the scene parameters so the IAS material pointer stays valid.
     impl->scene.getTriangleMeshMutable().d_vertices = mesh.d_vertices;
     impl->scene.getTriangleMeshMutable().d_indices  = mesh.d_indices;
     impl->scene.getTriangleMeshMutable().vertex_stride = vertex_stride;
 
-    // The IAS must be rebuilt on the next render() (new buffers, new GAS handle). Marked before
-    // the GAS build, so that a failing build still leaves the IAS marked, with valid pointers.
+    // The IAS must be rebuilt on the next render() (new buffers, new GAS handle).
     impl->ias_dirty = true;
-
-    // Rebuild the GAS for this mesh slot only.
-    buildTriangleMeshGAS(static_cast<size_t>(mesh_index));
 
     // Re-link the instance's gas_handle to the freshly built GAS.
     for (auto& inst : impl->instances) {
@@ -1313,49 +1347,25 @@ void OptiXWrapper::buildTriangleMeshGAS(size_t mesh_index) {
 
     auto& mesh = impl->triangle_meshes[mesh_index];
 
-    // Free existing GAS if any
-    if (mesh.d_gas_output_buffer) {
-        cudaFree(
-            reinterpret_cast<void*>(
-                mesh.d_gas_output_buffer
-            )
-        );
-        mesh.d_gas_output_buffer = 0;
-    }
-
     if (mesh.num_triangles == 0) {
+        DeviceBuffer none(nullptr, cudaFree);
+        replaceDevice(mesh.d_gas_output_buffer, none);  // frees the old GAS
         mesh.gas_handle = 0;
         mesh.gas_built = false;
         return;
     }
 
-    // Configure acceleration structure build
-    // PREFER_FAST_TRACE: Optimizes BVH for ray traversal speed
-    // ALLOW_COMPACTION: Enables memory compaction
-    OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags =
-        OPTIX_BUILD_FLAG_PREFER_FAST_TRACE
-        | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-    // 4D-projected meshes (Sprint 18.3) need ALLOW_UPDATE so Cut F's
-    // updateMesh4DProjection can refit the GAS via OPERATION_UPDATE
-    // after re-launching the projection kernel into the same buffer.
-    if (mesh.projection4d.face_count > 0) {
-        accel_options.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_UPDATE;
-    }
-    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+    // Build the new GAS first: the old one stays valid until the new one exists, so a failing
+    // build leaves the slot as it was (optix-jni#87).
+    const OptiXContext::GASBuildResult built = buildMeshGAS(
+        impl->optix_context,
+        mesh.d_vertices, mesh.num_vertices,
+        mesh.d_indices, mesh.num_triangles,
+        mesh.vertex_stride, mesh.projection4d.face_count > 0);
 
-    OptiXContext::GASBuildResult result =
-        impl->optix_context.buildTriangleGAS(
-            mesh.d_vertices,
-            mesh.num_vertices,
-            mesh.d_indices,
-            mesh.num_triangles,
-            accel_options,
-            mesh.vertex_stride
-        );
-
-    mesh.d_gas_output_buffer = result.gas_buffer;
-    mesh.gas_handle = result.handle;
+    DeviceBuffer new_gas(reinterpret_cast<void*>(built.gas_buffer), cudaFree);
+    replaceDevice(mesh.d_gas_output_buffer, new_gas);
+    mesh.gas_handle = built.handle;
     mesh.gas_built = true;
 }
 
