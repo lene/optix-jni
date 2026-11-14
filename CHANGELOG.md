@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Image-based lighting under-lit smooth environments (optix-jni#112). Each importance-sampled env
+  direction was weighted by a one-sample MIS factor `pdf_env^2 / (pdf_env^2 + pdf_bsdf^2)` although
+  no BSDF sample is ever taken, so the estimate was biased low wherever the env's pdf is small
+  against the cosine lobe's: a uniform env lit a matte sphere with 0.177 of its irradiance, a sky
+  over black ground with 0.37 (top region), and the dim part of a sunset (the underside of a sphere
+  lit by `rogland_sunset_2k.hdr`) with 1/30 of it. A small bright patch (a sun) was unaffected, its
+  factor being 0.998. The estimate is now the plain importance-sampling estimator
+  `L * cos / pdf_env`, which is unbiased. **IBL scenes with a smooth environment get brighter.**
+  The convention is unchanged: IBL adds the irradiance `E = integral of L cos dw` (no 1/pi, as for a
+  directional light's `intensity * cos`).
+
 ## [0.5.2] - 2026-11-14
 
 **Note:** 0.5.1 is defective — use 0.5.2.

@@ -745,15 +745,11 @@ __device__ SurfaceLighting calculateSurfaceLighting(
                 ? traceShadowRay(hit_point, normal, ibl_dir)
                 : fully_lit;
 
-            // MIS balance heuristic (β=2): diffuse BSDF pdf = cos_theta / π
-            const float pdf_bsdf = cos_theta * M_1_PIf;
-            const float pd2 = ibl_pdf  * ibl_pdf;
-            const float pb2 = pdf_bsdf * pdf_bsdf;
-            const float w_env = pd2 / (pd2 + pb2);
-
-            // L * cos_theta * w_env / pdf_env
+            // Plain importance sampling, E = integral of L cos dw ~ L * cos / pdf_env. No MIS weight:
+            // MIS needs a sample from the other strategy (the BSDF) to combine with, and none is
+            // taken here, so a weight below 1 only biases the estimate low.
             const float3 contrib = ibl_radiance
-                * (cos_theta * w_env / ibl_pdf)
+                * (cos_theta / ibl_pdf)
                 / static_cast<float>(params.ibl_samples);
             total_lighting = total_lighting + contrib * shadow_factor;
         }
