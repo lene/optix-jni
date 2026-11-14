@@ -1,5 +1,6 @@
 #include "include/OptiXWrapper.h"
 #include "include/EnvMapCDF.h"
+#include "include/EnvMapMapping.h"
 #include "include/HdrLoader.h"
 #include "include/SceneParameters.h"
 #include "include/RenderConfig.h"
@@ -223,6 +224,7 @@ struct OptiXWrapper::Impl {
     cudaTextureObject_t m_env_pdf          = 0;
     int                 m_env_width        = 0;
     int                 m_env_height       = 0;
+    int                 m_env_texture      = -1;  // index of the texture the CDF was built from
     std::vector<cudaArray_t> m_cdf_arrays;   // for cleanup
 
     // Cylinder geometry data (host-side storage, uploaded to GPU before render)
@@ -282,7 +284,11 @@ struct OptiXWrapper::Impl {
     }
 
     void releaseCDFTextures();
-    void computeAndUploadEnvMapCDF(const float* rgba, int width, int height);
+    void computeAndUploadEnvMapCDF(const float* rgba, int width, int height, int texture);
+    void rebuildEnvMapCDF();
+    // Applies `change` to the config; if that changes the sun exclusion, the env map's sampling
+    // tables are rebuilt, and the old exclusion stays if the rebuild throws.
+    template <typename Change> void changeSunExclusion(Change change);
 };
 
 OptiXWrapper::OptiXWrapper() : impl(std::make_unique<Impl>()) {
@@ -425,6 +431,16 @@ void OptiXWrapper::setAmbient(int samples, float radius) {
 
 void OptiXWrapper::setIBL(bool enabled, float strength, int samples) {
     impl->config.setIBL(enabled, strength, samples);
+}
+
+void OptiXWrapper::setIBLSunExclusion(float x, float y, float z, float half_angle_deg) {
+    impl->changeSunExclusion([&](RenderConfig& config) {
+        config.setIBLSunExclusion(x, y, z, half_angle_deg);
+    });
+}
+
+void OptiXWrapper::clearIBLSunExclusion() {
+    impl->changeSunExclusion([](RenderConfig& config) { config.clearIBLSunExclusion(); });
 }
 
 void OptiXWrapper::setAccumulationFrames(int n) {
@@ -1917,6 +1933,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.ibl_enabled       = impl->config.getIBLEnabled();
         params.ibl_strength      = impl->config.getIBLStrength();
         params.ibl_samples       = impl->config.getIBLSamples();
+        params.ibl_exclude_dir   = impl->config.getIBLSunExclusion().axis;
+        params.ibl_exclude_cos   = impl->config.getIBLSunExclusion().cos_half_angle;
         params.ambient_ao_samples = impl->config.getAmbientAoSamples();
         params.ambient_ao_radius  = impl->config.getAmbientAoRadius();
         params.env_width         = impl->m_env_width;
@@ -3698,7 +3716,7 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
         int idx = uploadTextureFloat(path, image->rgba.get(),
                                      static_cast<unsigned int>(image->width),
                                      static_cast<unsigned int>(image->height));
-        impl->computeAndUploadEnvMapCDF(image->rgba.get(), image->width, image->height);
+        impl->computeAndUploadEnvMapCDF(image->rgba.get(), image->width, image->height, idx);
         return idx;
     }
 
@@ -3845,8 +3863,10 @@ void OptiXWrapper::Impl::releaseCDFTextures() {
 }
 
 void OptiXWrapper::Impl::computeAndUploadEnvMapCDF(
-    const float* rgba, int width, int height) {
-    const EnvMapCDFData cdf = computeEnvMapCDF(rgba, width, height);
+    const float* rgba, int width, int height, int texture) {
+    // The sun-excluded texels are black for the sampler: it never draws them and the other
+    // strategy's radiance for them is zero too (helpers.cu), so the MIS weights stay consistent.
+    const EnvMapCDFData cdf = computeEnvMapCDF(rgba, width, height, config.getIBLSunExclusion());
 
     releaseCDFTextures();
 
@@ -3855,6 +3875,34 @@ void OptiXWrapper::Impl::computeAndUploadEnvMapCDF(
     m_env_pdf          = uploadFloat2DTex(m_cdf_arrays, cdf.pdf.data(),      width, height);
     m_env_width        = width;
     m_env_height       = height;
+    m_env_texture      = texture;
+}
+
+// The sampling tables are built from the env texture on the device, read back for the rebuild, so
+// no host copy of the env map (537 MB at 8k) is kept between renders.
+void OptiXWrapper::Impl::rebuildEnvMapCDF() {
+    if (m_env_texture < 0 || m_env_texture >= static_cast<int>(textures.size())) return;
+    const TextureData& tex = textures[static_cast<size_t>(m_env_texture)];
+    if (tex.cuda_array == nullptr) return;
+    const size_t row_bytes = static_cast<size_t>(tex.width) * FLOAT_RGBA_BYTES_PER_PIXEL;
+    std::vector<float> rgba(static_cast<size_t>(tex.width) * tex.height * 4);
+    CUDA_CHECK(cudaMemcpy2DFromArray(rgba.data(), row_bytes, tex.cuda_array, 0, 0, row_bytes,
+                                     tex.height, cudaMemcpyDeviceToHost));
+    computeAndUploadEnvMapCDF(rgba.data(), static_cast<int>(tex.width),
+                              static_cast<int>(tex.height), m_env_texture);
+}
+
+template <typename Change>
+void OptiXWrapper::Impl::changeSunExclusion(Change change) {
+    const EnvExclusionCone before = config.getIBLSunExclusion();
+    change(config);
+    if (before == config.getIBLSunExclusion()) return;
+    try {
+        rebuildEnvMapCDF();
+    } catch (...) {
+        config.setIBLSunExclusion(before);
+        throw;
+    }
 }
 
 void OptiXWrapper::releaseTextures() {
@@ -3869,6 +3917,7 @@ void OptiXWrapper::releaseTextures() {
     impl->textures.clear();
     impl->texture_name_to_index.clear();
     impl->config.setEnvMapIndex(-1);
+    impl->m_env_texture = -1;  // the sampling tables no longer have a texture to be rebuilt from
 
     // Free device texture objects array
     if (impl->d_texture_objects) {

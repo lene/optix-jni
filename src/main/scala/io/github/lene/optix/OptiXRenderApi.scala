@@ -5,6 +5,8 @@ import java.util.Optional
 import menger.common.CausticsConfig
 import menger.common.ImageSize
 import menger.common.RenderConfig
+import menger.common.Vector
+import menger.common.toArray
 
 /** Render-configuration and frame rendering helpers exposed through [[OptiXRenderer]].
   *
@@ -41,6 +43,26 @@ private[optix] trait OptiXRenderApi:
     */
   def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
     setIBLNative(enabled, strength, samples)
+
+  /** Makes image-based lighting leave out the sun: the environment-map texels within
+    * `halfAngleDegrees` of `directionToSun` count as black for the lighting, both for the
+    * importance sampler and for the cosine-weighted strategy, and the sampler's probabilities are
+    * renormalised over the other texels. The background, reflections and refractions still show
+    * the sun. Pair it with a directional light for the sun's own contribution, or the sun is not
+    * counted at all. Off unless set.
+    *
+    * @param directionToSun direction from the scene to the sun, in the environment map's frame
+    *                       (not necessarily normalised, not zero)
+    * @param halfAngleDegrees half-angle of the excluded cone, in (0, 90]
+    * @throws IllegalArgumentException when the direction or the angle is out of range
+    */
+  def setIBLSunExclusion(directionToSun: Vector[3], halfAngleDegrees: Float): Unit =
+    val Array(x, y, z) = directionToSun.toArray
+    setIBLSunExclusionNative(true, x, y, z, halfAngleDegrees)
+
+  /** Ends [[setIBLSunExclusion]]: image-based lighting counts every texel again. */
+  def clearIBLSunExclusion(): Unit =
+    setIBLSunExclusionNative(false, 0f, 1f, 0f, 1f)
 
   /** Chooses how the ambient fill that every surface gets is computed; occlusion
     * ([[AmbientModel.Occlusion]] with its defaults) unless set. Independent of `setShadows`.

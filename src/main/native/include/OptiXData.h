@@ -597,6 +597,8 @@ struct BaseParams {
     bool                ibl_enabled;
     float               ibl_strength;
     int                 ibl_samples;
+    float3              ibl_exclude_dir;     // unit direction to the sun the IBL leaves out
+    float               ibl_exclude_cos;     // cos of its half-angle; > 1: nothing excluded
     int                 ambient_ao_samples;  // occlusion rays per ambient term; 0 = constant fill
     float               ambient_ao_radius;   // an occluder beyond this does not darken (optix-jni#106)
     int                 env_width;           // HDR env map pixel width

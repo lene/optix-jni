@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `OptiXRenderer.setIBLSunExclusion(directionToSun, halfAngleDegrees)` and `clearIBLSunExclusion()`
+  leave the sun out of image-based lighting. The env-map texels within the cone count as black for
+  the lighting: the importance sampler never draws them (its tables are built without them and its
+  probabilities renormalised over the rest) and the cosine-weighted strategy reads no radiance
+  there, so the two strategies still combine without bias. The background, reflections and
+  refractions still show the sun. This is for a scene that lights the sun with a directional light
+  of the sun's measured strength: without the exclusion the sun would be counted twice, once as the
+  light and once as a few env texels. Off by default, and an off exclusion changes nothing. Setting
+  it after the env map is loaded rebuilds the sampling tables from the texture on the device, so
+  no host copy of the env map (537 MB at 8k) is kept. The names are provisional.
+
 ### Changed
 
 - Image-based lighting is physically scaled: a Lambertian surface of albedo `a` returns `a * E / pi`

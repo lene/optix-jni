@@ -7,10 +7,14 @@
 #define __align__(n)  alignas(n)
 #endif
 
+#include <cmath>
 #include <limits>
 
+#include "EnvMapMapping.h"
 #include "OptiXData.h"
 #include "OptiXConstants.h"
+
+static constexpr float kDegreesToRadians = 0.017453292519943295f;
 
 /**
  * Encapsulates all rendering configuration options.
@@ -95,6 +99,19 @@ public:
     int   getAmbientAoSamples() const { return ambient_ao_samples; }
     float getAmbientAoRadius()  const { return ambient_ao_radius;  }
 
+    // IBL sun exclusion: the env texels within `half_angle_deg` of the direction (x, y, z), which
+    // need not be normalised and points to the sun, count as black for the IBL estimate. The
+    // background still shows them. The JNI boundary checks the direction and the angle.
+    void setIBLSunExclusion(float x, float y, float z, float half_angle_deg) {
+        const float norm = std::sqrt(x * x + y * y + z * z);
+        ibl_sun_exclusion.axis           = make_float3(x / norm, y / norm, z / norm);
+        ibl_sun_exclusion.cos_half_angle = std::cos(half_angle_deg * kDegreesToRadians);
+    }
+    void setIBLSunExclusion(const EnvExclusionCone& cone) { ibl_sun_exclusion = cone; }
+    void clearIBLSunExclusion() { ibl_sun_exclusion = EnvExclusionCone{}; }
+    bool hasIBLSunExclusion() const { return ibl_sun_exclusion.cos_half_angle <= 1.0f; }
+    const EnvExclusionCone& getIBLSunExclusion() const { return ibl_sun_exclusion; }
+
     bool  getIBLEnabled()  const { return ibl_enabled;  }
     float getIBLStrength() const { return ibl_strength; }
     int   getIBLSamples()  const { return ibl_samples;  }
@@ -169,6 +186,7 @@ private:
     bool  ibl_enabled         = false;
     float ibl_strength        = 1.0f;
     int   ibl_samples         = 1;
+    EnvExclusionCone ibl_sun_exclusion;  // selects nothing by default
     int   accumulation_frames = 1;
 
     // Ambient light: occlusion-weighted by default, every occluder counts (sky visibility)

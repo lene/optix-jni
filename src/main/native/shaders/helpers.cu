@@ -481,12 +481,19 @@ static __device__ float envPdfAtDirection(const float3& dir) {
     return envTexelPdf(texel.x, texel.y);
 }
 
+// Whether the env texel (col, row) is inside the sun exclusion cone (setIBLSunExclusion).
+static __device__ bool envTexelExcluded(int col, int row) {
+    return envTexelInCone(col, row, params.env_width, params.env_height,
+                          params.ibl_exclude_dir, params.ibl_exclude_cos);
+}
+
 // Env radiance of the texel `dir` lies in, times ibl_strength. Read at the texel's centre, not
 // filtered: the env-map strategy only ever draws texels, so its PDF is zero where a filtered read
 // would blur light beyond the edge of a bright texel, and the cosine strategy would count that light
 // with weight 1 on top of the texel itself (a +10 % bias on a small bright patch).
 static __device__ float3 envRadianceAtDirection(const float3& dir) {
     const int2   texel_index = envTexelAtDirection(dir);
+    if (envTexelExcluded(texel_index.x, texel_index.y)) return make_float3(0.0f, 0.0f, 0.0f);
     const float4 texel = tex2D<float4>(
         params.env_map_texture,
         (static_cast<float>(texel_index.x) + 0.5f) / static_cast<float>(params.env_width),
@@ -548,8 +555,10 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
     // background's mapping (envDirToUv, EnvMapMapping.h) — optix-jni#112.
     light_dir_out = envUvToDir(u, v);
 
-    // 4. Env map radiance at (u,v)
-    const float4 texel   = tex2D<float4>(params.env_map_texture, u, v);
+    // 4. Env map radiance at (u,v); none inside the sun exclusion cone (the CDF never picks it)
+    const float4 texel   = envTexelExcluded(col, row)
+        ? make_float4(0.0f, 0.0f, 0.0f, 0.0f)
+        : tex2D<float4>(params.env_map_texture, u, v);
 
     // 5. Solid-angle PDF of the texel
     pdf_out = envTexelPdf(col, row);

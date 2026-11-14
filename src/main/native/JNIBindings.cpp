@@ -539,6 +539,30 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
     JNI_CATCH_UNKNOWN_THROW
 }
 
+// With `enabled`, the env texels within half_angle_deg of (x, y, z) count as black for image-based
+// lighting (the background still shows them); without, the exclusion ends and the rest is unused.
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLSunExclusionNative(
+    JNIEnv* env, jobject obj, jboolean enabled, jfloat x, jfloat y, jfloat z,
+    jfloat half_angle_deg) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
+        if (wrapper == nullptr) return;
+        if (!enabled) {
+            wrapper->clearIBLSunExclusion();
+        } else if (jni_checks::requireDirection(env, x, y, z, "sun direction") &&
+                   jni_checks::requireRange<jfloat>(
+                       env, half_angle_deg, std::numeric_limits<jfloat>::min(),
+                       jni_checks::kMaxSunExclusionHalfAngleDegrees, "sun exclusion half-angle")) {
+            wrapper->setIBLSunExclusion((float)x, (float)y, (float)z, (float)half_angle_deg);
+        }
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setIBLSunExclusion: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
+    }
+    JNI_CATCH_UNKNOWN_THROW
+}
+
 // Without occlusion the constant fill is used and samples and radius are ignored; with it the
 // radius may be infinite (every occluder counts) but not NaN, zero or negative.
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAmbientNative(

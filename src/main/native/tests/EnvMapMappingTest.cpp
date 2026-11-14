@@ -93,3 +93,54 @@ TEST(EnvMapMappingTest, SinThetaIsOneAtTheEquatorAndZeroAtThePoles) {
     EXPECT_NEAR(envUvSinTheta(0.0f), 0.0f, kEpsilon);
     EXPECT_NEAR(envUvSinTheta(1.0f), 0.0f, kEpsilon);
 }
+
+// The IBL sun exclusion: one cone test for the host that builds the sampling tables without the
+// excluded texels and the device that returns no radiance for them.
+namespace {
+constexpr int kMapWidth = 64;
+constexpr int kMapHeight = 32;
+
+// The texel of a 64 x 32 map whose centre direction is nearest `d`.
+int2 texelOf(float3 d) {
+    const float2 uv = envDirToUv(d);
+    return make_int2(static_cast<int>(uv.x * kMapWidth), static_cast<int>(uv.y * kMapHeight));
+}
+
+float cosOfDegrees(float degrees) { return std::cos(degrees * 3.14159265358979f / 180.0f); }
+}  // namespace
+
+TEST(EnvTexelInConeTest, ATexelWhoseCentreIsTheAxisIsInsideAnyCone) {
+    const float3 axis = envUvToDir((38 + 0.5f) / kMapWidth, (12 + 0.5f) / kMapHeight);
+    EXPECT_TRUE(envTexelInCone(38, 12, kMapWidth, kMapHeight, axis, cosOfDegrees(0.1f)));
+}
+
+TEST(EnvTexelInConeTest, TheOppositeTexelIsOutsideEveryConeUpToAHemisphere) {
+    const float3 axis = envUvToDir(0.6f, 0.4f);
+    const float3 opposite = make_float3(-axis.x, -axis.y, -axis.z);
+    const int2 texel = texelOf(opposite);
+    EXPECT_FALSE(envTexelInCone(texel.x, texel.y, kMapWidth, kMapHeight, axis, cosOfDegrees(90.0f)));
+}
+
+TEST(EnvTexelInConeTest, TheConeEdgeFollowsTheHalfAngle) {
+    // Near the equator texel centres are 360/64 = 5.625 degrees apart. With the axis on a texel
+    // centre of row 16 (elevation 2.8 degrees, so the neighbour is 5.62 degrees away), the
+    // neighbour is inside a 6 degree cone and outside a 5 degree one.
+    const float3 axis = envUvToDir((10 + 0.5f) / kMapWidth, (16 + 0.5f) / kMapHeight);
+    const int2 own = texelOf(axis);
+    EXPECT_TRUE(envTexelInCone(own.x, own.y, kMapWidth, kMapHeight, axis, cosOfDegrees(5.0f)));
+    EXPECT_FALSE(envTexelInCone(own.x + 1, own.y, kMapWidth, kMapHeight, axis, cosOfDegrees(5.0f)));
+    EXPECT_TRUE(envTexelInCone(own.x + 1, own.y, kMapWidth, kMapHeight, axis, cosOfDegrees(6.0f)));
+}
+
+TEST(EnvTexelInConeTest, ACosineAboveOneSelectsNothing) {
+    const float3 axis = envUvToDir((38 + 0.5f) / kMapWidth, (12 + 0.5f) / kMapHeight);
+    EXPECT_FALSE(envTexelInCone(38, 12, kMapWidth, kMapHeight, axis, 2.0f));
+}
+
+TEST(EnvTexelInConeTest, TheConeCrossesTheSeamAtMinusX) {
+    // -x is the u = 0 / u = 1 seam: a cone around it holds texels from both edges of the map.
+    const float3 axis = make_float3(-1.0f, 0.0f, 0.0f);
+    const int mid = kMapHeight / 2;
+    EXPECT_TRUE(envTexelInCone(0, mid, kMapWidth, kMapHeight, axis, cosOfDegrees(5.0f)));
+    EXPECT_TRUE(envTexelInCone(kMapWidth - 1, mid, kMapWidth, kMapHeight, axis, cosOfDegrees(5.0f)));
+}

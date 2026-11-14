@@ -4,6 +4,7 @@
 #include <cmath>
 #include <vector>
 #include <numeric>
+#include <utility>
 
 // Build a flat RGBA image: all pixels set to (r, g, b, 1.0)
 static std::vector<float> makeUniformImage(int w, int h, float r, float g, float b) {
@@ -141,4 +142,111 @@ TEST(EnvMapCDFTest, BrightSinglePixel_PDFPeaksAtBrightPixel) {
         else
             EXPECT_NEAR(cdf.pdf[i], 0.0f, 1e-6f);
     }
+}
+
+//=============================================================================
+// Sun exclusion: texels inside a cone get weight 0 (IBL leaves the sun to its own light)
+//=============================================================================
+
+namespace {
+const int kExW = 64, kExH = 32;
+
+float cosDegrees(float degrees) { return std::cos(degrees * 3.14159265358979f / 180.0f); }
+
+EnvExclusionCone coneAround(float u, float v, float halfAngleDegrees) {
+    EnvExclusionCone cone;
+    cone.axis = envUvToDir(u, v);
+    cone.cos_half_angle = cosDegrees(halfAngleDegrees);
+    return cone;
+}
+
+// The texel the sampler draws for uniform randoms (u1, u2): the inversion the shader does, the
+// first marginal row whose CDF reaches u1, then the first column of that row reaching u2.
+std::pair<int, int> drawTexel(const EnvMapCDFData& cdf, int w, int h, float u1, float u2) {
+    int row = 0;
+    while (row < h - 1 && cdf.marg_cdf[row] < u1) ++row;
+    int col = 0;
+    while (col < w - 1 && cdf.cond_cdf[row * w + col] < u2) ++col;
+    return {col, row};
+}
+}  // namespace
+
+TEST(EnvMapCDFSunExclusionTest, TheSamplerNeverDrawsAnExcludedTexel) {
+    // A bright sun patch in a dim sky: without the exclusion it takes most of the draws.
+    auto img = makeUniformImage(kExW, kExH, 0.05f, 0.05f, 0.05f);
+    const EnvExclusionCone cone = coneAround(0.6f, 0.4f, 12.0f);
+    int excluded = 0;
+    for (int y = 0; y < kExH; ++y)
+        for (int x = 0; x < kExW; ++x)
+            if (envTexelInCone(x, y, kExW, kExH, cone.axis, cone.cos_half_angle)) {
+                ++excluded;
+                for (int c = 0; c < 3; ++c) img[(y * kExW + x) * 4 + c] = 500.f;
+            }
+    ASSERT_GT(excluded, 4);
+    const auto cdf = computeEnvMapCDF(img.data(), kExW, kExH, cone);
+    int draws = 0;
+    for (int i = 0; i < 100; ++i)
+        for (int j = 0; j < 100; ++j) {
+            const auto [col, row] = drawTexel(cdf, kExW, kExH, (i + 0.5f) / 100.f, (j + 0.5f) / 100.f);
+            EXPECT_FALSE(envTexelInCone(col, row, kExW, kExH, cone.axis, cone.cos_half_angle))
+                << "drew excluded texel " << col << "," << row;
+            ++draws;
+        }
+    EXPECT_EQ(draws, 10000);
+}
+
+TEST(EnvMapCDFSunExclusionTest, ExcludedTexelsHaveZeroPdfAndTheRestStillSumToOne) {
+    auto img = makeUniformImage(kExW, kExH, 1.f, 1.f, 1.f);
+    const EnvExclusionCone cone = coneAround(0.3f, 0.6f, 20.0f);
+    const auto cdf = computeEnvMapCDF(img.data(), kExW, kExH, cone);
+    float sum = 0.f;
+    for (int y = 0; y < kExH; ++y)
+        for (int x = 0; x < kExW; ++x) {
+            const float p = cdf.pdf[y * kExW + x];
+            if (envTexelInCone(x, y, kExW, kExH, cone.axis, cone.cos_half_angle))
+                EXPECT_EQ(p, 0.f);
+            else
+                EXPECT_GT(p, 0.f);
+            sum += p;
+        }
+    EXPECT_NEAR(sum, 1.0f, 1e-4f);
+}
+
+TEST(EnvMapCDFSunExclusionTest, TheRemainingTexelsKeepTheirRelativeWeights) {
+    auto img = makeUniformImage(kExW, kExH, 1.f, 1.f, 1.f);
+    const EnvExclusionCone cone = coneAround(0.3f, 0.6f, 20.0f);
+    const auto plain = computeEnvMapCDF(img.data(), kExW, kExH);
+    const auto masked = computeEnvMapCDF(img.data(), kExW, kExH, cone);
+    // pdf_masked = pdf_plain / (share of the plain pdf outside the cone), the same for every texel
+    float outside = 0.f;
+    for (int y = 0; y < kExH; ++y)
+        for (int x = 0; x < kExW; ++x)
+            if (!envTexelInCone(x, y, kExW, kExH, cone.axis, cone.cos_half_angle))
+                outside += plain.pdf[y * kExW + x];
+    for (int y = 0; y < kExH; ++y)
+        for (int x = 0; x < kExW; ++x)
+            if (!envTexelInCone(x, y, kExW, kExH, cone.axis, cone.cos_half_angle))
+                EXPECT_NEAR(masked.pdf[y * kExW + x], plain.pdf[y * kExW + x] / outside, 1e-6f);
+}
+
+TEST(EnvMapCDFSunExclusionTest, ACosineAboveOneChangesNothing) {
+    auto img = makeSinglePixelImage(kExW, kExH, 20, 10, 3.f, 2.f, 1.f);
+    const auto plain = computeEnvMapCDF(img.data(), kExW, kExH);
+    const auto none = computeEnvMapCDF(img.data(), kExW, kExH, EnvExclusionCone{});
+    EXPECT_EQ(plain.pdf, none.pdf);
+    EXPECT_EQ(plain.marg_cdf, none.marg_cdf);
+    EXPECT_EQ(plain.cond_cdf, none.cond_cdf);
+}
+
+TEST(EnvMapCDFSunExclusionTest, ExcludingTheOnlyLightGivesTheAllBlackTables) {
+    // Nothing is left to draw: the tables are those of an all-black map (uniform CDFs, zero pdf),
+    // which the shader's degenerate-sample guard rejects, and the excluded texels have no radiance
+    // for the cosine strategy either, so the estimate is zero rather than undefined.
+    const EnvExclusionCone cone = coneAround((20 + 0.5f) / kExW, (10 + 0.5f) / kExH, 12.0f);
+    auto img = makeSinglePixelImage(kExW, kExH, 20, 10, 10.f, 10.f, 10.f);
+    const auto cdf = computeEnvMapCDF(img.data(), kExW, kExH, cone);
+    const auto black = computeEnvMapCDF(makeUniformImage(kExW, kExH, 0.f, 0.f, 0.f).data(), kExW, kExH);
+    EXPECT_EQ(cdf.marg_cdf, black.marg_cdf);
+    EXPECT_EQ(cdf.cond_cdf, black.cond_cdf);
+    EXPECT_EQ(cdf.pdf, black.pdf);
 }

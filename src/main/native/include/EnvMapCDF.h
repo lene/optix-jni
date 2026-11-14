@@ -3,6 +3,8 @@
 #include <cmath>
 #include <vector>
 
+#include "EnvMapMapping.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -16,8 +18,11 @@ struct EnvMapCDFData {
 // Compute importance-sampling CDFs for an equirectangular RGBA HDR env map.
 // rgba: float buffer, width*height*4 RGBA values (R,G,B,A per pixel, row-major).
 // Uses Rec.709 luminance and sin-weighting for equirectangular distortion.
+// Texels inside `excluded` get weight 0, so the sampler never draws them.
 // All-black input falls back to a uniform distribution.
-inline EnvMapCDFData computeEnvMapCDF(const float* rgba, int width, int height) {
+inline EnvMapCDFData computeEnvMapCDF(
+    const float* rgba, int width, int height, const EnvExclusionCone& excluded = {}) {
+    const bool has_exclusion = excluded.cos_half_angle <= 1.f;
     std::vector<float> wlum(width * height);
     float total = 0.f;
     for (int y = 0; y < height; ++y) {
@@ -25,8 +30,10 @@ inline EnvMapCDFData computeEnvMapCDF(const float* rgba, int width, int height) 
             sinf((float)M_PI * (y + 0.5f) / static_cast<float>(height));
         for (int x = 0; x < width; ++x) {
             const int   i = (y * width + x) * 4;
-            const float l = 0.2126f * rgba[i] + 0.7152f * rgba[i + 1]
-                          + 0.0722f * rgba[i + 2];
+            const bool  in_cone = has_exclusion
+                && envTexelInCone(x, y, width, height, excluded.axis, excluded.cos_half_angle);
+            const float l = in_cone ? 0.f
+                : 0.2126f * rgba[i] + 0.7152f * rgba[i + 1] + 0.0722f * rgba[i + 2];
             wlum[y * width + x] = l * sin_w;
             total += l * sin_w;
         }
