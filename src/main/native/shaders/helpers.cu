@@ -1251,13 +1251,50 @@ __device__ bool traceContinuationRay(
     return true;
 }
 
-/** A surface colour lit by `lighting`: colour * diffuse light + the untinted highlight. */
+// Tone-mapping operator ids — MUST match SceneConverter.ToneMapOp (Scala side).
+constexpr int TONEMAP_REINHARD = 1;
+constexpr int TONEMAP_ACES     = 2;
+
+__device__ float3 applyToneMapping(float3 c) {
+    const float e = params.tonemap_exposure;
+    if (params.tonemap_operator == TONEMAP_REINHARD) {
+        // Reinhard: c*e / (1 + c*e)
+        c.x = c.x * e / (1.0f + c.x * e);
+        c.y = c.y * e / (1.0f + c.y * e);
+        c.z = c.z * e / (1.0f + c.z * e);
+    } else if (params.tonemap_operator == TONEMAP_ACES) {
+        // ACES filmic approximation (Narkowicz 2015)
+        c.x *= e; c.y *= e; c.z *= e;
+        const float a = 2.51f, b2 = 0.03f, cc = 2.43f, d = 0.59f, e2 = 0.14f;
+        c.x = fminf((c.x*(a*c.x+b2))/(c.x*(cc*c.x+d)+e2), 1.0f);
+        c.y = fminf((c.y*(a*c.y+b2))/(c.y*(cc*c.y+d)+e2), 1.0f);
+        c.z = fminf((c.z*(a*c.z+b2))/(c.z*(cc*c.z+d)+e2), 1.0f);
+    } else {
+        c.x = fminf(c.x, 1.0f);
+        c.y = fminf(c.y, 1.0f);
+        c.z = fminf(c.z, 1.0f);
+    }
+    return c;
+}
+
+// A scene's tone mapping covers the whole image. It is applied once where a radiance first becomes
+// a display value (optix-jni#112): to a lit surface here, to an env-map background in the miss
+// program, and to a caustic where it is added to the image. The payload colours that travel
+// between shaders are display values (8 bits per channel), so a reflection or a refraction
+// carries the mapped colour of what it saw, and the shaders that mix them never map it again.
+// With no tone mapping the lit radiance is returned as it was, to be clamped by the caller: the
+// render is bit-for-bit what it was before tone mapping covered surfaces.
+__device__ float3 toneMapLitRadiance(const float3& radiance) {
+    return params.tonemap_operator == 0 ? radiance : applyToneMapping(radiance);
+}
+
+/** A surface colour lit by `lighting`, colour * diffuse light + the untinted highlight, tone mapped. */
 __device__ float3 litSurfaceColor(const float4& material_color, const SurfaceLighting& lighting) {
-    return make_float3(
+    return toneMapLitRadiance(make_float3(
         material_color.x * lighting.diffuse.x + lighting.specular.x,
         material_color.y * lighting.diffuse.y + lighting.specular.y,
         material_color.z * lighting.diffuse.z + lighting.specular.z
-    );
+    ));
 }
 
 /**

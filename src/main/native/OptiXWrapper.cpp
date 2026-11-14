@@ -2179,12 +2179,18 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
                 ? impl->buffer_manager.getDenoisedColorBuffer()
                 : denoise_input;
 
+            // The linear colour is already tone mapped where it was shaded (surface, background
+            // and caustic each once: see toneMapLitRadiance in helpers.cu), so this pass only
+            // converts it to bytes. Mapping it here again would map the background twice. Without
+            // tone mapping it is the same pass as ever, exposure included.
+            constexpr int NO_TONE_MAPPING = 0;
+            const bool tone_mapped = impl->config.getToneMappingOperator() != NO_TONE_MAPPING;
             cudaError_t tone_map_err = launchFloat4ToRgba8Kernel(
                 reinterpret_cast<const float4*>(final_linear),
                 reinterpret_cast<unsigned char*>(impl->buffer_manager.getImageBuffer()),
                 npix,
-                impl->config.getToneMappingOperator(),
-                impl->config.getToneMappingExposure()
+                NO_TONE_MAPPING,
+                tone_mapped ? 1.0f : impl->config.getToneMappingExposure()
             );
             if (tone_map_err != cudaSuccess) {
                 throw std::runtime_error(cudaGetErrorString(tone_map_err));

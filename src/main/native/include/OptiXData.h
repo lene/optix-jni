@@ -586,7 +586,7 @@ struct BaseParams {
     float bg_r, bg_g, bg_b;    // Background color (overrides MissData SBT)
     bool                env_map_enabled;   // true = sample equirectangular env map
     cudaTextureObject_t env_map_texture;   // equirectangular HDR texture object
-    int   tonemap_operator;  // 0=none (clip), 1=reinhard, 2=aces
+    int   tonemap_operator;  // 0=none (clip), 1=reinhard, 2=aces; applies to surfaces, background and caustics
     float tonemap_exposure;  // pre-tone-map exposure multiplier (default 1.0)
     float camera_u[3];       // Camera right vector for guide normal transform
     float camera_v[3];       // Camera up vector for guide normal transform

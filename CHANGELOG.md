@@ -21,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (none for a candidate that sees no light). Rendering differs from 0.5.2 in the noise pattern, not
   in brightness.
 
+- A scene's tone mapping covers the whole image (optix-jni#112). It used to apply only to the
+  environment-map background and to caustics: a surface lit above 1, say by a sun in an HDR env
+  map, clipped to pure white next to a tone-mapped background. Now a lit surface is tone mapped,
+  too, at the point where its radiance becomes a display value, so a Reinhard or ACES scene keeps
+  the gradient of a bright surface. The background and the caustics are mapped as before, each
+  once; **with the denoiser on, the background used to be mapped twice (the final conversion
+  mapped the frame again) and is now mapped once**, so it is brighter than it was. Renders without
+  tone mapping are bit-for-bit unchanged. Limits: the colours passed between shaders are 8-bit
+  display values, so a reflection or refraction carries the mapped colour of what it saw, an
+  accumulated frame is the average of mapped frames, the denoiser sees mapped values, and a
+  caustic is mapped by itself and added; a float HDR film (backlog F-HDR-FILM) would map the sum
+  once after the average and the denoiser.
+
 ### Fixed
 
 - Image-based lighting under-lit smooth environments (optix-jni#112). Each importance-sampled env
