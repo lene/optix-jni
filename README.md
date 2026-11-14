@@ -182,6 +182,28 @@ in the host process, not only a failed load. Mitigations in place:
 These reduce the exposure but do not make `stb_image` a sandbox: load only files you trust, or
 have pinned by hash.
 
+### Lighting with an environment map
+
+With `setIBL(true, ...)` and an `.hdr` environment map the environment is the sky. Lighting is
+physically scaled: a Lambertian surface of albedo `a` returns `a * E / pi`, `E` being the
+irradiance of the map, so a matte surface under a uniform environment of radiance `L` returns
+`a * L`, as bright as the background it faces. There is no constant ambient fill (`setAmbient` has
+no effect, and no occlusion rays are traced for it) and no 0.7 blend factor on lights, IBL and
+highlights; a surface neither the environment nor a light reaches is black. A directional light
+keeps its convention, `intensity * cos`, so a light of intensity `I` and the environment's sun of
+irradiance `E_sun` agree when `I = E_sun / pi`. Without IBL, or without an environment map,
+lighting is the 0.3 ambient fill plus 0.7 times the direct light, as always.
+
+An environment map with a sun lights the scene twice if the scene also has a directional light for
+the sun: once as a few very bright texels, once as the light.
+`setIBLSunExclusion(directionToSun, halfAngleDegrees)` makes the texels within the cone count as
+black for the lighting (not for the background, reflections or refractions);
+`clearIBLSunExclusion()` ends it. `envmap.EnvMapSun.measure(path)` measures the sun of an
+equirectangular map without a GPU or the native library: its direction, the half-angle of the cone
+that holds it, its irradiance, the intensity and colour of the directional light that replaces it,
+and the share of the map's power it carries. `envmap.RadianceHdr` is the Radiance reader it uses,
+which decodes bit for bit as the native loader does.
+
 ---
 
 ## CI Configuration
