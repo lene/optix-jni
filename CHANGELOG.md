@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Image-based lighting is far less noisy under a bright, low sun (optix-jni#112). Each IBL sample
+  now takes two candidate directions, one drawn from the env map by luminance as before and one
+  cosine-weighted about the surface normal, and combines them with the balance heuristic of
+  multiple importance sampling (each candidate contributes `L cos / (pdf_env + pdf_cosine)`). The
+  estimate stays unbiased and its mean is unchanged. The luminance sampling alone sent most samples
+  to the sun (79 % of the Kiara sunrise's power) where a horizontal surface sees it at cos 0.07,
+  and left the sky, which lights the surface, to rare large-weight samples. On a test env with the
+  same share of power in a sun 4 to 7 degrees above the horizon the variance of the pixel falls by
+  a factor of 60 at the same sample count. **Cost:** two shadow rays per IBL sample instead of one
+  (none for a candidate that sees no light). Rendering differs from 0.5.2 in the noise pattern, not
+  in brightness.
+
 ### Fixed
 
 - Image-based lighting under-lit smooth environments (optix-jni#112). Each importance-sampled env
