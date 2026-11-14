@@ -32,6 +32,12 @@ private[optix] trait OptiXRenderApi:
     * A Lambertian surface of albedo `a` is lit by `a * E / pi`, with `E` the irradiance of the
     * environment map times `strength`: a matte surface under a uniform environment of radiance `L`
     * returns `a * L`.
+    *
+    * With IBL on (and an environment map loaded) there is no constant ambient fill and no
+    * occlusion rays for it, so [[setAmbient]] has no effect, and directional, point and area
+    * lights and highlights are not scaled by the 0.7 blend factor that makes room for the fill. A
+    * surface the environment and the lights do not reach is black. With IBL off, or no
+    * environment map, lighting is unchanged: ambient 0.3 plus 0.7 times the direct light.
     */
   def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
     setIBLNative(enabled, strength, samples)

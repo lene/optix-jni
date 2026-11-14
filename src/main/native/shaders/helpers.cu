@@ -734,6 +734,10 @@ __device__ SurfaceLighting calculateSurfaceLighting(
 ) {
     float3 total_lighting = make_float3(0.f, 0.f, 0.f);
     float3 total_specular = make_float3(0.f, 0.f, 0.f);
+    // With image-based lighting the environment is the sky: there is no constant ambient fill (and
+    // no occlusion rays for it), and lights, IBL and highlights are not scaled by the blend factor,
+    // which only exists to make room for the fill.
+    const bool iblActive = params.ibl_enabled && params.env_cdf_marginal != 0;
     const bool has_specular = lobe.specular > 0.0f;
     // A double-sided surface may be given the normal facing away from the viewer.
     const float3 specular_normal = double_sided && dot(normal, lobe.to_viewer) < 0.0f
@@ -807,7 +811,7 @@ __device__ SurfaceLighting calculateSurfaceLighting(
 
     // IBL contribution: per sample, one direction drawn from the env map by luminance and one
     // cosine-weighted about the normal, combined by multiple importance sampling.
-    if (params.ibl_enabled && params.env_cdf_marginal != 0) {
+    if (iblActive) {
         float3 ibl_sum = make_float3(0.0f, 0.0f, 0.0f);
         for (int s = 0; s < params.ibl_samples; ++s) {
             float3       env_dir;
@@ -832,15 +836,18 @@ __device__ SurfaceLighting calculateSurfaceLighting(
             + ibl_sum * (kEnvInvPi / static_cast<float>(params.ibl_samples));
     }
 
-    // Add ambient lighting (prevents pure black shadows)
-    const float3 ambient = ambientLight(hit_point, normal, double_sided, skip_shadows);
+    // Add ambient lighting (prevents pure black shadows), except under image-based lighting
+    const float3 ambient = iblActive ? make_float3(0.0f, 0.0f, 0.0f)
+                                     : ambientLight(hit_point, normal, double_sided, skip_shadows);
+    const float blend = iblActive ? 1.0f : RenderingConstants::DIFFUSE_BLEND_FACTOR;
 
-    // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1).
+    // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1); with
+    // image-based lighting no ambient and a blend of 1.
     // Not energy conserving against the highlight: the diffuse is not reduced by (1 - F), so a
     // strong highlight adds light on top of it. The highlight takes the same direct-light share.
     return SurfaceLighting{
-        ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR,
-        total_specular * RenderingConstants::DIFFUSE_BLEND_FACTOR
+        ambient + total_lighting * blend,
+        total_specular * blend
     };
 }
 

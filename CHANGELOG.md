@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (none for a candidate that sees no light). Rendering differs from 0.5.2 in the noise pattern, not
   in brightness.
 
+- With image-based lighting on there is no constant ambient fill and no blend factor. The 0.3
+  ambient fill (an occlusion-weighted fill by default, with its occlusion rays) and the 0.7 factor
+  on lights, IBL and highlights exist to approximate a sky that is not there; with an environment
+  map the sky is the light. Under IBL a surface gets its lights and the environment at full
+  strength, a surface the environment does not light is black, and no ambient occlusion rays are
+  traced for it (a render that does not use IBL, or whose env map did not load, is **pixel
+  identical to before**: ambient 0.3 plus 0.7 times the direct light). **IBL scenes change**: a
+  directional light is 1/0.7 stronger, the 0.3 floor is gone, and the highlight of a glossy
+  surface is 1/0.7 stronger. `setAmbient` has no effect while IBL is on.
+
 - A scene's tone mapping covers the whole image (optix-jni#112). It used to apply only to the
   environment-map background and to caustics: a surface lit above 1, say by a sun in an HDR env
   map, clipped to pure white next to a tone-mapped background. Now a lit surface is tone mapped,

@@ -33,8 +33,6 @@ class IblVarianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val mapWidth = 128
   private val mapHeight = 64
   private val iblSamples = 4
-  private val diffuseBlend = 0.7  // pixel = ambient 0.3 + DIFFUSE_BLEND_FACTOR * E / pi
-  private val ambient = 0.3
   private val skyRadiance = 0.05f
   private val sunShareOfPower = 0.8  // of the Kiara sunrise: 79 %
   private val sunColumns = 80 until 82
@@ -78,13 +76,12 @@ class IblVarianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val envOnlyVariancePerSample: Double =
     envOnlyTexels.map((p, v) => p * v * v).sum - irradiance * irradiance
 
-  private def renderPlane(ibl: Boolean): Array[Byte] =
+  private def renderPlane(): Array[Byte] =
     renderer.clearPlanes()
     renderer.addPlaneSolidColor(1, true, 0.0f, 1f, 1f, 1f)
     renderer.setSphere(Vector[3](50f, 50f, 50f), 0.5f)
     renderer.setLight(Vector[3](0f, -1f, 0f), 0f)
     renderer.setShadows(false)
-    renderer.setAmbient(AmbientModel.Constant)
     renderer.setCamera(Vector[3](0f, 3f, 0f), Vector[3](0f, 0f, 0f), Vector[3](0f, 0f, -1f), 60f)
     val tmp = Files.createTempFile("ibl_variance_", ".hdr")
     try
@@ -93,7 +90,7 @@ class IblVarianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
         (l, l, l))
       renderer.setEnvironmentMap(renderer.uploadTextureFromFile(tmp.toString))
     finally Files.deleteIfExists(tmp)
-    renderer.setIBL(ibl, 1.0f, iblSamples)
+    renderer.setIBL(true, 1.0f, iblSamples)
     renderImage(imageSize)
 
   private def redValues(image: Array[Byte]): Seq[Double] =
@@ -107,19 +104,17 @@ class IblVarianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
     math.sqrt(envOnlyVariancePerSample) / irradiance should be > 1.0
 
   "IBL on a horizontal surface under a sky with a low sun" should "have the irradiance of the env map" in:
-    val lit = redValues(renderPlane(ibl = true))
-    val ambientOnly = redValues(renderPlane(ibl = false))
-    val measured = math.Pi * (lit.sum - ambientOnly.sum) / lit.length / diffuseBlend
+    val lit = redValues(renderPlane())
+    val measured = math.Pi * lit.sum / lit.length
     info(f"E measured = $measured%.4f, reference = $irradiance%.4f")
     measured shouldBe irradiance +- (relativeMeanTolerance * irradiance)
 
   it should "be several times less noisy than sampling the env map alone at the same sample count" in:
-    val lit = redValues(renderPlane(ibl = true))
+    val lit = redValues(renderPlane())
     val mean = lit.sum / lit.length
     val measuredVariance = lit.map(v => (v - mean) * (v - mean)).sum / lit.length
-    val pixelPerIrradiance = diffuseBlend / math.Pi
-    val envOnlyVariance = pixelPerIrradiance * pixelPerIrradiance * envOnlyVariancePerSample / iblSamples
-    info(f"mean pixel = $mean%.4f (ambient $ambient%.1f)")
+    val envOnlyVariance = envOnlyVariancePerSample / (math.Pi * math.Pi) / iblSamples
+    info(f"mean pixel = $mean%.4f")
     info(f"pixel std = ${math.sqrt(measuredVariance) * 255}%.2f levels, env-only estimator = ${math.sqrt(envOnlyVariance) * 255}%.2f levels")
     info(f"variance reduction = ${envOnlyVariance / measuredVariance}%.1f (required $requiredVarianceReduction%.1f)")
     measuredVariance should be < envOnlyVariance / requiredVarianceReduction

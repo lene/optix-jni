@@ -14,8 +14,8 @@ import org.scalatest.matchers.should.Matchers
   *
   * Reference values are computed on the CPU from the env map written by the test, with the
   * EnvMapMapping.h convention (u = 0.5 is +x, u = 0.75 is +z, v = 0 is +y). A white matte sphere,
-  * constant ambient, no direct light and no shadows isolate the IBL term: a pixel is
-  * `ambient + DIFFUSE_BLEND_FACTOR * E / pi`, so `E = pi * (pixel - ambient pixel) / DIFFUSE_BLEND_FACTOR`.
+  * no direct light and no shadows isolate the IBL term: with IBL on there is no constant ambient
+  * fill and no blend factor, so a pixel is `E / pi` and `E = pi * pixel`.
   *
   * Before the fix the env sample was weighted by a one-sample MIS factor
   * `pdf_env^2 / (pdf_env^2 + pdf_bsdf^2)` although no BSDF sample is ever taken. That weight is 1
@@ -33,10 +33,11 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val mapWidth = 64
   private val mapHeight = 32
   private val iblSamples = 64  // the maximum
-  // Pixels clamp at 1: every env below keeps ambient 0.3 + 0.7 * E / pi under 1 over the sphere.
-  private val diffuseBlend = 0.7  // 1 - ambient factor 0.3
   private val relativeTolerance = 0.10
-  private val ambientOnlyTolerance = 3.0 / 255.0  // pixel units of the IBL term, off the black side
+  // One 8-bit level of the pixel is pi / 255 of E. A pixel is truncated to 8 bits, which loses half
+  // a level on average (the ambient pixel the test used to subtract lost the same and cancelled it).
+  private val levelInIrradiance = math.Pi / 255.0
+  private val unlitTolerance = 3.0 / 255.0  // in E, for an env that lights the region not at all
   private val verticalFovTan = math.tan(math.toRadians(30.0))
   private val sphereRadius = 0.5
   private val cameraDistance = 3.0
@@ -63,11 +64,10 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val plusZ = patch(0.75, 0.5, 0.07, 2.0f)
   private val minusZ = patch(0.25, 0.5, 0.07, 2.0f)
 
-  private def render(env: EnvMap, ibl: Boolean, albedo: Float = 1f): Array[Byte] =
+  private def render(env: EnvMap, albedo: Float = 1f): Array[Byte] =
     renderer.clearPlanes()
     renderer.setLight(Vector[3](0f, -1f, 0f), 0f)
     renderer.setShadows(false)
-    renderer.setAmbient(AmbientModel.Constant)
     renderer.setSphereColor(Color(albedo, albedo, albedo))
     renderer.setCamera(
       Vector[3](0f, 0f, cameraDistance.toFloat), Vector[3](0f, 0f, 0f), Vector[3](0f, 1f, 0f), 60f)
@@ -78,7 +78,7 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
         (l, l, l))
       renderer.setEnvironmentMap(renderer.uploadTextureFromFile(tmp.toString))
     finally Files.deleteIfExists(tmp)
-    renderer.setIBL(ibl, 1.0f, iblSamples)
+    renderer.setIBL(true, 1.0f, iblSamples)
     renderImage(imageSize)
 
   /** Outward unit normal of the sphere under pixel (px, py), if the camera ray hits it. */
@@ -118,24 +118,24 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   private def mean(values: Seq[Double]): Double = values.sum / values.length
 
+  private def red(image: Array[Byte], p: Pixel): Double =
+    ImageValidation.getRGBAt(image, imageSize, p._1, p._2).r / 255.0
+
   /** (measured E, reference E) averaged over the sphere pixels of `region`. */
-  private def irradiance(env: EnvMap, lit: Array[Byte], ambientOnly: Array[Byte], region: TestUtilities.Region)
-      : (Double, Double) =
+  private def irradiance(env: EnvMap, lit: Array[Byte], region: TestUtilities.Region): (Double, Double) =
     val pixels = sphereNormals(region)
     pixels should not be empty
-    def red(image: Array[Byte], p: Pixel): Double =
-      ImageValidation.getRGBAt(image, imageSize, p._1, p._2).r / 255.0
-    val measured = mean(pixels.map((p, _) => math.Pi * (red(lit, p) - red(ambientOnly, p)) / diffuseBlend))
+    val measured = mean(pixels.map((p, _) => math.Pi * red(lit, p))) + 0.5 * levelInIrradiance
     val expected = mean(pixels.map((_, n) => referenceIrradiance(env, n)))
     info(f"E measured = $measured%.4f, reference = $expected%.4f")
     (measured, expected)
 
   private def shouldMatchReference(env: EnvMap, regions: Seq[TestUtilities.Region]): Unit =
-    val (lit, ambientOnly) = (render(env, ibl = true), render(env, ibl = false))
+    val lit = render(env)
     regions.foreach: region =>
-      val (measured, expected) = irradiance(env, lit, ambientOnly, region)
-      if expected < ambientOnlyTolerance then measured should be <= ambientOnlyTolerance
-      else measured shouldBe expected +- (relativeTolerance * expected)
+      val (measured, expected) = irradiance(env, lit, region)
+      if expected < unlitTolerance then measured should be <= unlitTolerance
+      else measured shouldBe expected +- (relativeTolerance * expected + 0.5 * levelInIrradiance)
 
   "IBL on a uniform environment" should "light top, middle and bottom with the irradiance pi * L" in:
     val env = uniform(0.25f)
@@ -144,23 +144,20 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   "IBL under a sky above the horizon and black ground" should "light the top by pi * L and the bottom not at all" in:
     shouldMatchReference(upperSky(0.25f), Seq(top, middle, bottom))
 
-  "IBL with a bright patch straight up" should "light the top and leave the lower half ambient-only" in:
+  "IBL with a bright patch straight up" should "light the top and leave the lower half unlit" in:
     shouldMatchReference(plusY, Seq(top, middle, bottom))
 
   "IBL with a bright patch toward the camera" should "light the camera-facing sphere" in:
     shouldMatchReference(plusZ, Seq(top, middle, bottom))
 
-  "IBL with a bright patch behind the sphere" should "leave every visible pixel ambient-only" in:
+  "IBL with a bright patch behind the sphere" should "leave every visible pixel unlit" in:
     shouldMatchReference(minusZ, Seq(top, middle, bottom))
 
   "IBL on a matte surface of albedo a under a uniform env of radiance L" should "return a * L" in:
     val (albedo, radiance) = (0.5f, 0.6f)
-    val lit = render(uniform(radiance), ibl = true, albedo)
-    val ambientOnly = render(uniform(radiance), ibl = false, albedo)
-    def red(image: Array[Byte], p: Pixel): Double =
-      ImageValidation.getRGBAt(image, imageSize, p._1, p._2).r / 255.0
+    val lit = render(uniform(radiance), albedo)
     val pixels = sphereNormals(middle).map(_._1)
     pixels should not be empty
-    val measured = mean(pixels.map(p => (red(lit, p) - red(ambientOnly, p)) / diffuseBlend))
-    info(f"pixel (ambient removed) = $measured%.4f, albedo * L = ${albedo * radiance}%.4f")
+    val measured = mean(pixels.map(red(lit, _)))
+    info(f"pixel = $measured%.4f, albedo * L = ${albedo * radiance}%.4f")
     measured shouldBe (albedo * radiance).toDouble +- (relativeTolerance * albedo * radiance)
