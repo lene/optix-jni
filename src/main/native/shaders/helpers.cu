@@ -825,7 +825,11 @@ __device__ SurfaceLighting calculateSurfaceLighting(
                 hit_point, normal, cosine_dir, envRadianceAtDirection(cosine_dir),
                 envPdfAtDirection(cosine_dir), cosine_pdf, skip_shadows);
         }
-        total_lighting = total_lighting + ibl_sum / static_cast<float>(params.ibl_samples);
+        // The estimate is the irradiance E of the env map. A Lambertian surface of albedo a
+        // returns a * E / pi, so a matte surface under a uniform env of radiance L returns a * L,
+        // as bright as the env map it faces.
+        total_lighting = total_lighting
+            + ibl_sum * (kEnvInvPi / static_cast<float>(params.ibl_samples));
     }
 
     // Add ambient lighting (prevents pure black shadows)

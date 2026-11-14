@@ -8,13 +8,14 @@ import menger.common.Vector
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
-/** Image-based lighting returns the irradiance E = integral of L(w) cos(theta) dw of the env map.
+/** Image-based lighting of a Lambertian surface of albedo a is a * E / pi, with the irradiance
+  * E = integral of L(w) cos(theta) dw of the env map, so a matte surface under a uniform env of
+  * radiance L returns a * L: as bright as the env map it faces.
   *
   * Reference values are computed on the CPU from the env map written by the test, with the
   * EnvMapMapping.h convention (u = 0.5 is +x, u = 0.75 is +z, v = 0 is +y). A white matte sphere,
   * constant ambient, no direct light and no shadows isolate the IBL term: a pixel is
-  * `ambient + DIFFUSE_BLEND_FACTOR * E` (no 1/pi: the renderer's convention, like a directional
-  * light's `intensity * cos`), so `E = (pixel - ambient pixel) / DIFFUSE_BLEND_FACTOR`.
+  * `ambient + DIFFUSE_BLEND_FACTOR * E / pi`, so `E = pi * (pixel - ambient pixel) / DIFFUSE_BLEND_FACTOR`.
   *
   * Before the fix the env sample was weighted by a one-sample MIS factor
   * `pdf_env^2 / (pdf_env^2 + pdf_bsdf^2)` although no BSDF sample is ever taken. That weight is 1
@@ -32,7 +33,7 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val mapWidth = 64
   private val mapHeight = 32
   private val iblSamples = 64  // the maximum
-  // Pixels clamp at 1: every env below keeps ambient 0.3 + 0.7 * E under 1 over the sphere.
+  // Pixels clamp at 1: every env below keeps ambient 0.3 + 0.7 * E / pi under 1 over the sphere.
   private val diffuseBlend = 0.7  // 1 - ambient factor 0.3
   private val relativeTolerance = 0.10
   private val ambientOnlyTolerance = 3.0 / 255.0  // pixel units of the IBL term, off the black side
@@ -62,12 +63,12 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val plusZ = patch(0.75, 0.5, 0.07, 2.0f)
   private val minusZ = patch(0.25, 0.5, 0.07, 2.0f)
 
-  private def render(env: EnvMap, ibl: Boolean): Array[Byte] =
+  private def render(env: EnvMap, ibl: Boolean, albedo: Float = 1f): Array[Byte] =
     renderer.clearPlanes()
     renderer.setLight(Vector[3](0f, -1f, 0f), 0f)
     renderer.setShadows(false)
     renderer.setAmbient(AmbientModel.Constant)
-    renderer.setSphereColor(Color(1f, 1f, 1f))
+    renderer.setSphereColor(Color(albedo, albedo, albedo))
     renderer.setCamera(
       Vector[3](0f, 0f, cameraDistance.toFloat), Vector[3](0f, 0f, 0f), Vector[3](0f, 1f, 0f), 60f)
     val tmp = Files.createTempFile("ibl_irradiance_", ".hdr")
@@ -124,7 +125,7 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
     pixels should not be empty
     def red(image: Array[Byte], p: Pixel): Double =
       ImageValidation.getRGBAt(image, imageSize, p._1, p._2).r / 255.0
-    val measured = mean(pixels.map((p, _) => (red(lit, p) - red(ambientOnly, p)) / diffuseBlend))
+    val measured = mean(pixels.map((p, _) => math.Pi * (red(lit, p) - red(ambientOnly, p)) / diffuseBlend))
     val expected = mean(pixels.map((_, n) => referenceIrradiance(env, n)))
     info(f"E measured = $measured%.4f, reference = $expected%.4f")
     (measured, expected)
@@ -151,3 +152,15 @@ class IblIrradianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   "IBL with a bright patch behind the sphere" should "leave every visible pixel ambient-only" in:
     shouldMatchReference(minusZ, Seq(top, middle, bottom))
+
+  "IBL on a matte surface of albedo a under a uniform env of radiance L" should "return a * L" in:
+    val (albedo, radiance) = (0.5f, 0.6f)
+    val lit = render(uniform(radiance), ibl = true, albedo)
+    val ambientOnly = render(uniform(radiance), ibl = false, albedo)
+    def red(image: Array[Byte], p: Pixel): Double =
+      ImageValidation.getRGBAt(image, imageSize, p._1, p._2).r / 255.0
+    val pixels = sphereNormals(middle).map(_._1)
+    pixels should not be empty
+    val measured = mean(pixels.map(p => (red(lit, p) - red(ambientOnly, p)) / diffuseBlend))
+    info(f"pixel (ambient removed) = $measured%.4f, albedo * L = ${albedo * radiance}%.4f")
+    measured shouldBe (albedo * radiance).toDouble +- (relativeTolerance * albedo * radiance)

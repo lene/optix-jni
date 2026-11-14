@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Image-based lighting is physically scaled: a Lambertian surface of albedo `a` returns `a * E / pi`
+  (E the irradiance of the env map), so a matte surface under a uniform env of radiance `L` returns
+  `a * L`, as bright as the env map it faces and the background it is drawn against. It used to
+  return `a * E`, pi times too much, so every IBL-lit surface was about 3.14 times too bright
+  against its own background; the factor was not noticed while the surfaces were lit mostly by a
+  constant ambient fill. **IBL scenes get darker by a factor pi** (IBL off is unchanged). A
+  directional light's convention (`intensity * cos`) is unchanged.
+
 - Image-based lighting is far less noisy under a bright, low sun (optix-jni#112). Each IBL sample
   now takes two candidate directions, one drawn from the env map by luminance as before and one
   cosine-weighted about the surface normal, and combines them with the balance heuristic of
@@ -44,8 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lit by `rogland_sunset_2k.hdr`) with 1/30 of it. A small bright patch (a sun) was unaffected, its
   factor being 0.998. The estimate is now the plain importance-sampling estimator
   `L * cos / pdf_env`, which is unbiased. **IBL scenes with a smooth environment get brighter.**
-  The convention is unchanged: IBL adds the irradiance `E = integral of L cos dw` (no 1/pi, as for a
-  directional light's `intensity * cos`).
+  The convention is unchanged by this fix: IBL adds the irradiance `E = integral of L cos dw` (no
+  1/pi, as for a directional light's `intensity * cos`). It changes later in this release, see
+  Changed.
 
 ## [0.5.2] - 2026-11-14
 

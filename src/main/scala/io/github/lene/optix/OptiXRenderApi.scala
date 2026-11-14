@@ -27,7 +27,12 @@ private[optix] trait OptiXRenderApi:
   def setToneMapping(operator: Int, exposure: Float): Unit =
     setToneMappingNative(operator, exposure)
 
-  /** Configures image-based lighting strength and sample count. */
+  /** Configures image-based lighting strength and sample count.
+    *
+    * A Lambertian surface of albedo `a` is lit by `a * E / pi`, with `E` the irradiance of the
+    * environment map times `strength`: a matte surface under a uniform environment of radiance `L`
+    * returns `a * L`.
+    */
   def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
     setIBLNative(enabled, strength, samples)
 

@@ -33,7 +33,7 @@ class IblVarianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val mapWidth = 128
   private val mapHeight = 64
   private val iblSamples = 4
-  private val diffuseBlend = 0.7  // pixel = ambient 0.3 + DIFFUSE_BLEND_FACTOR * E
+  private val diffuseBlend = 0.7  // pixel = ambient 0.3 + DIFFUSE_BLEND_FACTOR * E / pi
   private val ambient = 0.3
   private val skyRadiance = 0.05f
   private val sunShareOfPower = 0.8  // of the Kiara sunrise: 79 %
@@ -109,7 +109,7 @@ class IblVarianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
   "IBL on a horizontal surface under a sky with a low sun" should "have the irradiance of the env map" in:
     val lit = redValues(renderPlane(ibl = true))
     val ambientOnly = redValues(renderPlane(ibl = false))
-    val measured = (lit.sum - ambientOnly.sum) / lit.length / diffuseBlend
+    val measured = math.Pi * (lit.sum - ambientOnly.sum) / lit.length / diffuseBlend
     info(f"E measured = $measured%.4f, reference = $irradiance%.4f")
     measured shouldBe irradiance +- (relativeMeanTolerance * irradiance)
 
@@ -117,7 +117,8 @@ class IblVarianceSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val lit = redValues(renderPlane(ibl = true))
     val mean = lit.sum / lit.length
     val measuredVariance = lit.map(v => (v - mean) * (v - mean)).sum / lit.length
-    val envOnlyVariance = diffuseBlend * diffuseBlend * envOnlyVariancePerSample / iblSamples
+    val pixelPerIrradiance = diffuseBlend / math.Pi
+    val envOnlyVariance = pixelPerIrradiance * pixelPerIrradiance * envOnlyVariancePerSample / iblSamples
     info(f"mean pixel = $mean%.4f (ambient $ambient%.1f)")
     info(f"pixel std = ${math.sqrt(measuredVariance) * 255}%.2f levels, env-only estimator = ${math.sqrt(envOnlyVariance) * 255}%.2f levels")
     info(f"variance reduction = ${envOnlyVariance / measuredVariance}%.1f (required $requiredVarianceReduction%.1f)")
