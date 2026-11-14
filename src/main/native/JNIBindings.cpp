@@ -4,6 +4,7 @@
 #include "include/OptiXFileUtils.h"
 #include "include/JniChecks.h"
 #include "include/CudaContextLost.h"
+#include "include/AllocationFaults.h"
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <cstring>
@@ -538,6 +539,30 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setIBLNative(
     JNI_CATCH_UNKNOWN_THROW
 }
 
+// Without occlusion the constant fill is used and samples and radius are ignored; with it the
+// radius may be infinite (every occluder counts) but not NaN, zero or negative.
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAmbientNative(
+    JNIEnv* env, jobject obj, jboolean occlusion, jint samples, jfloat radius) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
+        if (wrapper == nullptr) return;
+        if (!occlusion) {
+            wrapper->setAmbient(0, radius);
+        } else if (jni_checks::requireRange<jint>(env, samples, 1, jni_checks::kMaxAmbientSamples,
+                                                  "ambient samples") &&
+                   jni_checks::requireRange<jfloat>(env, radius, jni_checks::kMinAmbientRadius,
+                                                    std::numeric_limits<jfloat>::infinity(),
+                                                    "ambient occlusion radius")) {
+            wrapper->setAmbient((int)samples, (float)radius);
+        }
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setAmbient: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
+    }
+    JNI_CATCH_UNKNOWN_THROW
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setAccumulationFramesNative(
     JNIEnv* env, jobject obj, jint n) {
     try {
@@ -678,6 +703,22 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMaxRayDepth(
         }
     } catch (const std::exception& e) {
         OPTIX_LOG(ERROR) << "[JNI] Error in setMaxRayDepth: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
+    }
+    JNI_CATCH_UNKNOWN_THROW
+}
+
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_setMinRayWeight(
+    JNIEnv* env, jobject obj, jfloat weight) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
+        if (wrapper != nullptr &&
+            jni_checks::requireRange<jfloat>(env, weight, 0.0f, 1.0f, "min ray weight")) {
+            wrapper->setMinRayWeight(weight);
+        }
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in setMinRayWeight: " << e.what() << std::endl;
         throwOptiXFailure(env, e);
     }
     JNI_CATCH_UNKNOWN_THROW
@@ -996,6 +1037,15 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextProjectio
     JNI_CATCH_UNKNOWN_THROW
 }
 
+// Test hook: the n-th device allocation from now on fails. Process-wide, like the counter.
+JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextDeviceAllocationsNative(
+    JNIEnv* env, jobject, jint n) {
+    try {
+        AllocationFaults::failNext(static_cast<int>(n));
+    }
+    JNI_CATCH_UNKNOWN_THROW
+}
+
 // Test hooks for the CUDA context-lost latch (optix-jni#73). Process-wide, like the latch.
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_simulateContextLostNative(
     JNIEnv* env, jobject, jstring reason) {
@@ -1092,14 +1142,22 @@ JNIEXPORT jint JNICALL Java_io_github_lene_optix_OptiXRenderer_updateCpuTriangle
             env->ReleaseIntArrayElements(indices, idxs, JNI_ABORT);
             return -1;
         }
-        int rc = wrapper->updateCpuTriangleMesh(
-            static_cast<int>(meshIndex),
-            reinterpret_cast<const float*>(verts),
-            static_cast<unsigned int>(numVertices),
-            reinterpret_cast<const unsigned int*>(idxs),
-            static_cast<unsigned int>(numTriangles),
-            static_cast<unsigned int>(vertexStride)
-        );
+        int rc;
+        try {
+            rc = wrapper->updateCpuTriangleMesh(
+                static_cast<int>(meshIndex),
+                reinterpret_cast<const float*>(verts),
+                static_cast<unsigned int>(numVertices),
+                reinterpret_cast<const unsigned int*>(idxs),
+                static_cast<unsigned int>(numTriangles),
+                static_cast<unsigned int>(vertexStride)
+            );
+        } catch (...) {
+            // The update can fail (an allocation, a GAS build): release the pinned arrays first.
+            env->ReleaseFloatArrayElements(vertices, verts, JNI_ABORT);
+            env->ReleaseIntArrayElements(indices, idxs, JNI_ABORT);
+            throw;
+        }
         env->ReleaseFloatArrayElements(vertices, verts, JNI_ABORT);
         env->ReleaseIntArrayElements(indices, idxs, JNI_ABORT);
         return static_cast<jint>(rc);

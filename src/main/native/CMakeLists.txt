@@ -237,6 +237,7 @@ add_library(optixjni SHARED
     BufferManager.cpp
     DenoiserManager.cpp
     CausticsRenderer.cpp
+    HdrLoader.cpp
     JNIBindings.cpp
     OptiXApiBindings.cpp
     project4d.cu
@@ -310,17 +311,24 @@ if(BUILD_OPTIX_TESTS)
     add_executable(optixcontext_test
         tests/OptiXContextTest.cpp
         tests/EnvMapCDFTest.cpp
+        tests/HdrLoaderTest.cpp  # Radiance .hdr loader: size cap and truncation (optix-jni#103), host-only
         tests/CustomGeometryRegistryTest.cpp  # SPI (Task 1.1a) runtime type-id allocator
         tests/MaterialPayloadTest.cpp  # F2 packed-material layout fitness (Sprint 35 Task 3.1)
         tests/VectorMathTest.cpp  # reflect() formula, host-testable (Sprint 36 H3.2)
+        tests/EnvMapMappingTest.cpp  # env-map uv <-> direction shared by background and IBL (optix-jni#112)
+        tests/TraceDepthPackingTest.cpp  # payload 3 layout: bounce, nesting, ray weight (optix-jni#118), host-testable
         tests/LaunchFailureFormatTest.cpp  # launch-failure messages, host-testable
         tests/ContextLostTest.cpp  # sticky CUDA error latch (optix-jni#73), host-testable
+        tests/AllocationFaultsTest.cpp  # allocation fault-injection counter, host-testable
         tests/optix_function_table.cpp  # Define optix function table for tests
         OptiXContext.cpp  # Need to compile OptiXContext again for tests
+        HdrLoader.cpp  # Under test by HdrLoaderTest
+        stb_image_impl.cpp  # stb_image, with the dimension cap HdrLoaderTest checks
     )
 
     target_include_directories(optixcontext_test PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${stb_SOURCE_DIR}
         ${CUDAToolkit_INCLUDE_DIRS}
         ${OptiX_INCLUDE_DIR}
     )
@@ -330,6 +338,30 @@ if(BUILD_OPTIX_TESTS)
         CUDA::cuda_driver
         CUDA::cudart
     )
+
+    # Host-only target for the Radiance loader: no CUDA or OptiX, so it can run under the
+    # sanitizers. HdrLoaderTest also runs inside optixcontext_test above; this target exists for
+    #   cmake -S src/main/native -B build-asan -DOPTIX_SANITIZE=ON
+    #   cmake --build build-asan --target hdr_loader_test ; ./build-asan/hdr_loader_test
+    option(OPTIX_SANITIZE "Build hdr_loader_test with AddressSanitizer and UBSan" OFF)
+    add_executable(hdr_loader_test
+        tests/HdrLoaderTest.cpp
+        HdrLoader.cpp
+        stb_image_impl.cpp
+    )
+    target_include_directories(hdr_loader_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${stb_SOURCE_DIR}
+    )
+    target_link_libraries(hdr_loader_test PRIVATE gtest gtest_main)
+    if(OPTIX_SANITIZE)
+        set(OPTIX_SANITIZER_FLAGS -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_compile_options(hdr_loader_test PRIVATE ${OPTIX_SANITIZER_FLAGS})
+        target_link_options(hdr_loader_test PRIVATE ${OPTIX_SANITIZER_FLAGS})
+        target_compile_definitions(hdr_loader_test PRIVATE OPTIX_SANITIZE)  # the test skips timing
+    endif()
+    # One CTest entry: gtest_discover_tests would clash with optixcontext_test's HdrLoaderTest.*
+    add_test(NAME hdr_loader_test COMMAND hdr_loader_test)
 
     # Discover and register tests with CTest
     # PRE_TEST defers test discovery to run time, avoiding failures on hosts

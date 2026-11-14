@@ -31,6 +31,7 @@ low-level `NativeOptiXApi` for advanced users.
 | `setShadows(enabled)` | Keep | Add `isInitialized` guard |
 | `setAntialiasing(enabled, maxDepth, threshold)` | Keep | |
 | `setMaxRayDepth(depth)` | Keep | |
+| `setMinRayWeight(weight)` | Add (optix-jni#118) | Cutoff for radiance rays that carry too little light; default 1/256, 0 = off |
 | `setCaustics(...)` | Keep | |
 | `renderWithStats(width, height)` | Keep | |
 | `removeInstance(instanceId)` | Keep | |

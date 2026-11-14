@@ -31,7 +31,8 @@ class InstanceVisibilitySuite extends AnyFlatSpec with Matchers with RendererFix
   )
   private val identity = Array(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f)
   private val wallTransform = Array(6f, 0f, 0f, 0f, 0f, 6f, 0f, 0f, 0f, 0f, 6f, -5f)
-  private val matteGrey = Material(Color(0.7f, 0.7f, 0.7f, 1f), 1.0f)
+  // specular 0 as Material.matte has it, so no highlight (optix-jni#105); roughness stays the default
+  private val matteGrey = Material(Color(0.7f, 0.7f, 0.7f, 1f), 1.0f, specular = 0.0f)
   private val blue = matteGrey.copy(color = Color(0.1f, 0.1f, 0.9f, 1f))
   private val centre = TestUtilities.Region.centered(
     TEST_IMAGE_SIZE.width / 2, TEST_IMAGE_SIZE.height / 2, TEST_IMAGE_SIZE.height / 16

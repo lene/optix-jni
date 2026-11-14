@@ -164,6 +164,24 @@ The denoiser allocates OptiX state, scratch, HDR intensity, and image buffers.
 Expect roughly 100-400 MB of additional GPU memory depending on resolution and
 guide usage.
 
+### Texture files and untrusted input
+
+`uploadTextureFromFile` (textures, and `.hdr` environment maps) parses the file with the vendored
+`stb_image` C library, inside the JVM process. A malformed file is therefore a memory-safety risk
+in the host process, not only a failed load. Mitigations in place:
+
+- Images wider or taller than 8192 pixels are rejected for every format (HDR, PNG, JPEG, ...)
+  before any pixel memory is allocated. 8192 is the width of an 8K environment map; an 8192x4096
+  RGBA float image is 537 MB, an 8192x8192 one 1 GiB.
+- Files with the `.hdr` extension (the loader is chosen by extension) are checked against their
+  header before decoding: one too small to hold the pixels its header claims is rejected, so a
+  few bytes cannot make the loader allocate gigabytes. A `.hdr` file that ends before the pixel
+  data is complete is rejected too; `stb_image` alone would decode the missing bytes as zeros.
+- A failed load returns an error (`TextureUploadException`) and leaves the renderer usable.
+
+These reduce the exposure but do not make `stb_image` a sandbox: load only files you trust, or
+have pinned by hash.
+
 ---
 
 ## CI Configuration
@@ -370,6 +388,23 @@ Build and native-linkage troubleshooting — PTX-not-found, `libcudart.so.13` li
 `optix-jni/target/native`, OptiX/driver mismatches — is collected in
 `../menger/docs/TROUBLESHOOTING.md`. It is written from a full workspace checkout (it refers to
 `optix-jni/` as a sibling), so run those commands from the workspace root.
+
+### Native tests and the sanitizers
+
+`sbt test` builds and runs the C++ tests (`optixcontext_test`, Google Test) before the Scala ones.
+The Radiance loader's tests (`HdrLoaderTest`) need no GPU and also have their own host-only target,
+`hdr_loader_test`, which can be built with AddressSanitizer and UndefinedBehaviorSanitizer:
+
+```bash
+cmake -S src/main/native -B build-asan -DOPTIX_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-asan --target hdr_loader_test
+./build-asan/hdr_loader_test
+```
+
+CMake fetches Google Test and stb_image on the first configure (offline: point
+`FETCHCONTENT_SOURCE_DIR_GOOGLETEST` and `FETCHCONTENT_SOURCE_DIR_STB` at existing checkouts and
+set `FETCHCONTENT_FULLY_DISCONNECTED=ON`). With `OPTIX_SANITIZE` the test skips its timing
+assertion. No CI job runs this yet.
 
 ## Environment Variables
 

@@ -147,6 +147,7 @@ public:
 
     // Ray depth configuration
     void setMaxRayDepth(int depth);
+    void setMinRayWeight(float weight);
 
     // Caustics (Progressive Photon Mapping) configuration
     void setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha);
@@ -168,6 +169,9 @@ public:
 
     // IBL configuration
     void setIBL(bool enabled, float strength, int samples);
+
+    // Ambient light: samples > 0 weights the fill by occlusion within radius, 0 = constant fill
+    void setAmbient(int samples, float radius);
     void setAccumulationFrames(int n);
     void setDenoisingEnabled(bool enabled);
     bool isDenoisingEnabled() const;
@@ -246,7 +250,9 @@ public:
     // where m03, m13, m23 are translation components
     int addSphereInstance(
         const float* transform, float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float roughness = MaterialDefaults::DEFAULT_ROUGHNESS,
+        float metallic = MaterialDefaults::DEFAULT_METALLIC,
+        float specular = MaterialDefaults::DEFAULT_SPECULAR, float emission = 0.0f,
         float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     // Custom-geometry SPI (Task 1.1d): register an external primitive from PTX
@@ -294,7 +300,9 @@ public:
         int instanceId, const void* customData, int customDataSize);
     int addTriangleMeshInstance(
         const float* transform, float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float roughness = MaterialDefaults::DEFAULT_ROUGHNESS,
+        float metallic = MaterialDefaults::DEFAULT_METALLIC,
+        float specular = MaterialDefaults::DEFAULT_SPECULAR, float emission = 0.0f,
         int textureIndex = -1, float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addCylinderInstance(
@@ -302,7 +310,9 @@ public:
         float p1_x, float p1_y, float p1_z,
         float radius,
         float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float roughness = MaterialDefaults::DEFAULT_ROUGHNESS,
+        float metallic = MaterialDefaults::DEFAULT_METALLIC,
+        float specular = MaterialDefaults::DEFAULT_SPECULAR, float emission = 0.0f,
         float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addConeInstance(
@@ -310,7 +320,9 @@ public:
         float base_x, float base_y, float base_z,
         float radius,
         float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float roughness = MaterialDefaults::DEFAULT_ROUGHNESS,
+        float metallic = MaterialDefaults::DEFAULT_METALLIC,
+        float specular = MaterialDefaults::DEFAULT_SPECULAR, float emission = 0.0f,
         float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addCurveInstance(
@@ -318,14 +330,18 @@ public:
         const float* widths,
         unsigned int num_points,
         float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float roughness = MaterialDefaults::DEFAULT_ROUGHNESS,
+        float metallic = MaterialDefaults::DEFAULT_METALLIC,
+        float specular = MaterialDefaults::DEFAULT_SPECULAR, float emission = 0.0f,
         float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
     int addPlaneInstance(
         float normal_x, float normal_y, float normal_z,
         float distance,
         float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float roughness = MaterialDefaults::DEFAULT_ROUGHNESS,
+        float metallic = MaterialDefaults::DEFAULT_METALLIC,
+        float specular = MaterialDefaults::DEFAULT_SPECULAR, float emission = 0.0f,
         float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f,
         float r2 = 0.0f, float g2 = 0.0f, float b2 = 0.0f,
         int solid_color = 1,
@@ -342,7 +358,9 @@ public:
     int addRecursiveIASSpongeInstance(
         int level,
         const float* transform, float r, float g, float b, float a, float ior,
-        float roughness = 0.5f, float metallic = 0.0f, float specular = 0.5f, float emission = 0.0f,
+        float roughness = MaterialDefaults::DEFAULT_ROUGHNESS,
+        float metallic = MaterialDefaults::DEFAULT_METALLIC,
+        float specular = MaterialDefaults::DEFAULT_SPECULAR, float emission = 0.0f,
         int textureIndex = -1, float film_thickness = 0.0f, float cauchy_a = 0.0f, float cauchy_b = 0.0f
     );
 

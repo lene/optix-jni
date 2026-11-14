@@ -7,6 +7,8 @@
 #define __align__(n)  alignas(n)
 #endif
 
+#include <limits>
+
 #include "OptiXData.h"
 #include "OptiXConstants.h"
 
@@ -43,6 +45,8 @@ public:
     // Ray depth configuration
     void setMaxRayDepth(int depth) { max_ray_depth = depth; }
     int getMaxRayDepth() const { return max_ray_depth; }
+    void setMinRayWeight(float weight) { min_ray_weight = weight; }
+    float getMinRayWeight() const { return min_ray_weight; }
 
     // Caustics (Progressive Photon Mapping) configuration
     void setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha);
@@ -82,6 +86,15 @@ public:
         ibl_strength = strength;
         ibl_samples  = samples;
     }
+    // Ambient light (optix-jni#106): samples > 0 weights the fill by ambient occlusion within
+    // radius, 0 keeps the constant fill.
+    void setAmbient(int samples, float radius) {
+        ambient_ao_samples = samples;
+        ambient_ao_radius  = radius;
+    }
+    int   getAmbientAoSamples() const { return ambient_ao_samples; }
+    float getAmbientAoRadius()  const { return ambient_ao_radius;  }
+
     bool  getIBLEnabled()  const { return ibl_enabled;  }
     float getIBLStrength() const { return ibl_strength; }
     int   getIBLSamples()  const { return ibl_samples;  }
@@ -127,6 +140,7 @@ private:
 
     // Ray depth
     int max_ray_depth = MAX_TRACE_DEPTH;
+    float min_ray_weight = DEFAULT_MIN_RAY_WEIGHT;
 
     // Caustics configuration
     bool caustics_enabled = false;
@@ -156,6 +170,10 @@ private:
     float ibl_strength        = 1.0f;
     int   ibl_samples         = 1;
     int   accumulation_frames = 1;
+
+    // Ambient light: occlusion-weighted by default, every occluder counts (sky visibility)
+    int   ambient_ao_samples  = RayTracingConstants::DEFAULT_AMBIENT_AO_SAMPLES;
+    float ambient_ao_radius   = std::numeric_limits<float>::infinity();
 
     // Plane appearance
     PlaneParams planes[RayTracingConstants::MAX_PLANES] = {};

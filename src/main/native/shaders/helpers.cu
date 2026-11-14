@@ -1,3 +1,6 @@
+#include "../include/EnvMapMapping.h"
+#include "../include/TraceDepthPacking.h"
+
 // Beer-Lambert Law: I(d) = I₀ · exp(-α · d)
 // Where:
 //   I₀ = initial intensity
@@ -17,38 +20,34 @@
 // Trace depth payload (payload 3)
 //==============================================================================
 
-// Payload 3 of a radiance ray carries two counters. Bits 0-7: the bounce depth that
-// params.max_ray_depth budgets (reflections/refractions). Bits 8+: how many optixTrace calls
-// are nested on the stack for this ray, including its own. Pass-through rays (transparent and
-// coverage-blended faces) deliberately don't spend bounces, so only the nesting count bounds
-// them; before this, nothing did, and a ray crossing enough see-through faces (a fractional
-// sponge) nested past the pipeline's compiled maxTraceDepth -- undefined behaviour, observed as
-// intermittent CUDA 700/719 (usability review 2026-09, F11). Every radiance trace from a hit or
-// miss program now goes through canNest()/child(), and one level is kept free for the child
-// hit's shadow ray. Hit programs read the bounce depth with bounce(optixGetPayload_3()).
+// Payload 3 of a radiance ray carries three values, laid out by include/TraceDepthPacking.h
+// (host-testable): the bounce depth that params.max_ray_depth budgets (reflections/refractions),
+// how many optixTrace calls are nested on the stack for this ray (including its own), and the
+// ray's weight. Pass-through rays (transparent and coverage-blended faces) deliberately don't
+// spend bounces, so only the nesting count bounds them; before this, nothing did, and a ray
+// crossing enough see-through faces (a fractional sponge) nested past the pipeline's compiled
+// maxTraceDepth -- undefined behaviour, observed as intermittent CUDA 700/719 (usability review
+// 2026-09, F11). Every radiance trace from a hit or miss program now goes through
+// canNest()/child(), and one level is kept free for the child hit's shadow ray. Hit programs
+// read the bounce depth with bounce(optixGetPayload_3()).
+//
+// The weight is the product of the blend factors of all branches above the ray (1.0 for a primary
+// ray). A branch whose weight would fall below params.min_ray_weight is not traced
+// (worthTracing): without that, a stack of L semi-transparent metallic faces cost rays in the
+// order of L^max_ray_depth, because each face traces a reflection ray AND a pass-through ray
+// (optix-jni#118).
 namespace TraceDepth {
-    constexpr unsigned int BOUNCE_BITS = 8u;
-    constexpr unsigned int BOUNCE_MASK = (1u << BOUNCE_BITS) - 1u;
-
-    __forceinline__ __device__ unsigned int bounce(unsigned int payload) {
-        return payload & BOUNCE_MASK;
-    }
-    __forceinline__ __device__ unsigned int nesting(unsigned int payload) {
-        return payload >> BOUNCE_BITS;
-    }
-    __forceinline__ __device__ unsigned int pack(unsigned int bounce_depth, unsigned int nest) {
-        return bounce_depth | (nest << BOUNCE_BITS);
-    }
-    // For the radiance ray a raygen program traces: no bounces yet, one trace on the stack.
-    __forceinline__ __device__ unsigned int primary() {
-        return pack(0u, 1u);
-    }
     // Only valid inside the closest-hit / miss program of a radiance ray.
     __forceinline__ __device__ bool canNest() {
         return nesting(optixGetPayload_3()) + 2u <= PIPELINE_MAX_TRACE_DEPTH;
     }
-    __forceinline__ __device__ unsigned int child(unsigned int bounce_depth) {
-        return pack(bounce_depth, nesting(optixGetPayload_3()) + 1u);
+    // The payload of a ray traced from this hit, carrying `weight_factor` of this ray's weight.
+    __forceinline__ __device__ unsigned int child(unsigned int bounce_depth, float weight_factor = 1.0f) {
+        return childOf(optixGetPayload_3(), bounce_depth, weight_factor);
+    }
+    // Whether a branch carrying `weight_factor` of this ray's weight is heavy enough to trace.
+    __forceinline__ __device__ bool worthTracing(float weight_factor) {
+        return weight(optixGetPayload_3()) * weight_factor >= params.min_ray_weight;
     }
 }
 
@@ -338,6 +337,94 @@ __device__ float calculateDiffuseTerm(
     }
 }
 
+//==============================================================================
+// Direct-light specular of opaque dielectrics (optix-jni#105)
+//==============================================================================
+
+/**
+ * Map perceptual roughness [0,1] to GGX alpha (Disney/UE4 remap: alpha = roughness^2).
+ * Keeps roughness perceptually linear -- roughness=0.3 vs 0.5 are visibly, not marginally,
+ * different. Shared by the opaque-dielectric highlight (ggxSpecular) and the caustics photon
+ * pass's GGX sampling (caustics_ppm.cu), so `roughness` reads the same in both.
+ */
+__device__ float alphaFromRoughness(float roughness) {
+    return roughness * roughness;
+}
+
+/**
+ * The specular lobe of an opaque dielectric: everything its direct-light highlight needs
+ * besides the light. A lobe with specular 0 reflects nothing at any angle, so a surface shaded
+ * with it looks exactly as it did before this term existed.
+ */
+struct SpecularLobe {
+    float3 to_viewer;  // unit vector from the hit point back along the incoming ray
+    float specular;    // 0..1; normal-incidence reflectance DIELECTRIC_F0_PER_SPECULAR * specular
+    float roughness;   // perceptual 0..1; GGX alpha = alphaFromRoughness(roughness)
+};
+
+/**
+ * The lobe a material is shaded with. Only a dielectric has one: a metal (metallic > 0) keeps
+ * the reflection-only look of handleMetallicOpaque wherever a shader falls back to diffuse
+ * shading for it (max depth, a cone or cylinder seen in a reflection).
+ */
+__device__ SpecularLobe specularLobe(
+    const float3& ray_direction, float specular, float roughness, float metallic
+) {
+    const float dielectric_specular = metallic > 0.0f ? 0.0f : specular;
+    return SpecularLobe{normalize(ray_direction) * -1.0f, dielectric_specular, roughness};
+}
+
+/** The lobe of a surface shaded diffuse only (metals' diffuse share, custom callers). */
+__device__ SpecularLobe noSpecularLobe() {
+    return SpecularLobe{make_float3(0.0f, 0.0f, 0.0f), 0.0f, 1.0f};
+}
+
+/**
+ * GGX (Trowbridge-Reitz) microfacet highlight of one light on an opaque dielectric: the
+ * Cook-Torrance BRDF with the height-correlated Smith visibility term (Heitz 2014) and Schlick
+ * Fresnel, times N.L -- the factor the light's radiance (colour * intensity * attenuation *
+ * shadow) is multiplied by. 0 for a light or a viewer below the surface.
+ *
+ * Units: calculateSurfaceLighting shades diffuse as albedo * E, i.e. the Lambert BRDF albedo/pi
+ * lit by pi * E. The specular BRDF is lit by the same pi * E, so the highlight keeps the
+ * proportion to the diffuse the two BRDFs give it.
+ *
+ * Fresnel: plain Schlick, F = F0 + (1 - F0) * (1 - V.H)^5 with F0 = 0.08 * specular (Disney).
+ * With F90 = 1 even F0 = 0 would reflect at grazing angles, so a specular-0 surface must not
+ * evaluate this: calculateSurfaceLighting skips the lobe then (has_specular).
+ *
+ * @param normal    Unit surface normal on the viewer's side
+ * @param to_light  Unit direction from the surface to the light
+ */
+__device__ float ggxSpecular(
+    const float3& normal, const float3& to_light, const SpecularLobe& lobe
+) {
+    const float n_dot_l = dot(normal, to_light);
+    const float n_dot_v = dot(normal, lobe.to_viewer);
+    if (n_dot_l <= 0.0f || n_dot_v <= 0.0f) return 0.0f;
+
+    const float3 half_vector = normalize(to_light + lobe.to_viewer);
+    const float n_dot_h = fmaxf(dot(normal, half_vector), 0.0f);
+    const float v_dot_h = fmaxf(dot(lobe.to_viewer, half_vector), 0.0f);
+
+    const float alpha = alphaFromRoughness(fmaxf(lobe.roughness, MIN_SPECULAR_ROUGHNESS));
+    const float alpha_sq = alpha * alpha;
+
+    const float d_denom = n_dot_h * n_dot_h * (alpha_sq - 1.0f) + 1.0f;
+    const float distribution = alpha_sq / (M_PIf * d_denom * d_denom);
+
+    const float smith_v = n_dot_l * sqrtf(n_dot_v * n_dot_v * (1.0f - alpha_sq) + alpha_sq);
+    const float smith_l = n_dot_v * sqrtf(n_dot_l * n_dot_l * (1.0f - alpha_sq) + alpha_sq);
+    const float visibility = 0.5f / (smith_v + smith_l);
+
+    const float f0 = DIELECTRIC_F0_PER_SPECULAR * lobe.specular;
+    const float grazing = 1.0f - v_dot_h;
+    const float grazing_sq = grazing * grazing;
+    const float fresnel = f0 + (1.0f - f0) * grazing_sq * grazing_sq * grazing;
+
+    return M_PIf * distribution * visibility * fresnel * n_dot_l;
+}
+
 // ---------------------------------------------------------------------------
 // Pseudo-random number generation (tea4 + LCG from NVIDIA OptiX samples)
 // ---------------------------------------------------------------------------
@@ -406,14 +493,10 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
     const float u   = (static_cast<float>(col) + 0.5f)
                     / static_cast<float>(params.env_width);
 
-    // 3. Convert (u,v) → equirectangular world-space direction
-    const float theta     = v * M_PIf;
-    const float phi       = u * 2.0f * M_PIf;
-    const float sin_theta = sinf(theta);
-    light_dir_out = make_float3(
-        sin_theta * cosf(phi),
-        cosf(theta),
-        sin_theta * sinf(phi));
+    // 3. Convert (u,v) → world-space direction. Must be the exact inverse of the
+    // background's mapping (envDirToUv, EnvMapMapping.h) — optix-jni#112.
+    light_dir_out = envUvToDir(u, v);
+    const float sin_theta = envUvSinTheta(v);  // pdf Jacobian
 
     // 4. Env map radiance at (u,v)
     const float4 texel   = tex2D<float4>(params.env_map_texture, u, v);
@@ -431,25 +514,148 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
     return make_float3(texel.x, texel.y, texel.z) * params.ibl_strength;
 }
 
+// ---------------------------------------------------------------------------
+// Ambient occlusion (optix-jni#106): weights the ambient fill by sky visibility
+// ---------------------------------------------------------------------------
+
+// Seed key distinct from the IBL sampler's (which keys on frame and sample index) and the
+// stride between accumulation frames.
+constexpr unsigned int AO_SEED_KEY = 0xA0A0A0A0u;
+constexpr unsigned int AO_FRAME_SEED_STRIDE = 7919u;
+constexpr float AO_GOLDEN_RATIO_CONJUGATE = 0.6180339887f;  // low-discrepancy step in [0, 1)
+
+// Hashes the position bits. A hit point differs between antialiasing subsamples, bounces and
+// objects, so the pixel index alone would give them all the same samples.
+static __forceinline__ __device__ unsigned int hashPosition(const float3& p) {
+    return (__float_as_uint(p.x) * 73856093u) ^ (__float_as_uint(p.y) * 19349663u)
+         ^ (__float_as_uint(p.z) * 83492791u);
+}
+
+// Seed for one hit's samples: varies per pixel, per hit point and per accumulation frame, and is
+// the same every time the same frame is rendered.
+static __device__ unsigned int ambientSeed(const float3& hit_point) {
+    const uint3 idx = optixGetLaunchIndex();
+    return tea4(idx.x + idx.y * static_cast<unsigned int>(params.image_width),
+                hashPosition(hit_point) + params.frame_seed_offset * AO_FRAME_SEED_STRIDE
+                    + AO_SEED_KEY);
+}
+
+// Columns of the strata grid for n samples: the largest divisor of n up to sqrt(n), so that
+// columns * rows == n (16 gives 4x4). A prime n has one column; ambientOcclusion then spreads
+// the first coordinate by a golden-ratio sequence instead of giving every ray one elevation.
+static __forceinline__ __device__ int aoStrataColumns(int n) {
+    int columns = static_cast<int>(sqrtf(static_cast<float>(n)));
+    while (n % columns != 0) --columns;
+    return columns;
+}
+
+static __forceinline__ __device__ float fractionalPart(float x) { return x - floorf(x); }
+
+// Cosine-weighted direction around n for the unit-square point (u1, u2).
+static __device__ float3 cosineHemisphereDir(const float3& n, float u1, float u2) {
+    const float r = sqrtf(u1), phi = 2.0f * M_PIf * u2;
+    float3 t, b;
+    createONBFromNormal(n, t, b);
+    return normalize(t * (r * cosf(phi)) + b * (r * sinf(phi)) + n * sqrtf(fmaxf(0.0f, 1.0f - u1)));
+}
+
+// Visibility (0..1) of the sky within tmax along dir: a shadow ray, ended by the first opaque
+// hit; transparent hits attenuate it by their shadow attenuation.
+static __device__ float traceOcclusionRay(const float3& origin, const float3& dir, float tmax) {
+    unsigned int p0 = 0, p1 = 0, p2 = 0;
+    optixTrace(params.handle, origin, dir, SHADOW_RAY_OFFSET, tmax, 0.0f, OptixVisibilityMask(255),
+               OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+               params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
+               SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_SHADOW, p0, p1, p2);
+    // Counted in the total only: these are not rays toward a light, and shadow_rays is zero
+    // when shadows are off.
+    if (params.stats) {
+        atomicAdd(&params.stats->total_rays, 1ULL);
+    }
+    const float attenuation = (__uint_as_float(p0) + __uint_as_float(p1) + __uint_as_float(p2))
+                            / 3.0f;
+    return SBTConstants::SHADOW_FACTOR_FULLY_LIT - attenuation;
+}
+
+// Share of the cosine-weighted hemisphere above the surface that is open within ao_radius.
+// Stratified over a grid of strata shifted by a random offset per hit (a Cranley-Patterson
+// rotation): every direction is still uniformly distributed, so the estimate is unbiased, and
+// the pattern does not repeat from pixel to pixel. 1.0 exactly when nothing is in the way.
+static __device__ float ambientOcclusion(const float3& hit_point, const float3& normal) {
+    unsigned int seed = ambientSeed(hit_point);
+    const float shift_u = lcg(seed), shift_v = lcg(seed);
+    const int samples = params.ambient_ao_samples;
+    const int columns = aoStrataColumns(samples);
+    const int rows = samples / columns;
+    const float3 origin = hit_point + normal * SHADOW_RAY_OFFSET;
+    const float tmax = fminf(params.ambient_ao_radius, SHADOW_RAY_MAX_DISTANCE);
+    float visible = 0.0f;
+    for (int s = 0; s < samples; ++s) {
+        const float u1 = (columns == 1 && samples > 1)
+            ? fractionalPart(shift_u + static_cast<float>(s) * AO_GOLDEN_RATIO_CONJUGATE)
+            : fractionalPart((static_cast<float>(s % columns) + 0.5f) / columns + shift_u);
+        const float u2 = fractionalPart((static_cast<float>(s / columns) + 0.5f) / rows + shift_v);
+        visible += traceOcclusionRay(origin, cosineHemisphereDir(normal, u1, u2), tmax);
+    }
+    return visible / static_cast<float>(samples);
+}
+
+// The ambient fill of a surface point: the constant fill, weighted by its occlusion unless the
+// constant model is selected or shadow rays are skipped.
+static __device__ float3 ambientLight(const float3& hit_point, const float3& normal,
+                                      bool double_sided, bool skip_shadows) {
+    const float3 fill = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
+    if (params.ambient_ao_samples == 0 || skip_shadows) return fill;
+    // A double-sided surface (a plane) is lit on the side the ray came from.
+    const float3 open_side = double_sided && dot(normal, optixGetWorldRayDirection()) > 0.0f
+        ? normal * -1.0f : normal;
+    return fill * ambientOcclusion(hit_point, open_side);
+}
+
+/**
+ * Light reaching a surface point, split by how it is applied to the surface: `diffuse`
+ * multiplies the surface colour, `specular` (an opaque dielectric's highlight) is added to it
+ * untinted.
+ */
+struct SurfaceLighting {
+    float3 diffuse;   // ambient + direct + IBL, range [0, ∞)
+    float3 specular;  // direct-light highlight, range [0, ∞); 0 for a lobe with specular 0
+};
+
 /**
  * Calculate total lighting contribution from all lights in scene.
  *
- * Accumulates lighting from multiple light sources (directional and point),
- * with support for shadows, distance attenuation, and ambient lighting.
+ * Accumulates lighting from multiple light sources (directional, point and area),
+ * with support for shadows, distance attenuation, and ambient lighting. Each direct light also
+ * gives the lobe's highlight (ggxSpecular), under the same shadow and attenuation as its
+ * diffuse share; ambient and IBL light give none.
  *
  * @param hit_point Surface position to light
  * @param normal Surface normal (normalized)
- * @param double_sided If true, use absolute value of NdotL (for planes)
- * @param skip_shadows If true, skip shadow ray tracing (for cylinder fallback to avoid recursion)
- * @return Total lighting color (RGB) including ambient term, range [0, ∞)
+ * @param lobe Specular lobe of the surface (noSpecularLobe() for diffuse only)
+ * @param double_sided If true, use absolute value of NdotL (for planes); the highlight still
+ *                     shows only where the viewer and the light are on the same side
+ * @param skip_shadows If true, skip shadow ray tracing (no built-in shader does any more; shadow
+ *                     rays never recurse, so it is a shading choice, not a guard)
+ * @return Diffuse light (ambient + direct + IBL) and the untinted highlight, each in [0, ∞)
+ *
+ * Limit: an area light's highlight is evaluated toward the disk centre only (its shadow is
+ * sampled over the disk), so a large disk mirrors as a dot, not as the disk's shape.
  */
-__device__ float3 calculateLighting(
+__device__ SurfaceLighting calculateSurfaceLighting(
     const float3& hit_point,
     const float3& normal,
+    const SpecularLobe& lobe,
     bool double_sided = false,
     bool skip_shadows = false
 ) {
     float3 total_lighting = make_float3(0.f, 0.f, 0.f);
+    float3 total_specular = make_float3(0.f, 0.f, 0.f);
+    const bool has_specular = lobe.specular > 0.0f;
+    // A double-sided surface may be given the normal facing away from the viewer.
+    const float3 specular_normal = double_sided && dot(normal, lobe.to_viewer) < 0.0f
+        ? normal * -1.0f
+        : normal;
 
     // Accumulate contribution from each light
     for (int light_idx = 0; light_idx < params.num_lights; ++light_idx) {
@@ -464,7 +670,8 @@ __device__ float3 calculateLighting(
         } else if (light.type == LightType::POINT) {
             getPointLightParams(light, hit_point, light_dir, attenuation);
         } else if (light.type == LightType::AREA) {
-            // Direction and attenuation use disk center (N·L diffuse term only).
+            // Direction and attenuation use disk center (N·L diffuse term, and the highlight:
+            // it is a single GGX lobe toward the centre, so a large disk mirrors as a dot).
             // The actual shadow sampling is stratified over the disk surface below.
             const float3 to_center = make_float3(
                 light.position[0], light.position[1], light.position[2]
@@ -507,6 +714,12 @@ __device__ float3 calculateLighting(
             light_color.z * light.intensity * attenuation * ndotl * shadow_factor.z
         );
         total_lighting = total_lighting + shadowed_contribution;
+
+        if (has_specular) {
+            const float highlight = light.intensity * attenuation
+                * ggxSpecular(specular_normal, light_dir, lobe);
+            total_specular = total_specular + light_color * shadow_factor * highlight;
+        }
     }
 
     // IBL contribution (importance-sampled env map lighting)
@@ -542,10 +755,26 @@ __device__ float3 calculateLighting(
     }
 
     // Add ambient lighting (prevents pure black shadows)
-    const float3 ambient = make_float3(AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR, AMBIENT_LIGHT_FACTOR);
-    
-    // Combine: ambient + diffuse (energy conserving)
-    return ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR;
+    const float3 ambient = ambientLight(hit_point, normal, double_sided, skip_shadows);
+
+    // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1).
+    // Not energy conserving against the highlight: the diffuse is not reduced by (1 - F), so a
+    // strong highlight adds light on top of it. The highlight takes the same direct-light share.
+    return SurfaceLighting{
+        ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR,
+        total_specular * RenderingConstants::DIFFUSE_BLEND_FACTOR
+    };
+}
+
+/** Diffuse-only lighting (calculateSurfaceLighting without a highlight), range [0, ∞). */
+__device__ float3 calculateLighting(
+    const float3& hit_point,
+    const float3& normal,
+    bool double_sided = false,
+    bool skip_shadows = false
+) {
+    return calculateSurfaceLighting(hit_point, normal, noSpecularLobe(), double_sided, skip_shadows)
+        .diffuse;
 }
 
 //==============================================================================
@@ -865,18 +1094,20 @@ __device__ void subdividePixel(
  * @param hit_point Surface intersection point
  * @param ray_direction Incoming ray direction
  * @param depth Current bounce depth (not incremented for pass-through)
+ * @param weight_factor Share of this ray's weight the continuation ray carries (see TraceDepth)
  * @return false, without tracing, when the nesting limit is reached (see TraceDepth); the
  *         caller then shades the face as opaque instead
  */
 __device__ bool handleFullyTransparent(
     const float3& hit_point,
     const float3& ray_direction,
-    unsigned int depth
+    unsigned int depth,
+    float weight_factor = 1.0f
 ) {
     if (!TraceDepth::canNest()) return false;
     const float3 continue_origin = hit_point + ray_direction * CONTINUATION_RAY_OFFSET;
     unsigned int continue_r = 0, continue_g = 0, continue_b = 0;
-    unsigned int next_depth = TraceDepth::child(depth);  // pass-through: no bounce spent
+    unsigned int next_depth = TraceDepth::child(depth, weight_factor);  // pass-through: no bounce spent
 
     optixTrace(
         params.handle,
@@ -907,6 +1138,7 @@ __device__ bool handleFullyTransparent(
  * @param ray_direction Incoming ray direction
  * @param depth Current bounce depth (not incremented for pass-through)
  * @param r/g/b Output: color from continuation ray (0-255); untouched when not traced
+ * @param weight_factor Share of this ray's weight the continuation ray carries (see TraceDepth)
  * @return false, without tracing, when the nesting limit is reached (see TraceDepth); the
  *         caller then treats the face as opaque
  */
@@ -923,11 +1155,12 @@ __device__ bool traceContinuationRay(
     unsigned int depth,
     unsigned int& r,
     unsigned int& g,
-    unsigned int& b
+    unsigned int& b,
+    float weight_factor = 1.0f
 ) {
     if (!TraceDepth::canNest()) return false;
     const float3 continue_origin = hit_point + ray_direction * COVERAGE_CONTINUATION_OFFSET;
-    unsigned int next_depth = TraceDepth::child(depth);  // pass-through: no bounce spent
+    unsigned int next_depth = TraceDepth::child(depth, weight_factor);  // pass-through: no bounce spent
 
     optixTrace(
         params.handle,
@@ -944,9 +1177,47 @@ __device__ bool traceContinuationRay(
     return true;
 }
 
+/** A surface colour lit by `lighting`: colour * diffuse light + the untinted highlight. */
+__device__ float3 litSurfaceColor(const float4& material_color, const SurfaceLighting& lighting) {
+    return make_float3(
+        material_color.x * lighting.diffuse.x + lighting.specular.x,
+        material_color.y * lighting.diffuse.y + lighting.specular.y,
+        material_color.z * lighting.diffuse.z + lighting.specular.z
+    );
+}
+
 /**
- * Compute diffuse lighting color for opaque surface.
+ * Compute the lit colour of an opaque surface: diffuse plus the lobe's direct-light highlight.
  * Returns RGB color values (0-255 range) without setting payload.
+ *
+ * @param hit_point Surface intersection point
+ * @param normal Surface normal (pointing toward ray origin)
+ * @param material_color RGBA material color
+ * @param lobe Specular lobe (noSpecularLobe() for diffuse only)
+ * @param r Output: Red component (0-255)
+ * @param g Output: Green component (0-255)
+ * @param b Output: Blue component (0-255)
+ */
+__device__ void computeOpaqueColor(
+    const float3& hit_point,
+    const float3& normal,
+    const float4& material_color,
+    const SpecularLobe& lobe,
+    unsigned int& r,
+    unsigned int& g,
+    unsigned int& b,
+    bool double_sided = false
+) {
+    const float3 lit_color = litSurfaceColor(
+        material_color, calculateSurfaceLighting(hit_point, normal, lobe, double_sided));
+
+    r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+}
+
+/**
+ * Compute diffuse lighting color for opaque surface (computeOpaqueColor without a highlight).
  * Used for blending metallic and diffuse contributions.
  *
  * @param hit_point Surface intersection point
@@ -965,23 +1236,8 @@ __device__ void computeDiffuseColor(
     unsigned int& diffuse_b,
     bool double_sided = false
 ) {
-    const float3 lighting = calculateLighting(hit_point, normal, double_sided);
-
-    const float3 surface_color = make_float3(
-        material_color.x,
-        material_color.y,
-        material_color.z
-    );
-
-    const float3 lit_color = make_float3(
-        surface_color.x * lighting.x,
-        surface_color.y * lighting.y,
-        surface_color.z * lighting.z
-    );
-
-    diffuse_r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    diffuse_g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
-    diffuse_b = static_cast<unsigned int>(fminf(lit_color.z * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
+    computeOpaqueColor(hit_point, normal, material_color, noSpecularLobe(),
+                       diffuse_r, diffuse_g, diffuse_b, double_sided);
 }
 
 /**
@@ -1027,12 +1283,36 @@ __device__ inline void applyFogInPlace(unsigned int& r, unsigned int& g, unsigne
 
 /**
  * Handle fully opaque surface (alpha >= threshold).
- * Solid surface with diffuse shading.
+ * Solid surface with diffuse shading and the lobe's direct-light highlight.
  *
  * @param hit_point Surface intersection point
  * @param normal Surface normal (pointing toward ray origin)
  * @param material_color RGBA material color
+ * @param lobe Specular lobe of the material (specularLobe(ray_direction, specular, roughness,
+ *             metallic))
  * @param emission Emission intensity (0.0-10.0)
+ */
+__device__ void handleFullyOpaque(
+    const float3& hit_point,
+    const float3& normal,
+    const float4& material_color,
+    const SpecularLobe& lobe,
+    float emission = 0.0f,
+    bool double_sided = false
+) {
+    unsigned int r, g, b;
+    computeOpaqueColor(hit_point, normal, material_color, lobe, r, g, b, double_sided);
+    addEmissionToColor(r, g, b, material_color, emission);
+    applyFogInPlace(r, g, b, optixGetRayTmax());
+    optixSetPayload_0(r);
+    optixSetPayload_1(g);
+    optixSetPayload_2(b);
+}
+
+/**
+ * Handle fully opaque surface with diffuse shading only: the overload above with no highlight.
+ * Kept with this signature for shaders compiled against it, e.g. menger-geometry's 4D
+ * programs built against optix-jni 0.5.0's helpers.cu.
  */
 __device__ void handleFullyOpaque(
     const float3& hit_point,
@@ -1041,13 +1321,7 @@ __device__ void handleFullyOpaque(
     float emission = 0.0f,
     bool double_sided = false
 ) {
-    unsigned int r, g, b;
-    computeDiffuseColor(hit_point, normal, material_color, r, g, b, double_sided);
-    addEmissionToColor(r, g, b, material_color, emission);
-    applyFogInPlace(r, g, b, optixGetRayTmax());
-    optixSetPayload_0(r);
-    optixSetPayload_1(g);
-    optixSetPayload_2(b);
+    handleFullyOpaque(hit_point, normal, material_color, noSpecularLobe(), emission, double_sided);
 }
 
 /**
@@ -1314,6 +1588,7 @@ __device__ void blendFresnelColorsRGBAndSetPayload(
  * @param normal Surface normal (pointing toward ray origin)
  * @param depth Current recursion depth
  * @param reflect_r/g/b Output: reflected ray color (0-255)
+ * @param weight_factor Share of this ray's weight the reflected ray carries (see TraceDepth)
  */
 __device__ void traceReflectedRay(
     const float3& hit_point,
@@ -1322,7 +1597,8 @@ __device__ void traceReflectedRay(
     unsigned int depth,
     unsigned int& reflect_r,
     unsigned int& reflect_g,
-    unsigned int& reflect_b
+    unsigned int& reflect_b,
+    float weight_factor = 1.0f
 ) {
     const float3 reflect_dir = reflect(ray_direction, normal);
 
@@ -1336,7 +1612,7 @@ __device__ void traceReflectedRay(
         return;
     }
     const float3 reflect_origin = hit_point + reflect_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = TraceDepth::child(depth + 1);
+    unsigned int next_depth = TraceDepth::child(depth + 1, weight_factor);
     unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
     unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 
@@ -1368,6 +1644,7 @@ __device__ void traceReflectedRay(
  * @param cauchy_a Cauchy A coefficient (0 = no dispersion)
  * @param cauchy_b Cauchy B coefficient (0 = no dispersion)
  * @param refract_r/g/b Output: refracted ray color (0-255)
+ * @param weight_factor Share of this ray's weight the refracted ray carries (see TraceDepth)
  * @return True if refraction occurred, false if total internal reflection
  */
 __device__ bool traceRefractedRay(
@@ -1381,7 +1658,8 @@ __device__ bool traceRefractedRay(
     float cauchy_b,
     unsigned int& refract_r,
     unsigned int& refract_g,
-    unsigned int& refract_b
+    unsigned int& refract_b,
+    float weight_factor = 1.0f
 ) {
     // Compute IOR — with spectral dispersion if cauchy_b != 0
     float n_mat;
@@ -1428,7 +1706,7 @@ __device__ bool traceRefractedRay(
         return true;
     }
     const float3 refract_origin = hit_point + refract_dir * CONTINUATION_RAY_OFFSET;
-    unsigned int next_depth = TraceDepth::child(depth + 1);
+    unsigned int next_depth = TraceDepth::child(depth + 1, weight_factor);
     unsigned int p10 = optixGetPayload_10();  // Pass wavelength through
     unsigned int z4 = 0u, z5 = 0u, z6 = 0u, z7 = 0u, z8 = 0u, z9 = 0u;
 
@@ -1477,6 +1755,9 @@ __device__ bool traceRefractedRay(
  * @param metallic Metallic value [0,1] (0=fully diffuse, 1=fully metallic)
  * @param depth Current ray depth
  * @param r,g,b Output colour, 0..255 per channel
+ * @param weight_factor Share of this ray's weight the reflection ray carries (see TraceDepth);
+ *        callers pass what the reflection contributes to the final colour, `metallic` times
+ *        any coverage
  */
 __device__ void computeMetallicColor(
     const float3& hit_point,
@@ -1485,11 +1766,13 @@ __device__ void computeMetallicColor(
     const float4& material_color,
     float metallic,
     unsigned int depth,
-    unsigned int& r, unsigned int& g, unsigned int& b
+    unsigned int& r, unsigned int& g, unsigned int& b,
+    float weight_factor = 1.0f
 ) {
     // Trace reflection ray (metallic component)
     unsigned int reflect_r = 0, reflect_g = 0, reflect_b = 0;
-    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b);
+    traceReflectedRay(hit_point, ray_direction, normal, depth, reflect_r, reflect_g, reflect_b,
+                      weight_factor);
 
     // Tint reflected color by material color (colored metals like gold, copper)
     const float3 tint = make_float3(material_color.x, material_color.y, material_color.z);
@@ -1512,6 +1795,7 @@ __device__ void computeMetallicColor(
  * payload; at the max ray depth it falls back to the final non-recursive ray.
  *
  * @param emission Emission intensity (0.0-10.0)
+ * @param weight_factor Share of this ray's weight the reflection ray carries (see TraceDepth)
  */
 __device__ void handleMetallicOpaque(
     const float3& hit_point,
@@ -1520,7 +1804,8 @@ __device__ void handleMetallicOpaque(
     const float4& material_color,
     float metallic,
     unsigned int depth,
-    float emission = 0.0f
+    float emission = 0.0f,
+    float weight_factor = 1.0f
 ) {
     // Already the result of a bailout bounce (traceFinalNonRecursiveRay) — terminate here with
     // plain diffuse shading rather than tracing again, or a metal-on-metal cavity chains nested
@@ -1537,7 +1822,8 @@ __device__ void handleMetallicOpaque(
     }
 
     unsigned int r = 0, g = 0, b = 0;
-    computeMetallicColor(hit_point, ray_direction, normal, material_color, metallic, depth, r, g, b);
+    computeMetallicColor(hit_point, ray_direction, normal, material_color, metallic, depth, r, g, b,
+                         weight_factor);
 
     // Add emission
     addEmissionToColor(r, g, b, material_color, emission);

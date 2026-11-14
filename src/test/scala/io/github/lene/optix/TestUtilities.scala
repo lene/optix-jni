@@ -61,6 +61,36 @@ object TestUtilities extends LazyLogging:
     if samples.isEmpty then 0.0
     else samples.sum.toDouble / samples.length
 
+  /** Writes a flat (uncompressed) Radiance HDR file; `pixel(x, y)` gives the linear RGB radiance. */
+  def writeHdr(
+      path: java.nio.file.Path,
+      width: Int,
+      height: Int,
+      pixel: (Int, Int) => (Float, Float, Float)
+  ): Unit =
+    val header = s"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y $height +X $width\n"
+    val body = for y <- 0 until height; x <- 0 until width yield rgbe(pixel(x, y))
+    val out = new java.io.FileOutputStream(path.toFile)
+    try
+      out.write(header.getBytes("ASCII"))
+      body.foreach(p => out.write(p))
+    finally out.close()
+
+  /** Shared-exponent RGBE encoding of non-negative finite channels. A pixel never starts with the
+    * bytes 2,2 (the RLE marker): the guard nudges red from 2 to 3.
+    */
+  private[optix] def rgbe(rgb: (Float, Float, Float)): Array[Byte] =
+    val (r, g, b) = rgb
+    val m = math.max(r, math.max(g, b))
+    if m < 1e-32f then Array[Byte](0, 0, 0, 0)
+    else
+      val exponent = java.lang.Math.getExponent(m) + 1
+      val scale = 256.0 / math.pow(2.0, exponent.toDouble)
+      def mantissa(c: Float): Int = math.min(255, (c * scale).toInt)
+      val (mr, mg) = (mantissa(r), mantissa(g))
+      val safeR = if mr == 2 && mg == 2 then 3 else mr
+      Array(safeR.toByte, mg.toByte, mantissa(b).toByte, (exponent + 128).toByte)
+
   def savePNG(
     filename: String,
     data: Array[Byte],

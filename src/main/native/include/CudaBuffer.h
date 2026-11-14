@@ -3,6 +3,7 @@
 
 #include <cuda_runtime.h>
 #include "OptiXErrorChecking.h"
+#include "AllocationFaults.h"
 #include <cstring>
 
 /**
@@ -59,7 +60,11 @@ public:
         // Only reallocate if size changed
         if (size_bytes != new_size) {
             free();
-            CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_ptr), new_size));
+            // A failed allocation leaves the buffer empty and consistent (pointer and size 0):
+            // callers ask sizeBytes() instead of caching the size they asked for.
+            void* allocated = nullptr;
+            cudaMallocChecked(&allocated, new_size);
+            d_ptr = reinterpret_cast<CUdeviceptr>(allocated);
             size_bytes = new_size;
         }
     }

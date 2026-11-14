@@ -88,11 +88,6 @@ private:
     CudaBuffer<unsigned int> caustics_grid_counts_buffer;   // Hit points per cell
     CudaBuffer<unsigned int> caustics_grid_offsets_buffer;  // Prefix sum for sorting
     CudaBuffer<CausticsStats> caustics_stats_buffer;     // Caustics statistics
-
-    // Track current sizes to avoid unnecessary reallocations
-    size_t current_image_size = 0;
-    size_t current_denoise_pixel_count = 0;
-    size_t current_hit_points_size = 0;
 };
 
 #endif // BUFFER_MANAGER_H

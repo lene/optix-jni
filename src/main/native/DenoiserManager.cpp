@@ -138,6 +138,12 @@ void DenoiserManager::ensureSetup(int width, int height) {
         &sizes_
     ));
 
+    // From here until optixDenoiserSetup has returned, the state buffer does not hold a valid setup
+    // for any size: a throw below must make the next request set up from scratch, not return early
+    // on the old size with a reallocated, never set up state buffer (optix-jni#96).
+    setup_width_ = 0;
+    setup_height_ = 0;
+
     scratch_size_ = maxScratchSize(sizes_);
     state_buffer_.allocate(sizes_.stateSizeInBytes);
     scratch_buffer_.allocate(scratch_size_);

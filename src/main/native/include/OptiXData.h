@@ -15,6 +15,11 @@
 // This constant is used by both the C++ pipeline setup and CUDA shaders
 constexpr unsigned int MAX_TRACE_DEPTH = 5;  // Allow internal reflections in glass (entry + exit + reflections)
 
+// A radiance ray whose weight (the product of the blend factors of all branches above it) would
+// fall below this is not traced: it changes an 8-bit pixel by less than one step (optix-jni#118).
+// 0 switches the cutoff off.
+constexpr float DEFAULT_MIN_RAY_WEIGHT = 1.0f / 256.0f;
+
 // OptiX's own hard, compile-time recursion ceiling (OptixPipelineLinkOptions::maxTraceDepth).
 // Deliberately larger than MAX_TRACE_DEPTH: reaching a bounce at payload depth D requires D+1
 // native optixTrace calls (the raygen's own call counts as the first), and the depth-cutoff
@@ -57,7 +62,12 @@ namespace RayTracingConstants {
 
     // Lighting model
     constexpr float AMBIENT_LIGHT_FACTOR = 0.3f;       // Ambient light contribution (30%)
+    constexpr int   DEFAULT_AMBIENT_AO_SAMPLES = 16;   // Occlusion rays per ambient term (4x4 strata)
     constexpr float MIN_LIGHTING_THRESHOLD = 1.0f / 255.0f;  // Minimum NdotL to contribute (sub-pixel)
+
+    // Direct-light specular of opaque dielectrics (helpers.cu: ggxSpecular, optix-jni#105)
+    constexpr float DIELECTRIC_F0_PER_SPECULAR = 0.08f;  // Disney: F0 = 0.08 * specular
+    constexpr float MIN_SPECULAR_ROUGHNESS = 0.045f;     // Keeps the GGX lobe finite at 0
 
     // Plane rendering (checkered pattern)
     constexpr float PLANE_CHECKER_SIZE = 1.0f;            // Size of checker squares
@@ -136,11 +146,13 @@ namespace MaterialConstants {
     constexpr float IOR_DIAMOND = 2.42f;   // Diamond (high dispersion)
 }
 
-// Default PBR material values
+// Default PBR material values, for surfaces given no material
 namespace MaterialDefaults {
     constexpr float DEFAULT_ROUGHNESS = 0.5f;  // Default middle roughness (0=mirror, 1=diffuse)
     constexpr float DEFAULT_METALLIC = 0.0f;    // Default non-metallic (dielectric)
-    constexpr float DEFAULT_SPECULAR = 0.5f;    // Default specular intensity
+    // No specular highlight: such a surface shades plain diffuse, as it did before opaque
+    // dielectrics had a specular term (optix-jni#105)
+    constexpr float DEFAULT_SPECULAR = 0.0f;
 }
 
 // Rendering and physics constants for ray tracing
@@ -195,7 +207,7 @@ struct InstanceMaterial {
     float ior;                  // Index of refraction
     float roughness;            // 0=mirror, 1=diffuse (default: 0.5)
     float metallic;             // 0=dielectric, 1=metal (default: 0.0)
-    float specular;             // Specular intensity (default: 0.5)
+    float specular;             // Opaque dielectric highlight, 0..1: F0 = 0.08 * specular (0 = none)
     float emission;             // Emission intensity (0.0-10.0, default: 0.0)
     unsigned int geometry_type; // GeometryType enum value
     int geometry_data_index;    // Index into geometry-specific data buffer (cone_data, plane_data, etc.; -1 = unused)
@@ -585,6 +597,8 @@ struct BaseParams {
     bool                ibl_enabled;
     float               ibl_strength;
     int                 ibl_samples;
+    int                 ambient_ao_samples;  // occlusion rays per ambient term; 0 = constant fill
+    float               ambient_ao_radius;   // an occluder beyond this does not darken (optix-jni#106)
     int                 env_width;           // HDR env map pixel width
     int                 env_height;          // HDR env map pixel height
     unsigned int        frame_seed_offset;   // varies per accumulation frame
@@ -619,6 +633,7 @@ struct BaseParams {
 
     // Ray depth
     int   max_ray_depth;        // Maximum ray bounce depth (must be <= MAX_TRACE_DEPTH)
+    float min_ray_weight;       // Radiance rays lighter than this are not traced (0 = always trace)
 
     // Progressive Photon Mapping (Caustics)
     CausticsParams caustics;    // Caustics rendering parameters and GPU buffers

@@ -104,6 +104,10 @@ inline bool requireVertexStride(JNIEnv* env, jint stride) {
 // hung the GPU. Generous next to menger's own caps (IBL 8, accumulation 256, menger-common's
 // CausticsConfig limits for photons and iterations).
 constexpr int kMaxIblSamples = 64;
+// Occlusion rays per ambient term (optix-jni#106) and the shortest radius that means anything
+// (the rays start 0.001 off the surface).
+constexpr int kMaxAmbientSamples = 64;
+constexpr float kMinAmbientRadius = 0.01f;
 constexpr int kMaxAccumulationFrames = 1024;
 constexpr int kMaxPhotonsPerIteration = 10000000;
 constexpr int kMaxCausticsIterations = 1000;

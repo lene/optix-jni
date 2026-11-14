@@ -70,16 +70,6 @@ __device__ float2 sampleDisk(float u1, float u2) {
 }
 
 /**
- * Map perceptual roughness [0,1] to GGX alpha (Disney/UE4 remap: alpha = roughness^2).
- * Keeps roughness perceptually linear -- roughness=0.3 vs 0.5 are visibly, not marginally,
- * different, matching how `roughness` already reads for primary-ray PBR shading elsewhere
- * in this codebase (helpers.cu/hit_*.cu), even though those paths don't do GGX sampling.
- */
-__device__ float alphaFromRoughness(float roughness) {
-    return roughness * roughness;
-}
-
-/**
  * Sample a visible microfacet normal via GGX-VNDF importance sampling
  * (Heitz 2018, "Sampling the GGX Distribution of Visible Normals", isotropic case).
  *
@@ -1310,6 +1300,10 @@ extern "C" __global__ void __miss__photon() {
 // Progressive Photon Mapping - Photon Emission Raygen (Phase 3)
 //==============================================================================
 
+// Stride between the photon seeds of consecutive accumulation frames (2^32 / golden ratio, odd).
+// Far above any iteration count, so no (iteration, frame) pairs share a seed.
+constexpr unsigned int PHOTON_FRAME_SEED_STRIDE = 2654435761u;
+
 /**
  * Ray generation program for emitting photons from light sources.
  *
@@ -1327,8 +1321,12 @@ extern "C" __global__ void __raygen__photons() {
     // Each thread traces one photon
     const unsigned int photon_idx = idx.x + idx.y * dim.x;
 
-    // Initialize RNG with photon index + iteration for different patterns each iteration
-    unsigned int seed = tea(photon_idx, params.caustics.current_iteration);
+    // Initialize RNG with photon index + iteration + accumulation frame, so each iteration and
+    // each accumulated frame traces different photons (optix-jni#117). Frame 0 keeps the seed
+    // it always had.
+    unsigned int seed = tea(
+        photon_idx,
+        params.caustics.current_iteration + params.frame_seed_offset * PHOTON_FRAME_SEED_STRIDE);
 
     // Select light source (for now, use first light)
     // TODO: Weight by intensity for multiple lights

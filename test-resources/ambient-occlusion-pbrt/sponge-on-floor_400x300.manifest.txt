@@ -1,0 +1,7 @@
+scene:        sponge-on-floor.pbrt
+resolution:   400x300
+pbrt_commit:  b0bdf461ba5dd6504b70ebf0932acc0fe7aa744f
+pbrt_sha256:  98e93af03b9b3d388090dd41b95c393c177da067697f9c86f62cbed14caa5772
+seed:         0
+scene_sha256: 73db6e9c4a3743ab27c0178adba5ce6de8b4a461474c280ea11d84aab2f18ea2
+rendered:     2026-11-06T10:01:46Z

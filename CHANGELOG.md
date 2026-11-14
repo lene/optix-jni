@@ -5,7 +5,117 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.1] - 2026-11-14
+
+### Added
+
+- `OptiXTestHooks.failNextDeviceAllocations(renderer, n)` (tests only): the n-th device allocation
+  from now on fails once with a plain `OptiXException`, as if the GPU were out of memory (`n = 1` is
+  the next one, `0` disarms). It counts every allocation made through `CudaBuffer::allocate` (the
+  image, denoise, caustics, params, stats and denoiser buffers, and any other `CudaBuffer`), the
+  mesh-update and IAS-rebuild buffers, and the temp and output buffers of a triangle-mesh GAS build,
+  and nothing else; a test that fixes `n` depends on the allocations of the path it exercises.
+  Thrown before any CUDA call, so it never latches the context as lost. The counter is process-wide.
+- `AmbientModel` and `OptiXRenderer.setAmbient(model)` (optix-jni#106): how the ambient fill (0.3
+  times the colour) that every surface gets is computed.
+  - `AmbientModel.Occlusion(samples = 16, radius = Float.PositiveInfinity)`, the default,
+    weights the fill by ambient occlusion: the share of cosine-weighted hemisphere rays from the
+    hit that escape within `radius`. Samples are stratified over a grid (4x4 for 16; a
+    prime count has one column, so the elevation follows a golden-ratio sequence) shifted at
+    random per hit, decorrelated across pixels, antialiasing subsamples and accumulation
+    frames, and the same every time the same frame is rendered. `samples` is 1 to 64 and `radius`
+    at least 0.01 (infinity: every occluder counts, at any distance); an out-of-range value is
+    rejected with an `IllegalArgumentException` naming the value and the range.
+  - `AmbientModel.Constant` keeps the old fill; a render with it is byte-identical to the build before
+    this change (b13c283, which already has #105's highlights, so Plastic differs from 0.5.0), checked
+    on a sponge, a backlit sponge and a glass/gold/cylinder scene by `AmbientOcclusionSuite`
+    (on the GPU of the committed references).
+  - Occlusion rays are shadow-type rays: a transparent occluder darkens by its shadow
+    attenuation, not fully. They count in `RayStats.totalRays` but not in `shadowRays`.
+  - Checks: an open floor gets exactly the constant fill; the floor of a square shaft gets the
+    analytic cosine-weighted visibility (0.2394 rendered against 0.2386); the per-pixel factor
+    on a level-1 sponge on a floor matches pbrt-v4's `ambientocclusion` integrator (mean absolute
+    error 0.0135, 95th percentile 0.034, bias -0.002; twin scene and reference in
+    `test-resources/ambient-occlusion-pbrt/`).
+
+### Fixed
+
+- A failed device allocation no longer poisons the renderer (optix-jni#96, #87, #81). Buffers that
+  are in use are replaced allocate-first, and a size is asked of the buffer, never cached:
+  - Image, denoise and caustics buffers (#96, High): after a failed allocation the next render
+    at the old size skipped the allocation (the cached size said "allocated") and launched with a
+    null image pointer; the illegal address latched the CUDA context as lost, so every later call
+    in the process threw `OptiXContextLostException`. The three cached sizes are gone; each buffer
+    is checked against its own size, so the next call allocates again.
+  - Denoiser (#96): a failure between reallocating the state buffer and `optixDenoiserSetup`
+    left the old setup size in place, and a later request at or below it denoised with a state
+    buffer that was never set up. The setup size is reset first and set after the setup succeeded.
+  - `updateCpuTriangleMesh` (#87): it freed the slot's vertex and index buffers before allocating
+    new ones, so a failure left the IAS materials pointing at freed memory, and a failing GAS build
+    left the slot with a freed GAS and stale handles. The new buffers are uploaded and the new GAS
+    is built from them first; vertices, indices and GAS are then swapped in together.
+    `buildTriangleMeshGAS` builds before it frees the old GAS.
+  - `buildIAS` full rebuild (#81): it freed the live IAS before building the new one. The
+    replacement is now built into guarded locals and swapped in after the build succeeded.
+- Image-based lighting lights from the azimuth the background shows (optix-jni#112): the IBL
+  sampler turned a texel's u back into azimuth 2*pi*u while the background maps
+  u = 0.5 + atan2(z, x) / 2pi, so IBL was rotated by 180 degrees against the visible sky. Both now
+  share `EnvMapMapping.h`. Every IBL render changes; menger's IBL reference images move at its
+  next pin bump (menger-toplevel#115).
+- The holes of a Menger sponge show (optix-jni#106): a surface the lights miss got the same
+  constant fill as the inside of a cavity, so an unlit face and a hole were identical under the
+  default light and when backlit. With the default occlusion ambient, a hole is darker than the
+  face around it.
+- An opaque dielectric's `specular` and `roughness` take effect (optix-jni#105): each direct
+  light leaves a highlight on it. Plastic rendered pixel-identical to Matte, and flat faces had
+  no highlight.
+  - Model: a GGX microfacet lobe (Cook-Torrance, height-correlated Smith visibility) with plain
+    Schlick Fresnel, normal-incidence reflectance `F0 = 0.08 * specular` (Disney) and GGX alpha
+    `roughness`². The highlight is untinted and follows the light's shadow; on a double-sided
+    plane it shows only where viewer and light are on the same side. `specular` 0 gives none, so
+    Matte renders exactly as before.
+  - Scope: every primitive shades through it (sphere, triangle mesh, cylinder, cone, curve, plane
+    instance, legacy plane), as does a triangle-mesh face faded by a non-refractive alpha
+    (Parchment) before it is blended. Metals, refractive and transparent materials (including
+    their depth and nesting fallbacks), ambient and IBL light, and the caustics photon pass are
+    unchanged.
+- A cylinder receives shadows. Its diffuse shading skipped shadow rays, documented as a guard
+  against recursion, but a shadow ray never recurses and `TraceDepth` keeps a nesting level free
+  for it; a sphere above a cylinder's top cap cast no shadow on it (menger#156). Edge tubes
+  (cylinders) now show the shadows that fall on them.
+- A cone receives shadows too (optix-jni#109), for the same reason: its diffuse shading and
+  highlight skipped shadow rays.
+- A cone's side normal points outward and toward the apex (`__intersection__cone`,
+  optix-jni#108). It tilted toward the base, so the cone's diffuse light and highlight came from
+  the wrong side. Visual change: every cone, including its metallic reflections, glass and
+  other transparent cones (refraction and Fresnel use the normal), triplanar procedural
+  textures, normal maps and denoiser guides, which all use that normal.
+
+### Changed
+
+- Visual change: cavities and contact areas are darker than before, as the default ambient is
+  now occluded (see Added); a surface with nothing above it renders as before. Cost: each
+  shaded hit casts 16 more rays by default; `AmbientModel.Constant` or fewer samples lower it.
+- Visual change: every surface with `specular` > 0 now shows a highlight, including those built
+  from `Material(color, ior)` and set through `setInstanceMaterial`, whose defaults are specular
+  0.5 and roughness 0.5. `specular = 0` keeps the old look.
+- A surface given no material has `specular` 0, so it keeps its diffuse-only look:
+  `MaterialDefaults::DEFAULT_SPECULAR` (single-object mode, the C++ `add*Instance` default
+  arguments), a custom-geometry instance before `setInstanceMaterial`, and a legacy plane added
+  without a material (`addPlane`, `addPlaneSolidColor`, `addPlaneCheckerColors`).
+- A legacy (miss-shader) plane with a material uses the shared highlight; its own Phong term lit
+  only the first light, ignored shadows, and was off from roughness 0.95 up.
+- Shader API for custom-geometry registrants (`helpers.cu`): `handleFullyOpaque` has an overload
+  taking a `SpecularLobe` (`specularLobe(ray_direction, specular, roughness, metallic)`); a
+  registrant must call it to shade the highlight. The old signature remains for compatibility
+  and shades diffuse only. `alphaFromRoughness` moved here from `caustics_ppm.cu`.
+
+### Known issues
+
+- An area light's highlight is evaluated toward the disk centre only (its shadow is sampled over
+  the disk), so a large disk mirrors as a dot.
+- A cone has no base cap (its base is open), and a hit on its inside is shaded with the outward
+  normal.
 
 ## [0.5.0] - 2026-10-29
 
@@ -838,6 +948,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.1]: https://github.com/lene/optix-jni/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/lene/optix-jni/compare/0.4.11...0.5.0
 [0.4.11]: https://github.com/lene/optix-jni/compare/0.4.10...0.4.11
 [0.4.10]: https://github.com/lene/optix-jni/compare/0.4.9...0.4.10

@@ -14,25 +14,22 @@ BufferManager::~BufferManager() {
     }
 }
 
+// The buffers below are scratch: their old content does not matter, so a changed size frees first
+// and then allocates (least peak memory). No size is cached apart from the buffer: CudaBuffer
+// knows its own size, and after a failed allocation it is empty, so the next call allocates again
+// (optix-jni#96: a cached size claimed "allocated" and the next launch got a null image pointer).
 void BufferManager::ensureImageBuffer(int width, int height) {
     // size_t before multiplying (optix-jni#68); width/height are bounded at the JNI entry.
-    const size_t required_size = static_cast<size_t>(width) * static_cast<size_t>(height) * 4; // RGBA
-    if (current_image_size != required_size) {
-        image_buffer.allocate(required_size);
-        current_image_size = required_size;
-    }
+    image_buffer.allocate(static_cast<size_t>(width) * static_cast<size_t>(height) * 4); // RGBA
 }
 
 void BufferManager::ensureDenoiseBuffers(int width, int height) {
     const size_t pixel_count = static_cast<size_t>(width) * static_cast<size_t>(height);
-    if (current_denoise_pixel_count != pixel_count) {
-        linear_color_buffer.allocate(pixel_count);
-        accumulated_linear_color_buffer.allocate(pixel_count);
-        denoised_color_buffer.allocate(pixel_count);
-        denoise_albedo_buffer.allocate(pixel_count);
-        denoise_normal_buffer.allocate(pixel_count);
-        current_denoise_pixel_count = pixel_count;
-    }
+    linear_color_buffer.allocate(pixel_count);
+    accumulated_linear_color_buffer.allocate(pixel_count);
+    denoised_color_buffer.allocate(pixel_count);
+    denoise_albedo_buffer.allocate(pixel_count);
+    denoise_normal_buffer.allocate(pixel_count);
 }
 
 void BufferManager::ensureParamsBuffer() {
@@ -56,22 +53,17 @@ void BufferManager::ensureGASBuffer(const OptiXContext::GASBuildResult& gasResul
 }
 
 void BufferManager::ensureCausticsBuffers() {
-    const size_t hit_points_size = RayTracingConstants::MAX_HIT_POINTS;
     const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
                             RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
                             RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
 
-    if (current_hit_points_size != hit_points_size) {
-        // Allocate all buffers (RAII ensures cleanup on exception)
-        hit_points_buffer.allocate(hit_points_size);
-        num_hit_points_buffer.allocate(1);
-        caustics_grid_buffer.allocate(grid_size);
-        caustics_grid_counts_buffer.allocate(grid_size);
-        caustics_grid_offsets_buffer.allocate(grid_size);
-        caustics_stats_buffer.allocate(1);
-
-        current_hit_points_size = hit_points_size;
-    }
+    // RAII ensures cleanup on exception; each buffer is checked against its own size
+    hit_points_buffer.allocate(RayTracingConstants::MAX_HIT_POINTS);
+    num_hit_points_buffer.allocate(1);
+    caustics_grid_buffer.allocate(grid_size);
+    caustics_grid_counts_buffer.allocate(grid_size);
+    caustics_grid_offsets_buffer.allocate(grid_size);
+    caustics_stats_buffer.allocate(1);
 }
 
 void BufferManager::freeCausticsBuffers() {
@@ -81,7 +73,6 @@ void BufferManager::freeCausticsBuffers() {
     caustics_grid_counts_buffer.free();
     caustics_grid_offsets_buffer.free();
     caustics_stats_buffer.free();
-    current_hit_points_size = 0;
 }
 
 void BufferManager::zeroStatsBuffer() {

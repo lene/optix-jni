@@ -285,6 +285,7 @@ class OptiXRenderer
   @native private def setFogNative(density: Float, r: Float, g: Float, b: Float): Unit
   @native private[optix] def setToneMappingNative(operatorId: Int, exposure: Float): Unit
   @native private[optix] def setIBLNative(enabled: Boolean, strength: Float, samples: Int): Unit
+  @native private[optix] def setAmbientNative(occlusion: Boolean, samples: Int, radius: Float): Unit
   @native private[optix] def setAccumulationFramesNative(n: Int): Unit
   @native private def setDenoisingEnabledNative(enabled: Boolean): Unit
 
@@ -444,6 +445,21 @@ class OptiXRenderer
   /** Sets the maximum recursive reflection/refraction ray depth. */
   @native def setMaxRayDepth(depth: Int): Unit
 
+  /** Sets the smallest weight a radiance ray may have and still be traced.
+    *
+    * A ray's weight is the product of the blend factors of all branches above it: the share of a
+    * coverage-blended face that its pass-through ray carries, a reflection's metallic share, the
+    * Fresnel share of a reflected or refracted ray. A branch that would fall below `weight` is
+    * not traced; its colour is taken as zero (or, for a pass-through, the face's own colour). The
+    * default is 1/256: such a branch changes an 8-bit pixel by less than one step, and a stack of
+    * semi-transparent metallic layers otherwise costs rays in the order of layers to the power
+    * of the ray depth (optix-jni#118).
+    *
+    * @param weight cutoff in [0, 1]; 0 switches the cutoff off (every branch is traced)
+    * @throws IllegalArgumentException when `weight` is outside [0, 1] or NaN
+    */
+  @native def setMinRayWeight(weight: Float): Unit
+
   /** Configures progressive photon-mapping caustics.
     *
     * @param photonsPerIter photons emitted per iteration
@@ -524,6 +540,9 @@ class OptiXRenderer
 
   // Test hook (#41): the next setProjectedMesh fails as if its readback had (-2).
   @native private[optix] def failNextProjectionReadbackNative(): Unit
+
+  // Test hook: the n-th device allocation from now on fails (process-wide; 0 disarms).
+  @native private[optix] def failNextDeviceAllocationsNative(n: Int): Unit
 
   // Test hooks for the process-wide CUDA context-lost latch (optix-jni#73).
   @native private[optix] def simulateContextLostNative(reason: String): Unit

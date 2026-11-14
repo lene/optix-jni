@@ -6,6 +6,7 @@
 // the --plane CLI flag and existing tests. It will be removed in a future sprint.
 //==============================================================================
 // This file is included by optix_shaders.cu - do not compile separately
+#include "../include/EnvMapMapping.h"
 
 //==============================================================================
 // Plane helper functions (used by caustics and legacy miss shader)
@@ -115,9 +116,8 @@ __device__ float3 applyToneMapping(float3 c) {
 
 __device__ void sampleEnvMap(unsigned int& r, unsigned int& g, unsigned int& b) {
     float3 dir = normalize(optixGetWorldRayDirection());
-    float u = 0.5f + atan2f(dir.z, dir.x) * (0.5f * M_1_PIf);
-    float v = 0.5f - asinf(fmaxf(-1.f, fminf(1.f, dir.y))) * M_1_PIf;
-    float4 c = tex2D<float4>(params.env_map_texture, u, v);
+    const float2 uv = envDirToUv(dir);
+    float4 c = tex2D<float4>(params.env_map_texture, uv.x, uv.y);
     float3 mapped = applyToneMapping(make_float3(c.x, c.y, c.z));
     r = static_cast<unsigned int>(mapped.x * COLOR_SCALE_FACTOR);
     g = static_cast<unsigned int>(mapped.y * COLOR_SCALE_FACTOR);
@@ -190,39 +190,20 @@ extern "C" __global__ void __miss__ms() {
             const float3 diffuse  = base_color * lighting;
             total_color = tinted * plane.metallic + diffuse * (1.0f - plane.metallic);
         } else {
-            const float3 lighting = calculateLighting(hit_point, plane_normal, true);
-            total_color = base_color * lighting;
-
-            if (plane.specular > 0.0f && plane.roughness < 0.95f && params.num_lights > 0) {
-                const Light& light = params.lights[0];
-                float3 light_dir_normalized;
-                float  attenuation;
-                if (light.type == LightType::DIRECTIONAL) {
-                    getDirectionalLightParams(light, light_dir_normalized, attenuation);
-                } else {
-                    getPointLightParams(light, hit_point, light_dir_normalized, attenuation);
-                }
-                const float3 view_dir   = normalize(ray_origin - hit_point);
-                const float3 neg_light  = make_float3(-light_dir_normalized.x,
-                                                      -light_dir_normalized.y,
-                                                      -light_dir_normalized.z);
-                const float  ndotl2     = 2.0f * dot(neg_light, plane_normal);
-                const float3 refl_dir   = make_float3(
-                    neg_light.x - ndotl2 * plane_normal.x,
-                    neg_light.y - ndotl2 * plane_normal.y,
-                    neg_light.z - ndotl2 * plane_normal.z);
-                const float  spec_power = 2.0f / (plane.roughness * plane.roughness + 0.001f);
-                const float  spec       = powf(fmaxf(0.0f, dot(view_dir, refl_dir)), spec_power)
-                                          * plane.specular;
-                total_color = total_color + make_float3(spec, spec, spec);
-            }
+            const SurfaceLighting lighting = calculateSurfaceLighting(
+                hit_point, plane_normal,
+                specularLobe(ray_direction, plane.specular, plane.roughness, plane.metallic), true);
+            total_color = litSurfaceColor(make_float4(base_color.x, base_color.y, base_color.z, 1.0f),
+                                          lighting);
         }
 
         total_color = total_color + base_color * plane.emission;
 
-        r = static_cast<unsigned int>(total_color.x * COLOR_BYTE_MAX);
-        g = static_cast<unsigned int>(total_color.y * COLOR_BYTE_MAX);
-        b = static_cast<unsigned int>(total_color.z * COLOR_BYTE_MAX);
+        // Clamped like computeOpaqueColor: a highlight can exceed 1.0, and the byte cast in
+        // raygen would wrap it to a dark ring.
+        r = static_cast<unsigned int>(fminf(total_color.x * COLOR_BYTE_MAX, COLOR_BYTE_MAX));
+        g = static_cast<unsigned int>(fminf(total_color.y * COLOR_BYTE_MAX, COLOR_BYTE_MAX));
+        b = static_cast<unsigned int>(fminf(total_color.z * COLOR_BYTE_MAX, COLOR_BYTE_MAX));
         applyFogInPlace(r, g, b, best_t);  // fog only when plane hit, not background
     } else {
         if (params.env_map_enabled)

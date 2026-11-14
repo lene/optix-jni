@@ -15,6 +15,15 @@ object OptiXTestHooks:
   def failNextProjectionReadback(renderer: OptiXRenderer): Unit =
     renderer.failNextProjectionReadbackNative()
 
+  /** The `n`-th device allocation of the buffers the renderer reallocates (image, denoiser,
+    * caustics, mesh and IAS buffers) from now on fails with a plain `OptiXException`, once, as if
+    * the GPU were out of memory; `n = 1` is the next one, `0` disarms. For tests only. The failure
+    * is injected before any CUDA call, so it never latches the context as lost. The counter is
+    * process-wide: a test that arms it must consume or disarm it.
+    */
+  def failNextDeviceAllocations(renderer: OptiXRenderer, n: Int): Unit =
+    renderer.failNextDeviceAllocationsNative(n)
+
   /** Latches the process-wide context-lost state, as a sticky CUDA error would (optix-jni#73).
     * Every later render throws `OptiXContextLostException` until [[clearContextLost]].
     */

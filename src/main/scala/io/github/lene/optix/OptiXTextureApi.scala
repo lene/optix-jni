@@ -104,6 +104,10 @@ private[optix] trait OptiXTextureApi:
 
   /** Uploads a texture from a native-readable file path.
     *
+    * The file is parsed by the vendored `stb_image` C library inside the JVM process. Images wider
+    * or taller than 8192 pixels and truncated `.hdr` files are rejected; load only files you trust
+    * or have pinned by hash (see the README's "Texture files and untrusted input").
+    *
     * @return texture index `>= 0`
     * @throws TextureUploadException when native upload returns a negative code
     */

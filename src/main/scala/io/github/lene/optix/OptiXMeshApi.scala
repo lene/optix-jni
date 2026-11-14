@@ -15,6 +15,10 @@ import menger.common.z
   * the new [[InstanceId]] or [[MeshSlot]] and throws [[OptiXException]] on native failure
   * (menger#110: it returned -1, which callers passed on as an index). Update methods throw
   * when native code reports an invalid id or failed projection update.
+  *
+  * A [[Material]]'s `specular` and `roughness` give an opaque dielectric (`metallic` 0) its
+  * highlight from each direct light: see [[Material]]. The `(color, ior)` overloads build
+  * `Material(color, ior)`, whose defaults (specular 0.5, roughness 0.5) give one too.
   */
 private[optix] trait OptiXMeshApi:
   this: OptiXRenderer =>
@@ -267,7 +271,10 @@ private[optix] trait OptiXMeshApi:
   def addRecursiveIASSpongeInstance(level: Int, position: Vector[3], color: Color, ior: Float): InstanceId =
     addRecursiveIASSpongeInstance(level, position, Material(color, ior), TextureIndex.NoTexture)
 
-  /** Adds a cylinder IAS instance between two endpoints.
+  /** Adds a capped cylinder IAS instance between two endpoints.
+    *
+    * The cylinder casts and receives shadows. It is shaded opaque (diffuse, or one metallic
+    * bounce): a material's transparency and refraction are not rendered.
     *
     * @param radius cylinder radius in world units
     * @return the new instance

@@ -53,9 +53,13 @@ class ScalingPerformanceSuite extends AnyFlatSpec with Matchers with PerfGate:
     assertWithin(s"${subject.name} vs ${reference.name}",
       RelativeBenchmark.compare(reference, subject, maxSlowdown))
 
+  // Measures the cost of the instance count, so the shading per pixel is held constant: with the
+  // occlusion ambient (16 rays per shaded hit) the 64-sphere grid, which covers far more pixels,
+  // measured 2.8-3.8x against 1.3x with the constant fill (optix-jni#106).
   "Instance scaling" should "keep 64 instances within their slowdown of one" taggedAs Perf in:
     Using.resource(newRenderer()): one =>
       Using.resource(newRenderer()): many =>
+        Seq(one, many).foreach(_.setAmbient(AmbientModel.Constant))
         grid(one, 1)
         grid(many, 64)
         gate(Side("1 instance", frame(one)), Side("64 instances", frame(many)),

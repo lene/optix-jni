@@ -120,6 +120,10 @@ class JniBoundarySuite extends AnyFlatSpec with Matchers with RendererFixture:
     rejects[IllegalArgumentException]("setAccumulationFramesNative", int(Int.MaxValue))
     rejects[IllegalArgumentException]("setIBLNative", bool(true), float(1f), int(0))
     rejects[IllegalArgumentException]("setIBLNative", bool(true), float(1f), int(1000000))
+    rejects[IllegalArgumentException]("setAmbientNative", bool(true), int(0), float(1f))
+    rejects[IllegalArgumentException]("setAmbientNative", bool(true), int(1000000), float(1f))
+    rejects[IllegalArgumentException]("setAmbientNative", bool(true), int(16), float(0f))
+    rejects[IllegalArgumentException]("setAmbientNative", bool(true), int(16), float(Float.NaN))
     rejects[IllegalArgumentException]("setAntialiasing", bool(true), int(5), float(0.1f))
     rejects[IllegalArgumentException]("setAntialiasing", bool(true), int(2), float(Float.NaN))
     rejects[IllegalArgumentException]("setCaustics", bool(true), int(0), int(10), float(1f),
@@ -136,6 +140,9 @@ class JniBoundarySuite extends AnyFlatSpec with Matchers with RendererFixture:
     accepts("setAccumulationFramesNative", int(1))
     accepts("setIBLNative", bool(false), float(0f), int(0)) // disabled: samples unused
     accepts("setIBLNative", bool(true), float(1f), int(8))
+    accepts("setAmbientNative", bool(false), int(0), float(0f)) // constant fill: nothing else is used
+    accepts("setAmbientNative", bool(true), int(16), float(Float.PositiveInfinity))
+    accepts("setAmbientNative", bool(true), int(1), float(0.01f))
     accepts("setAntialiasing", bool(false), int(0), float(0f))
     accepts("setAntialiasing", bool(true), int(4), float(1f))
     accepts("setCaustics", bool(false), int(0), int(0), float(0f), float(0f))

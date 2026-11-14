@@ -1,5 +1,6 @@
 #include "include/OptiXWrapper.h"
 #include "include/EnvMapCDF.h"
+#include "include/HdrLoader.h"
 #include "include/SceneParameters.h"
 #include "include/RenderConfig.h"
 #include "include/PipelineManager.h"
@@ -11,6 +12,7 @@
 #include "include/OptiXContext.h"
 #include "include/OptiXConstants.h"
 #include "include/OptiXErrorChecking.h"
+#include "include/AllocationFaults.h"
 #include "include/VectorMath.h"
 #include <iostream>
 #include "include/OptixLogging.h"
@@ -34,6 +36,54 @@ constexpr unsigned int FLOAT_RGBA_BYTES_PER_PIXEL = 4 * sizeof(float);
 // Instance visibility masks; every optixTrace call passes OptixVisibilityMask(255).
 constexpr unsigned int VISIBILITY_MASK_ALL = 255;
 constexpr unsigned int VISIBILITY_MASK_NONE = 0;
+
+// Device memory that is freed on every way out, until release() hands it over. The data that is
+// in use (a mesh's buffers, the IAS) is rebuilt into these first and swapped in last, so a failed
+// allocation or build leaves what was live untouched (optix-jni#87, #81).
+using DeviceBuffer = std::unique_ptr<void, decltype(&cudaFree)>;
+
+DeviceBuffer allocateDevice(size_t bytes) {
+    void* ptr = nullptr;
+    cudaMallocChecked(&ptr, bytes);
+    return DeviceBuffer(ptr, cudaFree);
+}
+
+DeviceBuffer uploadToDevice(const void* host, size_t bytes) {
+    DeviceBuffer buffer = allocateDevice(bytes);
+    CUDA_CHECK(cudaMemcpy(buffer.get(), host, bytes, cudaMemcpyHostToDevice));
+    return buffer;
+}
+
+// Frees `current` (if any) and takes over `replacement`.
+void replaceDevice(CUdeviceptr& current, DeviceBuffer& replacement) {
+    if (current) cudaFree(reinterpret_cast<void*>(current));
+    current = reinterpret_cast<CUdeviceptr>(replacement.release());
+}
+
+CUdeviceptr devicePointer(const DeviceBuffer& buffer) {
+    return reinterpret_cast<CUdeviceptr>(buffer.get());
+}
+
+// The GAS of a triangle mesh built from the given buffers. It touches nothing but what it
+// returns (the caller owns the output buffer), so a failure leaves every mesh slot as it was.
+OptiXContext::GASBuildResult buildMeshGAS(
+    OptiXContext& context,
+    CUdeviceptr d_vertices, unsigned int num_vertices,
+    CUdeviceptr d_indices, unsigned int num_triangles,
+    unsigned int vertex_stride, bool allow_update
+) {
+    // PREFER_FAST_TRACE: optimizes the BVH for ray traversal speed; ALLOW_COMPACTION: enables
+    // memory compaction. 4D-projected meshes (Sprint 18.3) also need ALLOW_UPDATE so
+    // updateMesh4DProjection can refit the GAS via OPERATION_UPDATE after re-launching the
+    // projection kernel into the same buffer.
+    OptixAccelBuildOptions accel_options = {};
+    accel_options.buildFlags =
+        OPTIX_BUILD_FLAG_PREFER_FAST_TRACE | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+    if (allow_update) accel_options.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_UPDATE;
+    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+    return context.buildTriangleGAS(
+        d_vertices, num_vertices, d_indices, num_triangles, accel_options, vertex_stride);
+}
 }  // namespace
 
 /**
@@ -369,6 +419,10 @@ void OptiXWrapper::setToneMapping(int operatorId, float exposure) {
     impl->config.setToneMapping(operatorId, exposure);
 }
 
+void OptiXWrapper::setAmbient(int samples, float radius) {
+    impl->config.setAmbient(samples, radius);
+}
+
 void OptiXWrapper::setIBL(bool enabled, float strength, int samples) {
     impl->config.setIBL(enabled, strength, samples);
 }
@@ -463,6 +517,10 @@ void OptiXWrapper::setAntialiasing(bool enabled, int maxDepth, float threshold) 
 
 void OptiXWrapper::setMaxRayDepth(int depth) {
     impl->config.setMaxRayDepth(depth);
+}
+
+void OptiXWrapper::setMinRayWeight(float weight) {
+    impl->config.setMinRayWeight(weight);
 }
 
 void OptiXWrapper::setCaustics(bool enabled, int photonsPerIter, int iterations, float initialRadius, float alpha) {
@@ -1149,46 +1207,42 @@ int OptiXWrapper::updateCpuTriangleMesh(
         return -1;
     }
 
-    // Free existing GPU vertex and index buffers, then re-upload.
-    if (mesh.d_vertices) {
-        cudaFree(reinterpret_cast<void*>(mesh.d_vertices));
-        mesh.d_vertices = 0;
+    // The mesh's buffers and GAS are in use (the IAS materials and the instances point at them)
+    // until the new ones exist: upload the replacements, build the new GAS from the new buffers,
+    // and only then swap all three and free the old ones (optix-jni#87). A failure before the
+    // swap leaves the slot exactly as it was; the guards free the new buffers on the way out.
+    DeviceBuffer new_vertices = uploadToDevice(
+        vertices, num_vertices * vertex_stride * sizeof(float));
+    DeviceBuffer new_indices = uploadToDevice(
+        indices, num_triangles * 3 * sizeof(unsigned int));
+    DeviceBuffer new_gas(nullptr, cudaFree);
+    OptixTraversableHandle new_gas_handle = 0;
+    if (num_triangles > 0) {  // no triangles: no GAS, handle 0 (as buildTriangleMeshGAS does)
+        const OptiXContext::GASBuildResult built = buildMeshGAS(
+            impl->optix_context,
+            devicePointer(new_vertices), num_vertices,
+            devicePointer(new_indices), num_triangles,
+            vertex_stride, false);
+        new_gas.reset(reinterpret_cast<void*>(built.gas_buffer));
+        new_gas_handle = built.handle;
     }
-    if (mesh.d_indices) {
-        cudaFree(reinterpret_cast<void*>(mesh.d_indices));
-        mesh.d_indices = 0;
-    }
 
-    size_t vertex_size = num_vertices * vertex_stride * sizeof(float);
-    CUDA_CHECK(cudaMalloc(
-        reinterpret_cast<void**>(&mesh.d_vertices), vertex_size
-    ));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(mesh.d_vertices),
-        vertices, vertex_size, cudaMemcpyHostToDevice
-    ));
-
-    size_t index_size = num_triangles * 3 * sizeof(unsigned int);
-    CUDA_CHECK(cudaMalloc(
-        reinterpret_cast<void**>(&mesh.d_indices), index_size
-    ));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(mesh.d_indices),
-        indices, index_size, cudaMemcpyHostToDevice
-    ));
-
+    replaceDevice(mesh.d_vertices, new_vertices);
+    replaceDevice(mesh.d_indices, new_indices);
+    replaceDevice(mesh.d_gas_output_buffer, new_gas);
+    mesh.gas_handle = new_gas_handle;
     mesh.num_vertices = num_vertices;
     mesh.num_triangles = num_triangles;
     mesh.vertex_stride = vertex_stride;
-    mesh.gas_built = false;
-
-    // Rebuild the GAS for this mesh slot only.
-    buildTriangleMeshGAS(static_cast<size_t>(mesh_index));
+    mesh.gas_built = num_triangles > 0;
 
     // Update the scene parameters so the IAS material pointer stays valid.
     impl->scene.getTriangleMeshMutable().d_vertices = mesh.d_vertices;
     impl->scene.getTriangleMeshMutable().d_indices  = mesh.d_indices;
     impl->scene.getTriangleMeshMutable().vertex_stride = vertex_stride;
+
+    // The IAS must be rebuilt on the next render() (new buffers, new GAS handle).
+    impl->ias_dirty = true;
 
     // Re-link the instance's gas_handle to the freshly built GAS.
     for (auto& inst : impl->instances) {
@@ -1198,9 +1252,6 @@ int OptiXWrapper::updateCpuTriangleMesh(
             inst.gas_handle = mesh.gas_handle;
         }
     }
-
-    // IAS must be rebuilt on the next render() to pick up the new GAS handle.
-    impl->ias_dirty = true;
 
     return 0;
 }
@@ -1296,49 +1347,25 @@ void OptiXWrapper::buildTriangleMeshGAS(size_t mesh_index) {
 
     auto& mesh = impl->triangle_meshes[mesh_index];
 
-    // Free existing GAS if any
-    if (mesh.d_gas_output_buffer) {
-        cudaFree(
-            reinterpret_cast<void*>(
-                mesh.d_gas_output_buffer
-            )
-        );
-        mesh.d_gas_output_buffer = 0;
-    }
-
     if (mesh.num_triangles == 0) {
+        DeviceBuffer none(nullptr, cudaFree);
+        replaceDevice(mesh.d_gas_output_buffer, none);  // frees the old GAS
         mesh.gas_handle = 0;
         mesh.gas_built = false;
         return;
     }
 
-    // Configure acceleration structure build
-    // PREFER_FAST_TRACE: Optimizes BVH for ray traversal speed
-    // ALLOW_COMPACTION: Enables memory compaction
-    OptixAccelBuildOptions accel_options = {};
-    accel_options.buildFlags =
-        OPTIX_BUILD_FLAG_PREFER_FAST_TRACE
-        | OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-    // 4D-projected meshes (Sprint 18.3) need ALLOW_UPDATE so Cut F's
-    // updateMesh4DProjection can refit the GAS via OPERATION_UPDATE
-    // after re-launching the projection kernel into the same buffer.
-    if (mesh.projection4d.face_count > 0) {
-        accel_options.buildFlags |= OPTIX_BUILD_FLAG_ALLOW_UPDATE;
-    }
-    accel_options.operation = OPTIX_BUILD_OPERATION_BUILD;
+    // Build the new GAS first: the old one stays valid until the new one exists, so a failing
+    // build leaves the slot as it was (optix-jni#87).
+    const OptiXContext::GASBuildResult built = buildMeshGAS(
+        impl->optix_context,
+        mesh.d_vertices, mesh.num_vertices,
+        mesh.d_indices, mesh.num_triangles,
+        mesh.vertex_stride, mesh.projection4d.face_count > 0);
 
-    OptiXContext::GASBuildResult result =
-        impl->optix_context.buildTriangleGAS(
-            mesh.d_vertices,
-            mesh.num_vertices,
-            mesh.d_indices,
-            mesh.num_triangles,
-            accel_options,
-            mesh.vertex_stride
-        );
-
-    mesh.d_gas_output_buffer = result.gas_buffer;
-    mesh.gas_handle = result.handle;
+    DeviceBuffer new_gas(reinterpret_cast<void*>(built.gas_buffer), cudaFree);
+    replaceDevice(mesh.d_gas_output_buffer, new_gas);
+    mesh.gas_handle = built.handle;
     mesh.gas_built = true;
 }
 
@@ -1452,68 +1479,38 @@ void OptiXWrapper::buildIAS() {
         return;
     }
 
-    // Free existing IAS buffers
-    if (impl->d_ias_output_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_ias_output_buffer));
-        impl->d_ias_output_buffer = 0;
-    }
-    if (impl->d_instances_buffer) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instances_buffer));
-        impl->d_instances_buffer = 0;
-    }
-    if (impl->d_instance_materials) {
-        cudaFree(reinterpret_cast<void*>(impl->d_instance_materials));
-        impl->d_instance_materials = 0;
-    }
-
-    // Upload instances to GPU
-    size_t instances_size = optix_instances.size() * sizeof(OptixInstance);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_instances_buffer), instances_size));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(impl->d_instances_buffer),
-        optix_instances.data(),
-        instances_size,
-        cudaMemcpyHostToDevice
-    ));
-
-    // Upload materials to GPU
-    size_t materials_size = materials.size() * sizeof(InstanceMaterial);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_instance_materials), materials_size));
-    CUDA_CHECK(cudaMemcpy(
-        reinterpret_cast<void*>(impl->d_instance_materials),
-        materials.data(),
-        materials_size,
-        cudaMemcpyHostToDevice
-    ));
+    // Full rebuild. The live IAS stays in use until its replacement exists (a render that fails
+    // here is retried on the next one, and nothing may have freed what the old IAS points at):
+    // everything new is built into guarded locals and swapped in only after optixAccelBuild
+    // succeeded and the device is synchronized (optix-jni#81). A throw leaves the live IAS as it was.
+    DeviceBuffer new_instances = uploadToDevice(
+        optix_instances.data(), optix_instances.size() * sizeof(OptixInstance));
+    DeviceBuffer new_materials = uploadToDevice(
+        materials.data(), materials.size() * sizeof(InstanceMaterial));
 
     // Task 1.1c: pack per-instance custom-geometry blobs (uniform stride = the
     // largest blob) and upload for the registrants' intersection shaders. Indexed
     // by ObjectInstance.geometry_data_index (== position in custom_geometry_blobs).
-    if (impl->d_custom_geometry_data) {
-        cudaFree(reinterpret_cast<void*>(impl->d_custom_geometry_data));
-        impl->d_custom_geometry_data = 0;
-    }
-    impl->custom_geometry_stride = 0;
+    size_t new_custom_stride = 0;
+    DeviceBuffer new_custom_data(nullptr, cudaFree);
     if (!impl->custom_geometry_blobs.empty()) {
         for (const auto& blob : impl->custom_geometry_blobs) {
-            impl->custom_geometry_stride = std::max(impl->custom_geometry_stride, blob.size());
+            new_custom_stride = std::max(new_custom_stride, blob.size());
         }
         const size_t n = impl->custom_geometry_blobs.size();
-        std::vector<char> packed(n * impl->custom_geometry_stride, 0);
+        std::vector<char> packed(n * new_custom_stride, 0);
         for (size_t i = 0; i < n; ++i) {
-            std::memcpy(packed.data() + i * impl->custom_geometry_stride,
+            std::memcpy(packed.data() + i * new_custom_stride,
                         impl->custom_geometry_blobs[i].data(),
                         impl->custom_geometry_blobs[i].size());
         }
-        CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_custom_geometry_data), packed.size()));
-        CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(impl->d_custom_geometry_data),
-                              packed.data(), packed.size(), cudaMemcpyHostToDevice));
+        new_custom_data = uploadToDevice(packed.data(), packed.size());
     }
 
     // Build IAS input
     OptixBuildInput ias_input = {};
     ias_input.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
-    ias_input.instanceArray.instances = impl->d_instances_buffer;
+    ias_input.instanceArray.instances = reinterpret_cast<CUdeviceptr>(new_instances.get());
     ias_input.instanceArray.numInstances = static_cast<unsigned int>(optix_instances.size());
 
     OptixAccelBuildOptions accel_options = {};
@@ -1531,35 +1528,39 @@ void OptiXWrapper::buildIAS() {
     ));
 
     // Allocate temp and output buffers
-    CUdeviceptr d_temp_buffer;
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp_buffer), ias_buffer_sizes.tempSizeInBytes));
-    // CR-5(d): free the build-temp even if a later CUDA_CHECK/OPTIX_CHECK throws; .release() on success.
-    auto d_temp_guard = std::unique_ptr<void, decltype(&cudaFree)>(
-        reinterpret_cast<void*>(d_temp_buffer), cudaFree);
-    CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&impl->d_ias_output_buffer), ias_buffer_sizes.outputSizeInBytes));
+    DeviceBuffer d_temp = allocateDevice(ias_buffer_sizes.tempSizeInBytes);
+    DeviceBuffer new_output = allocateDevice(ias_buffer_sizes.outputSizeInBytes);
 
     // Build IAS
+    OptixTraversableHandle new_handle = 0;
     OPTIX_CHECK(optixAccelBuild(
         impl->optix_context.getContext(),
         0,  // CUDA stream
         &accel_options,
         &ias_input,
         1,
-        d_temp_buffer,
+        reinterpret_cast<CUdeviceptr>(d_temp.get()),
         ias_buffer_sizes.tempSizeInBytes,
-        impl->d_ias_output_buffer,
+        reinterpret_cast<CUdeviceptr>(new_output.get()),
         ias_buffer_sizes.outputSizeInBytes,
-        &impl->ias_handle,
+        &new_handle,
         nullptr,
         0
     ));
 
     // Free temp buffer
-    d_temp_guard.release();
-    CUDA_CHECK(cudaFree(reinterpret_cast<void*>(d_temp_buffer)));
+    CUDA_CHECK(cudaFree(d_temp.release()));
 
     // Synchronize to ensure IAS build is complete before rendering
     CUDA_CHECK(cudaDeviceSynchronize());
+
+    // The build is complete: swap everything in together, then free what the old IAS held.
+    replaceDevice(impl->d_ias_output_buffer, new_output);
+    replaceDevice(impl->d_instances_buffer, new_instances);
+    replaceDevice(impl->d_instance_materials, new_materials);
+    replaceDevice(impl->d_custom_geometry_data, new_custom_data);
+    impl->custom_geometry_stride = new_custom_stride;
+    impl->ias_handle = new_handle;
 
     impl->use_ias = true;
     impl->ias_dirty = false;
@@ -1916,6 +1917,8 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.ibl_enabled       = impl->config.getIBLEnabled();
         params.ibl_strength      = impl->config.getIBLStrength();
         params.ibl_samples       = impl->config.getIBLSamples();
+        params.ambient_ao_samples = impl->config.getAmbientAoSamples();
+        params.ambient_ao_radius  = impl->config.getAmbientAoRadius();
         params.env_width         = impl->m_env_width;
         params.env_height        = impl->m_env_height;
         params.frame_seed_offset = 0u;   // overridden per-frame during accumulation
@@ -1945,6 +1948,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         // Ray depth
         params.max_ray_depth = impl->config.getMaxRayDepth();
+        params.min_ray_weight = impl->config.getMinRayWeight();
 
         // Caustics (Progressive Photon Mapping) parameters
         params.caustics.enabled = impl->config.getCausticsEnabled();
@@ -2448,7 +2452,10 @@ int OptiXWrapper::addCustomGeometryInstance(
     inst.gas_handle = gas_data.handle;
     std::memcpy(inst.transform, transform, 12 * sizeof(float));
     inst.color[0] = 1.0f; inst.color[1] = 1.0f; inst.color[2] = 1.0f; inst.color[3] = 1.0f;
-    inst.ior = 1.0f; inst.roughness = 0.5f; inst.metallic = 0.0f; inst.specular = 0.5f;
+    inst.ior = 1.0f;
+    inst.roughness = MaterialDefaults::DEFAULT_ROUGHNESS;
+    inst.metallic = MaterialDefaults::DEFAULT_METALLIC;
+    inst.specular = MaterialDefaults::DEFAULT_SPECULAR;
     inst.emission = 0.0f; inst.film_thickness = 0.0f; inst.cauchy_a = 0.0f; inst.cauchy_b = 0.0f;
     // Task 1.1c: stash the per-instance blob (if any) and index it via
     // geometry_data_index; buildIAS packs it into params.custom_geometry_data.
@@ -3675,15 +3682,17 @@ int OptiXWrapper::uploadTextureFromFile(const char* path) {
     int w = 0, h = 0, c = 0;
 
     if (ext && strcasecmp(ext, ".hdr") == 0) {
-        float* data = stbi_loadf(path, &w, &h, &c, 4);
-        if (!data) {
+        std::string error;
+        auto image = loadHdr(path, error);
+        if (!image) {
             OPTIX_LOG(ERROR) << "[OptiX] Failed to load HDR texture '" << path
-                      << "': " << stbi_failure_reason() << std::endl;
+                      << "': " << error << std::endl;
             return -1;
         }
-        int idx = uploadTextureFloat(path, data, static_cast<unsigned int>(w), static_cast<unsigned int>(h));
-        impl->computeAndUploadEnvMapCDF(data, w, h);
-        stbi_image_free(data);
+        int idx = uploadTextureFloat(path, image->rgba.get(),
+                                     static_cast<unsigned int>(image->width),
+                                     static_cast<unsigned int>(image->height));
+        impl->computeAndUploadEnvMapCDF(image->rgba.get(), image->width, image->height);
         return idx;
     }
 
