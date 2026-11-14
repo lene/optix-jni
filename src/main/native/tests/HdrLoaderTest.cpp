@@ -151,7 +151,9 @@ std::string pngLoadFailure(const Bytes& png) {
 class HdrLoaderTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        std::string pattern = (fs::temp_directory_path() / "hdr_loader_test_XXXXXX").string();
+        // mkdtemp creates a fresh directory with mode 0700 under a unique name, the safe way to
+        // use a shared temp directory (Sonar cpp:S5443 flags the temp path itself).
+        std::string pattern = (fs::temp_directory_path() / "hdr_loader_test_XXXXXX").string();  // NOSONAR
         ASSERT_NE(mkdtemp(pattern.data()), nullptr);
         dir = pattern;
     }
@@ -314,7 +316,8 @@ TEST_F(HdrLoaderTest, EmptyFileIsRejected) {
 }
 
 TEST_F(HdrLoaderTest, RandomBytesAreRejected) {
-    std::mt19937 random(12345);
+    // Seeded junk input for the parser, not a secret: a fixed, reproducible generator is the point.
+    std::mt19937 random(12345);  // NOSONAR (cpp:S2245)
     Bytes bytes(1024);
     for (auto& b : bytes) b = static_cast<unsigned char>(random());
     expectRejected(write("random.hdr", bytes));
