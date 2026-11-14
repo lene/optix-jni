@@ -559,12 +559,17 @@ static __device__ float3 cosineHemisphereDir(const float3& n, float u1, float u2
     return normalize(t * (r * cosf(phi)) + b * (r * sinf(phi)) + n * sqrtf(fmaxf(0.0f, 1.0f - u1)));
 }
 
-// Visibility (0..1) of the sky within tmax along dir: a shadow ray, ended by the first opaque
+// Visibility (0..1) of the sky within tmax along dir: a shadow ray, ended by the nearest opaque
 // hit; transparent hits attenuate it by their shadow attenuation.
+// Traced like traceShadowRay, without TERMINATE_ON_FIRST_HIT: that flag ends the ray at the first
+// opaque hit traversal happens to meet, not the nearest, so which transparent hits the any-hit
+// program has charged by then depends on the order the BVH is walked. A refitted IAS and a rebuilt
+// one walk it differently, and an object moved in place rendered differently from the same scene
+// built fresh (optix-jni#121).
 static __device__ float traceOcclusionRay(const float3& origin, const float3& dir, float tmax) {
     unsigned int p0 = 0, p1 = 0, p2 = 0;
     optixTrace(params.handle, origin, dir, SHADOW_RAY_OFFSET, tmax, 0.0f, OptixVisibilityMask(255),
-               OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT,
+               OPTIX_RAY_FLAG_NONE,
                params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
                SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_SHADOW, p0, p1, p2);
     // Counted in the total only: these are not rays toward a light, and shadow_rays is zero
