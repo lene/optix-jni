@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-11-14
+
+**Note:** 0.5.1 is defective — use 0.5.2.
+
+### Fixed
+
+- Ambient occlusion no longer depends on the order the acceleration structure is traversed
+  (optix-jni#121). Its occlusion rays were traced with `TERMINATE_ON_FIRST_HIT`, so they ended at
+  the first opaque hit traversal met rather than the nearest, and the transparent hits charged by
+  then depended on how the IAS was built: a scene with transparent (film) geometry moved in place
+  (refitted IAS) rendered differently from the same scene built fresh. They are now traced like the
+  light shadow rays. Cost on a 640x480 test scene with ambient occlusion on: unchanged ray count,
+  frame time within about 3 %.
+
 ## [0.5.1] - 2026-11-14
 
 ### Added
@@ -948,6 +962,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.2]: https://github.com/lene/optix-jni/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/lene/optix-jni/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/lene/optix-jni/compare/0.4.11...0.5.0
 [0.4.11]: https://github.com/lene/optix-jni/compare/0.4.10...0.4.11
