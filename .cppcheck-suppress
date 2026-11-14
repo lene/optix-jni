@@ -4,3 +4,8 @@ missingIncludeSystem
 useStlAlgorithm
 // Struct members used in CUDA/PTX GPU shaders; cppcheck cannot see device-side code
 unusedStructMember
+// cppcheck 2.19 (ubuntu-26.04 runners, 2026-11): the OptiX/denoiser helpers that use no member
+// state stay members by design (one owner per OptiX object); "can be static" is a style preference
+functionStatic
+// cppcheck 2.19: JNI entry points take JNIEnv* as the JNI spec declares it, not as pointer to const
+constParameterPointer

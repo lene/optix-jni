@@ -23,6 +23,7 @@ else
   if find src/main/native \( -name "*.cpp" -o -name "*.h" \) | \
       xargs cppcheck --error-exitcode=1 --enable=warning,style \
       --language=c++ \
+      "-D__align__(x)=" \
       --suppressions-list=.cppcheck-suppress 2>&1; then
     echo "cppcheck: OK"
   else
