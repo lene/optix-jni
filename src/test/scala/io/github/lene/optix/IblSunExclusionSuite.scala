@@ -2,6 +2,7 @@ package io.github.lene.optix
 
 import java.nio.file.Files
 
+import io.github.lene.optix.envmap.EnvMapSun
 import menger.common.Color
 import menger.common.ImageSize
 import menger.common.Vector
@@ -23,13 +24,13 @@ class IblSunExclusionSuite extends AnyFlatSpec with Matchers with RendererFixtur
 
   private type EnvMap = (Int, Int) => Float
 
-  private val mapWidth = 128
-  private val mapHeight = 64
+  private val mapWidth = 512
+  private val mapHeight = 256
   private val skyRadiance = 0.2f
   private val sunRadiance = 200f
-  private val sunColumns = 80 to 82
-  private val sunRows = 17 to 19
-  private val coneHalfAngle = 8f  // degrees; holds the 3 x 3 patch (about 8 degrees across)
+  private val sunColumns = 300 to 306  // 7 x 7 texels: more than the brightest 0.01 % of the map
+  private val sunRows = 85 to 91
+  private val coneHalfAngle = 8f  // degrees; holds the patch (about 5 degrees across)
   private val iblSamples = 16
   private val relativeTolerance = 0.10
   private val halfLevelInIrradiance = 0.5 * math.Pi / 255.0
@@ -55,16 +56,20 @@ class IblSunExclusionSuite extends AnyFlatSpec with Matchers with RendererFixtur
     Vector[3](
       (math.sin(theta) * math.cos(phi)).toFloat, math.cos(theta).toFloat, (math.sin(theta) * math.sin(phi)).toFloat)
 
-  private def inCone(x: Int, y: Int): Boolean =
+  private val sunCone: (Vector[3], Float) = (sunDirection, coneHalfAngle)
+
+  private def inCone(x: Int, y: Int, axis: Vector[3] = sunDirection, halfAngle: Float = coneHalfAngle): Boolean =
     val (dx, dy, dz) = texelDirection(x, y)
-    dx * sunDirection(0) + dy * sunDirection(1) + dz * sunDirection(2) >= math.cos(math.toRadians(coneHalfAngle.toDouble))
+    dx * axis(0) + dy * axis(1) + dz * axis(2) >= math.cos(math.toRadians(halfAngle.toDouble))
 
   /** CPU irradiance at the normal +y, over the texels not excluded. */
-  private def referenceIrradiance(env: EnvMap, excludeCone: Boolean): Double =
+  private def referenceIrradiance(
+      env: EnvMap, excludeCone: Boolean, axis: Vector[3] = sunDirection, halfAngle: Float = coneHalfAngle)
+      : Double =
     val terms = for
       y <- 0 until mapHeight
       x <- 0 until mapWidth
-      if !(excludeCone && inCone(x, y))
+      if !(excludeCone && inCone(x, y, axis, halfAngle))
     yield
       val theta = (y + 0.5) / mapHeight * math.Pi
       val (_, dy, _) = texelDirection(x, y)
@@ -73,25 +78,29 @@ class IblSunExclusionSuite extends AnyFlatSpec with Matchers with RendererFixtur
 
   private def identical(a: Array[Byte], b: Array[Byte]): Boolean = a.sameElements(b)
 
-  private def loadEnv(env: EnvMap): Unit =
+  /** Runs `use` on a file holding the env map, and removes the file. */
+  private def withEnvFile[A](env: EnvMap)(use: java.nio.file.Path => A): A =
     val tmp = Files.createTempFile("ibl_sun_exclusion_", ".hdr")
     try
       TestUtilities.writeHdr(tmp, mapWidth, mapHeight, (x, y) =>
         val l = env(x, y)
         (l, l, l))
-      renderer.setEnvironmentMap(renderer.uploadTextureFromFile(tmp.toString))
+      use(tmp)
     finally Files.deleteIfExists(tmp)
 
+  private def loadEnv(env: EnvMap): Unit =
+    withEnvFile(env)(tmp => renderer.setEnvironmentMap(renderer.uploadTextureFromFile(tmp.toString)))
+
   /** A white plane seen from above: every pixel has the irradiance at the normal +y. */
-  private def renderPlane(env: EnvMap, exclusion: Option[Float], excludeBeforeLoading: Boolean = false)
-      : Array[Byte] =
+  private def renderPlane(
+      env: EnvMap, exclusion: Option[(Vector[3], Float)], excludeBeforeLoading: Boolean = false): Array[Byte] =
     renderer.clearPlanes()
     renderer.addPlaneSolidColor(1, true, 0.0f, 1f, 1f, 1f)
     renderer.setSphere(Vector[3](50f, 50f, 50f), 0.5f)
     renderer.setLight(Vector[3](0f, -1f, 0f), 0f)
     renderer.setShadows(false)
     renderer.setCamera(Vector[3](0f, 3f, 0f), Vector[3](0f, 0f, 0f), Vector[3](0f, 0f, -1f), 60f)
-    def exclude(): Unit = exclusion.foreach(angle => renderer.setIBLSunExclusion(sunDirection, angle))
+    def exclude(): Unit = exclusion.foreach((axis, angle) => renderer.setIBLSunExclusion(axis, angle))
     if excludeBeforeLoading then exclude()
     loadEnv(env)
     if !excludeBeforeLoading then exclude()
@@ -104,22 +113,32 @@ class IblSunExclusionSuite extends AnyFlatSpec with Matchers with RendererFixtur
     math.Pi * values.sum / values.length + halfLevelInIrradiance
 
   "IBL with the sun excluded" should "have the irradiance of the sky outside the cone, not of the sun" in:
-    val measured = meanIrradiance(renderPlane(skyWithSun, Some(coneHalfAngle)))
+    val measured = meanIrradiance(renderPlane(skyWithSun, Some(sunCone)))
     val expected = referenceIrradiance(skyWithSun, excludeCone = true)
     info(f"E measured = $measured%.4f, sky outside the cone = $expected%.4f, with the sun = ${referenceIrradiance(skyWithSun, false)}%.4f")
     measured shouldBe expected +- (relativeTolerance * expected + halfLevelInIrradiance)
 
   it should "equal IBL under the same sky without a sun, excluded the same way" in:
-    val withSun = renderPlane(skyWithSun, Some(coneHalfAngle))
-    val withoutSun = renderPlane(sky, Some(coneHalfAngle))
+    val withSun = renderPlane(skyWithSun, Some(sunCone))
+    val withoutSun = renderPlane(sky, Some(sunCone))
     val differences = withSun.zip(withoutSun).map((a, b) => math.abs((a & 0xff) - (b & 0xff)))
     info(s"largest pixel difference ${differences.max} levels")
     differences.max should be <= 1
 
   it should "not depend on whether the exclusion is set before or after the env map is loaded" in:
-    val after = renderPlane(skyWithSun, Some(coneHalfAngle))
-    val before = renderPlane(skyWithSun, Some(coneHalfAngle), excludeBeforeLoading = true)
+    val after = renderPlane(skyWithSun, Some(sunCone))
+    val before = renderPlane(skyWithSun, Some(sunCone), excludeBeforeLoading = true)
     identical(before, after) shouldBe true
+
+  it should "take the sun that EnvMapSun measures from the env map, patch and all" in:
+    val sun = withEnvFile(skyWithSun)(EnvMapSun.measure)
+    info(s"measured: direction ${sun.directionToSun}, half-angle ${sun.halfAngleDegrees}, intensity ${sun.intensity}")
+    val patch = for y <- sunRows; x <- sunColumns yield (x, y)
+    patch.foreach((x, y) => inCone(x, y, sun.directionToSun, sun.halfAngleDegrees) shouldBe true)
+    val measured = meanIrradiance(renderPlane(skyWithSun, Some((sun.directionToSun, sun.halfAngleDegrees))))
+    val expected = referenceIrradiance(skyWithSun, excludeCone = true, sun.directionToSun, sun.halfAngleDegrees)
+    info(f"E measured = $measured%.4f, sky outside the measured cone = $expected%.4f")
+    measured shouldBe expected +- (relativeTolerance * expected + halfLevelInIrradiance)
 
   "IBL without a sun exclusion" should "count the sun, and by default there is none" in:
     val measured = meanIrradiance(renderPlane(skyWithSun, None))
@@ -136,20 +155,20 @@ class IblSunExclusionSuite extends AnyFlatSpec with Matchers with RendererFixtur
 
   "The background" should "still show the sun when IBL leaves it out" in:
     // Camera at the origin looking at the sun: the centre pixel is the patch itself.
-    def renderLookingAtSun(exclusion: Option[Float]): Array[Byte] =
+    def renderLookingAtSun(exclusion: Option[(Vector[3], Float)]): Array[Byte] =
       renderer.clearPlanes()
       renderer.setSphere(Vector[3](0f, -50f, 0f), 0.5f)  // out of view
       renderer.setLight(Vector[3](0f, -1f, 0f), 0f)
       renderer.setCamera(
         Vector[3](0f, 0f, 0f), sunDirection, Vector[3](0f, 1f, 0f), 20f)
       loadEnv(skyWithSun)
-      exclusion.foreach(angle => renderer.setIBLSunExclusion(sunDirection, angle))
+      exclusion.foreach((axis, angle) => renderer.setIBLSunExclusion(axis, angle))
       renderer.setIBL(true, 1.0f, iblSamples)
       renderImage(viewSize)
     val centre = (viewSize.width / 2, viewSize.height / 2)
     def red(image: Array[Byte]) = ImageValidation.getRGBAt(image, viewSize, centre._1, centre._2).r
     val included = renderLookingAtSun(None)
-    val excluded = renderLookingAtSun(Some(coneHalfAngle))
+    val excluded = renderLookingAtSun(Some(sunCone))
     info(s"centre pixel: ${red(included)} without exclusion, ${red(excluded)} with")
     red(excluded) should be >= 250  // the 200-radiance patch saturates; the sky alone would be 51
     identical(excluded, included) shouldBe true

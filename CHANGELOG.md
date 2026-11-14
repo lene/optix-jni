@@ -20,6 +20,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it after the env map is loaded rebuilds the sampling tables from the texture on the device, so
   no host copy of the env map (537 MB at 8k) is kept. The names are provisional.
 
+- `envmap.EnvMapSun.measure(path)` measures the sun of an equirectangular `.hdr` environment map
+  without a GPU or the native library, so a tool that cannot load the renderer (menger's scene
+  validator, in a sandbox) can light a scene's sun by a directional light. It returns the direction
+  to the sun (the luminance centroid of the brightest 0.01 % of the texels), the half-angle of the
+  cone that holds it (the smallest of 0.5, 1, 2 and 4 degrees at which doubling adds less than
+  0.5 % of the sun's irradiance), the per-channel irradiance `sum L cos dw` over that cone, the
+  intensity of the directional light that matches it (`max(irradiance) / pi`, because IBL returns
+  `albedo * E / pi`), its colour, and the share of the map's power in the cone. A map with no
+  distinct sun (black, or equal everywhere) is rejected. `envmap.RadianceHdr` is the pure-JVM
+  Radiance RGBE reader underneath (run-length encoded and flat scanlines); it decodes the Kiara
+  4k maps bit for bit as the native loader (stb_image) does, which uses `(mantissa + 0.5) *
+  2^(exponent - 136)`, so directions and irradiances agree with what the renderer shows. The names
+  are provisional.
+
 ### Changed
 
 - Image-based lighting is physically scaled: a Lambertian surface of albedo `a` returns `a * E / pi`
