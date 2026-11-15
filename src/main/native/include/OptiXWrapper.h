@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 #include <optix.h>
 #include <cuda_runtime.h>
 
@@ -70,6 +71,9 @@ public:
 
     // Test hook: the next setProjectedMesh behaves as if its readback failed (-2).
     void failNextProjectionReadbackForTest();
+    // Test hook (optix-jni#63): the photon targets render() would aim caustics at, as
+    // (x, y, z, radius) per target, caustics treated as enabled.
+    std::vector<float> causticTargetsForTest();
     // Test hooks for the process-wide CUDA context-lost latch (optix-jni#73): a real sticky
     // error would poison the test process for every later test.
     static void simulateContextLostForTest(const std::string& reason);
