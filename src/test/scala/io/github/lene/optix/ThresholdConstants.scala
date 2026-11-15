@@ -125,8 +125,13 @@ object ThresholdConstants:
   // Render time with / without shadows. Was 2.0, the original "< 100% overhead" requirement, from
   // an upper confidence bound of 1.34 idle. On the Sprint 37 laptop the ratio is 1.8-2.0 when the
   // gate runs alone and 2.2-2.5 inside the full perf suite, on 0.4.11 and 0.5.0 alike (measured
-  // 2026-10-29), so 2.0 failed the push gate without any change to the code under test.
-  val MAX_SLOWDOWN_SHADOWS = 2.6
+  // 2026-10-29), so 2.0 failed the push gate without any change to the code under test; it went to
+  // 2.6. Since then the shadowed path got cheaper: on 0.5.3 + the 0.5.4 fixes (2026-11-15, same
+  // laptop) the ratio is 1.02-1.04, alone and inside the full perf suite, and the upper confidence
+  // bound stays <= 1.13 under 4 and <= 1.28 under 16 busy CPU processes (optix-jni#101). At 2.6 a
+  // shadows-on frame rendered twice (ratio 2.05-2.07) passed; at 1.5 it fails 3 of 3, while the
+  // loaded runs keep a 0.2 margin below the limit.
+  val MAX_SLOWDOWN_SHADOWS = 1.5
 
   // ========== Shadow Brightness Comparison Tolerance ==========
 
