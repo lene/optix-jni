@@ -6,7 +6,7 @@ entries:
     licence: MIT OR Unlicense
     author: Sean Barrett
     kind: algorithm
-    note: header-only image loader, fetched at build time by FetchContent (src/main/native/CMakeLists.txt, GIT_TAG master), not tracked; only src/main/native/stb_image_impl.cpp is tracked. Its header says v2.32, public domain, dual-licensed MIT or Unlicense (alternatives A and B at the end of the header; the repository LICENSE file says MIT, copyright 2017 Sean Barrett).
+    note: header-only image loader, fetched at build time by FetchContent (src/main/native/CMakeLists.txt, pinned to commit 9600522de53973336fa033a289858a4354cbb04c of 2026-11-12, stb_image v2.32; optix-jni#119), not tracked; only src/main/native/stb_image_impl.cpp is tracked. Its header says v2.32, public domain, dual-licensed MIT or Unlicense (alternatives A and B at the end of the header; the repository LICENSE file says MIT, copyright 2017 Sean Barrett).
 
   - path: test-resources/caustics-references/appleseed/glass_sphere.obj
     source: https://github.com/appleseedhq/appleseed/blob/master/sandbox/tests/test%20scenes/sppm/glass_sphere.obj
