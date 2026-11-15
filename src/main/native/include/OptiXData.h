@@ -586,7 +586,7 @@ struct BaseParams {
     float bg_r, bg_g, bg_b;    // Background color (overrides MissData SBT)
     bool                env_map_enabled;   // true = sample equirectangular env map
     cudaTextureObject_t env_map_texture;   // equirectangular HDR texture object
-    int   tonemap_operator;  // 0=none (clip), 1=reinhard, 2=aces
+    int   tonemap_operator;  // 0=none (clip), 1=reinhard, 2=aces; applies to surfaces, background and caustics
     float tonemap_exposure;  // pre-tone-map exposure multiplier (default 1.0)
     float camera_u[3];       // Camera right vector for guide normal transform
     float camera_v[3];       // Camera up vector for guide normal transform
@@ -597,6 +597,8 @@ struct BaseParams {
     bool                ibl_enabled;
     float               ibl_strength;
     int                 ibl_samples;
+    float3              ibl_exclude_dir;     // unit direction to the sun the IBL leaves out
+    float               ibl_exclude_cos;     // cos of its half-angle; > 1: nothing excluded
     int                 ambient_ao_samples;  // occlusion rays per ambient term; 0 = constant fill
     float               ambient_ao_radius;   // an occluder beyond this does not darken (optix-jni#106)
     int                 env_width;           // HDR env map pixel width

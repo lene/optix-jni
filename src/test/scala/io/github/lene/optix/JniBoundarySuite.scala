@@ -120,6 +120,16 @@ class JniBoundarySuite extends AnyFlatSpec with Matchers with RendererFixture:
     rejects[IllegalArgumentException]("setAccumulationFramesNative", int(Int.MaxValue))
     rejects[IllegalArgumentException]("setIBLNative", bool(true), float(1f), int(0))
     rejects[IllegalArgumentException]("setIBLNative", bool(true), float(1f), int(1000000))
+    rejects[IllegalArgumentException]("setIBLSunExclusionNative", bool(true), float(0f), float(0f),
+      float(0f), float(2f)) // no direction
+    rejects[IllegalArgumentException]("setIBLSunExclusionNative", bool(true), float(Float.NaN),
+      float(1f), float(0f), float(2f))
+    rejects[IllegalArgumentException]("setIBLSunExclusionNative", bool(true), float(0f), float(1f),
+      float(0f), float(0f)) // no cone
+    rejects[IllegalArgumentException]("setIBLSunExclusionNative", bool(true), float(0f), float(1f),
+      float(0f), float(91f)) // more than a hemisphere
+    rejects[IllegalArgumentException]("setIBLSunExclusionNative", bool(true), float(0f), float(1f),
+      float(0f), float(Float.NaN))
     rejects[IllegalArgumentException]("setAmbientNative", bool(true), int(0), float(1f))
     rejects[IllegalArgumentException]("setAmbientNative", bool(true), int(1000000), float(1f))
     rejects[IllegalArgumentException]("setAmbientNative", bool(true), int(16), float(0f))
@@ -140,6 +150,8 @@ class JniBoundarySuite extends AnyFlatSpec with Matchers with RendererFixture:
     accepts("setAccumulationFramesNative", int(1))
     accepts("setIBLNative", bool(false), float(0f), int(0)) // disabled: samples unused
     accepts("setIBLNative", bool(true), float(1f), int(8))
+    accepts("setIBLSunExclusionNative", bool(true), float(0f), float(2f), float(0f), float(2f))
+    accepts("setIBLSunExclusionNative", bool(false), float(0f), float(0f), float(0f), float(0f)) // off: rest unused
     accepts("setAmbientNative", bool(false), int(0), float(0f)) // constant fill: nothing else is used
     accepts("setAmbientNative", bool(true), int(16), float(Float.PositiveInfinity))
     accepts("setAmbientNative", bool(true), int(1), float(0.01f))

@@ -5,6 +5,8 @@ import java.util.Optional
 import menger.common.CausticsConfig
 import menger.common.ImageSize
 import menger.common.RenderConfig
+import menger.common.Vector
+import menger.common.toArray
 
 /** Render-configuration and frame rendering helpers exposed through [[OptiXRenderer]].
   *
@@ -27,9 +29,40 @@ private[optix] trait OptiXRenderApi:
   def setToneMapping(operator: Int, exposure: Float): Unit =
     setToneMappingNative(operator, exposure)
 
-  /** Configures image-based lighting strength and sample count. */
+  /** Configures image-based lighting strength and sample count.
+    *
+    * A Lambertian surface of albedo `a` is lit by `a * E / pi`, with `E` the irradiance of the
+    * environment map times `strength`: a matte surface under a uniform environment of radiance `L`
+    * returns `a * L`.
+    *
+    * With IBL on (and an environment map loaded) there is no constant ambient fill and no
+    * occlusion rays for it, so [[setAmbient]] has no effect, and directional, point and area
+    * lights and highlights are not scaled by the 0.7 blend factor that makes room for the fill. A
+    * surface the environment and the lights do not reach is black. With IBL off, or no
+    * environment map, lighting is unchanged: ambient 0.3 plus 0.7 times the direct light.
+    */
   def setIBL(enabled: Boolean, strength: Float, samples: Int): Unit =
     setIBLNative(enabled, strength, samples)
+
+  /** Makes image-based lighting leave out the sun: the environment-map texels within
+    * `halfAngleDegrees` of `directionToSun` count as black for the lighting, both for the
+    * importance sampler and for the cosine-weighted strategy, and the sampler's probabilities are
+    * renormalised over the other texels. The background, reflections and refractions still show
+    * the sun. Pair it with a directional light for the sun's own contribution, or the sun is not
+    * counted at all. Off unless set.
+    *
+    * @param directionToSun direction from the scene to the sun, in the environment map's frame
+    *                       (not necessarily normalised, not zero)
+    * @param halfAngleDegrees half-angle of the excluded cone, in (0, 90]
+    * @throws IllegalArgumentException when the direction or the angle is out of range
+    */
+  def setIBLSunExclusion(directionToSun: Vector[3], halfAngleDegrees: Float): Unit =
+    val Array(x, y, z) = directionToSun.toArray
+    setIBLSunExclusionNative(true, x, y, z, halfAngleDegrees)
+
+  /** Ends [[setIBLSunExclusion]]: image-based lighting counts every texel again. */
+  def clearIBLSunExclusion(): Unit =
+    setIBLSunExclusionNative(false, 0f, 1f, 0f, 1f)
 
   /** Chooses how the ambient fill that every surface gets is computed; occlusion
     * ([[AmbientModel.Occlusion]] with its defaults) unless set. Independent of `setShadows`.

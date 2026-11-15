@@ -39,4 +39,27 @@ __host__ __device__ inline float3 envUvToDir(float u, float v) {
     return make_float3(sin_theta * cosf(phi), cosf(theta), sin_theta * sinf(phi));
 }
 
+// A cone of directions whose env texels count as black (the sun, for image-based lighting).
+// cos_half_angle > 1 selects nothing.
+struct EnvExclusionCone {
+    float3 axis           = make_float3(0.f, 1.f, 0.f);  // unit direction
+    float  cos_half_angle = 2.f;
+
+    bool operator==(const EnvExclusionCone& other) const {
+        return cos_half_angle == other.cos_half_angle && axis.x == other.axis.x
+            && axis.y == other.axis.y && axis.z == other.axis.z;
+    }
+};
+
+// Whether the centre of texel (col, row) of a width x height map lies within the cone around the
+// unit direction `axis` whose cosine of half-angle is `cos_half_angle`. One body for the host that
+// builds the importance-sampling CDF without the excluded texels (the IBL sun exclusion) and the
+// device that returns no radiance for them. A cos_half_angle above 1 selects nothing.
+__host__ __device__ inline bool envTexelInCone(int col, int row, int width, int height,
+                                               float3 axis, float cos_half_angle) {
+    const float3 d = envUvToDir((static_cast<float>(col) + 0.5f) / static_cast<float>(width),
+                                (static_cast<float>(row) + 0.5f) / static_cast<float>(height));
+    return d.x * axis.x + d.y * axis.y + d.z * axis.z >= cos_half_angle;
+}
+
 #endif  // ENV_MAP_MAPPING_H

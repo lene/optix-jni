@@ -285,15 +285,19 @@ class OptiXRenderer
   @native private def setFogNative(density: Float, r: Float, g: Float, b: Float): Unit
   @native private[optix] def setToneMappingNative(operatorId: Int, exposure: Float): Unit
   @native private[optix] def setIBLNative(enabled: Boolean, strength: Float, samples: Int): Unit
+  @native private[optix] def setIBLSunExclusionNative(
+    enabled: Boolean, x: Float, y: Float, z: Float, halfAngleDegrees: Float): Unit
   @native private[optix] def setAmbientNative(occlusion: Boolean, samples: Int, radius: Float): Unit
   @native private[optix] def setAccumulationFramesNative(n: Int): Unit
   @native private def setDenoisingEnabledNative(enabled: Boolean): Unit
 
   /** Enables or disables the integrated OptiX HDR denoiser.
     *
-    * When enabled the renderer routes the accumulated linear HDR frame through the
-    * OptiX denoiser before tone mapping. Disabled by default; existing render output
-    * is unchanged when off.
+    * When enabled the renderer routes the accumulated frame through the OptiX denoiser.
+    * With tone mapping on, the frame was tone mapped where it was shaded (surfaces,
+    * background and caustics alike), so the denoiser sees display values; the final
+    * conversion to bytes does not map them again. Disabled by default; existing render
+    * output is unchanged when off.
     *
     * @throws IllegalStateException before [[initialize]] or after [[dispose]] (optix-jni#72:
     *         this used to be skipped silently)

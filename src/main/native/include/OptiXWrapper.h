@@ -169,6 +169,11 @@ public:
 
     // IBL configuration
     void setIBL(bool enabled, float strength, int samples);
+    // Env texels within half_angle_deg of the direction (x, y, z) to the sun count as black for IBL
+    // (the background still shows them); clearIBLSunExclusion() ends that. Both rebuild the env
+    // map's sampling tables when an env map is loaded and the exclusion changed.
+    void setIBLSunExclusion(float x, float y, float z, float half_angle_deg);
+    void clearIBLSunExclusion();
 
     // Ambient light: samples > 0 weights the fill by occlusion within radius, 0 = constant fill
     void setAmbient(int samples, float radius);

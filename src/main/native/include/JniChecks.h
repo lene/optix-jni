@@ -9,6 +9,7 @@
 
 #include <jni.h>
 
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
 #include <limits>
@@ -113,6 +114,8 @@ constexpr int kMaxPhotonsPerIteration = 10000000;
 constexpr int kMaxCausticsIterations = 1000;
 // Renders one renderMix call may combine (optix-jni#85): menger needs up to 2^4 = 16.
 constexpr int kMaxMixPasses = 64;
+// The widest cone the IBL sun exclusion takes: a hemisphere.
+constexpr float kMaxSunExclusionHalfAngleDegrees = 90.0f;
 
 // True if lo <= value <= hi; otherwise throws naming the value and the range.
 template <typename T>
@@ -120,6 +123,16 @@ inline bool requireRange(JNIEnv* env, T value, T lo, T hi, const char* name) {
     if (value >= lo && value <= hi) return true;  // false for NaN as well
     throwIllegalArgument(env, std::string(name) + " must be in [" + std::to_string(lo) + ", " +
         std::to_string(hi) + "], got " + std::to_string(value));
+    return false;
+}
+
+// True if (x, y, z) is a finite, non-zero vector: one that can be normalised to a direction.
+inline bool requireDirection(JNIEnv* env, float x, float y, float z, const char* name) {
+    const double length = std::sqrt(static_cast<double>(x) * x + static_cast<double>(y) * y +
+                                    static_cast<double>(z) * z);
+    if (std::isfinite(length) && length > 0.0) return true;
+    throwIllegalArgument(env, std::string(name) + " must be a finite, non-zero vector, got (" +
+        std::to_string(x) + ", " + std::to_string(y) + ", " + std::to_string(z) + ")");
     return false;
 }
 

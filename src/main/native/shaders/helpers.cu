@@ -450,17 +450,75 @@ static __forceinline__ __device__ float lcg(unsigned int& prev) {
 // Call only when params.ibl_enabled and params.env_cdf_marginal != 0.
 // ---------------------------------------------------------------------------
 
-static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
-                                         int sample_index) {
-    const uint3 idx  = optixGetLaunchIndex();
-    // Per-pixel seed: varies across pixels, accumulation frames, and IBL samples.
-    // Multiplicative stride (ibl_samples) ensures no aliasing between frame and
-    // sample dimensions when accumulation > 1 is eventually enabled.
-    // +1u avoids key2=0 when frame_seed_offset=0 and sample_index=0.
-    unsigned int seed = tea4(
+// Solid-angle PDF of the env-map strategy for the texel (col, row): the luminance share of the
+// texel divided by its solid angle. Piecewise constant over the texel. Zero at the poles, where
+// sin(theta) vanishes.
+static __device__ float envTexelPdf(int col, int row) {
+    const float v         = (static_cast<float>(row) + 0.5f) / static_cast<float>(params.env_height);
+    const float sin_theta = envUvSinTheta(v);  // pdf Jacobian
+    // env_pdf uses normalizedCoords=0 (pixel coords); use (col, row) not (u, v).
+    const float lum_pdf   = tex2D<float>(params.env_pdf,
+                                         static_cast<float>(col) + 0.5f,
+                                         static_cast<float>(row) + 0.5f);
+    const float area      = static_cast<float>(params.env_width * params.env_height);
+    // Solid-angle PDF: lum_pdf * W * H / (2π² * sin_theta)
+    return (sin_theta > 1.0e-4f)
+        ? lum_pdf * area / (2.0f * M_PIf * M_PIf * sin_theta)
+        : 0.0f;
+}
+
+// The texel of the env map that `dir` (a unit vector) lies in.
+static __device__ int2 envTexelAtDirection(const float3& dir) {
+    const float2 uv = envDirToUv(dir);
+    return make_int2(
+        min(max(static_cast<int>(uv.x * static_cast<float>(params.env_width)), 0), params.env_width - 1),
+        min(max(static_cast<int>(uv.y * static_cast<float>(params.env_height)), 0), params.env_height - 1));
+}
+
+// The env-map strategy's PDF for the direction `dir`: that of the texel it lies in.
+static __device__ float envPdfAtDirection(const float3& dir) {
+    const int2 texel = envTexelAtDirection(dir);
+    return envTexelPdf(texel.x, texel.y);
+}
+
+// Whether the env texel (col, row) is inside the sun exclusion cone (setIBLSunExclusion).
+static __device__ bool envTexelExcluded(int col, int row) {
+    return envTexelInCone(col, row, params.env_width, params.env_height,
+                          params.ibl_exclude_dir, params.ibl_exclude_cos);
+}
+
+// Env radiance of the texel `dir` lies in, times ibl_strength. Read at the texel's centre, not
+// filtered: the env-map strategy only ever draws texels, so its PDF is zero where a filtered read
+// would blur light beyond the edge of a bright texel, and the cosine strategy would count that light
+// with weight 1 on top of the texel itself (a +10 % bias on a small bright patch).
+static __device__ float3 envRadianceAtDirection(const float3& dir) {
+    const int2   texel_index = envTexelAtDirection(dir);
+    if (envTexelExcluded(texel_index.x, texel_index.y)) return make_float3(0.0f, 0.0f, 0.0f);
+    const float4 texel = tex2D<float4>(
+        params.env_map_texture,
+        (static_cast<float>(texel_index.x) + 0.5f) / static_cast<float>(params.env_width),
+        (static_cast<float>(texel_index.y) + 0.5f) / static_cast<float>(params.env_height));
+    return make_float3(texel.x, texel.y, texel.z) * params.ibl_strength;
+}
+
+// Salts the cosine strategy's random numbers apart from the env-map strategy's.
+constexpr unsigned int IBL_COSINE_SEED_SALT = 0x9E3779B9u;
+
+// Per-pixel seed: varies across pixels, accumulation frames, and IBL samples.
+// Multiplicative stride (ibl_samples) ensures no aliasing between frame and
+// sample dimensions when accumulation > 1 is eventually enabled.
+// +1u avoids key2=0 when frame_seed_offset=0 and sample_index=0.
+static __device__ unsigned int iblSeed(int sample_index, unsigned int salt) {
+    const uint3 idx = optixGetLaunchIndex();
+    return tea4(
         idx.x + idx.y * static_cast<unsigned int>(params.image_width),
         params.frame_seed_offset * static_cast<unsigned int>(params.ibl_samples)
-            + static_cast<unsigned int>(sample_index) + 1u);
+            + static_cast<unsigned int>(sample_index) + 1u + salt);
+}
+
+static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
+                                         int sample_index) {
+    unsigned int seed = iblSeed(sample_index, 0u);
 
     // 1. Sample row v from marginal CDF (binary search on 1D texture)
     const float xi_v = lcg(seed);
@@ -496,20 +554,14 @@ static __device__ float3 sampleEnvLight(float3& light_dir_out, float& pdf_out,
     // 3. Convert (u,v) → world-space direction. Must be the exact inverse of the
     // background's mapping (envDirToUv, EnvMapMapping.h) — optix-jni#112.
     light_dir_out = envUvToDir(u, v);
-    const float sin_theta = envUvSinTheta(v);  // pdf Jacobian
 
-    // 4. Env map radiance at (u,v)
-    const float4 texel   = tex2D<float4>(params.env_map_texture, u, v);
+    // 4. Env map radiance at (u,v); none inside the sun exclusion cone (the CDF never picks it)
+    const float4 texel   = envTexelExcluded(col, row)
+        ? make_float4(0.0f, 0.0f, 0.0f, 0.0f)
+        : tex2D<float4>(params.env_map_texture, u, v);
 
-    // 5. Solid-angle PDF: lum_pdf * W * H / (2π² * sin_theta)
-    // env_pdf uses normalizedCoords=0 (pixel coords); use (col, row) not (u, v).
-    const float lum_pdf  = tex2D<float>(params.env_pdf,
-                                        static_cast<float>(col) + 0.5f,
-                                        static_cast<float>(row) + 0.5f);
-    const float area     = static_cast<float>(params.env_width * params.env_height);
-    pdf_out = (sin_theta > 1.0e-4f)
-        ? lum_pdf * area / (2.0f * M_PIf * M_PIf * sin_theta)
-        : 0.0f;
+    // 5. Solid-angle PDF of the texel
+    pdf_out = envTexelPdf(col, row);
 
     return make_float3(texel.x, texel.y, texel.z) * params.ibl_strength;
 }
@@ -557,6 +609,41 @@ static __device__ float3 cosineHemisphereDir(const float3& n, float u1, float u2
     float3 t, b;
     createONBFromNormal(n, t, b);
     return normalize(t * (r * cosf(phi)) + b * (r * sinf(phi)) + n * sqrtf(fmaxf(0.0f, 1.0f - u1)));
+}
+
+// ---------------------------------------------------------------------------
+// IBL: the second strategy, cosine-weighted about the normal, and the combination of both
+// ---------------------------------------------------------------------------
+
+// A direction cosine-weighted about `normal` (pdf cos/pi), the sample_index-th of this pixel and frame.
+static __device__ float3 sampleCosineDirection(const float3& normal, int sample_index) {
+    unsigned int seed = iblSeed(sample_index, IBL_COSINE_SEED_SALT);
+    const float u1 = lcg(seed), u2 = lcg(seed);
+    return cosineHemisphereDir(normal, u1, u2);
+}
+
+// Radiance of one IBL candidate direction toward the surface, weighted by the balance heuristic:
+// every candidate, whichever strategy drew it, contributes L cos / (pdf_env + pdf_cosine)
+// (Veach 1997, one sample per strategy). Summed over one env candidate and one cosine candidate this
+// is an unbiased estimate of the integral of L cos over the hemisphere, whose variance is low
+// wherever either strategy is: the env-map strategy at a small bright sun, the cosine strategy on
+// a smooth sky the sun would otherwise starve of samples. Returns 0 for a candidate that cannot
+// light the surface.
+static __device__ float3 iblCandidateLighting(
+    const float3& hit_point, const float3& normal, const float3& dir, const float3& radiance,
+    float pdf_env, float pdf_cosine, bool skip_shadows
+) {
+    const float cos_theta = fmaxf(0.0f, dot(dir, normal));
+    const float pdf_sum = pdf_env + pdf_cosine;
+    if (cos_theta < 1.0e-6f || pdf_sum < 1.0e-6f) return make_float3(0.0f, 0.0f, 0.0f);
+    if (radiance.x <= 0.0f && radiance.y <= 0.0f && radiance.z <= 0.0f)
+        return make_float3(0.0f, 0.0f, 0.0f);  // no light along dir: spare the shadow ray
+
+    const float3 fully_lit = make_float3(1.0f, 1.0f, 1.0f);
+    const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
+        ? traceShadowRay(hit_point, normal, dir)
+        : fully_lit;
+    return radiance * shadow_factor * (cos_theta / pdf_sum);
 }
 
 // Visibility (0..1) of the sky within tmax along dir: a shadow ray, ended by the nearest opaque
@@ -656,6 +743,10 @@ __device__ SurfaceLighting calculateSurfaceLighting(
 ) {
     float3 total_lighting = make_float3(0.f, 0.f, 0.f);
     float3 total_specular = make_float3(0.f, 0.f, 0.f);
+    // With image-based lighting the environment is the sky: there is no constant ambient fill (and
+    // no occlusion rays for it), and lights, IBL and highlights are not scaled by the blend factor,
+    // which only exists to make room for the fill.
+    const bool iblActive = params.ibl_enabled && params.env_cdf_marginal != 0;
     const bool has_specular = lobe.specular > 0.0f;
     // A double-sided surface may be given the normal facing away from the viewer.
     const float3 specular_normal = double_sided && dot(normal, lobe.to_viewer) < 0.0f
@@ -727,47 +818,45 @@ __device__ SurfaceLighting calculateSurfaceLighting(
         }
     }
 
-    // IBL contribution (importance-sampled env map lighting)
-    if (params.ibl_enabled && params.env_cdf_marginal != 0) {
+    // IBL contribution: per sample, one direction drawn from the env map by luminance and one
+    // cosine-weighted about the normal, combined by multiple importance sampling.
+    if (iblActive) {
+        float3 ibl_sum = make_float3(0.0f, 0.0f, 0.0f);
         for (int s = 0; s < params.ibl_samples; ++s) {
-            float3       ibl_dir;
-            float        ibl_pdf;
-            const float3 ibl_radiance = sampleEnvLight(ibl_dir, ibl_pdf, s);
+            float3       env_dir;
+            float        env_pdf;
+            const float3 env_radiance = sampleEnvLight(env_dir, env_pdf, s);
+            if (env_pdf >= 1.0e-6f) {  // else a degenerate sample
+                const float cosine_pdf = fmaxf(0.0f, dot(env_dir, normal)) / M_PIf;
+                ibl_sum = ibl_sum + iblCandidateLighting(
+                    hit_point, normal, env_dir, env_radiance, env_pdf, cosine_pdf, skip_shadows);
+            }
 
-            if (ibl_pdf < 1.0e-6f) continue;   // degenerate sample
-
-            const float cos_theta = fmaxf(0.0f, dot(ibl_dir, normal));
-            if (cos_theta < 1.0e-6f) continue; // below horizon
-
-            // Shadow test
-            const float3 fully_lit = make_float3(1.0f, 1.0f, 1.0f);
-            const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
-                ? traceShadowRay(hit_point, normal, ibl_dir)
-                : fully_lit;
-
-            // MIS balance heuristic (β=2): diffuse BSDF pdf = cos_theta / π
-            const float pdf_bsdf = cos_theta * M_1_PIf;
-            const float pd2 = ibl_pdf  * ibl_pdf;
-            const float pb2 = pdf_bsdf * pdf_bsdf;
-            const float w_env = pd2 / (pd2 + pb2);
-
-            // L * cos_theta * w_env / pdf_env
-            const float3 contrib = ibl_radiance
-                * (cos_theta * w_env / ibl_pdf)
-                / static_cast<float>(params.ibl_samples);
-            total_lighting = total_lighting + contrib * shadow_factor;
+            const float3 cosine_dir = sampleCosineDirection(normal, s);
+            const float  cosine_pdf = fmaxf(0.0f, dot(cosine_dir, normal)) / M_PIf;
+            ibl_sum = ibl_sum + iblCandidateLighting(
+                hit_point, normal, cosine_dir, envRadianceAtDirection(cosine_dir),
+                envPdfAtDirection(cosine_dir), cosine_pdf, skip_shadows);
         }
+        // The estimate is the irradiance E of the env map. A Lambertian surface of albedo a
+        // returns a * E / pi, so a matte surface under a uniform env of radiance L returns a * L,
+        // as bright as the env map it faces.
+        total_lighting = total_lighting
+            + ibl_sum * (kEnvInvPi / static_cast<float>(params.ibl_samples));
     }
 
-    // Add ambient lighting (prevents pure black shadows)
-    const float3 ambient = ambientLight(hit_point, normal, double_sided, skip_shadows);
+    // Add ambient lighting (prevents pure black shadows), except under image-based lighting
+    const float3 ambient = iblActive ? make_float3(0.0f, 0.0f, 0.0f)
+                                     : ambientLight(hit_point, normal, double_sided, skip_shadows);
+    const float blend = iblActive ? 1.0f : RenderingConstants::DIFFUSE_BLEND_FACTOR;
 
-    // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1).
+    // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1); with
+    // image-based lighting no ambient and a blend of 1.
     // Not energy conserving against the highlight: the diffuse is not reduced by (1 - F), so a
     // strong highlight adds light on top of it. The highlight takes the same direct-light share.
     return SurfaceLighting{
-        ambient + total_lighting * RenderingConstants::DIFFUSE_BLEND_FACTOR,
-        total_specular * RenderingConstants::DIFFUSE_BLEND_FACTOR
+        ambient + total_lighting * blend,
+        total_specular * blend
     };
 }
 
@@ -1182,13 +1271,50 @@ __device__ bool traceContinuationRay(
     return true;
 }
 
-/** A surface colour lit by `lighting`: colour * diffuse light + the untinted highlight. */
+// Tone-mapping operator ids — MUST match SceneConverter.ToneMapOp (Scala side).
+constexpr int TONEMAP_REINHARD = 1;
+constexpr int TONEMAP_ACES     = 2;
+
+__device__ float3 applyToneMapping(float3 c) {
+    const float e = params.tonemap_exposure;
+    if (params.tonemap_operator == TONEMAP_REINHARD) {
+        // Reinhard: c*e / (1 + c*e)
+        c.x = c.x * e / (1.0f + c.x * e);
+        c.y = c.y * e / (1.0f + c.y * e);
+        c.z = c.z * e / (1.0f + c.z * e);
+    } else if (params.tonemap_operator == TONEMAP_ACES) {
+        // ACES filmic approximation (Narkowicz 2015)
+        c.x *= e; c.y *= e; c.z *= e;
+        const float a = 2.51f, b2 = 0.03f, cc = 2.43f, d = 0.59f, e2 = 0.14f;
+        c.x = fminf((c.x*(a*c.x+b2))/(c.x*(cc*c.x+d)+e2), 1.0f);
+        c.y = fminf((c.y*(a*c.y+b2))/(c.y*(cc*c.y+d)+e2), 1.0f);
+        c.z = fminf((c.z*(a*c.z+b2))/(c.z*(cc*c.z+d)+e2), 1.0f);
+    } else {
+        c.x = fminf(c.x, 1.0f);
+        c.y = fminf(c.y, 1.0f);
+        c.z = fminf(c.z, 1.0f);
+    }
+    return c;
+}
+
+// A scene's tone mapping covers the whole image. It is applied once where a radiance first becomes
+// a display value (optix-jni#112): to a lit surface here, to an env-map background in the miss
+// program, and to a caustic where it is added to the image. The payload colours that travel
+// between shaders are display values (8 bits per channel), so a reflection or a refraction
+// carries the mapped colour of what it saw, and the shaders that mix them never map it again.
+// With no tone mapping the lit radiance is returned as it was, to be clamped by the caller: the
+// render is bit-for-bit what it was before tone mapping covered surfaces.
+__device__ float3 toneMapLitRadiance(const float3& radiance) {
+    return params.tonemap_operator == 0 ? radiance : applyToneMapping(radiance);
+}
+
+/** A surface colour lit by `lighting`, colour * diffuse light + the untinted highlight, tone mapped. */
 __device__ float3 litSurfaceColor(const float4& material_color, const SurfaceLighting& lighting) {
-    return make_float3(
+    return toneMapLitRadiance(make_float3(
         material_color.x * lighting.diffuse.x + lighting.specular.x,
         material_color.y * lighting.diffuse.y + lighting.specular.y,
         material_color.z * lighting.diffuse.z + lighting.specular.z
-    );
+    ));
 }
 
 /**

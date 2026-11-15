@@ -5,6 +5,93 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-11-15
+
+### Added
+
+- `OptiXRenderer.setIBLSunExclusion(directionToSun, halfAngleDegrees)` and `clearIBLSunExclusion()`
+  leave the sun out of image-based lighting. The env-map texels within the cone count as black for
+  the lighting: the importance sampler never draws them (its tables are built without them and its
+  probabilities renormalised over the rest) and the cosine-weighted strategy reads no radiance
+  there, so the two strategies still combine without bias. The background, reflections and
+  refractions still show the sun. This is for a scene that lights the sun with a directional light
+  of the sun's measured strength: without the exclusion the sun would be counted twice, once as the
+  light and once as a few env texels. Off by default, and an off exclusion changes nothing. Setting
+  it after the env map is loaded rebuilds the sampling tables from the texture on the device, so
+  no host copy of the env map (537 MB at 8k) is kept.
+
+- `envmap.EnvMapSun.measure(path)` measures the sun of an equirectangular `.hdr` environment map
+  without a GPU or the native library, so a tool that cannot load the renderer (menger's scene
+  validator, in a sandbox) can light a scene's sun by a directional light. It returns the direction
+  to the sun (the luminance centroid of the brightest 0.01 % of the texels), the half-angle of the
+  cone that holds it (the smallest of 0.5, 1, 2 and 4 degrees at which doubling adds less than
+  0.5 % of the sun's irradiance), the per-channel irradiance `sum L cos dw` over that cone, the
+  intensity of the directional light that matches it (`max(irradiance) / pi`, because IBL returns
+  `albedo * E / pi`), its colour, and the share of the map's power in the cone. A map with no
+  distinct sun (black, or equal everywhere) is rejected. `envmap.RadianceHdr` is the pure-JVM
+  Radiance RGBE reader underneath (run-length encoded and flat scanlines); it decodes the Kiara
+  4k maps bit for bit as the native loader (stb_image) does, which uses `(mantissa + 0.5) *
+  2^(exponent - 136)`, so directions and irradiances agree with what the renderer shows.
+
+### Changed
+
+- Image-based lighting is physically scaled: a Lambertian surface of albedo `a` returns `a * E / pi`
+  (E the irradiance of the env map), so a matte surface under a uniform env of radiance `L` returns
+  `a * L`, as bright as the env map it faces and the background it is drawn against. It used to
+  return `a * E`, pi times too much, so every IBL-lit surface was about 3.14 times too bright
+  against its own background; the factor was not noticed while the surfaces were lit mostly by a
+  constant ambient fill. **IBL scenes get darker by a factor pi** (IBL off is unchanged). A
+  directional light's convention (`intensity * cos`) is unchanged.
+
+- Image-based lighting is far less noisy under a bright, low sun (optix-jni#112). Each IBL sample
+  now takes two candidate directions, one drawn from the env map by luminance as before and one
+  cosine-weighted about the surface normal, and combines them with the balance heuristic of
+  multiple importance sampling (each candidate contributes `L cos / (pdf_env + pdf_cosine)`). The
+  estimate stays unbiased and its mean is unchanged. The luminance sampling alone sent most samples
+  to the sun (79 % of the Kiara sunrise's power) where a horizontal surface sees it at cos 0.07,
+  and left the sky, which lights the surface, to rare large-weight samples. On a test env with the
+  same share of power in a sun 4 to 7 degrees above the horizon the variance of the pixel falls by
+  a factor of 60 at the same sample count. **Cost:** two shadow rays per IBL sample instead of one
+  (none for a candidate that sees no light). Rendering differs from 0.5.2 in the noise pattern, not
+  in brightness.
+
+- With image-based lighting on there is no constant ambient fill and no blend factor. The 0.3
+  ambient fill (an occlusion-weighted fill by default, with its occlusion rays) and the 0.7 factor
+  on lights, IBL and highlights exist to approximate a sky that is not there; with an environment
+  map the sky is the light. Under IBL a surface gets its lights and the environment at full
+  strength, a surface the environment does not light is black, and no ambient occlusion rays are
+  traced for it (a render that does not use IBL, or whose env map did not load, is **pixel
+  identical to before**: ambient 0.3 plus 0.7 times the direct light). **IBL scenes change**: a
+  directional light is 1/0.7 stronger, the 0.3 floor is gone, and the highlight of a glossy
+  surface is 1/0.7 stronger. `setAmbient` has no effect while IBL is on.
+
+- A scene's tone mapping covers the whole image (optix-jni#112). It used to apply only to the
+  environment-map background and to caustics: a surface lit above 1, say by a sun in an HDR env
+  map, clipped to pure white next to a tone-mapped background. Now a lit surface is tone mapped,
+  too, at the point where its radiance becomes a display value, so a Reinhard or ACES scene keeps
+  the gradient of a bright surface. The background and the caustics are mapped as before, each
+  once; **with the denoiser on, the background used to be mapped twice (the final conversion
+  mapped the frame again) and is now mapped once**, so it is brighter than it was. Renders without
+  tone mapping are bit-for-bit unchanged. Limits: the colours passed between shaders are 8-bit
+  display values, so a reflection or refraction carries the mapped colour of what it saw, an
+  accumulated frame is the average of mapped frames, the denoiser sees mapped values, and a
+  caustic is mapped by itself and added; a float HDR film (backlog F-HDR-FILM) would map the sum
+  once after the average and the denoiser.
+
+### Fixed
+
+- Image-based lighting under-lit smooth environments (optix-jni#112). Each importance-sampled env
+  direction was weighted by a one-sample MIS factor `pdf_env^2 / (pdf_env^2 + pdf_bsdf^2)` although
+  no BSDF sample is ever taken, so the estimate was biased low wherever the env's pdf is small
+  against the cosine lobe's: a uniform env lit a matte sphere with 0.177 of its irradiance, a sky
+  over black ground with 0.37 (top region), and the dim part of a sunset (the underside of a sphere
+  lit by `rogland_sunset_2k.hdr`) with 1/30 of it. A small bright patch (a sun) was unaffected, its
+  factor being 0.998. The estimate is now the plain importance-sampling estimator
+  `L * cos / pdf_env`, which is unbiased. **IBL scenes with a smooth environment get brighter.**
+  The convention is unchanged by this fix: IBL adds the irradiance `E = integral of L cos dw` (no
+  1/pi, as for a directional light's `intensity * cos`). It changes later in this release, see
+  Changed.
+
 ## [0.5.2] - 2026-11-14
 
 **Note:** 0.5.1 is defective — use 0.5.2.
@@ -962,6 +1049,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.3]: https://github.com/lene/optix-jni/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/lene/optix-jni/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/lene/optix-jni/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/lene/optix-jni/compare/0.4.11...0.5.0

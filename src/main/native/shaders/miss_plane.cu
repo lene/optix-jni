@@ -88,32 +88,6 @@ __device__ void getBackgroundColor(
     b = static_cast<unsigned int>(params.bg_b * COLOR_SCALE_FACTOR);
 }
 
-// Tone-mapping operator ids — MUST match SceneConverter.ToneMapOp (Scala side).
-constexpr int TONEMAP_REINHARD = 1;
-constexpr int TONEMAP_ACES     = 2;
-
-__device__ float3 applyToneMapping(float3 c) {
-    const float e = params.tonemap_exposure;
-    if (params.tonemap_operator == TONEMAP_REINHARD) {
-        // Reinhard: c*e / (1 + c*e)
-        c.x = c.x * e / (1.0f + c.x * e);
-        c.y = c.y * e / (1.0f + c.y * e);
-        c.z = c.z * e / (1.0f + c.z * e);
-    } else if (params.tonemap_operator == TONEMAP_ACES) {
-        // ACES filmic approximation (Narkowicz 2015)
-        c.x *= e; c.y *= e; c.z *= e;
-        const float a = 2.51f, b2 = 0.03f, cc = 2.43f, d = 0.59f, e2 = 0.14f;
-        c.x = fminf((c.x*(a*c.x+b2))/(c.x*(cc*c.x+d)+e2), 1.0f);
-        c.y = fminf((c.y*(a*c.y+b2))/(c.y*(cc*c.y+d)+e2), 1.0f);
-        c.z = fminf((c.z*(a*c.z+b2))/(c.z*(cc*c.z+d)+e2), 1.0f);
-    } else {
-        c.x = fminf(c.x, 1.0f);
-        c.y = fminf(c.y, 1.0f);
-        c.z = fminf(c.z, 1.0f);
-    }
-    return c;
-}
-
 __device__ void sampleEnvMap(unsigned int& r, unsigned int& g, unsigned int& b) {
     float3 dir = normalize(optixGetWorldRayDirection());
     const float2 uv = envDirToUv(dir);
@@ -187,7 +161,7 @@ extern "C" __global__ void __miss__ms() {
                 reflect_b / COLOR_BYTE_MAX * base_color.z
             );
             const float3 lighting = calculateLighting(hit_point, plane_normal, true);
-            const float3 diffuse  = base_color * lighting;
+            const float3 diffuse  = toneMapLitRadiance(base_color * lighting);
             total_color = tinted * plane.metallic + diffuse * (1.0f - plane.metallic);
         } else {
             const SurfaceLighting lighting = calculateSurfaceLighting(
