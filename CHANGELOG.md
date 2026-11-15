@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.3] - 2026-11-15
 
 ### Added
 
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of the sun's measured strength: without the exclusion the sun would be counted twice, once as the
   light and once as a few env texels. Off by default, and an off exclusion changes nothing. Setting
   it after the env map is loaded rebuilds the sampling tables from the texture on the device, so
-  no host copy of the env map (537 MB at 8k) is kept. The names are provisional.
+  no host copy of the env map (537 MB at 8k) is kept.
 
 - `envmap.EnvMapSun.measure(path)` measures the sun of an equirectangular `.hdr` environment map
   without a GPU or the native library, so a tool that cannot load the renderer (menger's scene
@@ -31,8 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   distinct sun (black, or equal everywhere) is rejected. `envmap.RadianceHdr` is the pure-JVM
   Radiance RGBE reader underneath (run-length encoded and flat scanlines); it decodes the Kiara
   4k maps bit for bit as the native loader (stb_image) does, which uses `(mantissa + 0.5) *
-  2^(exponent - 136)`, so directions and irradiances agree with what the renderer shows. The names
-  are provisional.
+  2^(exponent - 136)`, so directions and irradiances agree with what the renderer shows.
 
 ### Changed
 
@@ -1050,6 +1049,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.3]: https://github.com/lene/optix-jni/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/lene/optix-jni/compare/0.5.1...0.5.2
 [0.5.1]: https://github.com/lene/optix-jni/compare/0.5.0...0.5.1
 [0.5.0]: https://github.com/lene/optix-jni/compare/0.4.11...0.5.0
