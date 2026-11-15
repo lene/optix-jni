@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Caustics aim photons at each triangle-mesh instance's own bounds (optix-jni#63). Every instance
+  used to be aimed at the bounds of the most recently uploaded mesh, under its own transform, so
+  in a scene with two meshes the first got the second's target; and the bounds never followed new
+  vertices, so an animated 4D object (`updateMesh4DProjection` every frame) or a replaced mesh
+  (`updateCpuTriangleMesh`) kept the target of its first upload. A refractive cylinder no longer
+  counts toward the per-instance target limit (it never had a target of its own).
+
+### Added
+
+- `OptiXTestHooks.causticTargets(renderer)`: the spheres caustics aim photons at, as the next
+  render computes them, for tests.
+
+### Security
+
+- The native build pins stb_image to a commit (`9600522`, stb_image v2.32) instead of fetching
+  upstream `master`, so every build and every published artifact compiles the same reviewed image
+  loader; googletest's release archive is checked against its SHA-256 (optix-jni#119).
+
 ## [0.5.3] - 2026-11-15
 
 ### Added
