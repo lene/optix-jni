@@ -545,6 +545,9 @@ class OptiXRenderer
   // Test hook (#41): the next setProjectedMesh fails as if its readback had (-2).
   @native private[optix] def failNextProjectionReadbackNative(): Unit
 
+  // Test hook (optix-jni#63): the caustics photon targets, (x, y, z, radius) per target.
+  @native private[optix] def causticTargetsNative(): Array[Float]
+
   // Test hook: the n-th device allocation from now on fails (process-wide; 0 disarms).
   @native private[optix] def failNextDeviceAllocationsNative(n: Int): Unit
 

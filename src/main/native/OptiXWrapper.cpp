@@ -85,6 +85,20 @@ OptiXContext::GASBuildResult buildMeshGAS(
     return context.buildTriangleGAS(
         d_vertices, num_vertices, d_indices, num_triangles, accel_options, vertex_stride);
 }
+
+// Bounds of host vertex positions (x, y, z first in each stride); {0,0,0} for no vertices, so a
+// caustics target never turns non-finite.
+void vertexBounds(const float* vertices, unsigned int num_vertices, unsigned int stride,
+                  float3& lo, float3& hi) {
+    if (num_vertices == 0) { lo = hi = {0, 0, 0}; return; }
+    lo = {FLT_MAX, FLT_MAX, FLT_MAX};
+    hi = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    for (unsigned int i = 0; i < num_vertices; ++i) {
+        const float* v = vertices + i * stride;
+        lo.x = fminf(lo.x, v[0]); lo.y = fminf(lo.y, v[1]); lo.z = fminf(lo.z, v[2]);
+        hi.x = fmaxf(hi.x, v[0]); hi.y = fmaxf(hi.y, v[1]); hi.z = fmaxf(hi.z, v[2]);
+    }
+}
 }  // namespace
 
 /**
@@ -122,6 +136,14 @@ struct OptiXWrapper::Impl {
         unsigned int num_triangles = 0;
         unsigned int vertex_stride = 8;
 
+        // Object-space bounds of the vertices: the photon target of every instance of this mesh
+        // (optix-jni#63; one renderer-wide box aimed all instances at the last mesh's bounds).
+        // aabb_stale: updateMesh4DProjection moved the vertices on the device; render() reads
+        // them back only when caustics need the bounds.
+        float3 aabb_min = {0, 0, 0};
+        float3 aabb_max = {0, 0, 0};
+        bool aabb_stale = false;
+
         // GPU 4D projection sub-struct (Sprint 18.3). Populated only when
         // setTriangleMesh4DQuads uploaded this mesh. CPU-uploaded meshes
         // leave face_count == 0 and are unaffected by the 4D code paths.
@@ -134,10 +156,6 @@ struct OptiXWrapper::Impl {
         } projection4d;
     };
     std::vector<TriangleMeshGPU> triangle_meshes;
-
-    // Triangle mesh AABB (computed in setTriangleMesh for caustic target)
-    float3 mesh_aabb_min = {0, 0, 0};
-    float3 mesh_aabb_max = {0, 0, 0};
 
     // Instance Acceleration Structure (IAS) state for multi-object scenes
     struct ObjectInstance {
@@ -289,7 +307,113 @@ struct OptiXWrapper::Impl {
     // Applies `change` to the config; if that changes the sun exclusion, the env map's sampling
     // tables are rebuilt, and the old exclusion stays if the rebuild throws.
     template <typename Change> void changeSunExclusion(Change change);
+    // The photon targets of caustics: one bounding sphere per visible refractive instance (each
+    // triangle instance from its own mesh's bounds, optix-jni#63) and the merged one.
+    void computeCausticTargets(CausticsParams& c);
 };
+
+void OptiXWrapper::Impl::computeCausticTargets(CausticsParams& c) {
+    const auto& sphere = scene.getSphere();
+    float3 cmin = {FLT_MAX, FLT_MAX, FLT_MAX};
+    float3 cmax = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+    int refractive_count = 0;   // total refractive instances seen
+    int nt = 0;                 // per-instance targets written (capped at MAX)
+    const auto addTarget = [&](float3 lo, float3 hi) {
+        cmin = {fminf(cmin.x, lo.x), fminf(cmin.y, lo.y), fminf(cmin.z, lo.z)};
+        cmax = {fmaxf(cmax.x, hi.x), fmaxf(cmax.y, hi.y), fmaxf(cmax.z, hi.z)};
+        if (nt >= CausticsParams::MAX_CAUSTIC_TARGETS) return;
+        const float dx = hi.x - lo.x, dy = hi.y - lo.y, dz = hi.z - lo.z;
+        c.caustic_targets[nt*4+0] = (lo.x + hi.x) * 0.5f;
+        c.caustic_targets[nt*4+1] = (lo.y + hi.y) * 0.5f;
+        c.caustic_targets[nt*4+2] = (lo.z + hi.z) * 0.5f;
+        c.caustic_targets[nt*4+3] = 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
+        ++nt;
+    };
+
+    for (const auto& inst : instances) {
+        // A hidden instance gets no photons aimed at it: no ray can reach it.
+        if (!inst.active || !inst.visible || inst.ior <= 1.05f) continue;
+        const float* t = inst.transform;
+        if (inst.geometry_type == GEOMETRY_TYPE_SPHERE) {
+            ++refractive_count;
+            const float r = sphere.radius * sqrtf(t[0]*t[0] + t[1]*t[1] + t[2]*t[2]);
+            const float3 center = {t[3], t[7], t[11]};
+            if (nt < CausticsParams::MAX_CAUSTIC_TARGETS) {
+                // Exact sphere, not the sphere around its box.
+                c.caustic_targets[nt*4+0] = center.x;
+                c.caustic_targets[nt*4+1] = center.y;
+                c.caustic_targets[nt*4+2] = center.z;
+                c.caustic_targets[nt*4+3] = r;
+                ++nt;
+            }
+            cmin = {fminf(cmin.x, center.x - r), fminf(cmin.y, center.y - r), fminf(cmin.z, center.z - r)};
+            cmax = {fmaxf(cmax.x, center.x + r), fmaxf(cmax.y, center.y + r), fmaxf(cmax.z, center.z + r)};
+        } else if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE
+                   && inst.mesh_index < triangle_meshes.size()) {
+            ++refractive_count;
+            auto& mesh = triangle_meshes[inst.mesh_index];
+            if (mesh.aabb_stale && c.enabled) {
+                // updateMesh4DProjection moved the vertices on the device: read them back once.
+                std::vector<float> v(static_cast<size_t>(mesh.num_vertices) * mesh.vertex_stride);
+                if (cudaMemcpy(v.data(), reinterpret_cast<void*>(mesh.d_vertices),
+                               v.size() * sizeof(float), cudaMemcpyDeviceToHost) == cudaSuccess) {
+                    vertexBounds(v.data(), mesh.num_vertices, mesh.vertex_stride,
+                                 mesh.aabb_min, mesh.aabb_max);
+                    mesh.aabb_stale = false;
+                } else {
+                    OPTIX_LOG(ERROR) << "[OptiX] caustics: mesh " << inst.mesh_index
+                                     << " bounds readback failed, using its previous bounds" << std::endl;
+                }
+            }
+            const float3 lo = mesh.aabb_min, hi = mesh.aabb_max;
+            float3 imin = {FLT_MAX, FLT_MAX, FLT_MAX};
+            float3 imax = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+            for (int k = 0; k < 8; ++k) {
+                const float x = (k & 1) ? hi.x : lo.x;
+                const float y = (k & 2) ? hi.y : lo.y;
+                const float z = (k & 4) ? hi.z : lo.z;
+                const float wx = t[0]*x + t[1]*y + t[2]*z + t[3];
+                const float wy = t[4]*x + t[5]*y + t[6]*z + t[7];
+                const float wz = t[8]*x + t[9]*y + t[10]*z + t[11];
+                imin = {fminf(imin.x, wx), fminf(imin.y, wy), fminf(imin.z, wz)};
+                imax = {fmaxf(imax.x, wx), fmaxf(imax.y, wy), fmaxf(imax.z, wz)};
+            }
+            addTarget(imin, imax);
+        }
+        // Cylinder: no target (not a typical caustic material)
+    }
+
+    if (refractive_count > 0) {
+        c.caustic_target_center[0] = (cmin.x + cmax.x) * 0.5f;
+        c.caustic_target_center[1] = (cmin.y + cmax.y) * 0.5f;
+        c.caustic_target_center[2] = (cmin.z + cmax.z) * 0.5f;
+        const float dx = cmax.x - cmin.x, dy = cmax.y - cmin.y, dz = cmax.z - cmin.z;
+        c.caustic_target_radius = 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
+        // Per-instance emission targets: use them unless there were more refractive
+        // instances than slots, in which case fall back to the single merged target.
+        if (refractive_count <= CausticsParams::MAX_CAUSTIC_TARGETS) {
+            c.num_caustic_targets = nt;
+        } else {
+            std::memcpy(&c.caustic_targets[0], c.caustic_target_center, sizeof(float) * 3);
+            c.caustic_targets[3] = c.caustic_target_radius;
+            c.num_caustic_targets = 1;
+        }
+    } else {
+        // Fallback: use scene sphere (backward compat with non-IAS mode)
+        std::memcpy(c.caustic_target_center, sphere.center, sizeof(float) * 3);
+        c.caustic_target_radius = sphere.radius;
+        std::memcpy(&c.caustic_targets[0], sphere.center, sizeof(float) * 3);
+        c.caustic_targets[3] = sphere.radius;
+        c.num_caustic_targets = 1;
+    }
+}
+
+std::vector<float> OptiXWrapper::causticTargetsForTest() {
+    CausticsParams c{};
+    c.enabled = true;
+    impl->computeCausticTargets(c);
+    return {c.caustic_targets, c.caustic_targets + 4 * c.num_caustic_targets};
+}
 
 OptiXWrapper::OptiXWrapper() : impl(std::make_unique<Impl>()) {
 }
@@ -597,28 +721,10 @@ int OptiXWrapper::setTriangleMesh(
     mesh_entry.num_triangles = num_triangles;
     mesh_entry.vertex_stride = vertex_stride;
     mesh_entry.gas_built = false;
+    vertexBounds(vertices, num_vertices, vertex_stride, mesh_entry.aabb_min, mesh_entry.aabb_max);
 
     auto mesh_index = static_cast<int>(impl->triangle_meshes.size());
     impl->triangle_meshes.push_back(mesh_entry);
-
-    // Compute mesh AABB from vertex positions (for caustic target)
-    impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
-    impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-    for (unsigned int i = 0; i < num_vertices; ++i) {
-        const float* v = vertices + i * vertex_stride;
-        impl->mesh_aabb_min.x =
-            fminf(impl->mesh_aabb_min.x, v[0]);
-        impl->mesh_aabb_min.y =
-            fminf(impl->mesh_aabb_min.y, v[1]);
-        impl->mesh_aabb_min.z =
-            fminf(impl->mesh_aabb_min.z, v[2]);
-        impl->mesh_aabb_max.x =
-            fmaxf(impl->mesh_aabb_max.x, v[0]);
-        impl->mesh_aabb_max.y =
-            fmaxf(impl->mesh_aabb_max.y, v[1]);
-        impl->mesh_aabb_max.z =
-            fmaxf(impl->mesh_aabb_max.z, v[2]);
-    }
 
     // Update scene parameters (latest mesh metadata)
     impl->scene.setTriangleMeshMeta(
@@ -863,8 +969,7 @@ int OptiXWrapper::setProjectedMesh(
     if (!memcpy_ok) {
         // A mesh whose projected vertices can't be trusted is not registered: it would render
         // garbage and leave a stale AABB, and the caller couldn't tell (#41; it used to
-        // soft-continue). impl->mesh_aabb_min/max stay untouched, so they never turn
-        // non-finite (render()'s caustics-target computation reads them unconditionally).
+        // soft-continue).
         OPTIX_LOG(ERROR) << "[OptiX] setProjectedMesh: projected vertices unavailable, mesh not registered"
                   << std::endl;
         cudaFree(reinterpret_cast<void*>(mesh_entry.d_vertices));
@@ -874,17 +979,8 @@ int OptiXWrapper::setProjectedMesh(
             cudaFree(reinterpret_cast<void*>(mesh_entry.projection4d.d_uvs));
         return -2;
     }
-    impl->mesh_aabb_min = {FLT_MAX, FLT_MAX, FLT_MAX};
-    impl->mesh_aabb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-    for (unsigned int i = 0; i < num_vertices; ++i) {
-        const float* v = projected.data() + i * vertex_stride;
-        impl->mesh_aabb_min.x = fminf(impl->mesh_aabb_min.x, v[0]);
-        impl->mesh_aabb_min.y = fminf(impl->mesh_aabb_min.y, v[1]);
-        impl->mesh_aabb_min.z = fminf(impl->mesh_aabb_min.z, v[2]);
-        impl->mesh_aabb_max.x = fmaxf(impl->mesh_aabb_max.x, v[0]);
-        impl->mesh_aabb_max.y = fmaxf(impl->mesh_aabb_max.y, v[1]);
-        impl->mesh_aabb_max.z = fmaxf(impl->mesh_aabb_max.z, v[2]);
-    }
+    vertexBounds(projected.data(), num_vertices, vertex_stride,
+                 mesh_entry.aabb_min, mesh_entry.aabb_max);
 
     int mesh_index = static_cast<int>(impl->triangle_meshes.size());
     impl->triangle_meshes.push_back(mesh_entry);
@@ -974,6 +1070,7 @@ int OptiXWrapper::updateMesh4DProjection(
                   << cudaGetErrorString(syncErr) << std::endl;
         noteCudaError(syncErr, "project4d kernel relaunch");  // latch if sticky (#73)
     }
+    mesh.aabb_stale = true;  // the vertices moved on the device (read back only for caustics)
 
     // GAS refit. Cut A flagged this mesh's GAS with ALLOW_UPDATE so we can
     // refit in place rather than rebuild.
@@ -1251,6 +1348,8 @@ int OptiXWrapper::updateCpuTriangleMesh(
     mesh.num_triangles = num_triangles;
     mesh.vertex_stride = vertex_stride;
     mesh.gas_built = num_triangles > 0;
+    vertexBounds(vertices, num_vertices, vertex_stride, mesh.aabb_min, mesh.aabb_max);
+    mesh.aabb_stale = false;
 
     // Update the scene parameters so the IAS material pointer stays valid.
     impl->scene.getTriangleMeshMutable().d_vertices = mesh.d_vertices;
@@ -1975,94 +2074,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         params.caustics.initial_radius = impl->config.getCausticsInitialRadius();
         params.caustics.alpha = impl->config.getCausticsAlpha();
         params.caustics.current_iteration = 0;
-        // Compute caustic target from AABB of all refractive instances
-        {
-            float3 cmin = {FLT_MAX, FLT_MAX, FLT_MAX};
-            float3 cmax = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-            bool found = false;
-            int refractive_count = 0;   // total refractive instances seen
-            int nt = 0;                 // per-instance targets written (capped at MAX)
-
-            for (const auto& inst : impl->instances) {
-                // A hidden instance gets no photons aimed at it: no ray can reach it.
-                if (!inst.active || !inst.visible || inst.ior <= 1.05f) continue;
-                found = true;
-                ++refractive_count;
-
-                if (inst.geometry_type == GEOMETRY_TYPE_SPHERE) {
-                    const float cx = inst.transform[3];
-                    const float cy = inst.transform[7];
-                    const float cz = inst.transform[11];
-                    const float s = sqrtf(inst.transform[0]*inst.transform[0] +
-                                          inst.transform[1]*inst.transform[1] +
-                                          inst.transform[2]*inst.transform[2]);
-                    const float r = sphere.radius * s;
-                    cmin.x = fminf(cmin.x, cx - r); cmin.y = fminf(cmin.y, cy - r); cmin.z = fminf(cmin.z, cz - r);
-                    cmax.x = fmaxf(cmax.x, cx + r); cmax.y = fmaxf(cmax.y, cy + r); cmax.z = fmaxf(cmax.z, cz + r);
-                    if (nt < CausticsParams::MAX_CAUSTIC_TARGETS) {
-                        params.caustics.caustic_targets[nt*4+0] = cx;
-                        params.caustics.caustic_targets[nt*4+1] = cy;
-                        params.caustics.caustic_targets[nt*4+2] = cz;
-                        params.caustics.caustic_targets[nt*4+3] = r;
-                        ++nt;
-                    }
-                } else if (inst.geometry_type == GEOMETRY_TYPE_TRIANGLE) {
-                    const float3 lo = impl->mesh_aabb_min;
-                    const float3 hi = impl->mesh_aabb_max;
-                    const float corners[8][3] = {
-                        {lo.x,lo.y,lo.z},{hi.x,lo.y,lo.z},{lo.x,hi.y,lo.z},{hi.x,hi.y,lo.z},
-                        {lo.x,lo.y,hi.z},{hi.x,lo.y,hi.z},{lo.x,hi.y,hi.z},{hi.x,hi.y,hi.z}
-                    };
-                    float3 imin = {FLT_MAX, FLT_MAX, FLT_MAX};
-                    float3 imax = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
-                    for (int c = 0; c < 8; ++c) {
-                        const float wx = inst.transform[0]*corners[c][0] + inst.transform[1]*corners[c][1] + inst.transform[2]*corners[c][2] + inst.transform[3];
-                        const float wy = inst.transform[4]*corners[c][0] + inst.transform[5]*corners[c][1] + inst.transform[6]*corners[c][2] + inst.transform[7];
-                        const float wz = inst.transform[8]*corners[c][0] + inst.transform[9]*corners[c][1] + inst.transform[10]*corners[c][2] + inst.transform[11];
-                        cmin.x = fminf(cmin.x, wx); cmin.y = fminf(cmin.y, wy); cmin.z = fminf(cmin.z, wz);
-                        cmax.x = fmaxf(cmax.x, wx); cmax.y = fmaxf(cmax.y, wy); cmax.z = fmaxf(cmax.z, wz);
-                        imin.x = fminf(imin.x, wx); imin.y = fminf(imin.y, wy); imin.z = fminf(imin.z, wz);
-                        imax.x = fmaxf(imax.x, wx); imax.y = fmaxf(imax.y, wy); imax.z = fmaxf(imax.z, wz);
-                    }
-                    if (nt < CausticsParams::MAX_CAUSTIC_TARGETS) {
-                        const float dx = imax.x - imin.x, dy = imax.y - imin.y, dz = imax.z - imin.z;
-                        params.caustics.caustic_targets[nt*4+0] = (imin.x + imax.x) * 0.5f;
-                        params.caustics.caustic_targets[nt*4+1] = (imin.y + imax.y) * 0.5f;
-                        params.caustics.caustic_targets[nt*4+2] = (imin.z + imax.z) * 0.5f;
-                        params.caustics.caustic_targets[nt*4+3] = 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
-                        ++nt;
-                    }
-                }
-                // Cylinder: fall through (not a typical caustic material)
-            }
-
-            if (found) {
-                params.caustics.caustic_target_center[0] = (cmin.x + cmax.x) * 0.5f;
-                params.caustics.caustic_target_center[1] = (cmin.y + cmax.y) * 0.5f;
-                params.caustics.caustic_target_center[2] = (cmin.z + cmax.z) * 0.5f;
-                const float dx = cmax.x - cmin.x;
-                const float dy = cmax.y - cmin.y;
-                const float dz = cmax.z - cmin.z;
-                params.caustics.caustic_target_radius = 0.5f * sqrtf(dx*dx + dy*dy + dz*dz);
-                // Per-instance emission targets: use them unless there were more refractive
-                // instances than slots, in which case fall back to the single merged target.
-                if (refractive_count <= CausticsParams::MAX_CAUSTIC_TARGETS) {
-                    params.caustics.num_caustic_targets = nt;
-                } else {
-                    std::memcpy(&params.caustics.caustic_targets[0],
-                                params.caustics.caustic_target_center, sizeof(float) * 3);
-                    params.caustics.caustic_targets[3] = params.caustics.caustic_target_radius;
-                    params.caustics.num_caustic_targets = 1;
-                }
-            } else {
-                // Fallback: use scene sphere (backward compat with non-IAS mode)
-                std::memcpy(params.caustics.caustic_target_center, sphere.center, sizeof(float) * 3);
-                params.caustics.caustic_target_radius = sphere.radius;
-                std::memcpy(&params.caustics.caustic_targets[0], sphere.center, sizeof(float) * 3);
-                params.caustics.caustic_targets[3] = sphere.radius;
-                params.caustics.num_caustic_targets = 1;
-            }
-        }
+        impl->computeCausticTargets(params.caustics);
         // 33.8: auto-tune the gather radius when the caller leaves it unset (<= 0 sentinel).
         // Scale with a *per-instance* object radius, not the merged bounding radius: for several
         // separated objects the merged span is far larger than any single object, so gathering at

@@ -175,11 +175,13 @@ message(STATUS "")
 #=============================================================================
 # stb_image (header-only, MIT) — HDR texture loading
 #=============================================================================
+# Pinned (optix-jni#119): every build and every published artifact compiles the same reviewed
+# stb_image. Commit 9600522 of 2026-11-12 (stb_image v2.32), the one the HDR hardening of
+# optix-jni#103 was tested against. Bump deliberately; also update PROVENANCE.yaml.
 include(FetchContent)
 FetchContent_Declare(stb
     GIT_REPOSITORY https://github.com/nothings/stb.git
-    GIT_TAG        master
-    GIT_SHALLOW    TRUE
+    GIT_TAG        9600522de53973336fa033a289858a4354cbb04c
 )
 FetchContent_MakeAvailable(stb)
 
@@ -297,6 +299,7 @@ if(BUILD_OPTIX_TESTS)
     FetchContent_Declare(
         googletest
         URL https://github.com/google/googletest/archive/release-1.12.1.zip
+        URL_HASH SHA256=24564e3b712d3eb30ac9a85d92f7d720f60cc0173730ac166f27dda7fed76cb2
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
 

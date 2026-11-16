@@ -1061,6 +1061,25 @@ JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextProjectio
     JNI_CATCH_UNKNOWN_THROW
 }
 
+// Test hook (optix-jni#63): the caustics photon targets, (x, y, z, radius) per target.
+JNIEXPORT jfloatArray JNICALL Java_io_github_lene_optix_OptiXRenderer_causticTargetsNative(
+    JNIEnv* env, jobject obj) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
+        if (wrapper == nullptr) return nullptr;
+        const std::vector<float> targets = wrapper->causticTargetsForTest();
+        jfloatArray result = env->NewFloatArray(static_cast<jsize>(targets.size()));
+        if (result == nullptr) return nullptr;
+        env->SetFloatArrayRegion(result, 0, static_cast<jsize>(targets.size()), targets.data());
+        return result;
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in causticTargets: " << e.what() << std::endl;
+        return nullptr;
+    }
+    JNI_CATCH_UNKNOWN_LOG_RET(nullptr)
+}
+
 // Test hook: the n-th device allocation from now on fails. Process-wide, like the counter.
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_failNextDeviceAllocationsNative(
     JNIEnv* env, jobject, jint n) {

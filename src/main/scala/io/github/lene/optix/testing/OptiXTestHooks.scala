@@ -5,6 +5,9 @@ import io.github.lene.optix.OptiXRenderer
 /** IAS builds since initialization: full rebuilds and in-place updates (optix-jni#66). */
 final case class IasUpdateCounts(fullBuilds: Long, inPlaceUpdates: Long)
 
+/** A sphere caustics aim photons at: centre and radius in world space (optix-jni#63). */
+final case class CausticTarget(x: Float, y: Float, z: Float, radius: Float)
+
 /** Fault injection and counters for the tests of code built on optix-jni (optix-jni#76): a
   * caller's test reaches them here instead of declaring classes in `io.github.lene.optix`,
   * whose `private[optix]` members are internal. Not for production use.
@@ -33,6 +36,17 @@ object OptiXTestHooks:
   /** Clears the process-wide context-lost latch. Only a test can recover in-process. */
   def clearContextLost(renderer: OptiXRenderer): Unit =
     renderer.clearContextLostNative()
+
+  /** The bounding spheres caustics aim photons at, one per visible refractive instance (or one
+    * merged sphere), as the next render would compute them (optix-jni#63).
+    *
+    * @throws IllegalStateException when the renderer is not initialized
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  def causticTargets(renderer: OptiXRenderer): Array[CausticTarget] =
+    Option(renderer.causticTargetsNative()) match
+      case Some(values) => values.grouped(4).map(t => CausticTarget(t(0), t(1), t(2), t(3))).toArray
+      case None => throw IllegalStateException("causticTargets: the renderer is not initialized")
 
   /** Full IAS builds and in-place IAS updates since `initialize`.
     *
