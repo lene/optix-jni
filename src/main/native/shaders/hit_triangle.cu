@@ -612,7 +612,15 @@ __device__ TriangleGeometry currentTriangleGeometry() {
 // Triangle shadow ray anyhit - accumulates attenuation through transparent meshes
 //==============================================================================
 extern "C" __global__ void __anyhit__triangle_shadow() {
-    if (!params.transparent_shadows_enabled) return;
+    // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
+    const float coverage = getInstanceCoverage();
+
+    // Without transparent shadows the first hit decides (closesthit), except for a partly
+    // present instance: stopping the ray there would charge it its coverage and never test what
+    // lies behind it. The hole caps of a fractional sponge fade out this way, and light came
+    // through the tunnel walls behind them (menger#57).
+    const bool partly_present = coverage < FULLY_PRESENT_COVERAGE;
+    if (!params.transparent_shadows_enabled && !partly_present) return;
 
     // A back-face hit is the ray leaving the mesh.
     const bool front_face = optixGetHitKind() != OPTIX_HIT_KIND_TRIANGLE_BACK_FACE;
@@ -621,11 +629,17 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
 
-    // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
-    const float coverage = getInstanceCoverage();
     const float alpha = material_color.w * coverage;
     if (alpha >= 1.0f - 1e-4f) {  // Opaque: a front face is accepted, closesthit shadows fully
         if (!front_face) optixIgnoreIntersection();
+        return;
+    }
+
+    if (!params.transparent_shadows_enabled) {
+        // What the first-hit shadow charged: the surface's opacity, the same in every channel and
+        // for either face (a hole cap is a film; the ray crosses each one), but the ray goes on.
+        accumulateShadowAttenuation(alpha, make_float4(0.f, 0.f, 0.f, 1.f));
+        optixIgnoreIntersection();
         return;
     }
 

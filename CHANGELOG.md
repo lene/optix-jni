@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A partly present triangle instance (`setInstanceCoverage`) no longer hides what lies behind it
+  from a shadow ray when transparent shadows are off. The ray stopped at the instance, charged it
+  its coverage, and never tested the geometry behind: the fading hole caps of a fractional sponge
+  let light through the tunnel walls behind them, and the floor shadow was speckled (menger#57).
+  The ray now passes the instance, charged its coverage on either face, and goes on.
+
 ## [0.5.4] - 2026-11-16
 
 ### Fixed
