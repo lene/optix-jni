@@ -157,7 +157,7 @@ extern "C" __global__ void __anyhit__curve_shadow() {
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
 
-    const float alpha = material_color.w;
+    const float alpha = shadowOpacity(material_color.w, material_ior);
     if (alpha >= 1.0f - 1e-4f) return;
 
     accumulateTransparentShadow(material_color, alpha, material_ior, getInstanceCoverage());
@@ -168,5 +168,5 @@ extern "C" __global__ void __closesthit__curve_shadow() {
     float4 material_color;
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
-    setShadowPayload(material_color.w, material_color);
+    setShadowPayload(shadowOpacity(material_color.w, material_ior), material_color);
 }

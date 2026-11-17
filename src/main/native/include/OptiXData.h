@@ -44,6 +44,7 @@ namespace RayTracingConstants {
     constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Offset to avoid self-intersection
     constexpr float SHADOW_RAY_OFFSET = 0.001f;        // Offset for shadow ray origin (avoid shadow acne)
     constexpr float SHADOW_MIN_TRANSMISSION = 1e-6f;   // Keeps a surface's optical depth finite
+    constexpr float FULLY_PRESENT_COVERAGE = 1.0f - 1e-4f; // From here an instance's coverage counts as 1 (opaque)
 
     // Color conversion (float [0,1] to byte [0,255])
     constexpr float COLOR_SCALE_FACTOR = 255.99f;      // Slightly less than 256 to avoid overflow
@@ -112,7 +113,11 @@ namespace RayTracingConstants {
     constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.1f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
-    constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
+    // Maximum surface interactions of one photon. A ray through a level-2 sponge crosses up to a
+    // dozen thin walls, and ten cut off 12.5% of the photons that hit it (a CPU replica of the walk
+    // reaches 0.65 of them to the floor at ten, 0.71 at fifty: menger#150); pbrt's twin used 50.
+    // Photons leave quickly, so the cap costs only those that bounce around inside geometry.
+    constexpr int MAX_PHOTON_BOUNCES = 64;
 
     // Numerical thresholds
     constexpr float RAY_PARALLEL_THRESHOLD = 1e-6f;    // Ray nearly parallel to surface (avoid div by zero)
@@ -144,6 +149,9 @@ namespace MaterialConstants {
     constexpr float IOR_WATER = 1.33f;     // Water
     constexpr float IOR_GLASS = 1.5f;      // Standard glass
     constexpr float IOR_DIAMOND = 2.42f;   // Diamond (high dispersion)
+    // At or below this an object is diffuse to caustics (a photon deposits on it); above it the
+    // object is refractive (a photon refracts through it).
+    constexpr float IOR_REFRACTIVE_MIN = 1.05f;
 }
 
 // Default PBR material values, for surfaces given no material
@@ -172,6 +180,9 @@ namespace SBTConstants {
     constexpr unsigned int RAY_TYPE_PRIMARY = 0;           // Primary camera ray
     constexpr unsigned int RAY_TYPE_SHADOW = 1;            // Shadow ray
     constexpr unsigned int RAY_TYPE_PHOTON = 2;            // Photon ray (caustics)
+
+    // Payload 3 of a shadow ray: flags, set by the tracer, read by the shadow programs
+    constexpr unsigned int SHADOW_FLAG_PHOTON_LIGHT = 1u;  // The ray goes to the light caustic photons are emitted from
 
     // SBT indices
     constexpr unsigned int MISS_PRIMARY = 0;               // Primary ray miss shader

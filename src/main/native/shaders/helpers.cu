@@ -92,6 +92,24 @@ __device__ float shadowAttenuationFromDepth(float tau) {
 }
 
 /**
+ * With caustics on, the light a refractive object lets through reaches the floor as photons, so
+ * the direct shadow of the light those photons come from must block all of it: letting the direct
+ * light through as well counted it twice (menger#150: caustics plus direct reached 1.16 of the
+ * bare floor). A non-refractive transparent object (tinted film, IOR <= 1.05) casts no caustic,
+ * and a shadow ray to another light or an ambient/IBL ray is not covered by photons; those keep
+ * their transparent shadow. Only valid in a shadow program (reads the ray's payload 3).
+ */
+__device__ bool causticsCarryTransmittedLight(float ior) {
+    return (optixGetPayload_3() & SBTConstants::SHADOW_FLAG_PHOTON_LIGHT) != 0u
+        && ior > MaterialConstants::IOR_REFRACTIVE_MIN;
+}
+
+/** The opacity of an occluder's shadow, `alpha` unless caustics carry the light through it. */
+__device__ float shadowOpacity(float alpha, float ior) {
+    return causticsCarryTransmittedLight(ior) ? 1.0f : alpha;
+}
+
+/**
  * Compute effective shadow opacity for a material.
  *
  * For dielectrics (IOR > 1.0), the shadow should reflect Fresnel surface losses,
@@ -107,6 +125,7 @@ __device__ float shadowAttenuationFromDepth(float tau) {
  * @return Effective shadow opacity for direct-light attenuation
  */
 __device__ float effectiveShadowAlpha(float alpha, float ior) {
+    if (causticsCarryTransmittedLight(ior)) return 1.0f;
     if (ior <= 1.0f) return alpha;  // Metal or non-refractive — use alpha as-is
     const float f0      = (ior - 1.0f) / (ior + 1.0f);
     const float fresnel = 1.0f - (1.0f - f0 * f0) * (1.0f - f0 * f0);
@@ -148,15 +167,21 @@ __device__ void setShadowPayload(float alpha, const float4& /* color */) {
  * @param hit_point Surface position where shadow ray originates
  * @param normal Surface normal (for offset to avoid self-intersection)
  * @param light_dir Direction to light source (normalized)
+ * @param to_photon_light True when the ray goes to the light caustic photons are emitted from,
+ *        whose light through a refractive object the photons already carry (see
+ *        causticsCarryTransmittedLight)
  * @return float3 per-channel shadow factors in range [0, 1] where 0=fully shadowed, 1=fully lit
  */
 __device__ float3 traceShadowRay(
     const float3& hit_point,
     const float3& normal,
-    const float3& light_dir
+    const float3& light_dir,
+    bool to_photon_light = false
 ) {
     const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
     unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0;
+    unsigned int shadow_p3 = (to_photon_light && params.caustics.enabled)
+        ? SBTConstants::SHADOW_FLAG_PHOTON_LIGHT : 0u;
 
     optixTrace(
         params.handle,
@@ -170,7 +195,7 @@ __device__ float3 traceShadowRay(
         params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
         SBTConstants::STRIDE_RAY_TYPES,
         SBTConstants::MISS_SHADOW,
-        shadow_p0, shadow_p1, shadow_p2
+        shadow_p0, shadow_p1, shadow_p2, shadow_p3
     );
 
     const float3 shadow_factor = make_float3(
@@ -248,12 +273,14 @@ __device__ float3 sampleDiskPoint(
  * @param hit_point  Shaded surface point
  * @param normal     Surface normal at hit_point
  * @param light      Area light (must have type == AREA, shape == DISK)
+ * @param to_photon_light See traceShadowRay
  * @return           Per-channel average shadow factor (0=fully shadowed, 1=fully lit)
  */
 __device__ float3 traceAreaLightShadow(
     const float3& hit_point,
     const float3& normal,
-    const Light& light
+    const Light& light,
+    bool to_photon_light = false
 ) {
     const float3 disk_center = make_float3(light.position[0], light.position[1], light.position[2]);
     const float3 disk_normal = make_float3(light.normal[0], light.normal[1], light.normal[2]);
@@ -270,7 +297,7 @@ __device__ float3 traceAreaLightShadow(
         const float dist = length(to_sample);
         if (dist < RayTracingConstants::RAY_PARALLEL_THRESHOLD) continue;
         const float3 dir = to_sample / dist;
-        total_shadow = total_shadow + traceShadowRay(hit_point, normal, dir);
+        total_shadow = total_shadow + traceShadowRay(hit_point, normal, dir, to_photon_light);
     }
     // Per-channel average — preserves colored shadow tinting
     return total_shadow / static_cast<float>(n);
@@ -654,11 +681,11 @@ static __device__ float3 iblCandidateLighting(
 // one walk it differently, and an object moved in place rendered differently from the same scene
 // built fresh (optix-jni#121).
 static __device__ float traceOcclusionRay(const float3& origin, const float3& dir, float tmax) {
-    unsigned int p0 = 0, p1 = 0, p2 = 0;
+    unsigned int p0 = 0, p1 = 0, p2 = 0, p3 = 0;
     optixTrace(params.handle, origin, dir, SHADOW_RAY_OFFSET, tmax, 0.0f, OptixVisibilityMask(255),
                OPTIX_RAY_FLAG_NONE,
                params.sbt_base_offset + SBTConstants::RAY_TYPE_SHADOW,
-               SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_SHADOW, p0, p1, p2);
+               SBTConstants::STRIDE_RAY_TYPES, SBTConstants::MISS_SHADOW, p0, p1, p2, p3);
     // Counted in the total only: these are not rays toward a light, and shadow_rays is zero
     // when shadows are off.
     if (params.stats) {
@@ -714,6 +741,17 @@ struct SurfaceLighting {
     float3 specular;  // direct-light highlight, range [0, ∞); 0 for a lobe with specular 0
 };
 
+/** True when the environment map lights the scene (image-based lighting): no constant ambient. */
+__device__ bool imageBasedLightingActive() {
+    return params.ibl_enabled && params.env_cdf_marginal != 0;
+}
+
+/** The share of a surface's shading that direct light takes: the rest is the constant ambient
+ * fill, and with image-based lighting there is none. */
+__device__ float directLightBlend() {
+    return imageBasedLightingActive() ? 1.0f : RenderingConstants::DIFFUSE_BLEND_FACTOR;
+}
+
 /**
  * Calculate total lighting contribution from all lights in scene.
  *
@@ -746,7 +784,7 @@ __device__ SurfaceLighting calculateSurfaceLighting(
     // With image-based lighting the environment is the sky: there is no constant ambient fill (and
     // no occlusion rays for it), and lights, IBL and highlights are not scaled by the blend factor,
     // which only exists to make room for the fill.
-    const bool iblActive = params.ibl_enabled && params.env_cdf_marginal != 0;
+    const bool iblActive = imageBasedLightingActive();
     const bool has_specular = lobe.specular > 0.0f;
     // A double-sided surface may be given the normal facing away from the viewer.
     const float3 specular_normal = double_sided && dot(normal, lobe.to_viewer) < 0.0f
@@ -790,10 +828,12 @@ __device__ SurfaceLighting calculateSurfaceLighting(
         const float3 fully_lit = make_float3(SBTConstants::SHADOW_FACTOR_FULLY_LIT,
                                              SBTConstants::SHADOW_FACTOR_FULLY_LIT,
                                              SBTConstants::SHADOW_FACTOR_FULLY_LIT);
+        // Caustic photons are emitted from the first light only (caustics_ppm.cu).
+        const bool to_photon_light = light_idx == 0;
         const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
             ? (light.type == LightType::AREA
-                ? traceAreaLightShadow(hit_point, normal, light)
-                : traceShadowRay(hit_point, normal, light_dir))
+                ? traceAreaLightShadow(hit_point, normal, light, to_photon_light)
+                : traceShadowRay(hit_point, normal, light_dir, to_photon_light))
             : fully_lit;
 
         // Accumulate light contribution
@@ -848,7 +888,7 @@ __device__ SurfaceLighting calculateSurfaceLighting(
     // Add ambient lighting (prevents pure black shadows), except under image-based lighting
     const float3 ambient = iblActive ? make_float3(0.0f, 0.0f, 0.0f)
                                      : ambientLight(hit_point, normal, double_sided, skip_shadows);
-    const float blend = iblActive ? 1.0f : RenderingConstants::DIFFUSE_BLEND_FACTOR;
+    const float blend = directLightBlend();
 
     // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1); with
     // image-based lighting no ambient and a blend of 1.

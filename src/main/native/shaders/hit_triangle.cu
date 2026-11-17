@@ -396,7 +396,7 @@ extern "C" __global__ void __closesthit__triangle() {
     // 3. Instance coverage (setInstanceCoverage) multiplies into both: it fades any instance,
     //    including an opaque material of any IOR (shaded as opaque, then blended) and a
     //    refractive one (refractive blend below), e.g. a fractional 4D sponge's glass hole caps.
-    const bool is_refractive = mesh_ior > 1.05f;  // same threshold used in caustics and IAS setup
+    const bool is_refractive = mesh_ior > MaterialConstants::IOR_REFRACTIVE_MIN;  // same threshold used in caustics and IAS setup
     const bool has_vertex_alpha_channel = active_vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
     const bool is_opaque_material = mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD;
     // Legacy alpha-as-coverage: vertex alpha, or a non-refractive IAS instance's material alpha.
@@ -612,7 +612,15 @@ __device__ TriangleGeometry currentTriangleGeometry() {
 // Triangle shadow ray anyhit - accumulates attenuation through transparent meshes
 //==============================================================================
 extern "C" __global__ void __anyhit__triangle_shadow() {
-    if (!params.transparent_shadows_enabled) return;
+    // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
+    const float coverage = getInstanceCoverage();
+
+    // Without transparent shadows the first hit decides (closesthit), except for a partly
+    // present instance: stopping the ray there would charge it its coverage and never test what
+    // lies behind it. The hole caps of a fractional sponge fade out this way, and light came
+    // through the tunnel walls behind them (menger#57).
+    const bool partly_present = coverage < FULLY_PRESENT_COVERAGE;
+    if (!params.transparent_shadows_enabled && !partly_present) return;
 
     // A back-face hit is the ray leaving the mesh.
     const bool front_face = optixGetHitKind() != OPTIX_HIT_KIND_TRIANGLE_BACK_FACE;
@@ -621,11 +629,17 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
 
-    // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
-    const float coverage = getInstanceCoverage();
-    const float alpha = material_color.w * coverage;
+    const float alpha = shadowOpacity(material_color.w, material_ior) * coverage;
     if (alpha >= 1.0f - 1e-4f) {  // Opaque: a front face is accepted, closesthit shadows fully
         if (!front_face) optixIgnoreIntersection();
+        return;
+    }
+
+    if (!params.transparent_shadows_enabled) {
+        // What the first-hit shadow charged: the surface's opacity, the same in every channel and
+        // for either face (a hole cap is a film; the ray crosses each one), but the ray goes on.
+        accumulateShadowAttenuation(alpha, make_float4(0.f, 0.f, 0.f, 1.f));
+        optixIgnoreIntersection();
         return;
     }
 
@@ -649,5 +663,5 @@ extern "C" __global__ void __closesthit__triangle_shadow() {
     float4 material_color;
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
-    setShadowPayload(material_color.w * getInstanceCoverage(), material_color);
+    setShadowPayload(shadowOpacity(material_color.w, material_ior) * getInstanceCoverage(), material_color);
 }

@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.5] - 2026-11-17
+
+### Fixed
+
+- A partly present triangle instance (`setInstanceCoverage`) no longer hides what lies behind it
+  from a shadow ray when transparent shadows are off. The ray stopped at the instance, charged it
+  its coverage, and never tested the geometry behind: the fading hole caps of a fractional sponge
+  let light through the tunnel walls behind them, and the floor shadow was speckled (menger#57).
+  The ray now passes the instance, charged its coverage on either face, and goes on.
+- Caustics returned about a third of the light a refractive object blocks and counted the rest
+  twice (lene/menger#150). Three causes, each measured (a flat glass slab must return the share
+  its Fresnel loss leaves, 0.9; a level-2 sponge against pbrt-v4):
+  - With caustics on, the direct shadow of the light the photons come from let most of its light
+    through a refractive object (alpha 0.1 for the glass preset), and the photons carried it again.
+    That shadow is now opaque for every object with an IOR above 1.05; a non-refractive transparent
+    object, a second light, ambient occlusion and image-based light keep their transparent shadow.
+  - The caustic was shaded as a Lambertian `albedo / pi * E`, but the direct light is shaded
+    `albedo * I * cos(theta) * 0.7` (no `1/pi`, the 0.7 the share of direct light), so every
+    caustic was `1 / (pi * 0.7) = 0.45` of the light it stands for. It is `albedo * 0.7 * E` now (1
+    instead of 0.7 under image-based lighting). Every caustic is about 2.2 times brighter.
+  - A photon was cut off after ten surface interactions; a ray through a level-2 sponge crosses up
+    to twelve walls, and 12.5% of the photons that hit it never reached the floor. The limit is 64.
+
+### Added
+
+- `CausticsFlatGlassSuite`: the light a flat glass slab returns to the floor, with the photons
+  nearly off, with them on, and through six stacked slabs.
+
 ## [0.5.4] - 2026-11-16
 
 ### Fixed
@@ -1071,6 +1099,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.5]: https://github.com/lene/optix-jni/compare/0.5.4...0.5.5
 [0.5.4]: https://github.com/lene/optix-jni/compare/0.5.3...0.5.4
 [0.5.3]: https://github.com/lene/optix-jni/compare/0.5.2...0.5.3
 [0.5.2]: https://github.com/lene/optix-jni/compare/0.5.1...0.5.2
