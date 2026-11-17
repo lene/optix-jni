@@ -96,6 +96,39 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
     val (offR, offG, offB) = wholeImageChannelMeans(renderer.renderWithStats(imageSize).get)
     (onR - offR, onG - offG, onB - offB)
 
+  /** How coloured the light the caustic adds is: over the pixels the caustic brightens visibly
+    * and that no channel clips, the channel spread of the added light (on minus off) over its
+    * mean, summed over the pixels. A relative measure of single pixels: the means of each channel
+    * over the whole image, which this suite's other tests use, say how bright the caustic is as
+    * much as how coloured (a caustic of twice the light doubles the gap between channel means
+    * whatever its colour), and at this suite's light 500, 350 times past white, most pixels clip
+    * (menger#150: the caustic got 2.2 times brighter and the old comparison of channel means
+    * flipped, though the dispersive caustic was no less coloured). The light is dimmed to 3 so a
+    * caustic can be seen without saturating. */
+  private def causticRelativeChroma(material: Material): Double =
+    val dimLight = 3.0f
+    def pixels(result: RenderResult) =
+      for
+        y <- 0 until imageSize.height
+        x <- 0 until imageSize.width
+      yield ImageValidation.getRGBAt(result.image, imageSize, x, y)
+    def render(withCaustics: Boolean) =
+      setupGlassScene(material)
+      renderer.setLight(Vector[3](0.0f, -1.0f, 0.0f), dimLight)
+      if withCaustics then renderer.enableCaustics(photonsPerIter, causticIterations)
+      else renderer.disableCaustics()
+      pixels(renderer.renderWithStats(imageSize).get)
+    val on = render(withCaustics = true)
+    val off = render(withCaustics = false)
+    val added = on.zip(off).collect:
+      case (a, b) if a.max < 250 && (a.r + a.g + a.b) - (b.r + b.g + b.b) >= 6 =>
+        (a.r - b.r, a.g - b.g, a.b - b.b)
+    withClue("no pixel is brightened visibly by the caustic without clipping; the scene is wrong. ") {
+      added.length should be > 50
+    }
+    added.map((r, g, b) => (math.max(r, math.max(g, b)) - math.min(r, math.min(g, b))).toDouble).sum /
+      added.map((r, g, b) => (r + g + b) / 3.0).sum
+
   behavior of "Caustics deposit coverage net"
 
   it should "tint the deposited caustic toward a red glass's colour" in:
@@ -124,15 +157,13 @@ class CausticsCoverageSuite extends AnyFlatSpec with Matchers with RendererFixtu
     val plain = Material(baseColor, ior = Const.iorGlass, dispersion = 0.0f)
     val dispersive = Material(baseColor, ior = Const.iorGlass, dispersion = 1.0f)
 
-    val (pr, pg, pb) = causticChannelDelta(plain)
-    val plainSpread = math.max(pr, math.max(pg, pb)) - math.min(pr, math.min(pg, pb))
+    val plainChroma = causticRelativeChroma(plain)
+    val dispersiveChroma = causticRelativeChroma(dispersive)
 
-    val (dr, dg, db) = causticChannelDelta(dispersive)
-    val dispSpread = math.max(dr, math.max(dg, db)) - math.min(dr, math.min(dg, db))
-
-    withClue(s"caustic channel spread: dispersion-off=$plainSpread dispersion-on=$dispSpread; " +
+    info(f"relative chroma of the added light: plain $plainChroma%.3f, dispersive $dispersiveChroma%.3f")
+    withClue(s"relative chroma of the added light: dispersion-off=$plainChroma dispersion-on=$dispersiveChroma; " +
       "the dispersive photon caustic must be more chromatic than the achromatic one. ") {
-      dispSpread should be > plainSpread
+      dispersiveChroma should be > plainChroma
     }
 
   it should "report a bounded, deterministic caustic energy-conservation error" in:

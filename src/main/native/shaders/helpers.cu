@@ -741,6 +741,17 @@ struct SurfaceLighting {
     float3 specular;  // direct-light highlight, range [0, ∞); 0 for a lobe with specular 0
 };
 
+/** True when the environment map lights the scene (image-based lighting): no constant ambient. */
+__device__ bool imageBasedLightingActive() {
+    return params.ibl_enabled && params.env_cdf_marginal != 0;
+}
+
+/** The share of a surface's shading that direct light takes: the rest is the constant ambient
+ * fill, and with image-based lighting there is none. */
+__device__ float directLightBlend() {
+    return imageBasedLightingActive() ? 1.0f : RenderingConstants::DIFFUSE_BLEND_FACTOR;
+}
+
 /**
  * Calculate total lighting contribution from all lights in scene.
  *
@@ -773,7 +784,7 @@ __device__ SurfaceLighting calculateSurfaceLighting(
     // With image-based lighting the environment is the sky: there is no constant ambient fill (and
     // no occlusion rays for it), and lights, IBL and highlights are not scaled by the blend factor,
     // which only exists to make room for the fill.
-    const bool iblActive = params.ibl_enabled && params.env_cdf_marginal != 0;
+    const bool iblActive = imageBasedLightingActive();
     const bool has_specular = lobe.specular > 0.0f;
     // A double-sided surface may be given the normal facing away from the viewer.
     const float3 specular_normal = double_sided && dot(normal, lobe.to_viewer) < 0.0f
@@ -877,7 +888,7 @@ __device__ SurfaceLighting calculateSurfaceLighting(
     // Add ambient lighting (prevents pure black shadows), except under image-based lighting
     const float3 ambient = iblActive ? make_float3(0.0f, 0.0f, 0.0f)
                                      : ambientLight(hit_point, normal, double_sided, skip_shadows);
-    const float blend = iblActive ? 1.0f : RenderingConstants::DIFFUSE_BLEND_FACTOR;
+    const float blend = directLightBlend();
 
     // Combine: ambient + direct light weighted by DIFFUSE_BLEND_FACTOR (ambient + blend = 1); with
     // image-based lighting no ambient and a blend of 1.

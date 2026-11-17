@@ -487,10 +487,10 @@ __device__ void depositPhoton(const float3& photon_pos, const float3& photon_dir
 
                     // P5: uniform-disk density estimate (pbrt-matching). A photon within the
                     // gather radius contributes its full flux Φ — no cosθ weight (the photon
-                    // already carries the correct radiant power; the Lambertian ρ/π factor is
-                    // applied once in the radiance kernel, not per photon) and no unnormalized
-                    // Gaussian (which undercounted by ~8×). The disk area normalization π r²
-                    // lives in the radiance kernel.
+                    // already carries the correct radiant power; the albedo and the units of
+                    // the direct light are applied once in the radiance kernel, not per photon)
+                    // and no unnormalized Gaussian (which undercounted by ~8×). The disk area
+                    // normalization π r² lives in the radiance kernel.
                     if (dist_sq < radius_sq) {
                         atomicAdd(&hp.flux[0], flux.x);
                         atomicAdd(&hp.flux[1], flux.y);
@@ -1050,7 +1050,7 @@ extern "C" __global__ void __closesthit__photon() {
     // bit4, which tracePhoton() never sets — real photon bounces are unaffected byte-for-byte.
     const bool probe_mode = (optixGetPayload_9() & 16u) != 0u;
     if (probe_mode) {
-        const bool is_diffuse = ior_material <= 1.05f;
+        const bool is_diffuse = ior_material <= MaterialConstants::IOR_REFRACTIVE_MIN;
 
         optixSetPayload_0(__float_as_uint(hit_point.x));
         optixSetPayload_1(__float_as_uint(hit_point.y));
@@ -1070,7 +1070,7 @@ extern "C" __global__ void __closesthit__photon() {
     // (__miss__photon) — only photons that already touched glass may deposit, so direct
     // illumination on the receiver (already handled by the primary shading pass) isn't
     // double-counted.
-    const bool hit_is_diffuse = ior_material <= 1.05f;
+    const bool hit_is_diffuse = ior_material <= MaterialConstants::IOR_REFRACTIVE_MIN;
     if (hit_is_diffuse) {
         const unsigned int touched_bit_in = optixGetPayload_9() & 4u;
         if (touched_bit_in != 0u) {
@@ -1465,15 +1465,22 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     const float iter_norm = fmaxf(static_cast<float>(params.caustics.iterations), 1.0f);
     const float denom = area * iter_norm;
 
-    // P5: reflected radiance of a Lambertian floor lit by the caustic irradiance estimate
-    // E = τ/(π R² · iterations) is L = (ρ/π)·E, where ρ = hp.weight is the floor albedo
-    // captured at hit-point creation. The uniform-disk deposit (τ += Φ, no cosθ, no Gaussian)
-    // makes E the physically correct photon-density irradiance.
-    const float inv_pi = static_cast<float>(M_1_PI);
+    // The caustic is the direct light that the glass redirected, so it must come out in the units
+    // of the direct light: calculateSurfaceLighting shades a surface as
+    //   albedo * (intensity * cos(theta) * DIFFUSE_BLEND_FACTOR)
+    // with no 1/pi (the light's intensity is not an irradiance), and each photon carries the
+    // light's intensity as its irradiance E, so the uniform-disk estimate E = tau/(pi R^2 *
+    // iterations) is the irradiance in the same unit (P5: no cos(theta), no Gaussian). The
+    // caustic's radiance is therefore albedo * blend * E, blend being what direct light takes
+    // of the shading (directLightBlend). Shading it as a
+    // Lambertian albedo/pi * E, as this did, made every caustic 1/(pi * 0.7) = 0.45 of the light
+    // it stands for, and a flat pane of glass returned 0.39 of the light it passes where it must
+    // return 0.9 (menger#150). albedo = hp.weight, captured at hit-point creation.
+    const float blend = directLightBlend();
     const float3 radiance = make_float3(
-        hp.weight[0] * inv_pi * hp.flux[0] / denom,
-        hp.weight[1] * inv_pi * hp.flux[1] / denom,
-        hp.weight[2] * inv_pi * hp.flux[2] / denom
+        hp.weight[0] * blend * hp.flux[0] / denom,
+        hp.weight[1] * blend * hp.flux[1] / denom,
+        hp.weight[2] * blend * hp.flux[2] / denom
     );
 
     // P4: composite the caustic using the SAME global tone map as the rest of the frame, then
@@ -1507,7 +1514,10 @@ extern "C" __global__ void __raygen__caustics_radiance() {
     }
 
     // Write back to image buffer
-    params.image[pixel_idx + 0] = static_cast<unsigned char>(new_r * COLOR_BYTE_MAX);
-    params.image[pixel_idx + 1] = static_cast<unsigned char>(new_g * COLOR_BYTE_MAX);
-    params.image[pixel_idx + 2] = static_cast<unsigned char>(new_b * COLOR_BYTE_MAX);
+    // Round, not truncate: the image holds bytes, and cur * 255 can land a hair under the byte
+    // it came from (49.999996), so truncating took a level off every pixel with any flux and
+    // dropped every caustic below one level, which the faint spill around a caustic is made of.
+    params.image[pixel_idx + 0] = static_cast<unsigned char>(rintf(new_r * COLOR_BYTE_MAX));
+    params.image[pixel_idx + 1] = static_cast<unsigned char>(rintf(new_g * COLOR_BYTE_MAX));
+    params.image[pixel_idx + 2] = static_cast<unsigned char>(rintf(new_b * COLOR_BYTE_MAX));
 }

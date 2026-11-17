@@ -134,4 +134,13 @@ class CausticsFlatGlassSuite extends AnyFlatSpec with Matchers with RendererFixt
       transmission should be < 0.1
     }
 
+  it should "give back the light the slab's Fresnel loss leaves, no more and no less" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    val transmission = median(transmissionWith((200000, 4)))
+    info(f"median T through one slab: $transmission%.3f")
+    withClue(s"median T = $transmission, expected about $slabTransmission (flat glass does not " +
+      "focus, so it returns what it lets through). ") {
+      transmission should (be > 0.8 and be < 1.0)
+    }
+
 end CausticsFlatGlassSuite
