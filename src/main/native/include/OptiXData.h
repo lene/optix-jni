@@ -113,7 +113,11 @@ namespace RayTracingConstants {
     constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.1f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
-    constexpr int MAX_PHOTON_BOUNCES = 10;           // Maximum bounces for photon tracing
+    // Maximum surface interactions of one photon. A ray through a level-2 sponge crosses up to a
+    // dozen thin walls, and ten cut off 12.5% of the photons that hit it (a CPU replica of the walk
+    // reaches 0.65 of them to the floor at ten, 0.71 at fifty: menger#150); pbrt's twin used 50.
+    // Photons leave quickly, so the cap costs only those that bounce around inside geometry.
+    constexpr int MAX_PHOTON_BOUNCES = 64;
 
     // Numerical thresholds
     constexpr float RAY_PARALLEL_THRESHOLD = 1e-6f;    // Ray nearly parallel to surface (avoid div by zero)

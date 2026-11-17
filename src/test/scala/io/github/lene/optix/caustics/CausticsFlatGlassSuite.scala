@@ -143,4 +143,15 @@ class CausticsFlatGlassSuite extends AnyFlatSpec with Matchers with RendererFixt
       transmission should (be > 0.8 and be < 1.0)
     }
 
+  it should "still give back light that crossed twelve surfaces" in:
+    if runningUnderSanitizer then cancel("Skipped under compute-sanitizer (too slow)")
+    // Six stacked slabs of a lossless glass return T = 1 / (1 + 6 r / (1 - r)) = 0.61 of the light
+    // (r = 0.096 the reflectance of one slab). A photon needs twelve surface interactions to get
+    // through; a cap of ten photon bounces cut every one of them off.
+    val transmission = median(transmissionWith((200000, 4), stack = true))
+    info(f"median T through six slabs: $transmission%.3f")
+    withClue(s"median T = $transmission, expected about 0.6 through six slabs. ") {
+      transmission should (be > 0.4 and be < 0.8)
+    }
+
 end CausticsFlatGlassSuite
