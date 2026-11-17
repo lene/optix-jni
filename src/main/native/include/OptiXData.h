@@ -145,6 +145,9 @@ namespace MaterialConstants {
     constexpr float IOR_WATER = 1.33f;     // Water
     constexpr float IOR_GLASS = 1.5f;      // Standard glass
     constexpr float IOR_DIAMOND = 2.42f;   // Diamond (high dispersion)
+    // At or below this an object is diffuse to caustics (a photon deposits on it); above it the
+    // object is refractive (a photon refracts through it).
+    constexpr float IOR_REFRACTIVE_MIN = 1.05f;
 }
 
 // Default PBR material values, for surfaces given no material
@@ -173,6 +176,9 @@ namespace SBTConstants {
     constexpr unsigned int RAY_TYPE_PRIMARY = 0;           // Primary camera ray
     constexpr unsigned int RAY_TYPE_SHADOW = 1;            // Shadow ray
     constexpr unsigned int RAY_TYPE_PHOTON = 2;            // Photon ray (caustics)
+
+    // Payload 3 of a shadow ray: flags, set by the tracer, read by the shadow programs
+    constexpr unsigned int SHADOW_FLAG_PHOTON_LIGHT = 1u;  // The ray goes to the light caustic photons are emitted from
 
     // SBT indices
     constexpr unsigned int MISS_PRIMARY = 0;               // Primary ray miss shader

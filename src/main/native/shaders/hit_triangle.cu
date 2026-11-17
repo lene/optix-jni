@@ -396,7 +396,7 @@ extern "C" __global__ void __closesthit__triangle() {
     // 3. Instance coverage (setInstanceCoverage) multiplies into both: it fades any instance,
     //    including an opaque material of any IOR (shaded as opaque, then blended) and a
     //    refractive one (refractive blend below), e.g. a fractional 4D sponge's glass hole caps.
-    const bool is_refractive = mesh_ior > 1.05f;  // same threshold used in caustics and IAS setup
+    const bool is_refractive = mesh_ior > MaterialConstants::IOR_REFRACTIVE_MIN;  // same threshold used in caustics and IAS setup
     const bool has_vertex_alpha_channel = active_vertex_stride >= VERTEX_STRIDE_WITH_ALPHA;
     const bool is_opaque_material = mesh_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD;
     // Legacy alpha-as-coverage: vertex alpha, or a non-refractive IAS instance's material alpha.
@@ -629,7 +629,7 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
 
-    const float alpha = material_color.w * coverage;
+    const float alpha = shadowOpacity(material_color.w, material_ior) * coverage;
     if (alpha >= 1.0f - 1e-4f) {  // Opaque: a front face is accepted, closesthit shadows fully
         if (!front_face) optixIgnoreIntersection();
         return;
@@ -663,5 +663,5 @@ extern "C" __global__ void __closesthit__triangle_shadow() {
     float4 material_color;
     float material_ior;
     getInstanceMaterial(material_color, material_ior);
-    setShadowPayload(material_color.w * getInstanceCoverage(), material_color);
+    setShadowPayload(shadowOpacity(material_color.w, material_ior) * getInstanceCoverage(), material_color);
 }

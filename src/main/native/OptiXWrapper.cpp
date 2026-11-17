@@ -332,7 +332,7 @@ void OptiXWrapper::Impl::computeCausticTargets(CausticsParams& c) {
 
     for (const auto& inst : instances) {
         // A hidden instance gets no photons aimed at it: no ray can reach it.
-        if (!inst.active || !inst.visible || inst.ior <= 1.05f) continue;
+        if (!inst.active || !inst.visible || inst.ior <= MaterialConstants::IOR_REFRACTIVE_MIN) continue;
         const float* t = inst.transform;
         if (inst.geometry_type == GEOMETRY_TYPE_SPHERE) {
             ++refractive_count;
