@@ -1746,7 +1746,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
 
         // Allocate caustics buffers if enabled
         if (impl->config.getCausticsEnabled()) {
-            impl->buffer_manager.ensureCausticsBuffers();
+            impl->buffer_manager.ensureCausticsBuffers(width, height);
         }
 
         // Zero out stats buffer before render
@@ -2106,6 +2106,7 @@ void OptiXWrapper::render(int width, int height, unsigned char* output, RayStats
         }
         params.caustics.hit_points = reinterpret_cast<HitPoint*>(impl->buffer_manager.getHitPointsBuffer());
         params.caustics.num_hit_points = reinterpret_cast<unsigned int*>(impl->buffer_manager.getNumHitPointsBuffer());
+        params.caustics.hit_point_capacity = impl->buffer_manager.getHitPointCapacity();
         params.caustics.grid = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridBuffer());
         params.caustics.grid_counts = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridCountsBuffer());
         params.caustics.grid_offsets = reinterpret_cast<unsigned int*>(impl->buffer_manager.getCausticsGridOffsetsBuffer());

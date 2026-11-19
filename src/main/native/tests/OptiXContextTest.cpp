@@ -450,9 +450,20 @@ TEST(CausticsDataTest, CausticsParamsContainsExpectedFields) {
     EXPECT_EQ(params.total_photons_traced, 0u);
 }
 
+TEST(CausticsDataTest, GridIndexBufferHoldsOneEntryPerHitPoint) {
+    using RayTracingConstants::causticsGridEntries;
+    using RayTracingConstants::CAUSTICS_GRID_CELLS;
+    EXPECT_EQ(CAUSTICS_GRID_CELLS, 16777216u);
+    // Below one hit point per cell the cells set the size ...
+    EXPECT_EQ(causticsGridEntries(1920u * 1080u), CAUSTICS_GRID_CELLS);
+    EXPECT_EQ(causticsGridEntries(3840u * 2160u), CAUSTICS_GRID_CELLS);
+    EXPECT_EQ(causticsGridEntries(4096u * 4096u), CAUSTICS_GRID_CELLS);
+    // ... above it (8K: 33.2 million pixels) the hit points do.
+    EXPECT_EQ(causticsGridEntries(7680u * 4320u), 7680u * 4320u);
+}
+
 TEST(CausticsDataTest, DefaultConstantsAreReasonable) {
     // Verify default constants from RayTracingConstants
-    EXPECT_GT(RayTracingConstants::MAX_HIT_POINTS, 0);
     EXPECT_GT(RayTracingConstants::DEFAULT_PHOTONS_PER_ITER, 0);
     EXPECT_GT(RayTracingConstants::DEFAULT_CAUSTICS_ITERATIONS, 0);
     EXPECT_GT(RayTracingConstants::DEFAULT_INITIAL_RADIUS, 0.0f);

@@ -5,6 +5,8 @@
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 CausticsRenderer::CausticsRenderer(
@@ -94,17 +96,28 @@ void CausticsRenderer::renderWithCaustics(
     // per-thread capacity check, so on a scene that overflows the cap it reports more hit
     // points than were actually stored. Every later pass (grid build, radius update, radiance)
     // uses this value as a launch width and indexes hit_points[idx]; clamp it to the buffer
-    // cap here so no pass reads past MAX_HIT_POINTS. The kernels clamp defensively too.
-    if (num_hit_points > RayTracingConstants::MAX_HIT_POINTS) {
+    // capacity here so no pass reads past the buffer. The kernels clamp defensively too. The
+    // buffer holds one hit point per pixel and a pixel takes at most one, so this does not fire
+    // for a launch of the size the buffer was allocated for.
+    const unsigned int hit_point_capacity = params.caustics.hit_point_capacity;
+    const unsigned int hit_points_dropped =
+        num_hit_points > hit_point_capacity ? num_hit_points - hit_point_capacity : 0u;
+    if (hit_points_dropped > 0) {
         OPTIX_LOG(ERROR) << "[Caustics] hit-point count " << num_hit_points
-                  << " exceeds MAX_HIT_POINTS (" << RayTracingConstants::MAX_HIT_POINTS
-                  << "); clamping to cap." << std::endl;
-        num_hit_points = RayTracingConstants::MAX_HIT_POINTS;
+                  << " exceeds the hit-point capacity (" << hit_point_capacity
+                  << "); clamping to capacity." << std::endl;
+        num_hit_points = hit_point_capacity;
     }
 
     // =====================================
     // Grid Building: Spatial acceleration for photon deposition
     // =====================================
+    // grid_scatter writes one sorted index per hit point into the grid buffer.
+    if (num_hit_points > buffer_manager.getCausticsGridEntries()) {
+        throw std::runtime_error("[Caustics] " + std::to_string(num_hit_points)
+            + " hit points do not fit the grid index buffer ("
+            + std::to_string(buffer_manager.getCausticsGridEntries()) + " entries)");
+    }
     if (num_hit_points > 0) {
         buildGrid(num_hit_points, scene, width, height, params);
     }
@@ -197,6 +210,8 @@ void CausticsRenderer::renderWithCaustics(
 
     // Download caustics stats for validation
     buffer_manager.downloadCausticsStats(&last_caustics_stats);
+    last_caustics_stats.hit_points_collected = num_hit_points;
+    last_caustics_stats.hit_points_dropped = hit_points_dropped;
 }
 
 void CausticsRenderer::buildGrid(

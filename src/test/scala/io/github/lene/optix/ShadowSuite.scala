@@ -47,11 +47,12 @@ class ShadowSuite extends AnyFlatSpec with Matchers with PerfGate with RendererF
     lightDir: Vector[3] = Vector[3](-0.5f, -0.5f, 0.5f),
     sphereRadius: Float = 0.5f,
     sphereY: Float = 0.0f,
-    planeY: Float = -0.6f
+    planeY: Float = -0.6f,
+    ior: Float = Const.iorGlass
   ): Unit =
     renderer.setSphere(Vector[3](0.0f, sphereY, 0.0f), sphereRadius)
     renderer.setSphereColor(Color(0.75f, 0.75f, 0.75f, sphereAlpha))
-    renderer.setIOR(Const.iorGlass)
+    renderer.setIOR(ior)
     renderer.setScale(1.0f)
     renderer.clearPlanes()
     renderer.addPlaneSolidColor(1, true, planeY, Color.LIGHT_GRAY.r, Color.LIGHT_GRAY.g, Color.LIGHT_GRAY.b)
@@ -124,7 +125,9 @@ class ShadowSuite extends AnyFlatSpec with Matchers with PerfGate with RendererF
   "Shadow intensity" should "scale with material alpha" in:
     val alphaValues = List(0.0f, 0.25f, 0.5f, 0.75f, 1.0f)
     val measurements = alphaValues.map { alpha =>
-      setupShadowScene(sphereAlpha = alpha)
+      // A film (IOR 1) casts its opacity; a refractive sphere casts the glass shadow even at alpha 0
+      // (GlassShadowSuite, optix-jni#132).
+      setupShadowScene(sphereAlpha = alpha, ior = 1.0f)
       renderer.setShadows(true)
       val image = renderer.render(imageSize)
 

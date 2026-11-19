@@ -6,6 +6,11 @@
 
 GPU: NVIDIA RTX A1000 6GB Laptop GPU
 
+Exception: `glass-gold-cylinder.png` was re-rendered with the optix-jni change of optix-jni#132
+(the glass sphere's shadow without caustics is darker, 2093 of 76800 pixels differ around the
+sphere's shadow, by up to 43 levels); the constant ambient path itself did not change. It is the
+current renderer's output, not b13c283's.
+
 They are not tolerance-compared references: a change here means the constant path drifted. Byte
 equality holds on the GPU they were rendered on, named in the `GPU:` line above
 (`nvidia-smi --query-gpu=name --format=csv,noheader`); `AmbientOcclusionSuite` reads that line and

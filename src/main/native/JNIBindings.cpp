@@ -1545,6 +1545,44 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsSta
     JNI_CATCH_UNKNOWN_THROW_RET(nullptr)
 }
 
+/**
+ * Get how the caustics hit-point buffer was used by the last caustics render.
+ * Returns a HitPointStats(collected, dropped) object, or null when caustics are not enabled.
+ */
+JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getHitPointStatsNative(JNIEnv* env, jobject obj) {
+    try {
+        LifecycleShared lifecycle(g_lifecycle);
+        OptiXWrapper* wrapper = liveWrapper(env, obj);
+        if (wrapper == nullptr) {
+            return nullptr;
+        }
+
+        CausticsStats stats;
+        if (!wrapper->getCausticsStats(&stats)) {
+            return nullptr;  // Caustics not enabled or no stats available
+        }
+
+        jclass statsClass = env->FindClass("io/github/lene/optix/HitPointStats");
+        if (statsClass == nullptr) {
+            OPTIX_LOG(ERROR) << "[JNI] Failed to find HitPointStats class" << std::endl;
+            return nullptr;
+        }
+        jmethodID constructor = env->GetMethodID(statsClass, "<init>", "(JJ)V");
+        if (constructor == nullptr) {
+            OPTIX_LOG(ERROR) << "[JNI] Failed to find HitPointStats constructor" << std::endl;
+            return nullptr;
+        }
+        return env->NewObject(statsClass, constructor,
+            static_cast<jlong>(stats.hit_points_collected),
+            static_cast<jlong>(stats.hit_points_dropped));
+    } catch (const std::exception& e) {
+        OPTIX_LOG(ERROR) << "[JNI] Error in getHitPointStats: " << e.what() << std::endl;
+        throwOptiXFailure(env, e);
+        return nullptr;
+    }
+    JNI_CATCH_UNKNOWN_THROW_RET(nullptr)
+}
+
 JNIEXPORT void JNICALL Java_io_github_lene_optix_OptiXRenderer_disposeNative(JNIEnv* env, jobject obj) {
     try {
         LifecycleExclusive lifecycle(g_lifecycle);

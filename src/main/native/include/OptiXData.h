@@ -44,6 +44,7 @@ namespace RayTracingConstants {
     constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Offset to avoid self-intersection
     constexpr float SHADOW_RAY_OFFSET = 0.001f;        // Offset for shadow ray origin (avoid shadow acne)
     constexpr float SHADOW_MIN_TRANSMISSION = 1e-6f;   // Keeps a surface's optical depth finite
+    constexpr float SHADOW_OPAQUE_ALPHA_EPSILON = 1e-4f; // A material alpha this close to 1 casts a full shadow
     constexpr float FULLY_PRESENT_COVERAGE = 1.0f - 1e-4f; // From here an instance's coverage counts as 1 (opaque)
 
     // Color conversion (float [0,1] to byte [0,255])
@@ -99,7 +100,6 @@ namespace RayTracingConstants {
     constexpr float AA_DEFAULT_THRESHOLD = 0.1f;    // Default color difference threshold
 
     // Progressive Photon Mapping (Caustics)
-    constexpr int MAX_HIT_POINTS = 2000000;         // Maximum stored hit points for caustics
     constexpr int DEFAULT_PHOTONS_PER_ITER = 100000; // Photons emitted per PPM iteration
     constexpr int DEFAULT_CAUSTICS_ITERATIONS = 10;  // Number of PPM iterations
     constexpr float DEFAULT_INITIAL_RADIUS = 1.0f;   // Initial photon gather radius
@@ -113,6 +113,14 @@ namespace RayTracingConstants {
     constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.1f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
+    constexpr size_t CAUSTICS_GRID_CELLS =
+        static_cast<size_t>(CAUSTICS_GRID_RESOLUTION) * CAUSTICS_GRID_RESOLUTION * CAUSTICS_GRID_RESOLUTION;
+    // The grid buffer is the sorted array of hit point indices (grid_scatter writes one entry per
+    // hit point), so it needs an entry per hit point, not per cell: above 256^3 = 16,777,216
+    // pixels (4096x4096) the hit points outnumber the cells.
+    constexpr size_t causticsGridEntries(size_t hit_point_capacity) {
+        return hit_point_capacity > CAUSTICS_GRID_CELLS ? hit_point_capacity : CAUSTICS_GRID_CELLS;
+    }
     // Maximum surface interactions of one photon. A ray through a level-2 sponge crosses up to a
     // dozen thin walls, and ten cut off 12.5% of the photons that hit it (a CPU replica of the walk
     // reaches 0.65 of them to the floor at ten, 0.71 at fifty: menger#150); pbrt's twin used 50.
@@ -154,6 +162,16 @@ namespace MaterialConstants {
     constexpr float IOR_REFRACTIVE_MIN = 1.05f;
 }
 
+// A refractive object's shadow without caustics (optix-jni#132)
+namespace GlassShadowConstants {
+    // The share of the light a refractive object lets through that stays inside its shadow;
+    // the rest is bent out of it, where a straight shadow ray cannot put it (caustics would).
+    // Measured against pbrt-v4: 0.60 on a level-2 glass sponge, 0.59 on a cube, 0.08 to 0.82 on a
+    // sphere (a lens: where its focus falls decides). Fixed, not per material: accepted by the user
+    // 2026-11-19 (lenses use caustics). See CHANGELOG, Unreleased.
+    constexpr float RETENTION = 0.6f;
+}
+
 // Default PBR material values, for surfaces given no material
 namespace MaterialDefaults {
     constexpr float DEFAULT_ROUGHNESS = 0.5f;  // Default middle roughness (0=mirror, 1=diffuse)
@@ -183,6 +201,10 @@ namespace SBTConstants {
 
     // Payload 3 of a shadow ray: flags, set by the tracer, read by the shadow programs
     constexpr unsigned int SHADOW_FLAG_PHOTON_LIGHT = 1u;  // The ray goes to the light caustic photons are emitted from
+    // The ray goes to a light with caustics off: glass bends part of that light out of the shadow
+    // (optix-jni#132), so a refractive occluder is charged for it (GlassShadowConstants::RETENTION)
+    constexpr unsigned int SHADOW_FLAG_GLASS_BENDS_LIGHT = 2u;
+    constexpr unsigned int SHADOW_FLAG_CROSSED_GLASS = 4u;  // Set by a shadow any-hit that crossed such glass
 
     // SBT indices
     constexpr unsigned int MISS_PRIMARY = 0;               // Primary ray miss shader
@@ -415,6 +437,10 @@ struct CausticsStats {
     unsigned long long photons_deposited;     // Photons that deposited energy on hit points
     unsigned long long hit_points_with_flux;  // Hit points that received any flux
 
+    // Hit-point capacity (set by the host after the hit-point pass, not by a kernel)
+    unsigned long long hit_points_collected;  // Diffuse hits that took a slot in the hit-point buffer
+    unsigned long long hit_points_dropped;    // Diffuse hits that found the buffer full (no caustics); 0 when sized per pixel
+
     // C5: Energy conservation
     double total_flux_emitted;                // Sum of emitted photon flux (RGB summed)
     double total_flux_deposited;              // Sum of deposited flux on hit points
@@ -464,6 +490,7 @@ struct CausticsParams {
     // GPU buffers (set by host before launch)
     HitPoint* hit_points;            // Array of hit points on diffuse surfaces
     unsigned int* num_hit_points;    // Pointer to GPU counter (for atomicAdd)
+    unsigned int hit_point_capacity; // Slots in hit_points (one per pixel: the hit-point pass takes at most one each)
     unsigned int* grid;              // Spatial hash grid (cell -> first hit point index)
     unsigned int* grid_counts;       // Number of hit points per cell
     unsigned int* grid_offsets;      // Prefix sum for sorted hit point indices

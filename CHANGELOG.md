@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.6] - 2026-11-19
+
+### Fixed
+
+- Caustics at 1080p and above no longer drop the hit points past a fixed 2,000,000
+  (lene/optix-jni#129). The hit-point buffer held 2,000,000 hit points, fewer than the 2,073,600
+  pixels of a 1080p frame (8.3 million at 4K): in a frame where every pixel hits a diffuse surface
+  the last pixels got no caustics and the renderer logged "exceeds MAX_HIT_POINTS". The hit-point
+  pass takes at most one slot per pixel (antialiasing takes none), so the buffer now holds
+  width x height hit points, reallocated when the resolution changes: 149 MB at 1080p, 597 MB at 4K
+  (72 bytes per hit point), and less than before below 2,000,000 pixels. Images under the old limit
+  do not change. The new `getHitPointStats` returns a `HitPointStats(collected, dropped)`: the hit
+  points that got a slot and those that found the buffer full. The buffer of sorted hit point
+  indices grows with the hit points above 4096x4096 pixels (it was sized by the 256^3 grid cells,
+  which a frame with more pixels than that would have overrun). The C++ constant
+  `RayTracingConstants::MAX_HIT_POINTS` is gone.
+
+### Changed
+
+- With caustics off, the shadow of a refractive object (IOR above 1.05) is the physical one, not
+  the straight line's (lene/optix-jni#132). A shadow ray let 0.97 of the light an opaque level-2
+  glass sponge blocks through (plain shadows) or 0.65 (transparent shadows) where pbrt-v4 returns
+  0.39 into the shadow footprint, because the light glass bends away landed in the shadow anyway.
+  A shadow ray to a light now passes refractive objects (plain shadows too: the any-hit programs of
+  spheres and triangle meshes) and is charged their Fresnel and absorption losses, the transparent
+  shadows model, and once `GlassShadowConstants::RETENTION` = 0.6 of what is left: the share that
+  stays in the shadow; the rest was bent out of it, where only photons could say where it lands.
+  The constant is measured, not derived, and fixed (accepted by the user 2026-11-19; for lenses use caustics): pbrt returns 0.60 and 0.59 of the straight line's light
+  into the footprint of a level-2 sponge and a cube (0.82 for a sphere, which focuses the light:
+  its shadow depends on how far the floor is from the focus, 0.08 to 0.82, and no constant fits).
+  With caustics on nothing changes (the shadow to the photon light stays opaque, other lights and
+  ambient occlusion keep their shadows); ambient occlusion and image-based light keep their
+  transparent shadows; cones, cylinders and curves of glass are not covered yet. A flat glass
+  slab, which bends nothing out of its footprint, gets too dark a shadow without caustics (0.54
+  where Fresnel allows 0.9).
+
 ## [0.5.5] - 2026-11-17
 
 ### Fixed
@@ -1099,6 +1135,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.6]: https://github.com/lene/optix-jni/compare/0.5.5...0.5.6
 [0.5.5]: https://github.com/lene/optix-jni/compare/0.5.4...0.5.5
 [0.5.4]: https://github.com/lene/optix-jni/compare/0.5.3...0.5.4
 [0.5.3]: https://github.com/lene/optix-jni/compare/0.5.2...0.5.3

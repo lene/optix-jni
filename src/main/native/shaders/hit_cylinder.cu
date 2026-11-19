@@ -321,7 +321,7 @@ extern "C" __global__ void __anyhit__cylinder_shadow() {
     getInstanceMaterial(material_color, material_ior);
 
     const float alpha = shadowOpacity(material_color.w, material_ior);
-    if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
+    if (alpha >= 1.0f - RayTracingConstants::SHADOW_OPAQUE_ALPHA_EPSILON) return;  // Opaque: accept → closesthit sets full shadow
 
     accumulateTransparentShadow(material_color, alpha, material_ior, getInstanceCoverage());
     optixIgnoreIntersection();
