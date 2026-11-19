@@ -1495,10 +1495,10 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsSta
             return nullptr;
         }
 
-        // Constructor signature: (JJJJJJJJDDDDFFFFFFFFF)V
-        // 8 longs + 4 doubles + 9 floats
+        // Constructor signature: (JJJJJJJJJJDDDDFFFFFFFFF)V
+        // 10 longs + 4 doubles + 9 floats
         jmethodID constructor = env->GetMethodID(statsClass, "<init>",
-            "(JJJJJJJJDDDDFFFFFFFFF)V");
+            "(JJJJJJJJJJDDDDFFFFFFFFF)V");
         if (constructor == nullptr) {
             OPTIX_LOG(ERROR) << "[JNI] Failed to find CausticsStats constructor" << std::endl;
             return nullptr;
@@ -1517,6 +1517,9 @@ JNIEXPORT jobject JNICALL Java_io_github_lene_optix_OptiXRenderer_getCausticsSta
             // C4: Deposition
             static_cast<jlong>(stats.photons_deposited),
             static_cast<jlong>(stats.hit_points_with_flux),
+            // Hit-point capacity
+            static_cast<jlong>(stats.hit_points_collected),
+            static_cast<jlong>(stats.hit_points_dropped),
             // C5: Energy
             static_cast<jdouble>(stats.total_flux_emitted),
             static_cast<jdouble>(stats.total_flux_deposited),

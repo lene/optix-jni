@@ -52,13 +52,13 @@ void BufferManager::ensureGASBuffer(const OptiXContext::GASBuildResult& gasResul
     gas_buffer = gasResult.gas_buffer;
 }
 
-void BufferManager::ensureCausticsBuffers() {
+void BufferManager::ensureCausticsBuffers(int width, int height) {
     const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
                             RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
                             RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
 
     // RAII ensures cleanup on exception; each buffer is checked against its own size
-    hit_points_buffer.allocate(RayTracingConstants::MAX_HIT_POINTS);
+    hit_points_buffer.allocate(static_cast<size_t>(width) * static_cast<size_t>(height));
     num_hit_points_buffer.allocate(1);
     caustics_grid_buffer.allocate(grid_size);
     caustics_grid_counts_buffer.allocate(grid_size);

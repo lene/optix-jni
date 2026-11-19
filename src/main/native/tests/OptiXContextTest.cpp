@@ -452,7 +452,6 @@ TEST(CausticsDataTest, CausticsParamsContainsExpectedFields) {
 
 TEST(CausticsDataTest, DefaultConstantsAreReasonable) {
     // Verify default constants from RayTracingConstants
-    EXPECT_GT(RayTracingConstants::MAX_HIT_POINTS, 0);
     EXPECT_GT(RayTracingConstants::DEFAULT_PHOTONS_PER_ITER, 0);
     EXPECT_GT(RayTracingConstants::DEFAULT_CAUSTICS_ITERATIONS, 0);
     EXPECT_GT(RayTracingConstants::DEFAULT_INITIAL_RADIUS, 0.0f);

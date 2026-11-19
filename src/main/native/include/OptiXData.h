@@ -100,7 +100,6 @@ namespace RayTracingConstants {
     constexpr float AA_DEFAULT_THRESHOLD = 0.1f;    // Default color difference threshold
 
     // Progressive Photon Mapping (Caustics)
-    constexpr int MAX_HIT_POINTS = 2000000;         // Maximum stored hit points for caustics
     constexpr int DEFAULT_PHOTONS_PER_ITER = 100000; // Photons emitted per PPM iteration
     constexpr int DEFAULT_CAUSTICS_ITERATIONS = 10;  // Number of PPM iterations
     constexpr float DEFAULT_INITIAL_RADIUS = 1.0f;   // Initial photon gather radius
@@ -430,6 +429,10 @@ struct CausticsStats {
     unsigned long long photons_deposited;     // Photons that deposited energy on hit points
     unsigned long long hit_points_with_flux;  // Hit points that received any flux
 
+    // Hit-point capacity (set by the host after the hit-point pass, not by a kernel)
+    unsigned long long hit_points_collected;  // Diffuse hits that took a slot in the hit-point buffer
+    unsigned long long hit_points_dropped;    // Diffuse hits that found the buffer full (no caustics); 0 when sized per pixel
+
     // C5: Energy conservation
     double total_flux_emitted;                // Sum of emitted photon flux (RGB summed)
     double total_flux_deposited;              // Sum of deposited flux on hit points
@@ -479,6 +482,7 @@ struct CausticsParams {
     // GPU buffers (set by host before launch)
     HitPoint* hit_points;            // Array of hit points on diffuse surfaces
     unsigned int* num_hit_points;    // Pointer to GPU counter (for atomicAdd)
+    unsigned int hit_point_capacity; // Slots in hit_points (one per pixel: the hit-point pass takes at most one each)
     unsigned int* grid;              // Spatial hash grid (cell -> first hit point index)
     unsigned int* grid_counts;       // Number of hit points per cell
     unsigned int* grid_offsets;      // Prefix sum for sorted hit point indices

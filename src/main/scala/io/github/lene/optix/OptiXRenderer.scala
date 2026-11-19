@@ -116,6 +116,9 @@ case class CausticsStats(
   // C4: Deposition
   photonsDeposited: Long,
   hitPointsWithFlux: Long,
+  // Hit-point capacity: diffuse hits that got a slot, and those that found the buffer full
+  hitPointsCollected: Long,
+  hitPointsDropped: Long,
   // C5: Energy conservation
   totalFluxEmitted: Double,
   totalFluxDeposited: Double,

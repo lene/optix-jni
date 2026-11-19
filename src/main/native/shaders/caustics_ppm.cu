@@ -347,7 +347,7 @@ extern "C" __global__ void __raygen__hitpoints() {
             __uint_as_float(pp6), __uint_as_float(pp7), __uint_as_float(pp8));
 
         const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
-        if (hp_idx < MAX_HIT_POINTS) {
+        if (hp_idx < params.caustics.hit_point_capacity) {
             HitPoint& hp = params.caustics.hit_points[hp_idx];
             initializeHitPoint(hp, hit_pos, hit_normal, hit_albedo, idx);
         }
@@ -381,7 +381,7 @@ extern "C" __global__ void __raygen__hitpoints() {
     if (nearest_plane >= 0) {
         const float3 plane_hit = cam_eye + ray_direction * nearest_t;
         const unsigned int hp_idx = atomicAdd(params.caustics.num_hit_points, 1);
-        if (hp_idx < MAX_HIT_POINTS) {
+        if (hp_idx < params.caustics.hit_point_capacity) {
             HitPoint& hp = params.caustics.hit_points[hp_idx];
             initializeHitPoint(hp, plane_hit, params.planes[nearest_plane].axis, nearest_plane, idx);
         }
@@ -398,12 +398,12 @@ extern "C" __global__ void __raygen__hitpoints() {
  * Launch with dimensions = (num_hit_points, 1).
  */
 // CR-1: the hit-point counter is bumped before the per-thread capacity check, so it can
-// exceed the buffer cap on dense scenes. Treat MAX_HIT_POINTS as the hard upper bound (the
-// host clamps launch widths to match; this guards the device side against any pass launched
-// from the raw counter and keeps hit_points[idx] in bounds).
+// exceed the buffer capacity. Treat hit_point_capacity as the hard upper bound (the host clamps
+// launch widths to match; this guards the device side against any pass launched from the raw
+// counter and keeps hit_points[idx] in bounds).
 static __forceinline__ __device__ unsigned int clampedHitPointCount() {
     const unsigned int n = *params.caustics.num_hit_points;
-    return n < MAX_HIT_POINTS ? n : MAX_HIT_POINTS;
+    return n < params.caustics.hit_point_capacity ? n : params.caustics.hit_point_capacity;
 }
 
 extern "C" __global__ void __raygen__grid_count() {

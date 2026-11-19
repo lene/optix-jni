@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Caustics at 1080p and above no longer drop the hit points past a fixed 2,000,000
+  (lene/optix-jni#129). The hit-point buffer held 2,000,000 hit points, fewer than the 2,073,600
+  pixels of a 1080p frame (8.3 million at 4K): in a frame where every pixel hits a diffuse surface
+  the last pixels got no caustics and the renderer logged "exceeds MAX_HIT_POINTS". The hit-point
+  pass takes at most one slot per pixel (antialiasing takes none), so the buffer now holds
+  width x height hit points, reallocated when the resolution changes: 149 MB at 1080p, 597 MB at 4K
+  (72 bytes per hit point), and less than before below 2,000,000 pixels. Images under the old limit
+  do not change. `CausticsStats` gains `hitPointsCollected` and `hitPointsDropped`; the C++
+  constant `RayTracingConstants::MAX_HIT_POINTS` is gone.
+
 ### Changed
 
 - With caustics off, the shadow of a refractive object (IOR above 1.05) is the physical one, not

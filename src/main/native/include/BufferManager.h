@@ -31,7 +31,9 @@ public:
     void ensureGASBuffer(const OptiXContext::GASBuildResult& gasResult);
 
     // Caustics buffer management
-    void ensureCausticsBuffers();
+    // The hit-point pass launches one thread per pixel and each takes at most one slot, so the
+    // hit-point buffer holds width * height hit points (antialiasing does not take slots).
+    void ensureCausticsBuffers(int width, int height);
     void freeCausticsBuffers();
 
     // Initialize buffers before render
@@ -54,6 +56,9 @@ public:
 
     CUdeviceptr getHitPointsBuffer() const { return hit_points_buffer.get(); }
     CUdeviceptr getNumHitPointsBuffer() const { return num_hit_points_buffer.get(); }
+    unsigned int getHitPointCapacity() const {
+        return static_cast<unsigned int>(hit_points_buffer.sizeBytes() / sizeof(HitPoint));
+    }
     CUdeviceptr getCausticsGridBuffer() const { return caustics_grid_buffer.get(); }
     CUdeviceptr getCausticsGridCountsBuffer() const { return caustics_grid_counts_buffer.get(); }
     CUdeviceptr getCausticsGridOffsetsBuffer() const { return caustics_grid_offsets_buffer.get(); }
