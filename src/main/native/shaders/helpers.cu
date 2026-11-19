@@ -104,6 +104,37 @@ __device__ bool causticsCarryTransmittedLight(float ior) {
         && ior > MaterialConstants::IOR_REFRACTIVE_MIN;
 }
 
+/**
+ * Without caustics, a shadow ray is a straight line, but glass bends the light that crosses it:
+ * the share it bends out of the shadow lands elsewhere, and only photons could say where
+ * (optix-jni#132). A shadow ray to a light, with caustics off, carries SHADOW_FLAG_GLASS_BENDS_LIGHT;
+ * it is then charged the Fresnel and absorption losses of the glass it crosses and, once, the
+ * light bent away (GlassShadowConstants::RETENTION). Ambient-occlusion rays and rays with caustics
+ * on do not carry it. Glass is a refractive (IOR above IOR_REFRACTIVE_MIN) object that is not
+ * opaque and not a thin film: an opaque object blocks the light, and a film is a sheet that light
+ * passes straight through (optix-jni#113), neither bends it out of its shadow.
+ * Only valid in a shadow program (reads the ray's payload 3 and the hit instance).
+ */
+__device__ bool glassBendsLight(float alpha, float ior) {
+    if ((optixGetPayload_3() & SBTConstants::SHADOW_FLAG_GLASS_BENDS_LIGHT) == 0u) return false;
+    if (ior <= MaterialConstants::IOR_REFRACTIVE_MIN || alpha >= 1.0f - RayTracingConstants::SHADOW_OPAQUE_ALPHA_EPSILON)
+        return false;
+    const bool is_film = params.use_ias && params.instance_materials
+        && params.instance_materials[optixGetInstanceId()].film_thickness > 0.0f;
+    return !is_film;
+}
+
+/** The ray crossed glass that bends the light: __miss__shadow charges the bent-away share. */
+__device__ void markGlassCrossed() {
+    optixSetPayload_3(optixGetPayload_3() | SBTConstants::SHADOW_FLAG_CROSSED_GLASS);
+}
+
+/** Optical depth of the light a ray's glass bent out of the shadow, 0 if it crossed none. */
+__device__ float bentLightDepth() {
+    return (optixGetPayload_3() & SBTConstants::SHADOW_FLAG_CROSSED_GLASS) != 0u
+        ? -logf(GlassShadowConstants::RETENTION) : 0.0f;
+}
+
 /** The opacity of an occluder's shadow, `alpha` unless caustics carry the light through it. */
 __device__ float shadowOpacity(float alpha, float ior) {
     return causticsCarryTransmittedLight(ior) ? 1.0f : alpha;
@@ -170,18 +201,26 @@ __device__ void setShadowPayload(float alpha, const float4& /* color */) {
  * @param to_photon_light True when the ray goes to the light caustic photons are emitted from,
  *        whose light through a refractive object the photons already carry (see
  *        causticsCarryTransmittedLight)
+ * @param to_light_source False for a ray toward a distributed light (the sky of an environment
+ *        map): glass bends light out of its shadow but other directions of the sky bend as much
+ *        into it, so it keeps the plain transparent shadow (see glassBendsLight)
  * @return float3 per-channel shadow factors in range [0, 1] where 0=fully shadowed, 1=fully lit
  */
 __device__ float3 traceShadowRay(
     const float3& hit_point,
     const float3& normal,
     const float3& light_dir,
-    bool to_photon_light = false
+    bool to_photon_light = false,
+    bool to_light_source = true
 ) {
     const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
     unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0;
-    unsigned int shadow_p3 = (to_photon_light && params.caustics.enabled)
-        ? SBTConstants::SHADOW_FLAG_PHOTON_LIGHT : 0u;
+    unsigned int shadow_p3 = 0u;
+    if (params.caustics.enabled) {
+        if (to_photon_light) shadow_p3 = SBTConstants::SHADOW_FLAG_PHOTON_LIGHT;
+    } else if (to_light_source) {
+        shadow_p3 = SBTConstants::SHADOW_FLAG_GLASS_BENDS_LIGHT;
+    }
 
     optixTrace(
         params.handle,
@@ -668,7 +707,7 @@ static __device__ float3 iblCandidateLighting(
 
     const float3 fully_lit = make_float3(1.0f, 1.0f, 1.0f);
     const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
-        ? traceShadowRay(hit_point, normal, dir)
+        ? traceShadowRay(hit_point, normal, dir, false, false)
         : fully_lit;
     return radiance * shadow_factor * (cos_theta / pdf_sum);
 }
@@ -2598,11 +2637,17 @@ __device__ float surfaceTransmissionAt(float cos_air, float ior) {
 }
 
 // Beer-Lambert extinction per unit length, as applyBeerLambertAbsorption uses for camera rays.
+// Without transparent shadows the shadow is not coloured: the same extinction in every channel,
+// the mean of the three (glass whose shadow reaches here without that option is refractive,
+// optix-jni#132).
 __device__ float3 shadowExtinction(const float4& color) {
     const float k = color.w * BEER_LAMBERT_ABSORPTION_SCALE;
-    return make_float3(-logf(fmaxf(color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k,
-                       -logf(fmaxf(color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k,
-                       -logf(fmaxf(color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k);
+    const float3 sigma = make_float3(-logf(fmaxf(color.x, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k,
+                                     -logf(fmaxf(color.y, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k,
+                                     -logf(fmaxf(color.z, COLOR_CHANNEL_MIN_SAFE_VALUE)) * k);
+    if (params.transparent_shadows_enabled) return sigma;
+    const float grey = (sigma.x + sigma.y + sigma.z) / 3.0f;
+    return make_float3(grey, grey, grey);
 }
 
 __device__ void accumulateTransparentShadow(float4 color, float fallback_alpha, float ior,
@@ -2610,7 +2655,9 @@ __device__ void accumulateTransparentShadow(float4 color, float fallback_alpha, 
     color = shadowHitColour(color);
     const float chord = objectMeanChord();
     if (ior <= 1.0f || chord <= 0.f) {
-        accumulateShadowAttenuation(fallback_alpha, color);
+        // Not coloured without transparent shadows: the opacity alone, as the first-hit shadow had it.
+        const float4 tint = params.transparent_shadows_enabled ? color : make_float4(0.f, 0.f, 0.f, 1.f);
+        accumulateShadowAttenuation(fallback_alpha, tint);
         return;
     }
     const float surfaces = surfaceTransmission(ior) * surfaceTransmission(ior);

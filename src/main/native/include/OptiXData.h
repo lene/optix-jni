@@ -44,6 +44,7 @@ namespace RayTracingConstants {
     constexpr float CONTINUATION_RAY_OFFSET = 0.001f;  // Offset to avoid self-intersection
     constexpr float SHADOW_RAY_OFFSET = 0.001f;        // Offset for shadow ray origin (avoid shadow acne)
     constexpr float SHADOW_MIN_TRANSMISSION = 1e-6f;   // Keeps a surface's optical depth finite
+    constexpr float SHADOW_OPAQUE_ALPHA_EPSILON = 1e-4f; // A material alpha this close to 1 casts a full shadow
     constexpr float FULLY_PRESENT_COVERAGE = 1.0f - 1e-4f; // From here an instance's coverage counts as 1 (opaque)
 
     // Color conversion (float [0,1] to byte [0,255])
@@ -154,6 +155,16 @@ namespace MaterialConstants {
     constexpr float IOR_REFRACTIVE_MIN = 1.05f;
 }
 
+// A refractive object's shadow without caustics (optix-jni#132)
+namespace GlassShadowConstants {
+    // The share of the light a refractive object lets through that stays inside its shadow;
+    // the rest is bent out of it, where a straight shadow ray cannot put it (caustics would).
+    // Measured against pbrt-v4: 0.60 on a level-2 glass sponge, 0.59 on a cube, 0.08 to 0.82 on a
+    // sphere (a lens: where its focus falls decides). Fixed, not per material: accepted by the user
+    // 2026-11-19 (lenses use caustics). See CHANGELOG, Unreleased.
+    constexpr float RETENTION = 0.6f;
+}
+
 // Default PBR material values, for surfaces given no material
 namespace MaterialDefaults {
     constexpr float DEFAULT_ROUGHNESS = 0.5f;  // Default middle roughness (0=mirror, 1=diffuse)
@@ -183,6 +194,10 @@ namespace SBTConstants {
 
     // Payload 3 of a shadow ray: flags, set by the tracer, read by the shadow programs
     constexpr unsigned int SHADOW_FLAG_PHOTON_LIGHT = 1u;  // The ray goes to the light caustic photons are emitted from
+    // The ray goes to a light with caustics off: glass bends part of that light out of the shadow
+    // (optix-jni#132), so a refractive occluder is charged for it (GlassShadowConstants::RETENTION)
+    constexpr unsigned int SHADOW_FLAG_GLASS_BENDS_LIGHT = 2u;
+    constexpr unsigned int SHADOW_FLAG_CROSSED_GLASS = 4u;  // Set by a shadow any-hit that crossed such glass
 
     // SBT indices
     constexpr unsigned int MISS_PRIMARY = 0;               // Primary ray miss shader

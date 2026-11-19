@@ -11,6 +11,7 @@ import io.github.lene.optix.ShadowValidation.detectDarkestRegion
 import io.github.lene.optix.ShadowValidation.regionBrightness
 import io.github.lene.optix.ThresholdConstants.ACHROMATIC_CHANNEL_TOLERANCE
 import io.github.lene.optix.ThresholdConstants.DEFAULT_SHADOW_GRID
+import io.github.lene.optix.ThresholdConstants.GLASS_SHADOW_RETENTION
 import io.github.lene.optix.ThresholdConstants.MIN_COLOR_TINT_DIFFERENCE
 import io.github.lene.optix.ThresholdConstants.STANDARD_IMAGE_SIZE
 import io.github.lene.optix.ThresholdConstants.TRANSPARENT_OPAQUE_BRIGHTNESS_RATIO
@@ -404,7 +405,9 @@ class ColoredShadowSuite
       f"Two-sphere shadow B=$twoSphereAvgB%.1f should be darker than " +
       f"one-sphere shadow B=$oneSphereAvgB%.1f (red sphere attenuates B in Phase 2)"
     ) {
-      (oneSphereAvgB - twoSphereAvgB) should be > MIN_COLOR_TINT_DIFFERENCE
+      // The light the glass bends out of the shadow is charged once per ray (optix-jni#132), so
+      // what the second sphere's tint adds is scaled by it.
+      (oneSphereAvgB - twoSphereAvgB) should be > MIN_COLOR_TINT_DIFFERENCE * GLASS_SHADOW_RETENTION
     }
 
   // ========== Test 12: Accumulation is order-independent ==========

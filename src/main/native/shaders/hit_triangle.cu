@@ -615,19 +615,23 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     // A partly present instance (setInstanceCoverage) casts a correspondingly weaker shadow.
     const float coverage = getInstanceCoverage();
 
+    float4 material_color;
+    float material_ior;
+    getInstanceMaterial(material_color, material_ior);
+
+    // Glass that bends the light of the ray's light (caustics off, optix-jni#132) casts the
+    // physical shadow of the transparent-shadows model whether or not that mode is on.
+    const bool bends_light = glassBendsLight(material_color.w, material_ior);
+
     // Without transparent shadows the first hit decides (closesthit), except for a partly
     // present instance: stopping the ray there would charge it its coverage and never test what
     // lies behind it. The hole caps of a fractional sponge fade out this way, and light came
     // through the tunnel walls behind them (menger#57).
     const bool partly_present = coverage < FULLY_PRESENT_COVERAGE;
-    if (!params.transparent_shadows_enabled && !partly_present) return;
+    if (!params.transparent_shadows_enabled && !partly_present && !bends_light) return;
 
     // A back-face hit is the ray leaving the mesh.
     const bool front_face = optixGetHitKind() != OPTIX_HIT_KIND_TRIANGLE_BACK_FACE;
-
-    float4 material_color;
-    float material_ior;
-    getInstanceMaterial(material_color, material_ior);
 
     const float alpha = shadowOpacity(material_color.w, material_ior) * coverage;
     if (alpha >= 1.0f - 1e-4f) {  // Opaque: a front face is accepted, closesthit shadows fully
@@ -635,7 +639,7 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
         return;
     }
 
-    if (!params.transparent_shadows_enabled) {
+    if (!params.transparent_shadows_enabled && !bends_light) {
         // What the first-hit shadow charged: the surface's opacity, the same in every channel and
         // for either face (a hole cap is a film; the ray crosses each one), but the ray goes on.
         accumulateShadowAttenuation(alpha, make_float4(0.f, 0.f, 0.f, 1.f));
@@ -653,6 +657,7 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     if (!accumulateMeshShadowPath(material_color, material_ior, coverage, geom.entering, cos_air)
         && front_face)
         accumulateTransparentShadow(material_color, alpha, material_ior, coverage);
+    if (bends_light) markGlassCrossed();
     optixIgnoreIntersection();
 }
 

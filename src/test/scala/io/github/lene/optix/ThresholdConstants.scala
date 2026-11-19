@@ -142,5 +142,10 @@ object ThresholdConstants:
   // Minimum per-channel difference to confirm color tinting in shadow region
   val MIN_COLOR_TINT_DIFFERENCE = 5.0
 
+  // GlassShadowConstants::RETENTION (OptiXData.h): the share of the light a refractive object lets
+  // through that stays in its shadow when caustics are off (optix-jni#132). A shadow ray is charged
+  // it once, however many glass objects it crosses, so what a second object adds is scaled by it.
+  val GLASS_SHADOW_RETENTION = 0.6
+
   // Maximum per-channel spread for "achromatic" (no color tint) assertion
   val ACHROMATIC_CHANNEL_TOLERANCE = 3.0
