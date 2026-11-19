@@ -288,8 +288,11 @@ extern "C" __global__ void __closesthit__cylinder() {
     const SpecularLobe lobe = material_color.w >= ALPHA_FULLY_OPAQUE_THRESHOLD
         ? specularLobe(ray_direction, specular, roughness, metallic)
         : noSpecularLobe();
+    // Shaded as a solid whatever the material; a glass material is a glass receiver all the same.
+    const ShadowReceiver receiver =
+        shadowReceiverOf(material_color.w, material_ior, film_thickness);
     const float3 lit_color = litSurfaceColor(
-        material_color, calculateSurfaceLighting(hit_point, normal, lobe));
+        material_color, calculateSurfaceLighting(hit_point, normal, lobe, false, false, receiver));
 
     const float final_r = lit_color.x * RayTracingConstants::COLOR_SCALE_FACTOR;
     const float final_g = lit_color.y * RayTracingConstants::COLOR_SCALE_FACTOR;

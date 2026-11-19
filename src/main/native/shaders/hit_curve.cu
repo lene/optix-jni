@@ -81,10 +81,11 @@ extern "C" __global__ void __closesthit__curve() {
     writeDenoiseGuides(material_color, normal);
 
     const float alpha = material_color.w;
+    const ShadowReceiver receiver = shadowReceiverOf(alpha, material_ior, film_thickness);
 
     if (alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
         if (!handleFullyTransparent(hit_point, ray_direction, depth))
-            handleFullyOpaque(hit_point, normal, material_color, emission);  // nesting limit
+            handleFullyOpaque(hit_point, normal, material_color, emission, false, receiver);  // nesting limit
         return;
     }
 
@@ -96,14 +97,15 @@ extern "C" __global__ void __closesthit__curve() {
             return;
         }
         handleFullyOpaque(hit_point, normal, material_color,
-                          specularLobe(ray_direction, specular, roughness, metallic), emission);
+                          specularLobe(ray_direction, specular, roughness, metallic), emission,
+                          false, receiver);
         return;
     }
 
     // Already the result of a bailout bounce — terminate here, do not trace again
     // (Sprint 36 H3.2; see helpers.cu handleMetallicOpaque for the full rationale).
     if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
-        handleFullyOpaque(hit_point, normal, material_color, emission);
+        handleFullyOpaque(hit_point, normal, material_color, emission, false, receiver);
         return;
     }
 

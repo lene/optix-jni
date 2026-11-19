@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A glass surface is no longer darkened by the retention of the glass shadow (lene/optix-jni#132).
+  0.5.6 charged every shadow ray to a light, caustics off, that crosses glass 0.6 of the light
+  that stays in the shadow, whatever the ray started on. A glass surface that is shaded by direct
+  light (a glass sponge's walls where the ray depth runs out, the bailout bounce; a cylinder, which
+  is shaded as a solid whatever its material) shadowed its neighbours' walls, so a glass sponge's
+  direct-light shading turned flat grey (the tesseract-sponge of level 1.5 in glass, 400x300: 35,527
+  pixels changed by more than 16 levels from 0.5.5 to 0.5.6). The retention was measured against a
+  diffuse floor, and pbrt's glass has no direct-light term at all. A shadow ray that starts on
+  glass (refractive, not opaque, not a thin film: the test the occluder uses) now casts and
+  receives the shadow it did in 0.5.5: no retention, the alpha opacity of the glass in its way with
+  plain shadows and its Fresnel and absorption losses with transparent shadows. Every other
+  surface (opaque of any IOR, metals, non-refractive tints, thin films) keeps the 0.5.6 shadow, so
+  the shadow on a diffuse floor does not change.
+
 ## [0.5.6] - 2026-11-19
 
 ### Fixed

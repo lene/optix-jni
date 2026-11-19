@@ -346,6 +346,7 @@ extern "C" __global__ void __closesthit__triangle() {
     writeDenoiseGuides(mesh_color, geom.normal);
 
     const float mesh_alpha = mesh_color.w;
+    const ShadowReceiver receiver = shadowReceiverOf(mesh_alpha, mesh_ior, film_thickness);
     // How much of this instance is present (setInstanceCoverage), separate from mesh_alpha:
     // for a refractive material alpha is Beer-Lambert absorption, so it can't fade an instance.
     const float instance_coverage = getInstanceCoverage();
@@ -353,7 +354,8 @@ extern "C" __global__ void __closesthit__triangle() {
     // Handle fully transparent triangles
     if (mesh_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
         if (!handleFullyTransparent(geom.hit_point, ray_direction, depth))
-            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, mesh_emission);  // nesting limit
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, mesh_emission, false,
+                              receiver);  // nesting limit
         return;
     }
 
@@ -368,7 +370,7 @@ extern "C" __global__ void __closesthit__triangle() {
             return;
         } else {
             // Fully non-metallic: diffuse shading and the dielectric highlight
-            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, lobe);
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, lobe, 0.0f, false, receiver);
             return;
         }
     }
@@ -417,7 +419,7 @@ extern "C" __global__ void __closesthit__triangle() {
     if (use_coverage_blend) {
         if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
             // At max depth, just render as opaque to avoid black cutoff
-            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, lobe);
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, lobe, 0.0f, false, receiver);
             return;
         }
 
@@ -432,7 +434,7 @@ extern "C" __global__ void __closesthit__triangle() {
                                  depth, diffuse_r, diffuse_g, diffuse_b, reflection_weight);
         else
             computeOpaqueColor(geom.hit_point, geom.normal, mesh_color, lobe,
-                               diffuse_r, diffuse_g, diffuse_b);
+                               diffuse_r, diffuse_g, diffuse_b, false, receiver);
 
         // Trace continuation ray through the face to get what lies behind
         unsigned int through_r = diffuse_r, through_g = diffuse_g, through_b = diffuse_b;
@@ -457,7 +459,8 @@ extern "C" __global__ void __closesthit__triangle() {
 
     if (use_refractive_coverage_blend) {
         if (depth >= static_cast<unsigned int>(params.max_ray_depth)) {
-            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color);
+            handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, noSpecularLobe(), 0.0f, false,
+                              receiver);
             return;
         }
 
@@ -542,7 +545,7 @@ extern "C" __global__ void __closesthit__triangle() {
     // Already the result of a bailout bounce — terminate here, do not trace again
     // (Sprint 36 H3.2; see helpers.cu handleMetallicOpaque for the full rationale).
     if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
-        handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, mesh_emission);
+        handleFullyOpaque(geom.hit_point, geom.normal, mesh_color, mesh_emission, false, receiver);
         return;
     }
 

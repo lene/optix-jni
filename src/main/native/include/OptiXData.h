@@ -205,7 +205,6 @@ namespace SBTConstants {
     // (optix-jni#132), so a refractive occluder is charged for it (GlassShadowConstants::RETENTION)
     constexpr unsigned int SHADOW_FLAG_GLASS_BENDS_LIGHT = 2u;
     constexpr unsigned int SHADOW_FLAG_CROSSED_GLASS = 4u;  // Set by a shadow any-hit that crossed such glass
-
     // SBT indices
     constexpr unsigned int MISS_PRIMARY = 0;               // Primary ray miss shader
     constexpr unsigned int MISS_SHADOW = 1;                // Shadow ray miss shader

@@ -168,7 +168,8 @@ extern "C" __global__ void __closesthit__plane() {
     const SpecularLobe lobe = material_alpha >= ALPHA_FULLY_OPAQUE_THRESHOLD
         ? specularLobe(ray_direction, specular, roughness, metallic)
         : noSpecularLobe();
-    handleFullyOpaque(hit_point, geometric_normal, material_color, lobe, emission, true);
+    handleFullyOpaque(hit_point, geometric_normal, material_color, lobe, emission, true,
+                      shadowReceiverOf(material_alpha, material_ior, film_thickness));
 }
 
 //==============================================================================
