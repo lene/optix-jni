@@ -218,6 +218,10 @@ class ObjectFrameSuite extends AnyFlatSpec with Matchers with RendererFixture:
     val surface = 1 - 0.5 * (rPerp * rPerp + rParl * rParl)
     val length = thickness * math.sqrt(2.0)
     // Without caustics the glass also bends part of the light out of its shadow (optix-jni#132).
+    // KNOWN INACCURATE for a flat slab: a parallel-sided slab bends nothing out of its shadow, so
+    // Fresnel and absorption alone (about 0.87 here) are physically right, and this pins 0.6 of
+    // that, which is measured on a sponge and a cube, not derived. This asserts the code does what
+    // the design says, not that 0.52 is what a window pane lets through.
     def expected(channel: Float) = ThresholdConstants.GLASS_SHADOW_RETENTION *
       surface * surface * math.exp(math.log(channel.toDouble) * glass.a * 5.0 * length)
     info(f"bare $bare, opaque $opaque, through $through")

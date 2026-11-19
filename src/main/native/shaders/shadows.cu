@@ -34,7 +34,7 @@ extern "C" __global__ void __anyhit__shadow() {
     }
 
     const float alpha = effectiveShadowAlpha(material_color.w, material_ior);
-    if (alpha >= 1.0f - 1e-4f) return;  // Opaque: accept → closesthit sets full shadow
+    if (alpha >= 1.0f - RayTracingConstants::SHADOW_OPAQUE_ALPHA_EPSILON) return;  // Opaque: accept → closesthit sets full shadow
 
     accumulateTransparentShadow(material_color, alpha, material_ior, getInstanceCoverage());
     if (bends_light) markGlassCrossed();

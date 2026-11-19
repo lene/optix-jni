@@ -37,6 +37,11 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val cameraTarget = Vector[3](2.5f, floorY, 0f)
   private val cameraFov = 30.0f
 
+  // T of a glass sphere or cube, measured 0.542 (RETENTION 0.6 times the Fresnel and absorption
+  // losses on the shadow ray's path). The band is narrow on purpose: a different RETENTION must fail.
+  private val measuredT = 0.54
+  private val measuredTTolerance = 0.08
+
   // The unit sphere's object frame onto [0,1]^3 (as menger sets it): 0.5 * world + 0.5.
   private val unitSphereFrame = Array(0.5f, 0f, 0f, 0.5f, 0f, 0.5f, 0f, 0.5f, 0f, 0f, 0.5f, 0.5f)
 
@@ -99,11 +104,11 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   behavior of "The shadow of glass without caustics"
 
-  it should "let through neither all the light nor none, with plain shadows" in:
+  it should "let through the retained share of the light, with plain shadows" in:
     val t = transmission(glass, transparentShadows = false)
     info(f"median T of a glass sphere, plain shadows: $t%.3f")
     withClue(s"median T = $t; a straight shadow ray let 0.97 through, an opaque shadow 0. ") {
-      t should (be > 0.3 and be < 0.8)
+      t shouldBe measuredT +- measuredTTolerance
     }
 
   it should "be the same with transparent shadows on" in:
@@ -116,7 +121,7 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
     for transparentShadows <- Seq(false, true) do
       val t = transmission(glass, transparentShadows, mesh = true)
       info(f"median T of a glass cube, transparent shadows $transparentShadows: $t%.3f")
-      t should (be > 0.3 and be < 0.8)
+      t shouldBe measuredT +- measuredTTolerance
 
   it should "be coloured only with transparent shadows" in:
     // Red glass: absorbs green and blue, passes red. The plain shadow is the same in every channel.

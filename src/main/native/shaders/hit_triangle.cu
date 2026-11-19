@@ -634,7 +634,7 @@ extern "C" __global__ void __anyhit__triangle_shadow() {
     const bool front_face = optixGetHitKind() != OPTIX_HIT_KIND_TRIANGLE_BACK_FACE;
 
     const float alpha = shadowOpacity(material_color.w, material_ior) * coverage;
-    if (alpha >= 1.0f - 1e-4f) {  // Opaque: a front face is accepted, closesthit shadows fully
+    if (alpha >= 1.0f - RayTracingConstants::SHADOW_OPAQUE_ALPHA_EPSILON) {  // Opaque: a front face is accepted, closesthit shadows fully
         if (!front_face) optixIgnoreIntersection();
         return;
     }
