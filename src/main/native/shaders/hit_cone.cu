@@ -184,10 +184,11 @@ extern "C" __global__ void __closesthit__cone() {
     // as opaque gray. Mirrors the branch structure in hit_curve.cu / hit_sphere.cu. The
     // opaque path is deliberately left untouched, so opaque cone renders are unchanged.
     const float cone_alpha = material_color.w;
+    const ShadowReceiver receiver = shadowReceiverOf(cone_alpha, material_ior, film_thickness);
 
     if (cone_alpha < ALPHA_FULLY_TRANSPARENT_THRESHOLD) {
         if (!handleFullyTransparent(hit_point, ray_direction, depth))
-            handleFullyOpaque(hit_point, normal, material_color, emission);  // nesting limit
+            handleFullyOpaque(hit_point, normal, material_color, emission, false, receiver);  // nesting limit
         return;
     }
 
@@ -203,7 +204,7 @@ extern "C" __global__ void __closesthit__cone() {
         // Already the result of a bailout bounce — terminate here, do not trace again
         // (Sprint 36 H3.2; see helpers.cu handleMetallicOpaque for the full rationale).
         if (depth > static_cast<unsigned int>(params.max_ray_depth)) {
-            handleFullyOpaque(hit_point, refr_normal, material_color, emission);
+            handleFullyOpaque(hit_point, refr_normal, material_color, emission, false, receiver);
             return;
         }
 
@@ -264,7 +265,8 @@ extern "C" __global__ void __closesthit__cone() {
     // With shadows, like the cylinder (menger#156): a shadow ray cannot recurse, and the
     // highlight must not show where the light is occluded (optix-jni#109).
     const float3 lit_color = litSurfaceColor(material_color, calculateSurfaceLighting(
-        hit_point, normal, specularLobe(ray_direction, specular, roughness, metallic)));
+        hit_point, normal, specularLobe(ray_direction, specular, roughness, metallic),
+        false, false, receiver));
 
     const float final_r = lit_color.x * RayTracingConstants::COLOR_SCALE_FACTOR;
     const float final_g = lit_color.y * RayTracingConstants::COLOR_SCALE_FACTOR;

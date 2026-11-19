@@ -105,23 +105,31 @@ __device__ bool causticsCarryTransmittedLight(float ior) {
 }
 
 /**
+ * Glass: a refractive (IOR above IOR_REFRACTIVE_MIN) material that is not opaque and not a thin
+ * film. An opaque object blocks the light, and a film is a sheet that light passes straight
+ * through (optix-jni#113), neither bends it out of its shadow. One definition for the glass a
+ * shadow ray crosses (glassBendsLight) and the glass a shadow ray starts on (shadowReceiverOf).
+ */
+__device__ bool isGlassMaterial(float alpha, float ior, float film_thickness) {
+    return ior > MaterialConstants::IOR_REFRACTIVE_MIN
+        && alpha < 1.0f - RayTracingConstants::SHADOW_OPAQUE_ALPHA_EPSILON
+        && film_thickness <= 0.0f;
+}
+
+/**
  * Without caustics, a shadow ray is a straight line, but glass bends the light that crosses it:
  * the share it bends out of the shadow lands elsewhere, and only photons could say where
  * (optix-jni#132). A shadow ray to a light, with caustics off, carries SHADOW_FLAG_GLASS_BENDS_LIGHT;
  * it is then charged the Fresnel and absorption losses of the glass it crosses and, once, the
- * light bent away (GlassShadowConstants::RETENTION). Ambient-occlusion rays and rays with caustics
- * on do not carry it. Glass is a refractive (IOR above IOR_REFRACTIVE_MIN) object that is not
- * opaque and not a thin film: an opaque object blocks the light, and a film is a sheet that light
- * passes straight through (optix-jni#113), neither bends it out of its shadow.
+ * light bent away (GlassShadowConstants::RETENTION), unless it starts on glass itself (see
+ * ShadowReceiver). Ambient-occlusion rays and rays with caustics on do not carry the flag.
  * Only valid in a shadow program (reads the ray's payload 3 and the hit instance).
  */
 __device__ bool glassBendsLight(float alpha, float ior) {
     if ((optixGetPayload_3() & SBTConstants::SHADOW_FLAG_GLASS_BENDS_LIGHT) == 0u) return false;
-    if (ior <= MaterialConstants::IOR_REFRACTIVE_MIN || alpha >= 1.0f - RayTracingConstants::SHADOW_OPAQUE_ALPHA_EPSILON)
-        return false;
-    const bool is_film = params.use_ias && params.instance_materials
-        && params.instance_materials[optixGetInstanceId()].film_thickness > 0.0f;
-    return !is_film;
+    const float film_thickness = params.use_ias && params.instance_materials
+        ? params.instance_materials[optixGetInstanceId()].film_thickness : 0.0f;
+    return isGlassMaterial(alpha, ior, film_thickness);
 }
 
 /** The ray crossed glass that bends the light: __miss__shadow charges the bent-away share. */
@@ -199,6 +207,23 @@ __device__ void setShadowPayload(float alpha, const float4& /* color */) {
 enum class ShadowRayTarget { LIGHT, PHOTON_LIGHT, SKY };
 
 /**
+ * What the shadow ray starts on; decides whether the glass in its way is charged the retention.
+ *  - SOLID: any surface but glass (opaque of any IOR, metals, a non-refractive tint, a thin film)
+ *  - GLASS: a surface for which isGlassMaterial is true, shaded by direct light where the ray depth
+ *    runs out, or by a primitive (cylinder) that shades every material as a solid. Its shadow rays
+ *    carry no SHADOW_FLAG_GLASS_BENDS_LIGHT: the glass in their way shadows as it did before
+ *    optix-jni#132 (alpha opacity with plain shadows, Fresnel and absorption with transparent
+ *    shadows) and is not charged GlassShadowConstants::RETENTION. The retention was measured
+ *    against a diffuse floor, and pbrt's glass has no direct-light term to darken.
+ */
+enum class ShadowReceiver { SOLID, GLASS };
+
+/** The receiver of the shadow rays of a surface with this material. */
+__device__ ShadowReceiver shadowReceiverOf(float alpha, float ior, float film_thickness) {
+    return isGlassMaterial(alpha, ior, film_thickness) ? ShadowReceiver::GLASS : ShadowReceiver::SOLID;
+}
+
+/**
  * Trace a shadow ray to determine visibility between hit point and light.
  *
  * Casts a shadow ray from the surface toward the light source to check
@@ -209,20 +234,22 @@ enum class ShadowRayTarget { LIGHT, PHOTON_LIGHT, SKY };
  * @param normal Surface normal (for offset to avoid self-intersection)
  * @param light_dir Direction to light source (normalized)
  * @param target What the ray goes to (see ShadowRayTarget)
+ * @param receiver What the ray starts on (see ShadowReceiver)
  * @return float3 per-channel shadow factors in range [0, 1] where 0=fully shadowed, 1=fully lit
  */
 __device__ float3 traceShadowRay(
     const float3& hit_point,
     const float3& normal,
     const float3& light_dir,
-    ShadowRayTarget target = ShadowRayTarget::LIGHT
+    ShadowRayTarget target = ShadowRayTarget::LIGHT,
+    ShadowReceiver receiver = ShadowReceiver::SOLID
 ) {
     const float3 shadow_origin = hit_point + normal * SHADOW_RAY_OFFSET;
     unsigned int shadow_p0 = 0, shadow_p1 = 0, shadow_p2 = 0;
     unsigned int shadow_p3 = 0u;
     if (params.caustics.enabled) {
         if (target == ShadowRayTarget::PHOTON_LIGHT) shadow_p3 = SBTConstants::SHADOW_FLAG_PHOTON_LIGHT;
-    } else if (target != ShadowRayTarget::SKY) {
+    } else if (target != ShadowRayTarget::SKY && receiver != ShadowReceiver::GLASS) {
         shadow_p3 = SBTConstants::SHADOW_FLAG_GLASS_BENDS_LIGHT;
     }
 
@@ -317,13 +344,15 @@ __device__ float3 sampleDiskPoint(
  * @param normal     Surface normal at hit_point
  * @param light      Area light (must have type == AREA, shape == DISK)
  * @param target     See traceShadowRay
+ * @param receiver   See traceShadowRay
  * @return           Per-channel average shadow factor (0=fully shadowed, 1=fully lit)
  */
 __device__ float3 traceAreaLightShadow(
     const float3& hit_point,
     const float3& normal,
     const Light& light,
-    ShadowRayTarget target = ShadowRayTarget::LIGHT
+    ShadowRayTarget target = ShadowRayTarget::LIGHT,
+    ShadowReceiver receiver = ShadowReceiver::SOLID
 ) {
     const float3 disk_center = make_float3(light.position[0], light.position[1], light.position[2]);
     const float3 disk_normal = make_float3(light.normal[0], light.normal[1], light.normal[2]);
@@ -340,7 +369,7 @@ __device__ float3 traceAreaLightShadow(
         const float dist = length(to_sample);
         if (dist < RayTracingConstants::RAY_PARALLEL_THRESHOLD) continue;
         const float3 dir = to_sample / dist;
-        total_shadow = total_shadow + traceShadowRay(hit_point, normal, dir, target);
+        total_shadow = total_shadow + traceShadowRay(hit_point, normal, dir, target, receiver);
     }
     // Per-channel average — preserves colored shadow tinting
     return total_shadow / static_cast<float>(n);
@@ -810,6 +839,7 @@ __device__ float directLightBlend() {
  *                     shows only where the viewer and the light are on the same side
  * @param skip_shadows If true, skip shadow ray tracing (no built-in shader does any more; shadow
  *                     rays never recurse, so it is a shading choice, not a guard)
+ * @param receiver What the surface is for its shadow rays to the lights (see ShadowReceiver)
  * @return Diffuse light (ambient + direct + IBL) and the untinted highlight, each in [0, ∞)
  *
  * Limit: an area light's highlight is evaluated toward the disk centre only (its shadow is
@@ -820,7 +850,8 @@ __device__ SurfaceLighting calculateSurfaceLighting(
     const float3& normal,
     const SpecularLobe& lobe,
     bool double_sided = false,
-    bool skip_shadows = false
+    bool skip_shadows = false,
+    ShadowReceiver receiver = ShadowReceiver::SOLID
 ) {
     float3 total_lighting = make_float3(0.f, 0.f, 0.f);
     float3 total_specular = make_float3(0.f, 0.f, 0.f);
@@ -876,8 +907,8 @@ __device__ SurfaceLighting calculateSurfaceLighting(
             light_idx == 0 ? ShadowRayTarget::PHOTON_LIGHT : ShadowRayTarget::LIGHT;
         const float3 shadow_factor = (params.shadows_enabled && !skip_shadows)
             ? (light.type == LightType::AREA
-                ? traceAreaLightShadow(hit_point, normal, light, target)
-                : traceShadowRay(hit_point, normal, light_dir, target))
+                ? traceAreaLightShadow(hit_point, normal, light, target, receiver)
+                : traceShadowRay(hit_point, normal, light_dir, target, receiver))
             : fully_lit;
 
         // Accumulate light contribution
@@ -1412,6 +1443,8 @@ __device__ float3 litSurfaceColor(const float4& material_color, const SurfaceLig
  * @param r Output: Red component (0-255)
  * @param g Output: Green component (0-255)
  * @param b Output: Blue component (0-255)
+ * @param double_sided See calculateSurfaceLighting
+ * @param receiver See calculateSurfaceLighting
  */
 __device__ void computeOpaqueColor(
     const float3& hit_point,
@@ -1421,10 +1454,12 @@ __device__ void computeOpaqueColor(
     unsigned int& r,
     unsigned int& g,
     unsigned int& b,
-    bool double_sided = false
+    bool double_sided = false,
+    ShadowReceiver receiver = ShadowReceiver::SOLID
 ) {
     const float3 lit_color = litSurfaceColor(
-        material_color, calculateSurfaceLighting(hit_point, normal, lobe, double_sided));
+        material_color,
+        calculateSurfaceLighting(hit_point, normal, lobe, double_sided, false, receiver));
 
     r = static_cast<unsigned int>(fminf(lit_color.x * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
     g = static_cast<unsigned int>(fminf(lit_color.y * RayTracingConstants::COLOR_BYTE_MAX, RayTracingConstants::COLOR_BYTE_MAX));
@@ -1506,6 +1541,9 @@ __device__ inline void applyFogInPlace(unsigned int& r, unsigned int& g, unsigne
  * @param lobe Specular lobe of the material (specularLobe(ray_direction, specular, roughness,
  *             metallic))
  * @param emission Emission intensity (0.0-10.0)
+ * @param double_sided See calculateSurfaceLighting
+ * @param receiver See calculateSurfaceLighting: GLASS for a glass material shaded here because
+ *                 the ray depth ran out
  */
 __device__ void handleFullyOpaque(
     const float3& hit_point,
@@ -1513,10 +1551,11 @@ __device__ void handleFullyOpaque(
     const float4& material_color,
     const SpecularLobe& lobe,
     float emission = 0.0f,
-    bool double_sided = false
+    bool double_sided = false,
+    ShadowReceiver receiver = ShadowReceiver::SOLID
 ) {
     unsigned int r, g, b;
-    computeOpaqueColor(hit_point, normal, material_color, lobe, r, g, b, double_sided);
+    computeOpaqueColor(hit_point, normal, material_color, lobe, r, g, b, double_sided, receiver);
     addEmissionToColor(r, g, b, material_color, emission);
     applyFogInPlace(r, g, b, optixGetRayTmax());
     optixSetPayload_0(r);
@@ -1534,9 +1573,11 @@ __device__ void handleFullyOpaque(
     const float3& normal,
     const float4& material_color,
     float emission = 0.0f,
-    bool double_sided = false
+    bool double_sided = false,
+    ShadowReceiver receiver = ShadowReceiver::SOLID
 ) {
-    handleFullyOpaque(hit_point, normal, material_color, noSpecularLobe(), emission, double_sided);
+    handleFullyOpaque(hit_point, normal, material_color, noSpecularLobe(), emission, double_sided,
+                      receiver);
 }
 
 /**

@@ -37,10 +37,21 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
   private val cameraTarget = Vector[3](2.5f, floorY, 0f)
   private val cameraFov = 30.0f
 
+  // A receiver instead of the floor: a cylinder lying along z under the sphere's shadow (it falls on
+  // x about 1.6 at the cylinder's top). The camera sees the cylinder's lit top, nothing else.
+  private val cylinderStart = Vector[3](1.6f, -2.0f, -2f)
+  private val cylinderEnd = Vector[3](1.6f, -2.0f, 2f)
+  private val cylinderRadius = 0.4f
+  private val cylinderTarget = Vector[3](1.6f, -1.6f, 0f)
+
   // T of a glass sphere or cube, measured 0.542 (RETENTION 0.6 times the Fresnel and absorption
   // losses on the shadow ray's path). The band is narrow on purpose: a different RETENTION must fail.
   private val measuredT = 0.54
   private val measuredTTolerance = 0.08
+
+  // T of a shadow on a glass receiver: no retention (see the test). Narrow, so that 0.5.6's 0.55 or
+  // Fresnel and absorption charged in plain mode too (0.90 where 0.98 is expected) fail.
+  private val glassReceiverTTolerance = 0.03
 
   // The unit sphere's object frame onto [0,1]^3 (as menger sets it): 0.5 * world + 0.5.
   private val unitSphereFrame = Array(0.5f, 0f, 0f, 0.5f, 0f, 0.5f, 0f, 0.5f, 0f, 0f, 0.5f, 0.5f)
@@ -59,18 +70,24 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
       else renderer.addSphereInstance(transform, material)
     renderer.setObjectFrame(id, unitSphereFrame)
 
-  /** The floor's (r, g, b) per pixel with the given occluders, shadows on, caustics off. */
+  /** The (r, g, b) per pixel with the given occluders, shadows on, caustics off: of the floor, or of a
+    * cylinder of the `receiver` material (and no floor) if there is one. */
   private def renderRgb(occluders: Seq[(Vector[3], Float, Material)], transparentShadows: Boolean,
-                     mesh: Boolean = false): Array[(Double, Double, Double)] =
+                     mesh: Boolean = false,
+                     receiver: Option[Material] = None): Array[(Double, Double, Double)] =
     renderer.clearAllInstances()
     renderer.clearPlanes()
-    renderer.addPlane(1, positive = true, floorY)
+    receiver match
+      case Some(material) =>
+        val _ = renderer.addCylinderInstance(cylinderStart, cylinderEnd, cylinderRadius, material)
+      case None => renderer.addPlane(1, positive = true, floorY)
     if mesh then renderer.setTriangleMesh(TestUtilities.createUnitCubeMesh())
     occluders.foreach { case (position, radius, material) =>
       addOccluder(position, radius, material, mesh)
     }
     renderer.setLights(Array(Light.Directional(lightDirection, intensity = 1.0f)))
-    renderer.setCamera(cameraEye, cameraTarget, Vector[3](0f, 1f, 0f), cameraFov)
+    renderer.setCamera(cameraEye, if receiver.isDefined then cylinderTarget else cameraTarget,
+      Vector[3](0f, 1f, 0f), cameraFov)
     renderer.setShadows(true)
     renderer.setTransparentShadows(transparentShadows)
     renderer.setAmbient(AmbientModel.Constant)
@@ -81,8 +98,8 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
       (rgb.r.toDouble, rgb.g.toDouble, rgb.b.toDouble)
 
   private def render(occluders: Seq[(Vector[3], Float, Material)], transparentShadows: Boolean,
-                     mesh: Boolean = false): Array[Double] =
-    renderRgb(occluders, transparentShadows, mesh).map((r, g, b) => (r + g + b) / 3)
+                     mesh: Boolean = false, receiver: Option[Material] = None): Array[Double] =
+    renderRgb(occluders, transparentShadows, mesh, receiver).map((r, g, b) => (r + g + b) / 3)
 
   private def median(values: Seq[Double]): Double = values.sorted.apply(values.length / 2)
 
@@ -90,10 +107,10 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
 
   /** Median T in the core of the opaque unit sphere's (or cube's) shadow, for `material` in its place. */
   private def transmission(material: Material, transparentShadows: Boolean,
-                           mesh: Boolean = false): Double =
-    val bare = render(Seq.empty, transparentShadows)
-    val opaqueSphere = render(Seq((origin, 1f, opaque)), transparentShadows, mesh)
-    val sphere = render(Seq((origin, 1f, material)), transparentShadows, mesh)
+                           mesh: Boolean = false, receiver: Option[Material] = None): Double =
+    val bare = render(Seq.empty, transparentShadows, receiver = receiver)
+    val opaqueSphere = render(Seq((origin, 1f, opaque)), transparentShadows, mesh, receiver)
+    val sphere = render(Seq((origin, 1f, material)), transparentShadows, mesh, receiver)
     val depth = bare.indices.map(i => bare(i) - opaqueSphere(i))
     val deepest = depth.max
     withClue(s"the opaque sphere casts no shadow (deepest $deepest); the scene is wrong. ") {
@@ -148,6 +165,34 @@ class GlassShadowSuite extends AnyFlatSpec with Matchers with RendererFixture:
       val t = transmission(halfOpaqueFilm, transparentShadows)
       info(f"median T of a half-opaque film, transparent shadows $transparentShadows: $t%.3f")
       t shouldBe 0.5 +- 0.05
+
+  // A glass surface that is shaded by the light itself (a cylinder is shaded as a solid whatever its
+  // material; the other primitives do it where the ray depth runs out) is the receiver of a shadow
+  // ray. It is not the diffuse floor the retention was measured against: pbrt's glass has no direct
+  // light term at all, and a glass sponge's walls would shadow each other grey (optix-jni#132).
+  it should "not charge the retention to a glass surface it falls on" in:
+    // The shadow a glass receiver gets is the one before the retention existed (0.5.5): with plain
+    // shadows the alpha opacity of the occluder (a cube lets 0.98 through), with transparent shadows
+    // its Fresnel and absorption losses (0.90). Not the Fresnel and absorption losses in plain mode
+    // too, which compound over the dozen walls of a sponge.
+    val expected = Seq(
+      (false, false, 0.924), (false, true, 0.924),  // a sphere primitive as occluder
+      (true, false, 0.982), (true, true, 0.900)     // a triangle mesh (cube) as occluder
+    )
+    for (mesh, transparentShadows, expectedT) <- expected do
+      val t = transmission(glass, transparentShadows, mesh, receiver = Some(glass))
+      info(f"median T on a glass cylinder, occluder mesh $mesh, transparent shadows $transparentShadows: $t%.3f")
+      withClue(s"occluder mesh $mesh, transparent shadows $transparentShadows: T = $t, ") {
+        t shouldBe expectedT +- glassReceiverTTolerance
+      }
+
+  it should "charge the retention to a diffuse surface of any alpha, an opaque cylinder as much as the floor" in:
+    val opaqueCylinder = Material(Color(1f, 1f, 1f, 1f), ior = 1.5f)
+    val nonRefractiveFilm = Material(Color(1f, 1f, 1f, 0.5f), ior = 1.0f)
+    for receiver <- Seq(opaqueCylinder, nonRefractiveFilm) do
+      val t = transmission(glass, transparentShadows = false, receiver = Some(receiver))
+      info(f"median T of a glass sphere's shadow on a cylinder of alpha ${receiver.color.a}%.1f, ior ${receiver.ior}%.1f: $t%.3f")
+      t shouldBe measuredT +- measuredTTolerance
 
   it should "let an opaque occluder behind the glass shadow all the light" in:
     // The any-hit program passes the glass on; the opaque sphere in the light's path must still
