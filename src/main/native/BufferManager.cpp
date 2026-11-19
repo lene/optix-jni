@@ -1,5 +1,6 @@
 #include "include/BufferManager.h"
 #include "include/OptiXErrorChecking.h"
+#include "include/OptixLogging.h"
 
 BufferManager::BufferManager(OptiXContext& context)
     : optix_context(context) {
@@ -53,14 +54,19 @@ void BufferManager::ensureGASBuffer(const OptiXContext::GASBuildResult& gasResul
 }
 
 void BufferManager::ensureCausticsBuffers(int width, int height) {
-    const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
-                            RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
-                            RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
+    const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_CELLS;
+    const size_t hit_point_count = static_cast<size_t>(width) * static_cast<size_t>(height);
 
     // RAII ensures cleanup on exception; each buffer is checked against its own size
-    hit_points_buffer.allocate(static_cast<size_t>(width) * static_cast<size_t>(height));
+    const size_t hit_point_bytes = hit_point_count * sizeof(HitPoint);
+    if (hit_points_buffer.sizeBytes() != hit_point_bytes) {
+        OPTIX_LOG(INFO) << "[Caustics] Hit-point buffer: " << hit_point_count << " hit points, "
+                  << (hit_point_bytes / (1024 * 1024)) << " MB for " << width << "x" << height
+                  << std::endl;
+    }
+    hit_points_buffer.allocate(hit_point_count);
     num_hit_points_buffer.allocate(1);
-    caustics_grid_buffer.allocate(grid_size);
+    caustics_grid_buffer.allocate(RayTracingConstants::causticsGridEntries(hit_point_count));
     caustics_grid_counts_buffer.allocate(grid_size);
     caustics_grid_offsets_buffer.allocate(grid_size);
     caustics_stats_buffer.allocate(1);
@@ -94,9 +100,7 @@ void BufferManager::zeroCausticsBuffers() {
 }
 
 void BufferManager::zeroCausticsGridCounts() {
-    const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
-                            RayTracingConstants::CAUSTICS_GRID_RESOLUTION *
-                            RayTracingConstants::CAUSTICS_GRID_RESOLUTION;
+    const size_t grid_size = RayTracingConstants::CAUSTICS_GRID_CELLS;
     if (caustics_grid_counts_buffer.isAllocated()) {
         caustics_grid_counts_buffer.zero(grid_size);
     }

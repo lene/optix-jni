@@ -116,9 +116,6 @@ case class CausticsStats(
   // C4: Deposition
   photonsDeposited: Long,
   hitPointsWithFlux: Long,
-  // Hit-point capacity: diffuse hits that got a slot, and those that found the buffer full
-  hitPointsCollected: Long,
-  hitPointsDropped: Long,
   // C5: Energy conservation
   totalFluxEmitted: Double,
   totalFluxDeposited: Double,
@@ -149,6 +146,16 @@ case class CausticsStats(
 
   def fresnelTransmission: Double =
     if totalFluxEmitted > 0 then totalFluxDeposited / totalFluxEmitted else 0.0
+
+/** How the caustics hit-point buffer was used by the last caustics render.
+  *
+  * The buffer holds one hit point per pixel, so `dropped` is 0 unless a pass takes more than one
+  * slot per pixel.
+  *
+  * @param collected diffuse hits that got a slot in the hit-point buffer
+  * @param dropped diffuse hits that found the buffer full and got no caustics
+  */
+case class HitPointStats(collected: Long, dropped: Long)
 
 /** Image and ray-statistics result for one render.
   *
@@ -482,6 +489,7 @@ class OptiXRenderer
     alpha: Float
   ): Unit
   @native private[optix] def getCausticsStatsNative(): CausticsStats
+  @native private[optix] def getHitPointStatsNative(): HitPointStats
 
   /** Renders an RGBA8 frame and native ray statistics for the given dimensions.
     *

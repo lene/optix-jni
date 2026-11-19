@@ -5,6 +5,8 @@
 #include <iostream>
 #include "include/OptixLogging.h"
 #include <algorithm>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 CausticsRenderer::CausticsRenderer(
@@ -110,6 +112,12 @@ void CausticsRenderer::renderWithCaustics(
     // =====================================
     // Grid Building: Spatial acceleration for photon deposition
     // =====================================
+    // grid_scatter writes one sorted index per hit point into the grid buffer.
+    if (num_hit_points > buffer_manager.getCausticsGridEntries()) {
+        throw std::runtime_error("[Caustics] " + std::to_string(num_hit_points)
+            + " hit points do not fit the grid index buffer ("
+            + std::to_string(buffer_manager.getCausticsGridEntries()) + " entries)");
+    }
     if (num_hit_points > 0) {
         buildGrid(num_hit_points, scene, width, height, params);
     }

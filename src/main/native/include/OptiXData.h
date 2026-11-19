@@ -113,6 +113,14 @@ namespace RayTracingConstants {
     constexpr float CAUSTICS_AUTO_RADIUS_FACTOR = 0.1f;
     constexpr float DEFAULT_PPM_ALPHA = 0.7f;        // Radius reduction factor (controls convergence)
     constexpr int CAUSTICS_GRID_RESOLUTION = 256;    // Spatial hash grid resolution (256^3 cells)
+    constexpr size_t CAUSTICS_GRID_CELLS =
+        static_cast<size_t>(CAUSTICS_GRID_RESOLUTION) * CAUSTICS_GRID_RESOLUTION * CAUSTICS_GRID_RESOLUTION;
+    // The grid buffer is the sorted array of hit point indices (grid_scatter writes one entry per
+    // hit point), so it needs an entry per hit point, not per cell: above 256^3 = 16,777,216
+    // pixels (4096x4096) the hit points outnumber the cells.
+    constexpr size_t causticsGridEntries(size_t hit_point_capacity) {
+        return hit_point_capacity > CAUSTICS_GRID_CELLS ? hit_point_capacity : CAUSTICS_GRID_CELLS;
+    }
     // Maximum surface interactions of one photon. A ray through a level-2 sponge crosses up to a
     // dozen thin walls, and ten cut off 12.5% of the photons that hit it (a CPU replica of the walk
     // reaches 0.65 of them to the floor at ten, 0.71 at fifty: menger#150); pbrt's twin used 50.

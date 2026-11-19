@@ -16,8 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pass takes at most one slot per pixel (antialiasing takes none), so the buffer now holds
   width x height hit points, reallocated when the resolution changes: 149 MB at 1080p, 597 MB at 4K
   (72 bytes per hit point), and less than before below 2,000,000 pixels. Images under the old limit
-  do not change. `CausticsStats` gains `hitPointsCollected` and `hitPointsDropped`; the C++
-  constant `RayTracingConstants::MAX_HIT_POINTS` is gone.
+  do not change. The new `getHitPointStats` returns a `HitPointStats(collected, dropped)`: the hit
+  points that got a slot and those that found the buffer full. The buffer of sorted hit point
+  indices grows with the hit points above 4096x4096 pixels (it was sized by the 256^3 grid cells,
+  which a frame with more pixels than that would have overrun). The C++ constant
+  `RayTracingConstants::MAX_HIT_POINTS` is gone.
 
 ### Changed
 

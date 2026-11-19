@@ -1,6 +1,6 @@
 package io.github.lene.optix.caustics
 
-import io.github.lene.optix.CausticsStats
+import io.github.lene.optix.HitPointStats
 import io.github.lene.optix.RendererFixture
 import io.github.lene.optix.Slow
 import menger.common.Color
@@ -19,7 +19,7 @@ import org.scalatest.matchers.should.Matchers
   * got no caustics and the renderer logged an error.
   *
   * The scene looks straight down on a floor plane, so every camera ray seeds exactly one hit
-  * point; `hitPointsCollected` must equal the pixel count and `hitPointsDropped` must be zero.
+  * point; `collected` must equal the pixel count and `dropped` must be zero.
   */
 class CausticsHitPointCapacitySuite extends AnyFlatSpec with Matchers with RendererFixture:
 
@@ -47,11 +47,14 @@ class CausticsHitPointCapacitySuite extends AnyFlatSpec with Matchers with Rende
     renderer.setLights(Array(Light.Point(Vector[3](0.0f, 4.0f, 0.0f), intensity = 1.0f)))
     renderer.enableCaustics(photonsPerIter, causticIterations)
 
-  private def renderStats(size: ImageSize): CausticsStats =
+  private def renderStats(size: ImageSize): HitPointStats =
     withClue(s"caustics render at ${size.width}x${size.height} returned no frame: ") {
       renderer.renderWithStats(size).isPresent should be(true)
     }
-    renderer.getCausticsStats
+    withClue("hit-point stats of a caustics render: ") {
+      renderer.getHitPointStats should not be empty
+    }
+    renderer.getHitPointStats.getOrElse(HitPointStats(-1L, -1L))
 
   behavior of "Caustics hit-point capacity (#129)"
 
@@ -59,9 +62,9 @@ class CausticsHitPointCapacitySuite extends AnyFlatSpec with Matchers with Rende
     setUpFloorSeenFromAbove()
     val stats = renderStats(fullHd)
     withClue("hit points that found the buffer full (#129: 2,000,000 < 2,073,600 pixels): ") {
-      stats.hitPointsDropped should be(0L)
+      stats.dropped should be(0L)
     }
-    stats.hitPointsCollected should be(pixels(fullHd))
+    stats.collected should be(pixels(fullHd))
   }
 
   it should "follow the resolution when it shrinks and grows between renders" in {
@@ -70,8 +73,8 @@ class CausticsHitPointCapacitySuite extends AnyFlatSpec with Matchers with Rende
     sizes.foreach { size =>
       val stats = renderStats(size)
       withClue(s"at ${size.width}x${size.height}: ") {
-        stats.hitPointsCollected should be(pixels(size))
-        stats.hitPointsDropped should be(0L)
+        stats.collected should be(pixels(size))
+        stats.dropped should be(0L)
       }
     }
   }

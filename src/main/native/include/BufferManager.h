@@ -60,6 +60,7 @@ public:
         return static_cast<unsigned int>(hit_points_buffer.sizeBytes() / sizeof(HitPoint));
     }
     CUdeviceptr getCausticsGridBuffer() const { return caustics_grid_buffer.get(); }
+    size_t getCausticsGridEntries() const { return caustics_grid_buffer.sizeBytes() / sizeof(unsigned int); }
     CUdeviceptr getCausticsGridCountsBuffer() const { return caustics_grid_counts_buffer.get(); }
     CUdeviceptr getCausticsGridOffsetsBuffer() const { return caustics_grid_offsets_buffer.get(); }
     CUdeviceptr getCausticsStatsBuffer() const { return caustics_stats_buffer.get(); }

@@ -111,6 +111,12 @@ private[optix] trait OptiXRenderApi:
         logger.error("getCausticsStats failed", e)
         null // scalafix:ok DisableSyntax.null
 
+  /** Returns how the hit-point buffer was used by the last caustics render (all zero before the
+    * first one), or `None` when caustics are disabled.
+    */
+  def getHitPointStats: Option[HitPointStats] =
+    Option(getHitPointStatsNative())
+
   /** Renders an RGBA8 frame and ray statistics for an [[menger.common.ImageSize]].
     *
     * @return `java.util.Optional` containing [[RenderResult]] with elapsed frame time
