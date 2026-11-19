@@ -112,10 +112,10 @@ private[optix] trait OptiXRenderApi:
         null // scalafix:ok DisableSyntax.null
 
   /** Returns how the hit-point buffer was used by the last caustics render (all zero before the
-    * first one), or `None` when caustics are disabled.
+    * first one), or `null` when caustics are disabled. `null` rather than `Option`: the public API
+    * exposes no Scala types (ArchUnitSpec), like [[getCausticsStats]].
     */
-  def getHitPointStats: Option[HitPointStats] =
-    Option(getHitPointStatsNative())
+  def getHitPointStats: HitPointStats = getHitPointStatsNative()
 
   /** Renders an RGBA8 frame and ray statistics for an [[menger.common.ImageSize]].
     *

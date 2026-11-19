@@ -51,10 +51,11 @@ class CausticsHitPointCapacitySuite extends AnyFlatSpec with Matchers with Rende
     withClue(s"caustics render at ${size.width}x${size.height} returned no frame: ") {
       renderer.renderWithStats(size).isPresent should be(true)
     }
+    val stats = renderer.getHitPointStats
     withClue("hit-point stats of a caustics render: ") {
-      renderer.getHitPointStats should not be empty
+      Option(stats) should not be empty
     }
-    renderer.getHitPointStats.getOrElse(HitPointStats(-1L, -1L))
+    stats
 
   behavior of "Caustics hit-point capacity (#129)"
 
