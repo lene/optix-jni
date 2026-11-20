@@ -205,7 +205,7 @@ Test / testOptions += Tests.Argument(
 )
 
 libraryDependencies ++= Seq(
-  "io.github.lene" %% "menger-common" % "0.1.4",
+  "io.github.lene" %% "menger-common" % "0.4.1",
   "com.typesafe.scala-logging" %% "scala-logging" % "3.9.6",
   "ch.qos.logback" % "logback-classic" % "1.5.32",
   "org.scalatest" %% "scalatest" % "3.2.20" % Test,

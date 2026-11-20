@@ -17,9 +17,10 @@ import menger.common.toArray
 private[optix] trait OptiXRenderApi:
   this: OptiXRenderer =>
 
-  /** Applies shadow, antialiasing, ray-depth, and tone-mapping settings. */
+  /** Applies transparent-shadow, antialiasing, ray-depth, and tone-mapping settings. Shadows
+    * themselves are not part of [[RenderConfig]]: they are on unless [[setShadows]] turns them off.
+    */
   def setRenderConfig(config: RenderConfig): Unit =
-    setShadows(config.shadows)
     setTransparentShadows(config.transparentShadows)
     setAntialiasing(config.antialiasing, config.aaMaxDepth, config.aaThreshold)
     setMaxRayDepth(config.maxRayDepth)
