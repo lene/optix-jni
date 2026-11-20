@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.8] - 2026-11-20
+
+### Fixed
+
+- optix-jni now works with menger-common 0.4.1 (lene/menger#196). menger-common 0.4.1 removed
+  `RenderConfig.shadows` (shadows are always on in menger), but `setRenderConfig` still read it, so
+  any render that applied a `RenderConfig` failed with `NoSuchMethodError` once menger-common 0.4.1
+  was on the classpath. optix-jni is now built against menger-common 0.4.1 (it was 0.1.4), and
+  `setRenderConfig` no longer touches shadows: they stay on unless `setShadows(false)` turns them
+  off. With menger-common before 0.4.1, a `RenderConfig(shadows = false)` therefore no longer turns
+  shadows off; call `setShadows(false)` instead.
+
 ## [0.5.7] - 2026-11-19
 
 ### Fixed
@@ -1153,6 +1165,7 @@ correlation with the reference rose from 0.11 (broken) to 0.86 (> 0.8 target).
 - Initial public release as standalone GPU ray tracing library (Sprint 25/26)
 - Zero Menger-specific types — general-purpose OptiX JNI bindings
 
+[0.5.8]: https://github.com/lene/optix-jni/compare/0.5.7...0.5.8
 [0.5.7]: https://github.com/lene/optix-jni/compare/0.5.6...0.5.7
 [0.5.6]: https://github.com/lene/optix-jni/compare/0.5.5...0.5.6
 [0.5.5]: https://github.com/lene/optix-jni/compare/0.5.4...0.5.5

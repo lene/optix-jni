@@ -10,17 +10,14 @@ class RenderConfigSuite extends AnyFlatSpec with Matchers:
 
   "RenderConfig" should "have sensible defaults" in:
     val config = RenderConfig()
-    config.shadows shouldBe false
     config.antialiasing shouldBe false
     config.aaMaxDepth shouldBe 2
     config.aaThreshold shouldBe 0.1f
 
   it should "create Default preset correctly" in:
-    RenderConfig.Default.shadows shouldBe false
     RenderConfig.Default.antialiasing shouldBe false
 
   it should "create HighQuality preset correctly" in:
-    RenderConfig.HighQuality.shadows shouldBe true
     RenderConfig.HighQuality.antialiasing shouldBe true
     RenderConfig.HighQuality.aaMaxDepth shouldBe 3
     RenderConfig.HighQuality.aaThreshold shouldBe 0.05f
@@ -94,11 +91,11 @@ class RenderConfigSuite extends AnyFlatSpec with Matchers:
     an[IllegalArgumentException] shouldBe thrownBy { CausticsConfig(iterations = 1001) }
 
   it should "accept valid initialRadius values" in:
+    noException shouldBe thrownBy { CausticsConfig(initialRadius = CausticsConfig.AutoRadius) }
     noException shouldBe thrownBy { CausticsConfig(initialRadius = 0.001f) }
     noException shouldBe thrownBy { CausticsConfig(initialRadius = 10.0f) }
 
   it should "reject invalid initialRadius values" in:
-    an[IllegalArgumentException] shouldBe thrownBy { CausticsConfig(initialRadius = 0.0f) }
     an[IllegalArgumentException] shouldBe thrownBy { CausticsConfig(initialRadius = -0.1f) }
     an[IllegalArgumentException] shouldBe thrownBy { CausticsConfig(initialRadius = 10.1f) }
 

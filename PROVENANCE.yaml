@@ -15,6 +15,13 @@ entries:
     kind: reference
     note: byte-identical to appleseed's sandbox/tests/test scenes/sppm/glass_sphere.obj (git blob 7e8c111932333839012565c1cba36f60db00e4c1; same blob under light tracing/). Licence is that of the appleseed repository (LICENSE.txt, MIT, copyright Francois Beaune, Jupiter Jazz Limited, and the appleseedhq Organization); no separate licence for the test scene.
 
+  - path: test-resources/caustics-references/appleseed/cornell-box-caustics.appleseed
+    source: https://github.com/appleseedhq/appleseed/blob/master/sandbox/tests/test%20scenes/light%20tracing/28%20-%20cornell%20box%20with%20spheres%20-%20with%20caustics.appleseed
+    licence: MIT
+    author: The appleseedhq Organization
+    kind: reference
+    note: byte-identical to appleseed's sandbox/tests/test scenes/light tracing/28 - cornell box with spheres - with caustics.appleseed (git blob 2424eb0b4423984713673fbe549d7adff03f9bfe, checked 2026-11-20), renamed. Licence is that of the appleseed repository, as for glass_sphere.obj above.
+
   - path: test-resources/caustics-references/pbrt-reference.png
     source: this repository; rendered with pbrt-v4 (bdpt integrator, 1024 samples) from test-resources/caustics-references/reference-scene.pbrt
     licence: Apache-2.0
